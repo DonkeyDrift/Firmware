@@ -1,0 +1,8 @@
+{
+    "idf.openOcdConfigs": [
+        "board/esp32-wrover-kit-3.3v.cfg"
+    ],
+    "idf.portWin": "COM8",
+    "idf.flashBaudRate": "512000",
+    "idf.flashType": "UART"
+}

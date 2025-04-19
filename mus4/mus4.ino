@@ -7,7 +7,7 @@
 #include <Wire.h>
 // #include <Adafruit_MPU6050.h>
 // #include <Adafruit_Sensor.h>
-// #include <FastLED.h>
+#include <FastLED.h>
 // #include <ESP32Servo.h>
 
 #define LED_PIN 5
@@ -24,49 +24,49 @@
 #define SCL_PIN 14
 #define I2C_SPEED 400000L
 
-// CRGB leds[NUM_LEDS]; // Define the array of leds
+CRGB leds[NUM_LEDS]; // Define the array of leds
 
 // 新增全局变量
 bool toggleActive = false;
-// CRGB toggleColor1, toggleColor2;
+CRGB toggleColor1, toggleColor2;
 unsigned long toggleTime = 0;
 unsigned long toggleInterval = 250; // LED切换间隔为250ms
 
 // 修改setLEDColor函数
-// void setLEDColor(CRGB targetColor)
-// {
-//     if (toggleActive)
-//     {
-//         toggleActive = false; // 关闭切换模式
-//         toggleTime = 0;       // 重置切换时间
-//     }
-//     if (leds[0] != targetColor)
-//     {
-//         leds[0] = targetColor;
-//         // FastLED.show(); // 不一致时才更新显示
-//     }
-// }
+void setLEDColor(CRGB targetColor)
+{
+    if (toggleActive)
+    {
+        toggleActive = false; // 关闭切换模式
+        toggleTime = 0;       // 重置切换时间
+    }
+    if (leds[0] != targetColor)
+    {
+        leds[0] = targetColor;
+        FastLED.show(); // 不一致时才更新显示
+    }
+}
 
 // 新增setLEDToggle函数
-// void setLEDToggle(CRGB color1, CRGB color2)
-// {
-//     toggleColor1 = color1;
-//     toggleColor2 = color2;
-//     toggleActive = true;
-//     toggleTime = 0; // 确保首次切换立即执行
-// }
+void setLEDToggle(CRGB color1, CRGB color2)
+{
+    toggleColor1 = color1;
+    toggleColor2 = color2;
+    toggleActive = true;
+    toggleTime = 0; // 确保首次切换立即执行
+}
 
-// void scanLEDToggle()
-// {
-//     if (toggleActive && (millis() >= toggleTime))
-//     {
-//         CRGB currentColor = leds[0];
-//         CRGB nextColor = (currentColor == toggleColor1) ? toggleColor2 : toggleColor1;
-//         leds[0] = nextColor;
-//         // FastLED.show();
-//         toggleTime = millis() + toggleInterval;
-//     }
-// }
+void scanLEDToggle()
+{
+    if (toggleActive && (millis() >= toggleTime))
+    {
+        CRGB currentColor = leds[0];
+        CRGB nextColor = (currentColor == toggleColor1) ? toggleColor2 : toggleColor1;
+        leds[0] = nextColor;
+        FastLED.show();
+        toggleTime = millis() + toggleInterval;
+    }
+}
 
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object
 // ESP32PWM pwm; // Create a PWM object
@@ -401,12 +401,12 @@ void setup()
 
     // esp_now_register_recv_cb(OnDataRecv);
 
-    // FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
-    // FastLED.setBrightness(BRIGHTNESS);
+    FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+    FastLED.setBrightness(BRIGHTNESS);
 
     // 替换原有直接设置颜色的方式
-    // setLEDColor(CRGB::Blue); // 使用新函数设置初始颜色
-    // delay(1000);
+    setLEDColor(CRGB::Blue); // 使用新函数设置初始颜色
+    delay(1000);
 
     // SETUP ENDS
 }
@@ -463,17 +463,17 @@ void loop()
             car_output.throttle = 0;
             if (carOutputModeLast != CAR_MODE_FULL_AUTO || toggleActive == false)
             {
-                // setLEDToggle(CRGB::Blue, CRGB::Red);
+                setLEDToggle(CRGB::Blue, CRGB::Red);
                 carOutputModeLast = CAR_MODE_FULL_AUTO;
             }
-            // if (!toggleActive)
-            // {
-            //   setLEDToggle(CRGB::Blue, CRGB::Red);
-            // }
+            if (!toggleActive)
+            {
+                setLEDToggle(CRGB::Blue, CRGB::Red);
+            }
         }
         else
         {
-            // setLEDColor(CRGB::Blue); // set LED to Red
+            setLEDColor(CRGB::Blue); // set LED to Red
             car_output.throttle = pilot_data.throttle;
         }
         car_output.steering = pilot_data.steering;
@@ -486,13 +486,13 @@ void loop()
             car_output.throttle = 0;
             if (carOutputModeLast != CAR_MODE_SEMI_AUTO || toggleActive == false)
             {
-                // setLEDToggle(CRGB::Yellow, CRGB::Red);
+                setLEDToggle(CRGB::Yellow, CRGB::Red);
                 carOutputModeLast = CAR_MODE_SEMI_AUTO;
             }
         }
         else
         {
-            // setLEDColor(CRGB::Yellow); // set LED to blue
+            setLEDColor(CRGB::Yellow); // set LED to blue
             car_output.throttle = map(rc_data.throttle - 1493, 888 - 1493, 2149 - 1493, -100, 100);
         }
         car_output.steering = pilot_data.steering;
@@ -506,13 +506,13 @@ void loop()
             // setLEDColor(CRGB::Red); // set LED to blue
             if (carOutputModeLast != CAR_MODE_MANUAL || toggleActive == false)
             {
-                // setLEDToggle(CRGB::Green, CRGB::Red);
+                setLEDToggle(CRGB::Green, CRGB::Red);
                 carOutputModeLast = CAR_MODE_MANUAL;
             }
         }
         else
         {
-            // setLEDColor(CRGB::Green); // set LED to blue
+            setLEDColor(CRGB::Green); // set LED to blue
 
             // RC => CAR
             car_output.throttle = map(rc_data.throttle - 1493, 888 - 1493, 2149 - 1493, -100, 100);
@@ -555,11 +555,9 @@ void loop()
 
     ledcWriteChannel(CH_STEERING, pwm_steering);
     ledcWriteChannel(CH_THROTTLE, pwm_throttle);
-    // ledcWrite(STEERING_PIN, pwm_steering);
-    // ledcWrite(THROTTLE_PIN, pwm_throttle);
 
     delay(10);
     counter += 1;
 
-    // scanLEDToggle();
+    scanLEDToggle();
 }

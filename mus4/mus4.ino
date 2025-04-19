@@ -1,14 +1,21 @@
-//=============================================================v1===2025-04-12
-// Note
-// 1. 固件程序下载速率为115200
+//=============================================================v1.1-2025-04-19
+/* Note of this version:
+1. 启用LED切换与闪烁
+
+Experience
+1. 固件程序下载速率为115200
+2. 串口协议：T:S\n
+  T代表Throttle
+  S代表Steering
+  结尾为"\n
+*/
 
 // #include <esp_now.h>
 // #include <WiFi.h>
 #include <Wire.h>
+#include <FastLED.h>
 // #include <Adafruit_MPU6050.h>
 // #include <Adafruit_Sensor.h>
-#include <FastLED.h>
-// #include <ESP32Servo.h>
 
 #define LED_PIN 5
 #define NUM_LEDS 1
@@ -69,7 +76,6 @@ void scanLEDToggle()
 }
 
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object
-// ESP32PWM pwm; // Create a PWM object
 
 // #define DEBUG // Uncomment to enable debugging output
 
@@ -371,7 +377,6 @@ void setup()
 {
     Serial.begin(BUAD_RATE_0);                                  // TypeC
     Serial1.begin(BUAD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
-    // delay(1000);
     Serial.println("ESP32 Receiver Serial Ready!");
     Serial1.println("ESP32 Receiver Serial1 Ready!");
 
@@ -407,14 +412,10 @@ void setup()
     // 替换原有直接设置颜色的方式
     setLEDColor(CRGB::Blue); // 使用新函数设置初始颜色
     delay(1000);
-
-    // SETUP ENDS
 }
 
 void loop()
 {
-    // Serial.println("ESP32 OK!");
-    //  Serial.print("STA MAC: "); Serial.println(WiFi.macAddress());
     //   read_ina219();
     //   read_mpu6050();
 
@@ -425,8 +426,8 @@ void loop()
         int colonIndex = CMD.indexOf(':');
         if (colonIndex > 0)
         {
-            pilot_data.throttle = CMD.substring(1, colonIndex).toInt();
-            pilot_data.steering = CMD.substring(colonIndex + 2).toInt();
+            pilot_data.throttle = CMD.substring(0, colonIndex).toInt();
+            pilot_data.steering = CMD.substring(colonIndex + 1).toInt();
             Serial.print("CMD-T:");
             Serial.print(pilot_data.throttle);
             Serial.print(" CMD-S:");
@@ -438,15 +439,16 @@ void loop()
     if (Serial1.available())
     {
         String CMD = Serial1.readStringUntil('\n');
+        Serial.println(CMD);
         int colonIndex = CMD.indexOf(':');
         if (colonIndex > 0)
         {
-            pilot_data.throttle = CMD.substring(1, colonIndex).toInt();
-            pilot_data.steering = CMD.substring(colonIndex + 2).toInt();
-            // Serial.print("CMD-T:");
-            // Serial.print(pilot_data.throttle);
-            // Serial.print(" CMD-S:");
-            // Serial.println(pilot_data.steering);
+            pilot_data.throttle = CMD.substring(0, colonIndex).toInt();
+            pilot_data.steering = CMD.substring(colonIndex + 1).toInt();
+            Serial.print("CMD-T:");
+            Serial.print(pilot_data.throttle);
+            Serial.print(" CMD-S:");
+            Serial.println(pilot_data.steering);
         }
     }
 
@@ -503,7 +505,6 @@ void loop()
         if (car_output.park == 1)
         {
             car_output.throttle = 0;
-            // setLEDColor(CRGB::Red); // set LED to blue
             if (carOutputModeLast != CAR_MODE_MANUAL || toggleActive == false)
             {
                 setLEDToggle(CRGB::Green, CRGB::Red);

@@ -39,11 +39,15 @@ bool toggleActive = false;
 CRGB toggleColor1, toggleColor2;
 unsigned long toggleTime = 0;
 unsigned long toggleInterval = 250; // LED切换间隔为250ms
-unsigned long emergencyStopReadyTime = 0;
-unsigned long emergencyStopStartTime = 0;
-bool isEmergencyStopping = false;
-bool isEmergencyStopReady = false;
-bool readyEmergencyStop = false;                          // 标志是否准备刹车
+enum EmergencyStopState
+{
+    EST_IDLE,
+    EST_READY,
+    EST_BRAKING,
+    EST_DONE
+};
+EmergencyStopState emergencyStopState = EST_IDLE;
+unsigned long emergencyStopStartTime = 0;                 // 标志是否准备刹车
 const unsigned long EMERGENCY_STOP_READY_DURATION = 500;  // 刹车准备时间100ms
 const unsigned long EMERGENCY_STOP_BRAKE_DURATION = 1500; // 刹车持续时间1500ms
 
@@ -163,14 +167,38 @@ struct struct_message car_output = {0, 0, 0, false};   // Initialize the structu
 
 void emergencyStop()
 {
-    if (isEmergencyStopping == false && readyEmergencyStop == true)
+    switch (emergencyStopState)
     {
+    // case default:
+    case EST_IDLE:
         Serial.println("Start Emergency stop");
         car_output.throttle = 15;
-        emergencyStopReadyTime = millis();
-        isEmergencyStopReady = true;
-        readyEmergencyStop = false;
-        // setLEDColor(CRGB::Red);
+        emergencyStopState = EST_READY;
+        emergencyStopStartTime = millis();
+        break;
+
+    case EST_READY:
+        if (millis() - emergencyStopStartTime >= EMERGENCY_STOP_READY_DURATION)
+        {
+            car_output.throttle = -100;
+            emergencyStopState = EST_BRAKING;
+            emergencyStopStartTime = millis();
+            Serial.println("Emergency STOP ready");
+        }
+        break;
+
+    case EST_BRAKING:
+        if (millis() - emergencyStopStartTime >= EMERGENCY_STOP_BRAKE_DURATION)
+        {
+            car_output.throttle = 0;
+            emergencyStopState = EST_DONE;
+            Serial.println("Emergency STOP done");
+        }
+        break;
+
+    case EST_DONE:
+        // 刹车完成，等待重置
+        break;
     }
 }
 
@@ -200,12 +228,11 @@ void park_change()
     if (pwm_value[CH_PARK] > 1500)
     {
         rc_data.park = false;
-        readyEmergencyStop = true;
+        emergencyStopState = EST_IDLE;
     }
     else
     {
         rc_data.park = true;
-        // isEmergencyStopping = true;
     }
     car_output.park = rc_data.park;
 }
@@ -572,27 +599,13 @@ void loop()
     }
 
 #endif
-    if (isEmergencyStopReady && millis() - emergencyStopReadyTime >= EMERGENCY_STOP_READY_DURATION)
-    {
-        car_output.throttle = -100;
-        isEmergencyStopReady = false;
-        isEmergencyStopping = true;
-        emergencyStopStartTime = millis();
-        Serial.println("Emergency STOP ready");
-    }
-
-    if (isEmergencyStopping && millis() - emergencyStopStartTime >= EMERGENCY_STOP_BRAKE_DURATION)
-    {
-        car_output.throttle = 0;
-        isEmergencyStopping = false;
-        Serial.println("Emergency STOP done");
-    }
+    // 状态机逻辑已整合到emergencyStop函数中
 
     // CAR => PWM
-    if (isEmergencyStopping == false)
-    {
-        car_output.throttle = constrain(car_output.throttle, -40, 100);
-    }
+    // if (isEmergencyStopping == false)
+    // {
+    //     car_output.throttle = constrain(car_output.throttle, -40, 100);
+    // }
 
     int pwm_steering = map(car_output.steering, -100, 100, SERVO_MID - SERVO_RANGE, SERVO_MID + SERVO_RANGE);
     int pwm_throttle = map(car_output.throttle, -100, 100, MOTOR_MID - MOTOR_RANGE, MOTOR_MID + MOTOR_RANGE);

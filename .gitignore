@@ -26,3 +26,5 @@ Network Trash Folder
 Temporary Items
 .apdisk
 build
+settings.json
+node_modules/

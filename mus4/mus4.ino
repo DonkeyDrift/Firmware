@@ -39,6 +39,13 @@ bool toggleActive = false;
 CRGB toggleColor1, toggleColor2;
 unsigned long toggleTime = 0;
 unsigned long toggleInterval = 250; // LED切换间隔为250ms
+unsigned long emergencyStopReadyTime = 0;
+unsigned long emergencyStopStartTime = 0;
+bool isEmergencyStopping = false;
+bool isEmergencyStopReady = false;
+bool readyEmergencyStop = false;                          // 标志是否准备刹车
+const unsigned long EMERGENCY_STOP_READY_DURATION = 500;  // 刹车准备时间100ms
+const unsigned long EMERGENCY_STOP_BRAKE_DURATION = 1500; // 刹车持续时间1500ms
 
 // 修改setLEDColor函数
 void setLEDColor(CRGB targetColor)
@@ -154,6 +161,19 @@ struct struct_message rc_data = {0, 0, 0, false};      // Initialize the structu
 struct struct_message pilot_data = {0, 0, 0, false};   // Initialize the structure at declaration
 struct struct_message car_output = {0, 0, 0, false};   // Initialize the structure at declaration
 
+void emergencyStop()
+{
+    if (isEmergencyStopping == false && readyEmergencyStop == true)
+    {
+        Serial.println("Start Emergency stop");
+        car_output.throttle = 15;
+        emergencyStopReadyTime = millis();
+        isEmergencyStopReady = true;
+        readyEmergencyStop = false;
+        // setLEDColor(CRGB::Red);
+    }
+}
+
 // Create a structure object
 // struct_message* myData;
 
@@ -180,10 +200,12 @@ void park_change()
     if (pwm_value[CH_PARK] > 1500)
     {
         rc_data.park = false;
+        readyEmergencyStop = true;
     }
     else
     {
         rc_data.park = true;
+        // isEmergencyStopping = true;
     }
     car_output.park = rc_data.park;
 }
@@ -463,7 +485,8 @@ void loop()
         // Controlled by Pilot
         if (car_output.park == 1)
         {
-            car_output.throttle = 0;
+            // car_output.throttle = 0;
+            emergencyStop();
             if (carOutputModeLast != CAR_MODE_FULL_AUTO || toggleActive == false)
             {
                 setLEDToggle(CRGB::Blue, CRGB::Red);
@@ -486,7 +509,8 @@ void loop()
         // Controlled by both RC and Pilot
         if (car_output.park == 1)
         {
-            car_output.throttle = 0;
+            // car_output.throttle = 0;
+            emergencyStop();
             if (carOutputModeLast != CAR_MODE_SEMI_AUTO || toggleActive == false)
             {
                 setLEDToggle(CRGB::Yellow, CRGB::Red);
@@ -505,7 +529,8 @@ void loop()
         // Controlled by RC Controller (car_output.mode = CAR_MODE_MANUAL)
         if (car_output.park == 1)
         {
-            car_output.throttle = 0;
+            // car_output.throttle = 0;
+            emergencyStop();
             if (carOutputModeLast != CAR_MODE_MANUAL || toggleActive == false)
             {
                 setLEDToggle(CRGB::Green, CRGB::Red);
@@ -534,13 +559,6 @@ void loop()
     //   Serial1.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Type-C
     // }
 
-    // CAR => PWM
-    int pwm_steering = map(car_output.steering, -100, 100, SERVO_MID - SERVO_RANGE, SERVO_MID + SERVO_RANGE);
-    int pwm_throttle = map(car_output.throttle, -100, 100, MOTOR_MID - MOTOR_RANGE, MOTOR_MID + MOTOR_RANGE);
-
-    pwm_steering = min(max(pwm_steering, PWM_MIN), PWM_MAX);
-    pwm_throttle = min(max(pwm_throttle, PWM_MIN), PWM_MAX);
-
 #ifdef DEBUG // Print the values for debugging
     // Read the RC receiver values
     for (int i = 0; i < 4; i++)
@@ -554,6 +572,33 @@ void loop()
     }
 
 #endif
+    if (isEmergencyStopReady && millis() - emergencyStopReadyTime >= EMERGENCY_STOP_READY_DURATION)
+    {
+        car_output.throttle = -100;
+        isEmergencyStopReady = false;
+        isEmergencyStopping = true;
+        emergencyStopStartTime = millis();
+        Serial.println("Emergency STOP ready");
+    }
+
+    if (isEmergencyStopping && millis() - emergencyStopStartTime >= EMERGENCY_STOP_BRAKE_DURATION)
+    {
+        car_output.throttle = 0;
+        isEmergencyStopping = false;
+        Serial.println("Emergency STOP done");
+    }
+
+    // CAR => PWM
+    if (isEmergencyStopping == false)
+    {
+        car_output.throttle = constrain(car_output.throttle, -40, 100);
+    }
+
+    int pwm_steering = map(car_output.steering, -100, 100, SERVO_MID - SERVO_RANGE, SERVO_MID + SERVO_RANGE);
+    int pwm_throttle = map(car_output.throttle, -100, 100, MOTOR_MID - MOTOR_RANGE, MOTOR_MID + MOTOR_RANGE);
+
+    pwm_steering = min(max(pwm_steering, PWM_MIN), PWM_MAX);
+    pwm_throttle = min(max(pwm_throttle, PWM_MIN), PWM_MAX);
 
     ledcWriteChannel(CH_STEERING, pwm_steering);
     ledcWriteChannel(CH_THROTTLE, pwm_throttle);

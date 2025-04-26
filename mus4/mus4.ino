@@ -171,10 +171,18 @@ void emergencyStop()
     {
     // case default:
     case EST_IDLE:
-        Serial.println("Start Emergency stop");
-        car_output.throttle = 15;
-        emergencyStopState = EST_READY;
-        emergencyStopStartTime = millis();
+        if (car_output.throttle > 0)
+        {
+            Serial.println("Start Emergency stop");
+            car_output.throttle = 15;
+            emergencyStopState = EST_READY;
+            emergencyStopStartTime = millis();
+        }
+        else
+        {
+            emergencyStopState = EST_DONE;
+        }
+
         break;
 
     case EST_READY:
@@ -190,14 +198,14 @@ void emergencyStop()
     case EST_BRAKING:
         if (millis() - emergencyStopStartTime >= EMERGENCY_STOP_BRAKE_DURATION)
         {
-            car_output.throttle = 0;
             emergencyStopState = EST_DONE;
             Serial.println("Emergency STOP done");
         }
         break;
 
     case EST_DONE:
-        // 刹车完成，等待重置
+        // 刹车完成，油门归零
+        car_output.throttle = 0;
         break;
     }
 }

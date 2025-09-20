@@ -1,6 +1,13 @@
 //=============================================================v1.2.1-2025-09-20
 /* Note of this version:
-1. 针对MUS4-v2.2 PCB 调整了引脚定义
+1. 针对MUS4-v2.2 PCB 调整了部分引脚定义
+    - CH1_PIN 36 // 接收机pwm输入CH1通道
+    - CH2_PIN 39 // 接收机pwm输入CH2通道
+    - CH3_PIN 34 // 接收机pwm输入CH3通道
+    - CH4_PIN 35 // 接收机pwm输入CH4通道
+    - STEERING_PIN 32 // PIN of Servo
+    - THROTTLE_PIN 33 // PIN of ESC
+2. 为适配测试接收机，屏蔽了模式选择和停车功能【注意】
 
 Experience
 1. 固件程序下载速率为115200
@@ -88,14 +95,14 @@ void scanLEDToggle()
 
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object
 
-#define DEBUG // Uncomment to enable debugging output
+// #define DEBUG // Uncomment to enable debugging output
 
 #define CH1_PIN 36 // 接收机pwm输入CH1通道
 #define CH2_PIN 39 // 接收机pwm输入CH2通道
 #define CH3_PIN 34 // 接收机pwm输入CH3通道
 #define CH4_PIN 35// 接收机pwm输入CH4通道
 
-#define STEERING_PIN 32 // PIN of Servo
+#define STEERING_PIN 32// PIN of Servo
 #define THROTTLE_PIN 33 // PIN of ESC
 
 #define CH_STEERING 0 // index of pwm_value[]
@@ -232,33 +239,33 @@ int adj(int v, int s) // v: value, s: step
 
 void park_change()
 {
-    if (pwm_value[CH_PARK] > 1500)
-    {
+    // if (pwm_value[CH_PARK] > 1500)
+    // {
         rc_data.park = false;
         emergencyStopState = EST_IDLE;
-    }
-    else
-    {
-        rc_data.park = true;
-    }
+    // }
+    // else
+    // {
+    //     rc_data.park = true;
+    // }
     car_output.park = rc_data.park;
 }
 
 void mode_change() // 根据遥控器的mode值，切换驾驶模式
 {
-    rc_data.mode = pwm_value[CH_MODE];
-    if (rc_data.mode <= 1400)
-    {
+    // rc_data.mode = pwm_value[CH_MODE];
+    // if (rc_data.mode <= 1400)
+    // {
         car_output.mode = CAR_MODE_MANUAL; // 0为遥控模式
-    }
-    else if (rc_data.mode > 1400 && rc_data.mode < 1600)
-    {
-        car_output.mode = CAR_MODE_SEMI_AUTO; // 1为自动方向和手动油门模式
-    }
-    else
-    {
-        car_output.mode = CAR_MODE_FULL_AUTO; // 2为自动驾驶模式
-    }
+    // }
+    // else if (rc_data.mode > 1400 && rc_data.mode < 1600)
+    // {
+    //     car_output.mode = CAR_MODE_SEMI_AUTO; // 1为自动方向和手动油门模式
+    // }
+    // else
+    // {
+    //     car_output.mode = CAR_MODE_FULL_AUTO; // 2为自动驾驶模式
+    // }
 }
 
 bool I2CRead(uint8_t Address, uint8_t Register, uint8_t Nbytes, uint8_t *Data)
@@ -580,11 +587,11 @@ void loop()
         }
         car_output.steering = map(rc_data.steering - 1488, 872 - 1488, 2113 - 1488, -100, 100);
 
-        // if (counter % 2 == 0) // check per 5 loops to save time amonge pulseIn()
-        // {
-        //     Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
-        //     Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
-        // }
+        if (counter % 2 == 0) // check per 5 loops to save time amonge pulseIn()
+        {
+            Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
+            Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
+        }
     }
 
     // if (counter % 100 == 0) // check per 100 loops to save time amonge pulseIn()

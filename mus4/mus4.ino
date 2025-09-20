@@ -1,7 +1,6 @@
-//=============================================================v1.2-2025-04-26
+//=============================================================v1.2.1-2025-09-20
 /* Note of this version:
-1. 增加刹车保护（识别到刹车信号时，自动刹车）
-2. 增加失控保护（失去遥控器信号时，方向回正，自动刹车）
+1. 针对MUS4-v2.2 PCB 调整了引脚定义
 
 Experience
 1. 固件程序下载速率为115200
@@ -89,12 +88,12 @@ void scanLEDToggle()
 
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object
 
-// #define DEBUG // Uncomment to enable debugging output
+#define DEBUG // Uncomment to enable debugging output
 
-#define CH1_PIN 27 // 接收机pwm输入CH1通道
-#define CH2_PIN 26 // 接收机pwm输入CH2通道
-#define CH3_PIN 35 // 接收机pwm输入CH3通道
-#define CH4_PIN 34 // 接收机pwm输入CH4通道
+#define CH1_PIN 36 // 接收机pwm输入CH1通道
+#define CH2_PIN 39 // 接收机pwm输入CH2通道
+#define CH3_PIN 34 // 接收机pwm输入CH3通道
+#define CH4_PIN 35// 接收机pwm输入CH4通道
 
 #define STEERING_PIN 32 // PIN of Servo
 #define THROTTLE_PIN 33 // PIN of ESC
@@ -581,11 +580,11 @@ void loop()
         }
         car_output.steering = map(rc_data.steering - 1488, 872 - 1488, 2113 - 1488, -100, 100);
 
-        if (counter % 2 == 0) // check per 5 loops to save time amonge pulseIn()
-        {
-            Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
-            Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
-        }
+        // if (counter % 2 == 0) // check per 5 loops to save time amonge pulseIn()
+        // {
+        //     Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
+        //     Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
+        // }
     }
 
     // if (counter % 100 == 0) // check per 100 loops to save time amonge pulseIn()

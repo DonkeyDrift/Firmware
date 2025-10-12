@@ -26,7 +26,7 @@ Experience
 
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object
 
-#define DEBUG // Uncomment to enable debugging output
+// #define DEBUG // Uncomment to enable debugging output
 
 #define LED_PIN 5
 #define NUM_LEDS 1
@@ -151,8 +151,8 @@ const int PWM_MIN = 819;     // 'minimum' pulse length count (out of 4096)
 const int PWM_MAX = 1638;    // 'maximum' pulse length count (out of 4096)
 const int MOTOR_MID = 1229;  // 需要实际测试
 const int MOTOR_RANGE = 390; // Pulse range for Motor Throttle
-const int SERVO_MID = 1270;  // 需要实际测试
-const int SERVO_RANGE = 390; // Pulse range for Motor Throttle
+const int SERVO_MID = 1250;  // 需要实际测试
+const int SERVO_RANGE = 440; // Pulse range for Motor Throttle
 const int MOTOR_OFFSET = 1;
 const int SERVO_OFFSET = -1;
 

@@ -35,12 +35,36 @@ Experience
 #define COLOR_ORDER GRB
 
 #define BUAD_RATE_0 115200
-#define RX_1_PIN 16
-#define TX_1_PIN 17
+// #define RX_1_PIN 16
+// #define TX_1_PIN 17
+#define RX_1_PIN 19
+#define TX_1_PIN 18
 #define BUAD_RATE_1 115200
+#define UART_SEL 12
+
 #define SDA_PIN 13
 #define SCL_PIN 14
 #define I2C_SPEED 400000L
+
+
+
+
+#define CH1_PIN 36 // 接收机pwm输入CH1通道
+#define CH2_PIN 39 // 接收机pwm输入CH2通道
+#define CH3_PIN 34 // 接收机pwm输入CH3通道
+#define CH4_PIN 26// 接收机pwm输入CH4通道
+
+#define STEERING_PIN 32// PIN of Servo
+#define THROTTLE_PIN 33 // PIN of ESC
+
+#define CH_STEERING 0 // index of pwm_value[]
+#define CH_THROTTLE 1 // index of pwm_value[]
+#define CH_PARK 2     // index of pwm_value[]
+#define CH_MODE 3     // index of pwm_value[]
+
+#define CAR_MODE_MANUAL 0    // 0为遥控模式
+#define CAR_MODE_SEMI_AUTO 1 // 1为自动方向和手动油门模式
+#define CAR_MODE_FULL_AUTO 2 // 2为自动驾驶模式
 
 CRGB leds[NUM_LEDS]; // Define the array of leds
 
@@ -99,22 +123,6 @@ void scanLEDToggle()
 
 
 
-#define CH1_PIN 36 // 接收机pwm输入CH1通道
-#define CH2_PIN 39 // 接收机pwm输入CH2通道
-#define CH3_PIN 34 // 接收机pwm输入CH3通道
-#define CH4_PIN 26// 接收机pwm输入CH4通道
-
-#define STEERING_PIN 32// PIN of Servo
-#define THROTTLE_PIN 33 // PIN of ESC
-
-#define CH_STEERING 0 // index of pwm_value[]
-#define CH_THROTTLE 1 // index of pwm_value[]
-#define CH_PARK 2     // index of pwm_value[]
-#define CH_MODE 3     // index of pwm_value[]
-
-#define CAR_MODE_MANUAL 0    // 0为遥控模式
-#define CAR_MODE_SEMI_AUTO 1 // 1为自动方向和手动油门模式
-#define CAR_MODE_FULL_AUTO 2 // 2为自动驾驶模式
 
 volatile int pwm_value[4] = {0, 0, 0, 0};           // value of CH1, CH2, CH3, CH4
 volatile unsigned long rise_time[4] = {0, 0, 0, 0}; // time of rising edge of CH1, CH2, CH3, CH4
@@ -439,12 +447,19 @@ void read_ina219()
 //     }
 // }
 
+
+
 void setup()
 {
+    pinMode(UART_SEL, OUTPUT);
+    digitalWrite(UART_SEL, HIGH);
+
     Serial.begin(BUAD_RATE_0);                                  // TypeC
     Serial1.begin(BUAD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
     Serial.println("ESP32 Receiver Serial Ready!");
     Serial1.println("ESP32 Receiver Serial1 Ready!");
+
+
 
     // Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 13, SCL = 14, 400kHz
     // setup_mpu6050();

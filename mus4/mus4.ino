@@ -54,8 +54,10 @@ Experience
 #define CH3_PIN 34 // 接收机pwm输入CH3通道
 #define CH4_PIN 26// 接收机pwm输入CH4通道
 
-#define STEERING_PIN 32// PIN of Servo
-#define THROTTLE_PIN 33 // PIN of ESC
+// #define STEERING_PIN 32// PIN of Servo
+// #define THROTTLE_PIN 33 // PIN of ESC
+#define STEERING_PIN 33// PIN of Servo
+#define THROTTLE_PIN 32 // PIN of ESC
 
 #define CH_STEERING 0 // index of pwm_value[]
 #define CH_THROTTLE 1 // index of pwm_value[]

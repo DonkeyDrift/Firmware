@@ -24,6 +24,10 @@ Experience
 // #include <Adafruit_MPU6050.h>
 // #include <Adafruit_Sensor.h>
 
+// Adafruit_MPU6050 mpu; // Create an MPU6050 object
+
+#define DEBUG // Uncomment to enable debugging output
+
 #define LED_PIN 5
 #define NUM_LEDS 1
 #define BRIGHTNESS 64
@@ -93,9 +97,7 @@ void scanLEDToggle()
     }
 }
 
-// Adafruit_MPU6050 mpu; // Create an MPU6050 object
 
-// #define DEBUG // Uncomment to enable debugging output
 
 #define CH1_PIN 36 // 接收机pwm输入CH1通道
 #define CH2_PIN 39 // 接收机pwm输入CH2通道
@@ -239,33 +241,33 @@ int adj(int v, int s) // v: value, s: step
 
 void park_change()
 {
-    // if (pwm_value[CH_PARK] > 1500)
-    // {
+    if (pwm_value[CH_PARK] > 1500)
+    {
         rc_data.park = false;
         emergencyStopState = EST_IDLE;
-    // }
-    // else
-    // {
-    //     rc_data.park = true;
-    // }
+    }
+    else
+    {
+        rc_data.park = true;
+    }
     car_output.park = rc_data.park;
 }
 
 void mode_change() // 根据遥控器的mode值，切换驾驶模式
 {
-    // rc_data.mode = pwm_value[CH_MODE];
-    // if (rc_data.mode <= 1400)
-    // {
+    rc_data.mode = pwm_value[CH_MODE];
+    if (rc_data.mode <= 1400)
+    {
         car_output.mode = CAR_MODE_MANUAL; // 0为遥控模式
-    // }
-    // else if (rc_data.mode > 1400 && rc_data.mode < 1600)
-    // {
-    //     car_output.mode = CAR_MODE_SEMI_AUTO; // 1为自动方向和手动油门模式
-    // }
-    // else
-    // {
-    //     car_output.mode = CAR_MODE_FULL_AUTO; // 2为自动驾驶模式
-    // }
+    }
+    else if (rc_data.mode > 1400 && rc_data.mode < 1600)
+    {
+        car_output.mode = CAR_MODE_SEMI_AUTO; // 1为自动方向和手动油门模式
+    }
+    else
+    {
+        car_output.mode = CAR_MODE_FULL_AUTO; // 2为自动驾驶模式
+    }
 }
 
 bool I2CRead(uint8_t Address, uint8_t Register, uint8_t Nbytes, uint8_t *Data)
@@ -594,11 +596,11 @@ void loop()
         }
     }
 
-    // if (counter % 100 == 0) // check per 100 loops to save time amonge pulseIn()
-    // {
-    //   Serial.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Pilot
-    //   Serial1.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Type-C
-    // }
+    if (counter % 100 == 0) // check per 100 loops to save time amonge pulseIn()
+    {
+      Serial.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Pilot
+      Serial1.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Type-C
+    }
 
 #ifdef DEBUG // Print the values for debugging
     // Read the RC receiver values

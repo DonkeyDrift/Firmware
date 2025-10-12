@@ -102,7 +102,6 @@ void scanLEDToggle()
 #define CH1_PIN 36 // 接收机pwm输入CH1通道
 #define CH2_PIN 39 // 接收机pwm输入CH2通道
 #define CH3_PIN 34 // 接收机pwm输入CH3通道
-// #define CH4_PIN 35// 接收机pwm输入CH4通道
 #define CH4_PIN 26// 接收机pwm输入CH4通道
 
 #define STEERING_PIN 32// PIN of Servo

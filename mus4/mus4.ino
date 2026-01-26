@@ -57,6 +57,13 @@ unsigned long emergencyStopStartTime = 0;                 // 标志是否准备�
 const unsigned long EMERGENCY_STOP_READY_DURATION = 500;  // 刹车准备时间100ms
 const unsigned long EMERGENCY_STOP_BRAKE_DURATION = 1500; // 刹车持续时间1500ms
 
+// Park Control Variables
+unsigned long parkBtnPressStartTime = 0;
+bool parkBtnPressed = false;
+bool parkActionTaken = false;
+const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
+const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
+
 // 修改setLEDColor函数
 void setLEDColor(CRGB targetColor)
 {
@@ -239,15 +246,57 @@ int adj(int v, int s) // v: value, s: step
 
 void park_change()
 {
-    // if (pwm_value[CH_PARK] > 1500)
-    // {
-        rc_data.park = false;
-        emergencyStopState = EST_IDLE;
-    // }
-    // else
-    // {
-    //     rc_data.park = true;
-    // }
+    // PWM > 1500 considered Pressed (Button value 2000)
+    // PWM < 1500 considered Released (Button value 1000)
+    bool isPressed = (pwm_value[CH_PARK] > 1500);
+
+    if (isPressed)
+    {
+        if (!parkBtnPressed)
+        {
+            // Rising Edge: Start Timer
+            parkBtnPressed = true;
+            parkBtnPressStartTime = millis();
+            parkActionTaken = false;
+        }
+        else
+        {
+            // Button Held
+            if (!parkActionTaken)
+            {
+                unsigned long duration = millis() - parkBtnPressStartTime;
+
+                if (rc_data.park)
+                { // Currently Locked (Park Mode)
+                    // Unlock Logic: Hold for 1s
+                    if (duration >= PARK_UNLOCK_HOLD_TIME)
+                    {
+                        rc_data.park = false; // Unlock
+                        emergencyStopState = EST_IDLE; // Reset Emergency Stop FSM
+                        parkActionTaken = true;
+                        Serial.println("System Unlocked: Park Mode Exited");
+                    }
+                }
+                else
+                { // Currently Unlocked (Drive Mode)
+                    // Lock Logic: Hold for 0.5s
+                    if (duration >= PARK_LOCK_HOLD_TIME)
+                    {
+                        rc_data.park = true; // Lock
+                        parkActionTaken = true;
+                        Serial.println("System Locked: Park Mode Entered");
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        // Button Released
+        parkBtnPressed = false;
+        parkActionTaken = false;
+    }
+
     car_output.park = rc_data.park;
 }
 
@@ -475,6 +524,13 @@ void setup()
 
     // 替换原有直接设置颜色的方式
     setLEDColor(CRGB::Blue); // 使用新函数设置初始颜色
+
+    // Initialize Park State (Default Locked)
+    rc_data.park = true; 
+    car_output.park = true;
+    emergencyStopState = EST_IDLE;
+    Serial.println("System Initialized: Park Locked");
+
     delay(1000);
 }
 

@@ -302,20 +302,21 @@ void park_change()
 
 void mode_change() // 根据遥控器的mode值，切换驾驶模式
 {
-    // rc_data.mode = pwm_value[CH_MODE];
-    // if (rc_data.mode <= 1400)
-    // {
+    rc_data.mode = pwm_value[CH_MODE];
+    if (rc_data.mode <= 1400)
+    {
         car_output.mode = CAR_MODE_MANUAL; // 0为遥控模式
-    // }
-    // else if (rc_data.mode > 1400 && rc_data.mode < 1600)
-    // {
-    //     car_output.mode = CAR_MODE_SEMI_AUTO; // 1为自动方向和手动油门模式
-    // }
-    // else
-    // {
-    //     car_output.mode = CAR_MODE_FULL_AUTO; // 2为自动驾驶模式
-    // }
+    }
+    else if (rc_data.mode > 1400 && rc_data.mode < 1600)
+    {
+        car_output.mode = CAR_MODE_SEMI_AUTO; // 1为自动方向和手动油门模式
+    }
+    else
+    {
+        car_output.mode = CAR_MODE_FULL_AUTO; // 2为自动驾驶模式
+    }
 }
+
 
 bool I2CRead(uint8_t Address, uint8_t Register, uint8_t Nbytes, uint8_t *Data)
 {

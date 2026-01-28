@@ -24,6 +24,18 @@ Experience
 // #include <Adafruit_MPU6050.h>
 // #include <Adafruit_Sensor.h>
 
+// Adafruit_MPU6050 mpu; // Create an MPU6050 object
+
+// #define DEBUG // Uncomment to enable debugging output
+
+#define CH1_PIN 36 // 接收机pwm输入CH1通道
+#define CH2_PIN 39 // 接收机pwm输入CH2通道
+#define CH3_PIN 34 // 接收机pwm输入CH3通道
+#define CH4_PIN 26// 接收机pwm输入CH4通道
+
+#define STEERING_PIN 32// PIN of Servo
+#define THROTTLE_PIN 33 // PIN of ESC
+
 #define LED_PIN 5
 #define NUM_LEDS 1
 #define BRIGHTNESS 64
@@ -37,6 +49,20 @@ Experience
 #define SDA_PIN 13
 #define SCL_PIN 14
 #define I2C_SPEED 400000L
+
+#define CH_STEERING 0 // index of pwm_value[]
+#define CH_THROTTLE 1 // index of pwm_value[]
+#define CH_PARK 2     // index of pwm_value[]
+#define CH_MODE 3     // index of pwm_value[]
+
+#define CAR_MODE_MANUAL 0    // 0为遥控模式
+#define CAR_MODE_SEMI_AUTO 1 // 1为自动方向和手动油门模式
+#define CAR_MODE_FULL_AUTO 2 // 2为自动驾驶模式
+
+volatile int pwm_value[4] = {0, 0, 0, 0};           // value of CH1, CH2, CH3, CH4
+volatile unsigned long rise_time[4] = {0, 0, 0, 0}; // time of rising edge of CH1, CH2, CH3, CH4
+
+const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
 
 CRGB leds[NUM_LEDS]; // Define the array of leds
 
@@ -100,31 +126,6 @@ void scanLEDToggle()
     }
 }
 
-// Adafruit_MPU6050 mpu; // Create an MPU6050 object
-
-// #define DEBUG // Uncomment to enable debugging output
-
-#define CH1_PIN 36 // 接收机pwm输入CH1通道
-#define CH2_PIN 39 // 接收机pwm输入CH2通道
-#define CH3_PIN 34 // 接收机pwm输入CH3通道
-#define CH4_PIN 35// 接收机pwm输入CH4通道
-
-#define STEERING_PIN 32// PIN of Servo
-#define THROTTLE_PIN 33 // PIN of ESC
-
-#define CH_STEERING 0 // index of pwm_value[]
-#define CH_THROTTLE 1 // index of pwm_value[]
-#define CH_PARK 2     // index of pwm_value[]
-#define CH_MODE 3     // index of pwm_value[]
-
-#define CAR_MODE_MANUAL 0    // 0为遥控模式
-#define CAR_MODE_SEMI_AUTO 1 // 1为自动方向和手动油门模式
-#define CAR_MODE_FULL_AUTO 2 // 2为自动驾驶模式
-
-volatile int pwm_value[4] = {0, 0, 0, 0};           // value of CH1, CH2, CH3, CH4
-volatile unsigned long rise_time[4] = {0, 0, 0, 0}; // time of rising edge of CH1, CH2, CH3, CH4
-
-const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
 
 void IRAM_ATTR handle_interrupt(int channel)
 { // interrupt handler

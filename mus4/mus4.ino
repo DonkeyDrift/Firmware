@@ -4,7 +4,7 @@
     - CH1_PIN 36 // 接收机pwm输入CH1通道
     - CH2_PIN 39 // 接收机pwm输入CH2通道
     - CH3_PIN 34 // 接收机pwm输入CH3通道
-    - CH4_PIN 35 // 接收机pwm输入CH4通道
+    - CH4_PIN 26 // 接收机pwm输入CH4通道
     - STEERING_PIN 32 // PIN of Servo
     - THROTTLE_PIN 33 // PIN of ESC
 2. 为适配测试接收机，屏蔽了模式选择和停车功能【注意】

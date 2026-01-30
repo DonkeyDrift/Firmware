@@ -1,4 +1,4 @@
-//=============================================================v1.2.1-2025-09-20
+//=============================================================v1.4.1 2025-10-13
 /* Note of this version:
 1. 针对MUS4-v2.2 PCB 调整了部分引脚定义
     - CH1_PIN 36 // 接收机pwm输入CH1通道
@@ -43,9 +43,13 @@ Experience
 #define COLOR_ORDER GRB
 
 #define BUAD_RATE_0 115200
-#define RX_1_PIN 16
-#define TX_1_PIN 17
+// #define RX_1_PIN 16
+// #define TX_1_PIN 17
+#define RX_1_PIN 19
+#define TX_1_PIN 18
 #define BUAD_RATE_1 115200
+#define UART_SEL 12
+
 #define SDA_PIN 13
 #define SCL_PIN 14
 #define I2C_SPEED 400000L
@@ -157,8 +161,8 @@ const int PWM_MIN = 819;     // 'minimum' pulse length count (out of 4096)
 const int PWM_MAX = 1638;    // 'maximum' pulse length count (out of 4096)
 const int MOTOR_MID = 1229;  // 需要实际测试
 const int MOTOR_RANGE = 390; // Pulse range for Motor Throttle
-const int SERVO_MID = 1270;  // 需要实际测试
-const int SERVO_RANGE = 390; // Pulse range for Motor Throttle
+const int SERVO_MID = 1250;  // 需要实际测试
+const int SERVO_RANGE = 440; // Pulse range for Motor Throttle
 const int MOTOR_OFFSET = 1;
 const int SERVO_OFFSET = -1;
 
@@ -488,12 +492,19 @@ void read_ina219()
 //     }
 // }
 
+
+
 void setup()
 {
+    pinMode(UART_SEL, OUTPUT);
+    digitalWrite(UART_SEL, HIGH);
+
     Serial.begin(BUAD_RATE_0);                                  // TypeC
     Serial1.begin(BUAD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
     Serial.println("ESP32 Receiver Serial Ready!");
     Serial1.println("ESP32 Receiver Serial1 Ready!");
+
+
 
     // Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 13, SCL = 14, 400kHz
     // setup_mpu6050();
@@ -652,11 +663,11 @@ void loop()
         }
     }
 
-    // if (counter % 100 == 0) // check per 100 loops to save time amonge pulseIn()
-    // {
-    //   Serial.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Pilot
-    //   Serial1.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Type-C
-    // }
+    if (counter % 100 == 0) // check per 100 loops to save time amonge pulseIn()
+    {
+      Serial.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Pilot
+      Serial1.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Type-C
+    }
 
 #ifdef DEBUG // Print the values for debugging
     // Read the RC receiver values

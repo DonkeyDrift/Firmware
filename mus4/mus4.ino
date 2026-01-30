@@ -4,7 +4,7 @@
     - CH1_PIN 36 // 接收机pwm输入CH1通道
     - CH2_PIN 39 // 接收机pwm输入CH2通道
     - CH3_PIN 34 // 接收机pwm输入CH3通道
-    - CH4_PIN 35 // 接收机pwm输入CH4通道
+    - CH4_PIN 26 // 接收机pwm输入CH4通道
     - STEERING_PIN 32 // PIN of Servo
     - THROTTLE_PIN 33 // PIN of ESC
 2. 为适配测试接收机，屏蔽了模式选择和停车功能【注意】
@@ -28,6 +28,14 @@ Experience
 
 // #define DEBUG // Uncomment to enable debugging output
 
+#define CH1_PIN 36 // 接收机pwm输入CH1通道
+#define CH2_PIN 39 // 接收机pwm输入CH2通道
+#define CH3_PIN 34 // 接收机pwm输入CH3通道
+#define CH4_PIN 26// 接收机pwm输入CH4通道
+
+#define STEERING_PIN 32// PIN of Servo
+#define THROTTLE_PIN 33 // PIN of ESC
+
 #define LED_PIN 5
 #define NUM_LEDS 1
 #define BRIGHTNESS 64
@@ -46,19 +54,6 @@ Experience
 #define SCL_PIN 14
 #define I2C_SPEED 400000L
 
-
-
-
-#define CH1_PIN 36 // 接收机pwm输入CH1通道
-#define CH2_PIN 39 // 接收机pwm输入CH2通道
-#define CH3_PIN 34 // 接收机pwm输入CH3通道
-#define CH4_PIN 26// 接收机pwm输入CH4通道
-
-// #define STEERING_PIN 32// PIN of Servo
-// #define THROTTLE_PIN 33 // PIN of ESC
-#define STEERING_PIN 33// PIN of Servo
-#define THROTTLE_PIN 32 // PIN of ESC
-
 #define CH_STEERING 0 // index of pwm_value[]
 #define CH_THROTTLE 1 // index of pwm_value[]
 #define CH_PARK 2     // index of pwm_value[]
@@ -67,6 +62,11 @@ Experience
 #define CAR_MODE_MANUAL 0    // 0为遥控模式
 #define CAR_MODE_SEMI_AUTO 1 // 1为自动方向和手动油门模式
 #define CAR_MODE_FULL_AUTO 2 // 2为自动驾驶模式
+
+volatile int pwm_value[4] = {0, 0, 0, 0};           // value of CH1, CH2, CH3, CH4
+volatile unsigned long rise_time[4] = {0, 0, 0, 0}; // time of rising edge of CH1, CH2, CH3, CH4
+
+const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
 
 CRGB leds[NUM_LEDS]; // Define the array of leds
 
@@ -86,6 +86,13 @@ EmergencyStopState emergencyStopState = EST_IDLE;
 unsigned long emergencyStopStartTime = 0;                 // 标志是否准备刹车
 const unsigned long EMERGENCY_STOP_READY_DURATION = 500;  // 刹车准备时间100ms
 const unsigned long EMERGENCY_STOP_BRAKE_DURATION = 1500; // 刹车持续时间1500ms
+
+// Park Control Variables
+unsigned long parkBtnPressStartTime = 0;
+bool parkBtnPressed = false;
+bool parkActionTaken = false;
+const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
+const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
 
 // 修改setLEDColor函数
 void setLEDColor(CRGB targetColor)
@@ -123,13 +130,6 @@ void scanLEDToggle()
     }
 }
 
-
-
-
-volatile int pwm_value[4] = {0, 0, 0, 0};           // value of CH1, CH2, CH3, CH4
-volatile unsigned long rise_time[4] = {0, 0, 0, 0}; // time of rising edge of CH1, CH2, CH3, CH4
-
-const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
 
 void IRAM_ATTR handle_interrupt(int channel)
 { // interrupt handler
@@ -251,15 +251,57 @@ int adj(int v, int s) // v: value, s: step
 
 void park_change()
 {
-    if (pwm_value[CH_PARK] > 1500)
+    // PWM > 1500 considered Pressed (Button value 2000)
+    // PWM < 1500 considered Released (Button value 1000)
+    bool isPressed = (pwm_value[CH_PARK] > 1500);
+
+    if (isPressed)
     {
-        rc_data.park = false;
-        emergencyStopState = EST_IDLE;
+        if (!parkBtnPressed)
+        {
+            // Rising Edge: Start Timer
+            parkBtnPressed = true;
+            parkBtnPressStartTime = millis();
+            parkActionTaken = false;
+        }
+        else
+        {
+            // Button Held
+            if (!parkActionTaken)
+            {
+                unsigned long duration = millis() - parkBtnPressStartTime;
+
+                if (rc_data.park)
+                { // Currently Locked (Park Mode)
+                    // Unlock Logic: Hold for 1s
+                    if (duration >= PARK_UNLOCK_HOLD_TIME)
+                    {
+                        rc_data.park = false; // Unlock
+                        emergencyStopState = EST_IDLE; // Reset Emergency Stop FSM
+                        parkActionTaken = true;
+                        Serial.println("System Unlocked: Park Mode Exited");
+                    }
+                }
+                else
+                { // Currently Unlocked (Drive Mode)
+                    // Lock Logic: Hold for 0.5s
+                    if (duration >= PARK_LOCK_HOLD_TIME)
+                    {
+                        rc_data.park = true; // Lock
+                        parkActionTaken = true;
+                        Serial.println("System Locked: Park Mode Entered");
+                    }
+                }
+            }
+        }
     }
     else
     {
-        rc_data.park = true;
+        // Button Released
+        parkBtnPressed = false;
+        parkActionTaken = false;
     }
+
     car_output.park = rc_data.park;
 }
 
@@ -279,6 +321,7 @@ void mode_change() // 根据遥控器的mode值，切换驾驶模式
         car_output.mode = CAR_MODE_FULL_AUTO; // 2为自动驾驶模式
     }
 }
+
 
 bool I2CRead(uint8_t Address, uint8_t Register, uint8_t Nbytes, uint8_t *Data)
 {
@@ -494,6 +537,13 @@ void setup()
 
     // 替换原有直接设置颜色的方式
     setLEDColor(CRGB::Blue); // 使用新函数设置初始颜色
+
+    // Initialize Park State (Default Locked)
+    rc_data.park = true; 
+    car_output.park = true;
+    emergencyStopState = EST_IDLE;
+    Serial.println("System Initialized: Park Locked");
+
     delay(1000);
 }
 

@@ -1,7 +1,12 @@
 # 开发笔记
 ## 2025.10.12
 ### TODO
-- 安装了dfrobot_firebeetle2_esp32e的开发环境
+- 配置Ubuntu系统
+    - 用户名：dkc
+    - 密码：donkeycar
+- pip切换到清华源
+- 安装Donkeycar 5.2.0
+- 安装了dfrobot_firebeetle2_esp32e的Arduino-cli开发环境
 - 配置了sketch.yaml文件
     - default_fqbn: esp32:esp32:dfrobot_firebeetle2_esp32e
     - default_port: /dev/ttyS4

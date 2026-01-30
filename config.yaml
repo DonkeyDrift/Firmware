@@ -1,0 +1,11 @@
+default:
+  arduino_cli: "arduino-cli"
+  fqbn: "esp32:esp32:esp32"
+  port: "/dev/ttyACM1"
+  baudrate: 115200
+  sketch_path: "mus4/mus4.ino"
+  build_path: "build"
+
+logging:
+  file: "mus4/automation.log"
+  level: "INFO"  # DEBUG, INFO, WARN, ERROR

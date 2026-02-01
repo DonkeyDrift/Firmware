@@ -24,7 +24,7 @@ Experience
 // #include <Adafruit_MPU6050.h>
 // #include <Adafruit_Sensor.h>
 
-#define ENABLE_GAMEPAD_MODE
+// #define ENABLE_GAMEPAD_MODE
 #ifdef ENABLE_GAMEPAD_MODE
   #include <BleGamepad.h>
   BleGamepad bleGamepad("Gamepad MU03", "Espressif", 100);
@@ -49,10 +49,10 @@ Experience
 #define COLOR_ORDER GRB
 
 #define BUAD_RATE_0 115200
-// #define RX_1_PIN 16
-// #define TX_1_PIN 17
-#define RX_1_PIN 19
-#define TX_1_PIN 18
+#define RX_1_PIN 16
+#define TX_1_PIN 17
+// #define RX_1_PIN 19
+// #define TX_1_PIN 18      // MU02 无法联通，统一切 PIN 16, 17
 #define BUAD_RATE_1 115200
 #define UART_SEL 12
 
@@ -521,7 +521,8 @@ void sendGamepadPacket() {
 void setup()
 {
     pinMode(UART_SEL, OUTPUT);
-    digitalWrite(UART_SEL, HIGH);
+    // digitalWrite(UART_SEL, HIGH);
+    digitalWrite(UART_SEL, LOW);
 
     Serial.begin(BUAD_RATE_0);                                  // TypeC
     Serial1.begin(BUAD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17

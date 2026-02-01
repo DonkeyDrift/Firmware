@@ -512,8 +512,8 @@ void sendGamepadPacket() {
         int rx = 0;
         int ry = 0;
 
-        bleGamepad.setLeftThumb(lx, 0);
-        bleGamepad.setRightThumb(ly, 0);
+        bleGamepad.setLeftThumb(lx, ly);
+        bleGamepad.setRightThumb(0, 0);
     }
 }
 #endif

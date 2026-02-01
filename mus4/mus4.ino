@@ -24,6 +24,12 @@ Experience
 // #include <Adafruit_MPU6050.h>
 // #include <Adafruit_Sensor.h>
 
+#define ENABLE_GAMEPAD_MODE
+#ifdef ENABLE_GAMEPAD_MODE
+  #include <BleGamepad.h>
+  BleGamepad bleGamepad("Gamepad MU03", "Espressif", 100);
+#endif
+
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object
 
 // #define DEBUG // Uncomment to enable debugging output
@@ -493,6 +499,22 @@ void read_ina219()
 // }
 
 
+// End of MPU6050 functions
+
+#ifdef ENABLE_GAMEPAD_MODE
+void sendGamepadPacket() {
+    if (bleGamepad.isConnected()) {
+        // Map RC Channels (approx 1000-2000) to Gamepad Axes (-32767 to 32767)
+        int lx = map(constrain(pwm_value[CH_STEERING], 1000, 2000), 1000, 2000, -32767, 32767);
+        int ly = map(constrain(pwm_value[CH_THROTTLE], 1000, 2000), 1000, 2000, -32767, 32767);
+        int rx = map(constrain(pwm_value[CH_PARK], 1000, 2000), 1000, 2000, -32767, 32767);
+        int ry = map(constrain(pwm_value[CH_MODE], 1000, 2000), 1000, 2000, -32767, 32767);
+
+        bleGamepad.setLeftThumb(lx, ly);
+        bleGamepad.setRightThumb(rx, ry);
+    }
+}
+#endif
 
 void setup()
 {
@@ -503,6 +525,10 @@ void setup()
     Serial1.begin(BUAD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
     Serial.println("ESP32 Receiver Serial Ready!");
     Serial1.println("ESP32 Receiver Serial1 Ready!");
+
+    #ifdef ENABLE_GAMEPAD_MODE
+      bleGamepad.begin();
+    #endif
 
 
 
@@ -658,8 +684,12 @@ void loop()
 
         if (counter % 2 == 0) // check per 5 loops to save time amonge pulseIn()
         {
-            Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
-            Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
+            #ifdef ENABLE_GAMEPAD_MODE
+              sendGamepadPacket();
+            #else
+              Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
+              Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
+            #endif
         }
     }
 

@@ -28,22 +28,22 @@ pip install pyyaml
 
 **仅编译:**
 ```bash
-python3 arduino-cli.py -c
+python arduino-cli.py -c
 ```
 
 **编译并上传 (显示进度动画):**
 ```bash
-python3 arduino-cli.py -cu
+python arduino-cli.py -cu
 ```
 
 **一键全流程 (编译 + 上传 + 监控):**
 ```bash
-python3 arduino-cli.py -cum
+python arduino-cli.py -cum
 ```
 
 **指定端口:**
 ```bash
-python3 arduino-cli.py -cum -p /dev/ttyUSB0
+python arduino-cli.py -cum -p /dev/ttyUSB0
 ```
 
 ## 参数说明

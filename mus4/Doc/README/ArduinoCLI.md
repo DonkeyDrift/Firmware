@@ -1,4 +1,4 @@
-# Arduino 自动化构建工具
+# Arduino CLI 自动化构建工具
 
 ## 简介
 这是一个用于自动化管理 Arduino (ESP32) 项目编译、上传和监控的 Python 脚本。
@@ -28,22 +28,22 @@ pip install pyyaml
 
 **仅编译:**
 ```bash
-python3 automation.py -c
+python arduino-cli.py -c
 ```
 
 **编译并上传 (显示进度动画):**
 ```bash
-python3 automation.py -cu
+python arduino-cli.py -cu
 ```
 
 **一键全流程 (编译 + 上传 + 监控):**
 ```bash
-python3 automation.py -cum
+python arduino-cli.py -cum
 ```
 
 **指定端口:**
 ```bash
-python3 automation.py -cum -p /dev/ttyUSB0
+python arduino-cli.py -cum -p /dev/ttyUSB0
 ```
 
 ## 参数说明
@@ -55,5 +55,5 @@ python3 automation.py -cum -p /dev/ttyUSB0
 - `--fqbn`: 指定板型 (默认 esp32:esp32:esp32)
 
 ## 故障排查
-日志文件保存在 `mus4/automation.log`。
+日志文件保存在 `mus4/arduino-cli.log`。
 如果遇到 `Permission denied` 错误，请检查串口权限 (`sudo chmod 666 /dev/ttyACM*`)。

@@ -1,5 +1,6 @@
-//=============================================================v1.4.1 2025-10-13
-/* Note of this version:
+//=============================================================
+/* 
+[Note]
 1. 针对MUS4-v2.2 PCB 调整了部分引脚定义
     - CH1_PIN 36 // 接收机pwm输入CH1通道
     - CH2_PIN 39 // 接收机pwm输入CH2通道
@@ -7,9 +8,9 @@
     - CH4_PIN 26 // 接收机pwm输入CH4通道
     - STEERING_PIN 32 // PIN of Servo
     - THROTTLE_PIN 33 // PIN of ESC
-2. 为适配测试接收机，屏蔽了模式选择和停车功能【注意】
+2. 为测试接收机，屏蔽了模式选择和停车功能【注意】
 
-Experience
+[Experience]
 1. 固件程序下载速率为115200
 2. 串口协议：T:S\n
   T代表Throttle
@@ -23,6 +24,12 @@ Experience
 #include <FastLED.h>
 // #include <Adafruit_MPU6050.h>
 // #include <Adafruit_Sensor.h>
+
+#define ENABLE_GAMEPAD_MODE
+#ifdef ENABLE_GAMEPAD_MODE
+  #include <BleGamepad.h>
+  BleGamepad bleGamepad("Gamepad MU03", "Espressif", 100);
+#endif
 
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object
 
@@ -43,10 +50,10 @@ Experience
 #define COLOR_ORDER GRB
 
 #define BUAD_RATE_0 115200
-// #define RX_1_PIN 16
-// #define TX_1_PIN 17
-#define RX_1_PIN 19
-#define TX_1_PIN 18
+#define RX_1_PIN 16
+#define TX_1_PIN 17
+// #define RX_1_PIN 19
+// #define TX_1_PIN 18      // MU02 无法联通，统一切 PIN 16, 17
 #define BUAD_RATE_1 115200
 #define UART_SEL 12
 
@@ -493,16 +500,39 @@ void read_ina219()
 // }
 
 
+// End of MPU6050 functions
+
+#ifdef ENABLE_GAMEPAD_MODE
+void sendGamepadPacket() {
+    if (bleGamepad.isConnected()) {
+        // Map RC Channels (approx 1000-2000) to Gamepad Axes (-32767 to 32767)
+        int lx = map(constrain(pwm_value[CH_STEERING], 1000, 2000), 1000, 2000, 0, 32767);
+        int ly = map(constrain(pwm_value[CH_THROTTLE], 1300, 1800), 1300, 1800, 32767, 0);
+        // int rx = map(constrain(pwm_value[CH_PARK], 1000, 2000), 1000, 2000, -32767, 32767);
+        // int ry = map(constrain(pwm_value[CH_MODE], 1000, 2000), 1000, 2000, -32767, 32767);
+        int rx = 0;
+        int ry = 0;
+
+        bleGamepad.setLeftThumb(0, ly);
+        bleGamepad.setRightThumb(lx, 0);
+    }
+}
+#endif
 
 void setup()
 {
     pinMode(UART_SEL, OUTPUT);
-    digitalWrite(UART_SEL, HIGH);
+    // digitalWrite(UART_SEL, HIGH);
+    digitalWrite(UART_SEL, LOW);
 
     Serial.begin(BUAD_RATE_0);                                  // TypeC
     Serial1.begin(BUAD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
     Serial.println("ESP32 Receiver Serial Ready!");
     Serial1.println("ESP32 Receiver Serial1 Ready!");
+
+    #ifdef ENABLE_GAMEPAD_MODE
+      bleGamepad.begin();
+    #endif
 
 
 
@@ -613,6 +643,10 @@ void loop()
             car_output.throttle = pilot_data.throttle;
         }
         car_output.steering = pilot_data.steering;
+
+        #ifdef ENABLE_GAMEPAD_MODE
+            sendGamepadPacket();
+        #endif
     }
     else if (car_output.mode == CAR_MODE_SEMI_AUTO)
     {
@@ -658,16 +692,20 @@ void loop()
 
         if (counter % 2 == 0) // check per 5 loops to save time amonge pulseIn()
         {
-            Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
-            Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
+            // #ifdef ENABLE_GAMEPAD_MODE
+            //   sendGamepadPacket();
+            // #else
+              Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
+              Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
+            // #endif
         }
     }
 
-    if (counter % 100 == 0) // check per 100 loops to save time amonge pulseIn()
-    {
-      Serial.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Pilot
-      Serial1.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Type-C
-    }
+    // if (counter % 100 == 0) // check per 100 loops to save time amonge pulseIn()
+    // {
+    //   Serial.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Pilot
+    //   Serial1.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Type-C
+    // }
 
 #ifdef DEBUG // Print the values for debugging
     // Read the RC receiver values

@@ -53,7 +53,7 @@ def setup_logging(log_file, level_name):
     console_handler.setFormatter(CustomFormatter())
 
     logging.basicConfig(level=level, handlers=[file_handler, console_handler])
-    return logging.getLogger("Automation")
+    return logging.getLogger("ArduinoCLI")
 
 class Spinner:
     """命令行加载动画"""
@@ -91,12 +91,12 @@ class Spinner:
 
 class ArduinoAutomation:
     def __init__(self, config_path, args):
-        self.logger = logging.getLogger("Automation")
+        self.logger = logging.getLogger("ArduinoCLI")
         self.config = self.load_config(config_path)
         self.args = args
         
         # 参数优先级：命令行 > 配置文件 > 默认值
-        self.arduino_cli = args.cli or self.config.get('default', {}).get('arduino_cli', 'arduino-cli')
+        self.arduino_cli = args.cli or self.config.get('default', {}).get('arduino_cli', 'ArduinoCLI')
         self.fqbn = args.fqbn or self.config.get('default', {}).get('fqbn', 'esp32:esp32:esp32')
         self.port = args.port or self.config.get('default', {}).get('port', '')
         self.baud = args.baud or self.config.get('default', {}).get('baudrate', 115200)
@@ -125,7 +125,7 @@ class ArduinoAutomation:
     def validate_environment(self):
         self.logger.info(f"检测到操作系统: {self.os_type}")
         
-        # 检查 arduino-cli
+        # 检查 ArduinoCLI
         if not shutil.which(self.arduino_cli):
             self.logger.error(f"找不到命令: {self.arduino_cli}")
             sys.exit(2)
@@ -283,7 +283,7 @@ def main():
     parser.add_argument('--baud', '-b', type=int, help='串口波特率')
     parser.add_argument('--fqbn', help='板型定义 (FQBN)')
     parser.add_argument('--sketch', help='Arduino Sketch 文件路径')
-    parser.add_argument('--cli', help='arduino-cli 可执行文件路径')
+    parser.add_argument('--cli', help='ArduinoCLI 可执行文件路径')
     parser.add_argument('--config', default='config.yaml', help='配置文件路径')
     
     args = parser.parse_args()
@@ -294,7 +294,7 @@ def main():
     
     # 初始化日志 (先加载配置以获取日志路径)
     # 这里为了简化，先读取一次配置或使用默认
-    log_file = os.path.join(script_dir, "mus4/automation.log")
+    log_file = os.path.join(script_dir, "mus4/ArduinoCLI.log")
     try:
         with open(config_path, 'r') as f:
             cfg = yaml.safe_load(f)
@@ -307,8 +307,8 @@ def main():
         
     logger = setup_logging(log_file, "INFO")
     
-    automation = ArduinoAutomation(config_path, args)
-    automation.run()
+    ArduinoCLI = ArduinoAutomation(config_path, args)
+    ArduinoCLI.run()
 
 if __name__ == "__main__":
     main()

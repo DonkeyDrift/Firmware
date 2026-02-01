@@ -24,7 +24,7 @@ Experience
 // #include <Adafruit_MPU6050.h>
 // #include <Adafruit_Sensor.h>
 
-// #define ENABLE_GAMEPAD_MODE
+#define ENABLE_GAMEPAD_MODE
 #ifdef ENABLE_GAMEPAD_MODE
   #include <BleGamepad.h>
   BleGamepad bleGamepad("Gamepad MU03", "Espressif", 100);
@@ -642,6 +642,10 @@ void loop()
             car_output.throttle = pilot_data.throttle;
         }
         car_output.steering = pilot_data.steering;
+
+        #ifdef ENABLE_GAMEPAD_MODE
+            sendGamepadPacket();
+        #endif
     }
     else if (car_output.mode == CAR_MODE_SEMI_AUTO)
     {
@@ -687,20 +691,20 @@ void loop()
 
         if (counter % 2 == 0) // check per 5 loops to save time amonge pulseIn()
         {
-            #ifdef ENABLE_GAMEPAD_MODE
-              sendGamepadPacket();
-            #else
+            // #ifdef ENABLE_GAMEPAD_MODE
+            //   sendGamepadPacket();
+            // #else
               Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
               Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
-            #endif
+            // #endif
         }
     }
 
-    if (counter % 100 == 0) // check per 100 loops to save time amonge pulseIn()
-    {
-      Serial.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Pilot
-      Serial1.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Type-C
-    }
+    // if (counter % 100 == 0) // check per 100 loops to save time amonge pulseIn()
+    // {
+    //   Serial.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Pilot
+    //   Serial1.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Type-C
+    // }
 
 #ifdef DEBUG // Print the values for debugging
     // Read the RC receiver values

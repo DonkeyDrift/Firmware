@@ -13,3 +13,68 @@
 2026-02-01 21:10:40,581 - INFO - 命令执行成功 (耗时 12.16s)
 2026-02-01 21:10:41,581 - INFO - 打开串口监控: /dev/ttyACM1 @ 115200
 2026-02-01 21:10:41,581 - INFO - 按 Ctrl+C 退出监控
+2026-02-01 21:25:58,255 - INFO - 用户停止监控
+2026-02-01 21:25:58,255 - INFO - 所有任务完成，总耗时: 1033.46s
+2026-02-01 21:26:06,377 - INFO - 检测到操作系统: Linux
+2026-02-01 21:26:06,378 - INFO - 开始编译: mus4.ino (esp32:esp32:esp32)
+2026-02-01 21:26:18,241 - INFO - 命令执行成功 (耗时 11.86s)
+2026-02-01 21:26:18,242 - INFO - 开始上传到端口: /dev/ttyACM1
+2026-02-01 21:26:30,552 - INFO - 命令执行成功 (耗时 12.31s)
+2026-02-01 21:26:31,553 - INFO - 打开串口监控: /dev/ttyACM1 @ 115200
+2026-02-01 21:26:31,553 - INFO - 按 Ctrl+C 退出监控
+2026-02-01 21:29:45,633 - INFO - 用户停止监控
+2026-02-01 21:29:45,633 - INFO - 所有任务完成，总耗时: 219.26s
+2026-02-01 21:29:48,834 - INFO - 检测到操作系统: Linux
+2026-02-01 21:29:48,835 - INFO - 开始编译: mus4.ino (esp32:esp32:esp32)
+2026-02-01 21:30:00,698 - INFO - 命令执行成功 (耗时 11.86s)
+2026-02-01 21:30:00,699 - INFO - 开始上传到端口: /dev/ttyACM1
+2026-02-01 21:30:13,006 - INFO - 命令执行成功 (耗时 12.31s)
+2026-02-01 21:30:14,006 - INFO - 打开串口监控: /dev/ttyACM1 @ 115200
+2026-02-01 21:30:14,007 - INFO - 按 Ctrl+C 退出监控
+2026-02-01 21:40:51,386 - INFO - 检测到操作系统: Linux
+2026-02-01 21:40:51,387 - INFO - 开始编译: mus4.ino (esp32:esp32:esp32)
+2026-02-01 21:41:03,398 - INFO - 命令执行成功 (耗时 12.01s)
+2026-02-01 21:41:03,398 - INFO - 开始上传到端口: /dev/ttyACM1
+2026-02-01 21:41:04,299 - ERROR - 命令执行失败 (退出码 1)
+2026-02-01 21:41:04,299 - ERROR - 错误输出:
+[1;31m
+A fatal error occurred: Could not open /dev/ttyACM1, the port is busy or doesn't exist.
+([Errno 16] could not open port /dev/ttyACM1: [Errno 16] Device or resource busy: '/dev/ttyACM1')
+[0m
+Failed uploading: uploading error: exit status 2
+
+2026-02-01 21:41:04,299 - ERROR - 上传失败，终止流程
+2026-02-01 21:41:49,510 - INFO - 检测到操作系统: Linux
+2026-02-01 21:41:49,510 - INFO - 开始编译: mus4.ino (esp32:esp32:esp32)
+2026-02-01 21:42:01,675 - INFO - 命令执行成功 (耗时 12.16s)
+2026-02-01 21:42:01,675 - INFO - 开始上传到端口: /dev/ttyACM1
+2026-02-01 21:42:02,576 - ERROR - 命令执行失败 (退出码 1)
+2026-02-01 21:42:02,576 - ERROR - 错误输出:
+[1;31m
+A fatal error occurred: Could not open /dev/ttyACM1, the port is busy or doesn't exist.
+([Errno 16] could not open port /dev/ttyACM1: [Errno 16] Device or resource busy: '/dev/ttyACM1')
+[0m
+Failed uploading: uploading error: exit status 2
+
+2026-02-01 21:42:02,577 - ERROR - 上传失败，终止流程
+2026-02-01 21:42:16,396 - INFO - 所有任务完成，总耗时: 747.56s
+2026-02-01 21:42:27,278 - INFO - 检测到操作系统: Linux
+2026-02-01 21:42:27,278 - INFO - 开始上传到端口: /dev/ttyACM1
+2026-02-01 21:42:28,179 - ERROR - 命令执行失败 (退出码 1)
+2026-02-01 21:42:28,179 - ERROR - 错误输出:
+[1;31m
+A fatal error occurred: Could not open /dev/ttyACM1, the port is busy or doesn't exist.
+([Errno 16] could not open port /dev/ttyACM1: [Errno 16] Device or resource busy: '/dev/ttyACM1')
+[0m
+Failed uploading: uploading error: exit status 2
+
+2026-02-01 21:42:28,180 - ERROR - 上传失败，终止流程
+2026-02-01 21:51:32,199 - INFO - 检测到操作系统: Linux
+2026-02-01 21:51:32,199 - INFO - 开始上传到端口: /dev/ttyACM1
+2026-02-01 21:51:44,658 - INFO - 命令执行成功 (耗时 12.46s)
+2026-02-01 21:51:44,658 - INFO - 所有任务完成，总耗时: 12.46s
+2026-02-01 21:52:00,511 - INFO - 检测到操作系统: Linux
+2026-02-01 21:52:00,512 - INFO - 打开串口监控: /dev/ttyACM1 @ 115200
+2026-02-01 21:52:00,512 - INFO - 按 Ctrl+C 退出监控
+2026-02-01 21:56:26,774 - INFO - 用户停止监控
+2026-02-01 21:56:26,774 - INFO - 所有任务完成，总耗时: 266.26s

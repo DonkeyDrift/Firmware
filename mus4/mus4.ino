@@ -507,11 +507,13 @@ void sendGamepadPacket() {
         // Map RC Channels (approx 1000-2000) to Gamepad Axes (-32767 to 32767)
         int lx = map(constrain(pwm_value[CH_STEERING], 1000, 2000), 1000, 2000, -32767, 32767);
         int ly = map(constrain(pwm_value[CH_THROTTLE], 1000, 2000), 1000, 2000, -32767, 32767);
-        int rx = map(constrain(pwm_value[CH_PARK], 1000, 2000), 1000, 2000, -32767, 32767);
-        int ry = map(constrain(pwm_value[CH_MODE], 1000, 2000), 1000, 2000, -32767, 32767);
+        // int rx = map(constrain(pwm_value[CH_PARK], 1000, 2000), 1000, 2000, -32767, 32767);
+        // int ry = map(constrain(pwm_value[CH_MODE], 1000, 2000), 1000, 2000, -32767, 32767);
+        int rx = 0;
+        int ry = 0;
 
-        bleGamepad.setLeftThumb(lx, ly);
-        bleGamepad.setRightThumb(rx, ry);
+        bleGamepad.setLeftThumb(lx, 0);
+        bleGamepad.setRightThumb(ly, 0);
     }
 }
 #endif

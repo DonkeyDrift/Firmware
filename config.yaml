@@ -7,5 +7,5 @@ default:
   build_path: "build"
 
 logging:
-  file: "mus4/automation.log"
+  file: "mus4/ArduinoCLI.log"
   level: "INFO"  # DEBUG, INFO, WARN, ERROR

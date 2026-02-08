@@ -626,7 +626,7 @@ void loop()
         if (car_output.park == 1)
         {
             // car_output.throttle = 0;
-            emergencyStop();
+            // emergencyStop();
             if (carOutputModeLast != CAR_MODE_FULL_AUTO || toggleActive == false)
             {
                 setLEDToggle(CRGB::Blue, CRGB::Red);
@@ -654,7 +654,7 @@ void loop()
         if (car_output.park == 1)
         {
             // car_output.throttle = 0;
-            emergencyStop();
+            // emergencyStop();
             if (carOutputModeLast != CAR_MODE_SEMI_AUTO || toggleActive == false)
             {
                 setLEDToggle(CRGB::Yellow, CRGB::Red);
@@ -674,7 +674,7 @@ void loop()
         if (car_output.park == 1)
         {
             // car_output.throttle = 0;
-            emergencyStop();
+            // emergencyStop();
             if (carOutputModeLast != CAR_MODE_MANUAL || toggleActive == false)
             {
                 setLEDToggle(CRGB::Green, CRGB::Red);

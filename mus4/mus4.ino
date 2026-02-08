@@ -28,7 +28,7 @@
 #define ENABLE_GAMEPAD_MODE
 #ifdef ENABLE_GAMEPAD_MODE
   #include <BleGamepad.h>
-  BleGamepad bleGamepad("Gamepad MU03", "Espressif", 100);
+  BleGamepad bleGamepad("Gamepad MU01", "Espressif", 100);
 #endif
 
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object

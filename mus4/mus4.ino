@@ -33,7 +33,7 @@
 
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object
 
-#define DEBUG // Uncomment to enable debugging output
+// #define DEBUG // Uncomment to enable debugging output
 
 #define CH1_PIN 36 // 接收机pwm输入CH1通道
 #define CH2_PIN 39 // 接收机pwm输入CH2通道

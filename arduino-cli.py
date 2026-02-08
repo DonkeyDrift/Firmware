@@ -249,7 +249,7 @@ class ArduinoAutomation:
         
         # 如果没有指定任何操作，默认显示帮助
         if not (self.args.compile or self.args.upload or self.args.monitor):
-            self.logger.warning("未指定任何操作。请使用 -c, -u, -m 参数。")
+            self.logger.warning("未指定任何操作。请使用 -c, -u, -t 参数。")
             return
 
         # 1. 编译
@@ -276,7 +276,7 @@ def main():
     # 操作标志
     parser.add_argument('-c', '--compile', action='store_true', help='执行编译')
     parser.add_argument('-u', '--upload', action='store_true', help='执行上传')
-    parser.add_argument('-m', '--monitor', action='store_true', help='打开串口监控')
+    parser.add_argument('-t', '--monitor', action='store_true', help='打开串口监控')
     
     # 配置参数
     parser.add_argument('--port', '-p', help='串口设备路径 (e.g., /dev/ttyACM0, COM3)')

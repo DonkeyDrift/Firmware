@@ -109,7 +109,7 @@ const int MAX_ERROR_COUNT = 3;
 
 // PID Parameters
 struct PIDConfig {
-    float Kp = 0.6;
+    float Kp = 0.8; // 0.6  
     float Ki = 0.05;
     float Kd = 0.2;
     float integral_limit = 50.0;

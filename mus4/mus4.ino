@@ -101,6 +101,20 @@ bool parkActionTaken = false;
 const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
 const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
 
+// --- Steering Signal Processing Constants & Globals ---
+const int PWM_VALID_MIN = 500;
+const int PWM_VALID_MAX = 2500;
+const int MA_WINDOW_SIZE = 5;
+const int MAX_ERROR_COUNT = 3;
+
+int steering_history[MA_WINDOW_SIZE] = {0};
+int steering_index = 0;
+int last_valid_steering_pwm = 1488; // Default to center
+int steering_error_count = 0;
+bool safe_mode_active = false;
+bool is_history_initialized = false;
+// ------------------------------------------------------
+
 // 修改setLEDColor函数
 void setLEDColor(CRGB targetColor)
 {
@@ -519,6 +533,117 @@ void sendGamepadPacket() {
 }
 #endif
 
+// --- Steering Signal Processing Logic ---
+
+void reset_steering_filter() {
+    for (int i = 0; i < MA_WINDOW_SIZE; i++) {
+        steering_history[i] = 1488;
+    }
+    steering_index = 0;
+    last_valid_steering_pwm = 1488;
+    steering_error_count = 0;
+    safe_mode_active = false;
+    is_history_initialized = true;
+}
+
+int process_steering_signal(int raw_pwm) {
+    // 0. Initialize history if needed
+    if (!is_history_initialized) {
+        reset_steering_filter();
+    }
+
+    // 1. Input Validation (Data Acquisition Layer)
+    int current_pwm = raw_pwm;
+    if (raw_pwm < PWM_VALID_MIN || raw_pwm > PWM_VALID_MAX) {
+        // Invalid signal: use last valid value
+        current_pwm = last_valid_steering_pwm;
+    } else {
+        last_valid_steering_pwm = current_pwm;
+    }
+
+    // 2. Smoothing (Moving Average)
+    steering_history[steering_index] = current_pwm;
+    steering_index = (steering_index + 1) % MA_WINDOW_SIZE;
+
+    long sum = 0;
+    for (int i = 0; i < MA_WINDOW_SIZE; i++) {
+        sum += steering_history[i];
+    }
+    int filtered_pwm = sum / MA_WINDOW_SIZE;
+
+    // 3. Mapping
+    // Original: map(rc_data.steering - 1488, 872 - 1488, 2113 - 1488, -100, 100);
+    // Use filtered_pwm instead
+    int calculated_steering = map(filtered_pwm - 1488, 872 - 1488, 2113 - 1488, -100, 100);
+
+    // 4. Fault Detection & Safety Mode
+    if (abs(calculated_steering) > 100) {
+        steering_error_count++;
+        if (steering_error_count >= MAX_ERROR_COUNT) {
+            safe_mode_active = true;
+            Serial.println("ALARM: Steering Sensor Fault! Safe Mode Activated.");
+        }
+    } else {
+        steering_error_count = 0; // Reset on valid input
+    }
+
+    // 5. Hard Clamping (Control Loop)
+    int final_steering = constrain(calculated_steering, -100, 100);
+    
+    // Override if safe mode
+    if (safe_mode_active) {
+        final_steering = 0; // Center steering
+    }
+
+    return final_steering;
+}
+
+void run_steering_tests() {
+    Serial.println("--- Starting Steering Signal Processing Unit Tests ---");
+    
+    // Test 1: Normal Value
+    reset_steering_filter();
+    int res = process_steering_signal(1488);
+    Serial.printf("Test 1 (Normal 1488 -> 0): Output=%d, Pass=%d\n", res, res == 0);
+
+    // Test 2: Boundary Values
+    reset_steering_filter();
+    // Fill buffer to avoid smoothing delay effect for test
+    for(int i=0; i<5; i++) process_steering_signal(872); 
+    res = process_steering_signal(872);
+    Serial.printf("Test 2A (Min 872 -> -100): Output=%d, Pass=%d\n", res, res == -100);
+
+    reset_steering_filter();
+    for(int i=0; i<5; i++) process_steering_signal(2113);
+    res = process_steering_signal(2113);
+    Serial.printf("Test 2B (Max 2113 -> 100): Output=%d, Pass=%d\n", res, res == 100);
+
+    // Test 3: Noise Injection (Should be ignored)
+    reset_steering_filter();
+    process_steering_signal(1488); // Set baseline
+    int noise_res = process_steering_signal(0); // Inject 0
+    Serial.printf("Test 3 (Noise 0 -> Ignored): Output=%d, Pass=%d\n", noise_res, noise_res == 0);
+
+    // Test 4: Hard Clamping
+    reset_steering_filter();
+    // Inject value that maps to > 100 but is valid PWM (e.g. 2200)
+    // Map(2200 - 1488, -616, 625, -100, 100) -> approx 114
+    for(int i=0; i<5; i++) process_steering_signal(2200);
+    int clamp_res = process_steering_signal(2200);
+    Serial.printf("Test 4 (Clamp 2200 -> 100): Output=%d, Pass=%d\n", clamp_res, clamp_res == 100);
+
+    // Test 5: Safety Mode
+    reset_steering_filter();
+    // Trigger error 3 times. 
+    process_steering_signal(2200);
+    process_steering_signal(2200);
+    process_steering_signal(2200); // 3rd time
+    Serial.printf("Test 5 (Safety Mode): Active=%d, Pass=%d\n", safe_mode_active, safe_mode_active == true);
+
+    Serial.println("--- End Tests ---");
+    reset_steering_filter(); // Reset for actual operation
+}
+
 void setup()
 {
     pinMode(UART_SEL, OUTPUT);
@@ -529,6 +654,8 @@ void setup()
     Serial1.begin(BUAD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
     Serial.println("ESP32 Receiver Serial Ready!");
     Serial1.println("ESP32 Receiver Serial1 Ready!");
+
+    run_steering_tests(); // Run unit tests for steering signal processing
 
     #ifdef ENABLE_GAMEPAD_MODE
       bleGamepad.begin();
@@ -617,6 +744,10 @@ void loop()
 
     rc_data.steering = pwm_value[CH_STEERING];
     rc_data.throttle = pwm_value[CH_THROTTLE];
+    
+    // Process steering signal (Filter -> Smooth -> Check -> Clamp)
+    int safe_steering = process_steering_signal(pwm_value[CH_STEERING]);
+
     park_change(); // pwm_value[CH_PARK]
     mode_change(); // pwm_value[CH_MODE]
 
@@ -687,8 +818,14 @@ void loop()
 
             // RC => CAR
             car_output.throttle = map(rc_data.throttle - 1493, 888 - 1493, 2149 - 1493, -100, 100);
+
+            // Safety Mode Action
+            if (safe_mode_active) {
+                car_output.throttle = 0;
+                setLEDColor(CRGB::Red);
+            }
         }
-        car_output.steering = map(rc_data.steering - 1488, 872 - 1488, 2113 - 1488, -100, 100);
+        car_output.steering = safe_steering;
 
         if (counter % 2 == 0) // check per 5 loops to save time amonge pulseIn()
         {

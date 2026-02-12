@@ -28,7 +28,7 @@
 #define ENABLE_GAMEPAD_MODE
 #ifdef ENABLE_GAMEPAD_MODE
   #include <BleGamepad.h>
-  BleGamepad bleGamepad("Gamepad MU01", "Espressif", 100);
+  BleGamepad bleGamepad("Gamepad MU02", "Espressif", 100);
 #endif
 
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object
@@ -809,7 +809,7 @@ void setup()
     emergencyStopState = EST_IDLE;
     Serial.println("System Initialized: Park Locked");
 
-    delay(1000);
+    delay(500);
 }
 
 void loop()
@@ -935,7 +935,7 @@ void loop()
         }
         car_output.steering = safe_steering;
 
-        if (counter % 2 == 0) // check per 5 loops to save time amonge pulseIn()
+        if (counter % 1 == 0) // check per 5 loops to save time amonge pulseIn()
         {
             // #ifdef ENABLE_GAMEPAD_MODE
             //   sendGamepadPacket();
@@ -982,7 +982,7 @@ void loop()
     ledcWriteChannel(CH_STEERING, pwm_steering);
     ledcWriteChannel(CH_THROTTLE, pwm_throttle);
 
-    delay(10);
+    delay(1);
     counter += 1;
 
     scanLEDToggle();

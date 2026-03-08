@@ -36,7 +36,7 @@
 Adafruit_MPU6050 mpu;
 Adafruit_INA219 ina219;
 
-#define DEBUG // Uncomment to enable debugging output
+// #define DEBUG // Uncomment to enable debugging output
 
 #define CH1_PIN 36 // 接收机pwm输入CH1通道
 #define CH2_PIN 39 // 接收机pwm输入CH2通道
@@ -83,11 +83,65 @@ const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
 
 CRGB leds[NUM_LEDS]; // Define the array of leds
 
+// 终端控制宏
+#define CLEAR_SCREEN "\033[2J"         // 清屏
+#define CURSOR_HOME "\033[H"           // 光标回到 home 位置
+#define CURSOR_UP(n) "\033[" #n "A"    // 光标上移 n 行
+#define CURSOR_DOWN(n) "\033[" #n "B"  // 光标下移 n 行
+#define CURSOR_RIGHT(n) "\033[" #n "C" // 光标右移 n 列
+#define CURSOR_LEFT(n) "\033[" #n "D"  // 光标左移 n 列
+#define SAVE_CURSOR "\033[s"           // 保存光标位置
+#define RESTORE_CURSOR "\033[u"        // 恢复光标位置
+#define HIDE_CURSOR "\033[?25l"        // 隐藏光标
+#define SHOW_CURSOR "\033[?25h"        // 显示光标
+
+// 颜色宏
+#define COLOR_RESET "\033[0m"
+#define COLOR_RED "\033[31m"
+#define COLOR_GREEN "\033[32m"
+#define COLOR_YELLOW "\033[33m"
+#define COLOR_BLUE "\033[34m"
+#define COLOR_MAGENTA "\033[35m"
+#define COLOR_CYAN "\033[36m"
+#define COLOR_WHITE "\033[37m"
+
+// 输出控制参数
+#define SENSOR_UPDATE_INTERVAL 1000   // 传感器数据更新间隔（毫秒）- 1Hz足够
+#define RC_DATA_UPDATE_INTERVAL 16    // RC数据更新间隔（毫秒）- ~60Hz
+#define UI_UPDATE_INTERVAL 16         // UI更新间隔（毫秒）- 60Hz丝滑体验
+
+// 波形图参数
+#define WAVE_WIDTH 40                 // 波形图宽度
+#define WAVE_HEIGHT 8                 // 波形图高度
+
 // 新增全局变量
+unsigned long lastSensorUpdate = 0;
+unsigned long lastRCDataUpdate = 0;
+unsigned long lastUIUpdate = 0;
 bool toggleActive = false;
 CRGB toggleColor1, toggleColor2;
 unsigned long toggleTime = 0;
 unsigned long toggleInterval = 250; // LED切换间隔为250ms
+
+// 波形图数据
+int throttleWave[WAVE_WIDTH] = {0};
+int steeringWave[WAVE_WIDTH] = {0};
+int waveIndex = 0;
+
+// 传感器数据存储
+struct SensorData {
+    float busVoltage;
+    float shuntVoltage;
+    float loadVoltage;
+    float current_mA;
+    float power_mW;
+    float accelX, accelY, accelZ;
+    float gyroX, gyroY, gyroZ;
+    float temperature;
+    unsigned long lastReadTime;
+    unsigned long readCount;
+    bool valid;
+} ina219Data = {0}, mpu6050Data = {0};
 enum EmergencyStopState
 {
     EST_IDLE,
@@ -267,6 +321,132 @@ int adj(int v, int s) // v: value, s: step
     return v;
 }
 
+// 生成波形图
+void generateWaveform(int data[], int length, const char* title)
+{
+    Serial.printf("%s:\n", title);
+    
+    // 顶部边框
+    Serial.print("  ");
+    for (int i = 0; i < length; i++) Serial.print("─");
+    Serial.println();
+    
+    // 波形行
+    for (int y = WAVE_HEIGHT; y >= 0; y--)
+    {
+        Serial.print("  ");
+        for (int x = 0; x < length; x++)
+        {
+            int value = data[x];
+            int normalized = map(value, -100, 100, 0, WAVE_HEIGHT);
+            
+            if (normalized == y)
+                Serial.print("█");
+            else if (y == WAVE_HEIGHT / 2)
+                Serial.print("─");
+            else
+                Serial.print(" ");
+        }
+        Serial.println();
+    }
+    
+    // 底部边框
+    Serial.print("  ");
+    for (int i = 0; i < length; i++) Serial.print("─");
+    Serial.println();
+}
+
+// 更新波形图数据
+void updateWaveformData()
+{
+    // 移动数据
+    for (int i = 1; i < WAVE_WIDTH; i++)
+    {
+        throttleWave[i-1] = throttleWave[i];
+        steeringWave[i-1] = steeringWave[i];
+    }
+    
+    // 添加新数据
+    throttleWave[WAVE_WIDTH-1] = car_output.throttle;
+    steeringWave[WAVE_WIDTH-1] = car_output.steering;
+}
+
+// 显示主界面
+void showMainUI()
+{
+    // 清屏并隐藏光标
+    Serial.print(CLEAR_SCREEN);
+    Serial.print(CURSOR_HOME);
+    Serial.print(HIDE_CURSOR);
+    
+    // 标题
+    Serial.printf(COLOR_CYAN "MUS4 Control System" COLOR_RESET "\n");
+    Serial.println("====================");
+    
+    // 系统状态
+    Serial.printf("Mode: ");
+    switch (car_output.mode)
+    {
+        case CAR_MODE_MANUAL:
+            Serial.printf(COLOR_GREEN "Manual" COLOR_RESET "\n");
+            break;
+        case CAR_MODE_SEMI_AUTO:
+            Serial.printf(COLOR_YELLOW "Semi-Auto" COLOR_RESET "\n");
+            break;
+        case CAR_MODE_FULL_AUTO:
+            Serial.printf(COLOR_BLUE "Full-Auto" COLOR_RESET "\n");
+            break;
+    }
+    
+    Serial.printf("Park: %s\n", car_output.park ? COLOR_RED "Locked" COLOR_RESET : COLOR_GREEN "Unlocked" COLOR_RESET);
+    
+    // RC 数据
+    Serial.println("\nRC Channels:");
+    Serial.printf("CH1 (Steering): %4d | CH2 (Throttle): %4d\n", pwm_value[CH_STEERING], pwm_value[CH_THROTTLE]);
+    Serial.printf("CH3 (Park): %4d | CH4 (Mode): %4d\n", pwm_value[CH_PARK], pwm_value[CH_MODE]);
+    
+    // 控制输出
+    Serial.println("\nControl Output:");
+    Serial.printf("Throttle: %4d | Steering: %4d\n", car_output.throttle, car_output.steering);
+    
+    // 波形图
+    Serial.println("\nWaveforms:");
+    generateWaveform(throttleWave, WAVE_WIDTH, "Throttle");
+    generateWaveform(steeringWave, WAVE_WIDTH, "Steering");
+    
+    // 传感器数据
+    Serial.println("\nSensors:");
+    
+    // INA219 数据
+    if (ina219Data.valid)
+    {
+        Serial.printf("INA219[%lu|%lu] Bus:%.2fV Current:%.1fmA Power:%.1fmW\n", 
+            ina219Data.lastReadTime, ina219Data.readCount,
+            ina219Data.busVoltage, ina219Data.current_mA, ina219Data.power_mW);
+    }
+    else
+    {
+        Serial.println("INA219: No data");
+    }
+    
+    // MPU6050 数据
+    if (mpu6050Data.valid)
+    {
+        Serial.printf("MPU6050[%lu|%lu] Accel:X=%.2f Y=%.2f Z=%.2f Gyro:X=%.2f Y=%.2f Z=%.2f T:%.1fC\n",
+            mpu6050Data.lastReadTime, mpu6050Data.readCount,
+            mpu6050Data.accelX, mpu6050Data.accelY, mpu6050Data.accelZ,
+            mpu6050Data.gyroX, mpu6050Data.gyroY, mpu6050Data.gyroZ,
+            mpu6050Data.temperature);
+    }
+    else
+    {
+        Serial.println("MPU6050: No data");
+    }
+    
+    // 显示光标
+    Serial.print(SHOW_CURSOR);
+}
+
 void park_change()
 {
     // PWM > 1500 considered Pressed (Button value 2000)
@@ -424,60 +604,29 @@ void I2CWriteValue(uint8_t Address, uint8_t Register, uint16_t Data)
 
 void read_ina219()
 {
-    static unsigned long lastReadTime = 0;
-    static unsigned long readCount = 0;
-    
-    float shuntvoltage = 0;
-    float busvoltage = 0;
-    float current_mA = 0;
-    float loadvoltage = 0;
-    float power_mW = 0;
-    
     // 读取INA219数据
-    shuntvoltage = ina219.getShuntVoltage_mV();
-    busvoltage = ina219.getBusVoltage_V();
-    current_mA = ina219.getCurrent_mA();
-    power_mW = ina219.getPower_mW();
-    loadvoltage = busvoltage + (shuntvoltage / 1000);
+    float shuntvoltage = ina219.getShuntVoltage_mV();
+    float busvoltage = ina219.getBusVoltage_V();
+    float current_mA = ina219.getCurrent_mA();
+    float power_mW = ina219.getPower_mW();
+    float loadvoltage = busvoltage + (shuntvoltage / 1000);
     
     // 检查数据有效性
     if (current_mA == 0 && busvoltage == 0 && power_mW == 0)
     {
-        Serial.println("[INA219 WARNING] All readings zero, sensor may not be ready");
+        ina219Data.valid = false;
         return;
     }
     
-    readCount++;
-    lastReadTime = millis();
-    
-    // 输出数据
-    Serial.print("[INA219] Time: ");
-    Serial.print(lastReadTime);
-    Serial.print("ms | Count: ");
-    Serial.print(readCount);
-    Serial.print(" | Status: OK");
-    Serial.println();
-    
-    Serial.print("  Bus Voltage:   ");
-    Serial.print(busvoltage);
-    Serial.println(" V");
-    
-    Serial.print("  Shunt Voltage: ");
-    Serial.print(shuntvoltage);
-    Serial.println(" mV");
-    
-    Serial.print("  Load Voltage:  ");
-    Serial.print(loadvoltage);
-    Serial.println(" V");
-    
-    Serial.print("  Current:       ");
-    Serial.print(current_mA);
-    Serial.println(" mA");
-    
-    Serial.print("  Power:         ");
-    Serial.print(power_mW);
-    Serial.println(" mW");
-    Serial.println();
+    // 存储数据到全局变量
+    ina219Data.readCount++;
+    ina219Data.lastReadTime = millis();
+    ina219Data.busVoltage = busvoltage;
+    ina219Data.shuntVoltage = shuntvoltage;
+    ina219Data.loadVoltage = loadvoltage;
+    ina219Data.current_mA = current_mA;
+    ina219Data.power_mW = power_mW;
+    ina219Data.valid = true;
 }
 
 void setup_ina219()
@@ -512,47 +661,26 @@ void setup_ina219()
 
 void read_mpu6050()
 {
-    static unsigned long lastReadTime = 0;
-    static unsigned long readCount = 0;
-    
     /* Get new sensor events with the readings */
     sensors_event_t a, g, temp;
     
     if (!mpu.getEvent(&a, &g, &temp))
     {
-        Serial.println("[MPU6050 ERROR] Failed to read sensor data");
+        mpu6050Data.valid = false;
         return;
     }
     
-    readCount++;
-    lastReadTime = millis();
-    
-    /* Print out the values with timestamp */
-    Serial.print("[MPU6050] Time: ");
-    Serial.print(lastReadTime);
-    Serial.print("ms | Count: ");
-    Serial.print(readCount);
-    Serial.print(" | Status: OK");
-    Serial.println();
-    
-    Serial.print("  Acceleration (m/s^2): X=");
-    Serial.print(a.acceleration.x, 3);
-    Serial.print(" Y=");
-    Serial.print(a.acceleration.y, 3);
-    Serial.print(" Z=");
-    Serial.println(a.acceleration.z, 3);
-    
-    Serial.print("  Gyro (deg/s): X=");
-    Serial.print(g.gyro.x, 3);
-    Serial.print(" Y=");
-    Serial.print(g.gyro.y, 3);
-    Serial.print(" Z=");
-    Serial.println(g.gyro.z, 3);
-    
-    Serial.print("  Temperature: ");
-    Serial.print(temp.temperature, 2);
-    Serial.println(" degC");
-    Serial.println();
+    // 存储数据到全局变量
+    mpu6050Data.readCount++;
+    mpu6050Data.lastReadTime = millis();
+    mpu6050Data.accelX = a.acceleration.x;
+    mpu6050Data.accelY = a.acceleration.y;
+    mpu6050Data.accelZ = a.acceleration.z;
+    mpu6050Data.gyroX = g.gyro.x;
+    mpu6050Data.gyroY = g.gyro.y;
+    mpu6050Data.gyroZ = g.gyro.z;
+    mpu6050Data.temperature = temp.temperature;
+    mpu6050Data.valid = true;
 }
 
 void scanI2CBus()
@@ -786,8 +914,13 @@ void setup()
 
 void loop()
 {
-    read_ina219();
-    read_mpu6050();
+    // 传感器数据更新（限制频率）
+    if (millis() - lastSensorUpdate >= SENSOR_UPDATE_INTERVAL)
+    {
+        read_ina219();
+        read_mpu6050();
+        lastSensorUpdate = millis();
+    }
 
     // Serial represents the Type-C USB port
     if (Serial.available())
@@ -896,12 +1029,23 @@ void loop()
             car_output.throttle = map(rc_data.throttle, RC_THROTTLE_MIN, RC_THROTTLE_MAX, -100, 100);
         }
         car_output.steering = map(rc_data.steering, RC_STEERING_MIN, RC_STEERING_MAX, -100, 100);
+    }
 
-        if (counter % 2 == 0)
-        {
-            Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
-            Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
-        }
+    // 更新波形图数据
+    updateWaveformData();
+
+    // UI更新（限制频率）
+    if (millis() - lastUIUpdate >= UI_UPDATE_INTERVAL)
+    {
+        showMainUI();
+        lastUIUpdate = millis();
+    }
+
+    // RC数据更新（限制频率）- 保持原有功能
+    if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
+    {
+        Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
+        lastRCDataUpdate = millis();
     }
 
 #ifdef DEBUG // Print the values for debugging

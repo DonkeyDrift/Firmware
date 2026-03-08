@@ -1,13 +1,16 @@
 //=============================================================
 /* 
 [Note]
-1. 针对MUS4-v2.2 PCB 调整了部分引脚定义
+1. 针对MUS4-v2.3 PCB 调整了部分引脚定义
     - CH1_PIN 36 // 接收机pwm输入CH1通道
     - CH2_PIN 39 // 接收机pwm输入CH2通道
     - CH3_PIN 34 // 接收机pwm输入CH3通道
     - CH4_PIN 26 // 接收机pwm输入CH4通道
-    - STEERING_PIN 32 // PIN of Servo
-    - THROTTLE_PIN 33 // PIN of ESC
+    - CH1_ST 23 // CH1转向舵机
+    - CH2_TH 25 // CH2油门电调
+    - PWM_1 32 // PWM输出1号通道
+    - PWM_2 33 // PWM输出2号通道
+
 2. 为测试接收机，屏蔽了模式选择和停车功能【注意】
 
 [Experience]
@@ -33,15 +36,18 @@
 
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object
 
-// #define DEBUG // Uncomment to enable debugging output
+#define DEBUG // Uncomment to enable debugging output
 
 #define CH1_PIN 36 // 接收机pwm输入CH1通道
 #define CH2_PIN 39 // 接收机pwm输入CH2通道
 #define CH3_PIN 34 // 接收机pwm输入CH3通道
 #define CH4_PIN 26// 接收机pwm输入CH4通道
 
-#define STEERING_PIN 32// PIN of Servo
-#define THROTTLE_PIN 33 // PIN of ESC
+#define STEERING_PIN 23 // CH1转向舵机
+#define THROTTLE_PIN 25 // CH2油门电调
+
+#define PWM_1 32 // PWM输出1号通道
+#define PWM_2 33 // PWM输出2号通道
 
 #define LED_PIN 5
 #define NUM_LEDS 1

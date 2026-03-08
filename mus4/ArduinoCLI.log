@@ -172,3 +172,53 @@ Failed uploading: uploading error: exit status 2
 2026-02-02 00:18:24,326 - INFO - å¼€å§‹ä¸Šä¼ åˆ°ç«¯å£: /dev/ttyACM1
 2026-02-02 00:18:36,634 - INFO - å‘½ä»¤æ‰§è¡ŒæˆåŠŸ (è€—æ—¶ 12.31s)
 2026-02-02 00:18:36,634 - INFO - æ‰€æœ‰ä»»åŠ¡å®Œæˆï¼Œæ€»è€—æ—¶: 24.17s
+2026-03-07 20:54:37,027 - INFO - ¼ì²âµ½²Ù×÷ÏµÍ³: Windows
+2026-03-07 20:54:37,032 - INFO - ¿ªÊ¼±àÒë: mus4.ino (esp32:esp32:esp32)
+2026-03-07 20:54:49,684 - ERROR - ÃüÁîÖ´ÐÐÊ§°Ü (ÍË³öÂë 1)
+2026-03-07 20:54:49,686 - ERROR - ´íÎóÊä³ö:
+C:\Dev\DDC\mus4\mus4\mus4.ino:24:10: fatal error: FastLED.h: No such file or directory
+   24 | #include <FastLED.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+Error during build: exit status 1
+
+2026-03-07 20:54:49,686 - ERROR - ±àÒëÊ§°Ü£¬ÖÕÖ¹Á÷³Ì
+2026-03-07 20:57:29,365 - INFO - ¼ì²âµ½²Ù×÷ÏµÍ³: Windows
+2026-03-07 20:57:29,370 - INFO - ¿ªÊ¼±àÒë: mus4.ino (esp32:esp32:esp32)
+2026-03-07 20:57:39,760 - ERROR - ÃüÁîÖ´ÐÐÊ§°Ü (ÍË³öÂë 1)
+2026-03-07 20:57:39,760 - ERROR - ´íÎóÊä³ö:
+C:\Dev\DDC\mus4\mus4\mus4.ino:30:12: fatal error: BleGamepad.h: No such file or directory
+   30 |   #include <BleGamepad.h>
+      |            ^~~~~~~~~~~~~~
+compilation terminated.
+Error during build: exit status 1
+
+2026-03-07 20:57:39,761 - ERROR - ±àÒëÊ§°Ü£¬ÖÕÖ¹Á÷³Ì
+2026-03-07 20:58:13,555 - INFO - ¼ì²âµ½²Ù×÷ÏµÍ³: Windows
+2026-03-07 20:58:13,558 - INFO - ¿ªÊ¼±àÒë: mus4.ino (esp32:esp32:esp32)
+2026-03-07 21:00:26,787 - INFO - ÃüÁîÖ´ÐÐ³É¹¦ (ºÄÊ± 133.23s)
+2026-03-07 21:00:26,787 - INFO - ËùÓÐÈÎÎñÍê³É£¬×ÜºÄÊ±: 133.23s
+2026-03-07 21:03:09,901 - INFO - ¼ì²âµ½²Ù×÷ÏµÍ³: Windows
+2026-03-07 21:03:09,905 - INFO - ¿ªÊ¼±àÒë: mus4.ino (esp32:esp32:esp32)
+2026-03-07 21:03:40,472 - INFO - ÃüÁîÖ´ÐÐ³É¹¦ (ºÄÊ± 30.57s)
+2026-03-07 21:03:40,472 - INFO - ¿ªÊ¼ÉÏ´«µ½¶Ë¿Ú: COM8
+2026-03-07 21:03:51,017 - ERROR - ÃüÁîÖ´ÐÐÊ§°Ü (ÍË³öÂë 1)
+2026-03-07 21:03:51,017 - ERROR - ´íÎóÊä³ö:
+
+A fatal error occurred: Failed to connect to ESP32: No serial data received.
+For troubleshooting steps visit: https://docs.espressif.com/projects/esptool/en/latest/troubleshooting.html
+Failed uploading: uploading error: exit status 2
+
+2026-03-07 21:03:51,017 - ERROR - ÉÏ´«Ê§°Ü£¬ÖÕÖ¹Á÷³Ì
+2026-03-07 21:04:14,307 - INFO - ¼ì²âµ½²Ù×÷ÏµÍ³: Windows
+2026-03-07 21:04:14,310 - INFO - ¿ªÊ¼ÉÏ´«µ½¶Ë¿Ú: COM9
+2026-03-07 21:04:25,753 - INFO - ÃüÁîÖ´ÐÐ³É¹¦ (ºÄÊ± 11.44s)
+2026-03-07 21:04:25,753 - INFO - ËùÓÐÈÎÎñÍê³É£¬×ÜºÄÊ±: 11.44s
+2026-03-07 21:12:59,361 - INFO - ¼ì²âµ½²Ù×÷ÏµÍ³: Windows
+2026-03-07 21:12:59,365 - INFO - ¿ªÊ¼±àÒë: mus4.ino (esp32:esp32:esp32)
+2026-03-07 21:13:24,665 - INFO - ÃüÁîÖ´ÐÐ³É¹¦ (ºÄÊ± 25.30s)
+2026-03-07 21:13:24,665 - INFO - ¿ªÊ¼ÉÏ´«µ½¶Ë¿Ú: COM9
+2026-03-07 21:13:36,715 - INFO - ÃüÁîÖ´ÐÐ³É¹¦ (ºÄÊ± 12.05s)
+2026-03-07 21:13:37,716 - INFO - ´ò¿ª´®¿Ú¼à¿Ø: COM9 @ 115200
+2026-03-07 21:13:37,716 - INFO - °´ Ctrl+C ÍË³ö¼à¿Ø
+2026-03-07 21:27:19,266 - INFO - ËùÓÐÈÎÎñÍê³É£¬×ÜºÄÊ±: 859.90s

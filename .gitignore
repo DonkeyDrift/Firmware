@@ -29,5 +29,9 @@ build
 settings.json
 node_modules/
 
+# Log files
+*.log
+ArduinoCLI.log
+
 
 

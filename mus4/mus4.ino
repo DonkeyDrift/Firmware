@@ -65,7 +65,7 @@ Adafruit_MPU6050 mpu;
 
 #define SDA_PIN 13
 #define SCL_PIN 14
-#define I2C_SPEED 400000L
+#define I2C_SPEED 100000L
 
 #define CH_STEERING 0 // index of pwm_value[]
 #define CH_THROTTLE 1 // index of pwm_value[]
@@ -450,17 +450,76 @@ void read_mpu6050()
     Serial.println();
 }
 
+void scanI2CBus()
+{
+    Serial.println("[I2C SCAN] Scanning I2C bus...");
+    byte error, address;
+    int nDevices = 0;
+    
+    for(address = 1; address < 127; address++)
+    {
+        Wire.beginTransmission(address);
+        error = Wire.endTransmission();
+        
+        if (error == 0)
+        {
+            Serial.print("[I2C SCAN] Found device at 0x");
+            if (address < 16) Serial.print("0");
+            Serial.println(address, HEX);
+            nDevices++;
+        }
+        else if (error == 4)
+        {
+            Serial.print("[I2C SCAN] Unknown error at 0x");
+            if (address < 16) Serial.print("0");
+            Serial.println(address, HEX);
+        }
+    }
+    
+    if (nDevices == 0)
+    {
+        Serial.println("[I2C SCAN] No I2C devices found!");
+    }
+    else
+    {
+        Serial.printf("[I2C SCAN] Found %d device(s)\n", nDevices);
+    }
+}
+
 void setup_mpu6050()
 {
-    // Try to initialize!
-    if (!mpu.begin())
+    int retryCount = 0;
+    const int maxRetries = 3;
+    
+    while (retryCount < maxRetries)
     {
-        Serial.println("[MPU6050 ERROR] Failed to find MPU6050 chip");
-        Serial.println("[MPU6050 ERROR] Please check I2C connection (SDA: GPIO 13, SCL: GPIO 14)");
-        while (1)
+        if (!mpu.begin())
         {
-            delay(1000);
-            Serial.println("[MPU6050 ERROR] Sensor not detected, waiting...");
+            retryCount++;
+            Serial.printf("[MPU6050] Initialization attempt %d/%d failed\n", retryCount, maxRetries);
+            
+            if (retryCount < maxRetries)
+            {
+                delay(500);
+                continue;
+            }
+            
+            Serial.println("[MPU6050 ERROR] Failed to find MPU6050 chip");
+            Serial.println("[MPU6050 ERROR] Please check I2C connection (SDA: GPIO 13, SCL: GPIO 14)");
+            Serial.println("[MPU6050 ERROR] Possible causes:");
+            Serial.println("  1. I2C address mismatch (try 0x68 or 0x69)");
+            Serial.println("  2. Wiring issues (SDA/SCL swapped or loose)");
+            Serial.println("  3. Power supply issue");
+            Serial.println("  4. I2C bus speed too high");
+            while (1)
+            {
+                delay(1000);
+                Serial.println("[MPU6050 ERROR] Sensor not detected, waiting...");
+            }
+        }
+        else
+        {
+            break;
         }
     }
     Serial.println("[MPU6050] Sensor initialized successfully!");
@@ -569,7 +628,9 @@ void setup()
       bleGamepad.begin();
     #endif
 
-    Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 13, SCL = 14, 400kHz
+    Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 13, SCL = 14, 100kHz
+    delay(100);
+    scanI2CBus();
     setup_mpu6050();
     delay(100);
 

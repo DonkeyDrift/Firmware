@@ -14,8 +14,8 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **5** | `LED_PIN` | LED 控制 | Output | WS2812B RGB LED | 用于显示驾驶模式及紧急停车状态 |
 | **12** | `UART_SEL` | UART 选择 | Output | 串口选择开关 | 控制 UART 路由 |
-| **13** | `SDA_PIN` | I2C 数据 | I/O | INA219 / MPU6050 (预留) | *当前固件中初始化代码被屏蔽* |
-| **14** | `SCL_PIN` | I2C 时钟 | Output | INA219 / MPU6050 (预留) | *当前固件中初始化代码被屏蔽* |
+| **21** | `SDA_PIN` | I2C 数据 | I/O | INA219 / MPU6050 | 已验证正确引脚 |
+| **22** | `SCL_PIN` | I2C 时钟 | Output | INA219 / MPU6050 | 已验证正确引脚 |
 | **16** | `RX_1_PIN` | Serial1 RX | Input | 上位机 / Pilot (RS232 RX) | 接收上位机控制指令 (波特率 115200) |
 | **17** | `TX_1_PIN` | Serial1 TX | Output | 上位机 / Pilot (RS232 TX) | 发送车辆状态至上位机 (波特率 115200) |
 | **23** | `STEERING_PIN` | PWM 输出 | Output | 转向舵机 (Servo) | 控制前轮转向角度 (50Hz) |
@@ -93,12 +93,12 @@
     *   配置为 `OUTPUT` 模式。
     *   默认输出 `LOW`。
 
-### 3.6 I2C 接口 (GPIO 13, 14) - *预留*
+### 3.6 I2C 接口 (GPIO 21, 22) - *已验证*
 
 *   **硬件连接**：
-    *   GPIO 13 (SDA) 和 GPIO 14 (SCL) 定义用于连接 I2C 总线设备，如 INA219 (电压电流监测) 和 MPU6050 (IMU)。
+    *   GPIO 21 (SDA) 和 GPIO 22 (SCL) 用于连接 I2C 总线设备，如 INA219 (电压电流监测) 和 MPU6050 (IMU)。
 *   **状态**：
-    *   在当前 `mus4.ino` 版本中，相关的 `Wire.begin` 初始化及读取函数被注释屏蔽，因此这些引脚目前处于**未使用/悬空**状态，但在代码中有明确定义，供未来扩展使用。
+    *   已通过测试验证为正确的 I2C 引脚配置，相关的 `Wire.begin` 初始化及读取函数已启用。
 
 ### 3.7 备用 PWM 输出 (GPIO 32, 33)
 
@@ -132,8 +132,8 @@ graph TD
         P5[GPIO 5<br>(Data)]
         P12[GPIO 12<br>(UART SEL)]
         
-        P13[GPIO 13<br>(SDA)]
-        P14[GPIO 14<br>(SCL)]
+        P21[GPIO 21<br>(SDA)]
+        P22[GPIO 22<br>(SCL)]
     end
 
     subgraph RC_System [RC Receiver System]
@@ -158,9 +158,11 @@ graph TD
         P5 -->|WS2812 Protocol| LED[WS2812B RGB LED]
     end
 
-    subgraph Reserved_Expansion [Reserved / I2C Devices]
-        P13 <-->|I2C Data| INA219[Power Monitor<br>(Disabled)]
-        P14 -->|I2C Clock| INA219
+    subgraph I2C_Devices [I2C Devices]
+        P21 <-->|I2C Data| INA219[Power Monitor]
+        P22 -->|I2C Clock| INA219
+        P21 <-->|I2C Data| MPU6050[IMU Sensor]
+        P22 -->|I2C Clock| MPU6050
     end
 
     %% Electrical Flow (Conceptual)

@@ -63,8 +63,8 @@ Adafruit_MPU6050 mpu;
 #define BUAD_RATE_1 115200
 #define UART_SEL 12
 
-#define SDA_PIN 13
-#define SCL_PIN 14
+#define SDA_PIN 21
+#define SCL_PIN 22
 #define I2C_SPEED 100000L
 
 #define CH_STEERING 0 // index of pwm_value[]
@@ -505,7 +505,7 @@ void setup_mpu6050()
             }
             
             Serial.println("[MPU6050 ERROR] Failed to find MPU6050 chip");
-            Serial.println("[MPU6050 ERROR] Please check I2C connection (SDA: GPIO 13, SCL: GPIO 14)");
+            Serial.println("[MPU6050 ERROR] Please check I2C connection (SDA: GPIO 21, SCL: GPIO 22)");
             Serial.println("[MPU6050 ERROR] Possible causes:");
             Serial.println("  1. I2C address mismatch (try 0x68 or 0x69)");
             Serial.println("  2. Wiring issues (SDA/SCL swapped or loose)");
@@ -628,7 +628,7 @@ void setup()
       bleGamepad.begin();
     #endif
 
-    Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 13, SCL = 14, 100kHz
+    Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 21, SCL = 22, 100kHz
     delay(100);
     scanI2CBus();
     setup_mpu6050();

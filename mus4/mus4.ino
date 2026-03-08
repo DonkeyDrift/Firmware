@@ -21,8 +21,6 @@
   结尾为"\n
 */
 
-// #include <esp_now.h>
-// #include <WiFi.h>
 #include <Wire.h>
 #include <FastLED.h>
 #include <Adafruit_MPU6050.h>
@@ -57,12 +55,12 @@ Adafruit_INA219 ina219;
 #define LED_TYPE WS2812B
 #define COLOR_ORDER GRB
 
-#define BUAD_RATE_0 115200
+#define BAUD_RATE_0 115200
 #define RX_1_PIN 16
 #define TX_1_PIN 17
 // #define RX_1_PIN 19
 // #define TX_1_PIN 18      // MU02 无法联通，统一切 PIN 16, 17
-#define BUAD_RATE_1 115200
+#define BAUD_RATE_1 115200
 #define UART_SEL 12
 
 #define SDA_PIN 21
@@ -78,7 +76,7 @@ Adafruit_INA219 ina219;
 #define CAR_MODE_SEMI_AUTO 1 // 1为自动方向和手动油门模式
 #define CAR_MODE_FULL_AUTO 2 // 2为自动驾驶模式
 
-volatile int pwm_value[4] = {0, 0, 0, 0};           // value of CH1, CH2, CH3, CH4
+volatile uint16_t pwm_value[4] = {0, 0, 0, 0};           // value of CH1, CH2, CH3, CH4 (uint16_t for atomic access)
 volatile unsigned long rise_time[4] = {0, 0, 0, 0}; // time of rising edge of CH1, CH2, CH3, CH4
 
 const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
@@ -181,6 +179,14 @@ const int SERVO_RANGE = 440; // Pulse range for Motor Throttle
 const int MOTOR_OFFSET = 1;
 const int SERVO_OFFSET = -1;
 
+// RC Receiver Calibration Values (PWM pulse width in microseconds)
+const int RC_THROTTLE_MIN = 888;   // Throttle minimum pulse
+const int RC_THROTTLE_MID = 1493;  // Throttle center pulse
+const int RC_THROTTLE_MAX = 2149;  // Throttle maximum pulse
+const int RC_STEERING_MIN = 872;   // Steering minimum pulse
+const int RC_STEERING_MID = 1488;  // Steering center pulse
+const int RC_STEERING_MAX = 2113;  // Steering maximum pulse
+
 int carOutputModeLast = -1;
 unsigned long counter;
 
@@ -200,6 +206,14 @@ struct struct_message car_output = {0, 0, 0, false};   // Initialize the structu
 
 void emergencyStop()
 {
+    // 如果停车信号已解除，重置状态机
+    if (car_output.park == 0 && emergencyStopState == EST_DONE)
+    {
+        emergencyStopState = EST_IDLE;
+        Serial.println("Emergency Stop FSM reset: Park unlocked");
+        return;
+    }
+
     switch (emergencyStopState)
     {
     // case default:
@@ -242,17 +256,6 @@ void emergencyStop()
         break;
     }
 }
-
-// Create a structure object
-// struct_message* myData;
-
-// callback function executed when data is received.
-// void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
-// 	myData = (struct_message*)incomingData;
-
-//   esp_now_data = *myData; //将接收到的数据赋值给esp_now_data
-
-// }
 
 int adj(int v, int s) // v: value, s: step
 {
@@ -318,6 +321,35 @@ void park_change()
     }
 
     car_output.park = rc_data.park;
+}
+
+bool parseAndValidateCommand(String cmd, int* throttle, int* steering)
+{
+    int colonIndex = cmd.indexOf(':');
+    if (colonIndex <= 0)
+    {
+        return false;
+    }
+
+    String throttleStr = cmd.substring(0, colonIndex);
+    String steeringStr = cmd.substring(colonIndex + 1);
+
+    int t = throttleStr.toInt();
+    int s = steeringStr.toInt();
+
+    // 校验范围：-100 ~ 100
+    if (t < -100 || t > 100 || s < -100 || s > 100)
+    {
+        Serial.print("[CMD ERROR] Out of range: T=");
+        Serial.print(t);
+        Serial.print(" S=");
+        Serial.println(s);
+        return false;
+    }
+
+    *throttle = t;
+    *steering = s;
+    return true;
 }
 
 void mode_change() // 根据遥控器的mode值，切换驾驶模式
@@ -711,8 +743,8 @@ void setup()
     // digitalWrite(UART_SEL, HIGH);
     digitalWrite(UART_SEL, LOW);
 
-    Serial.begin(BUAD_RATE_0);                                  // TypeC
-    Serial1.begin(BUAD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
+    Serial.begin(BAUD_RATE_0);                                  // TypeC
+    Serial1.begin(BAUD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
     Serial.println("ESP32 Receiver Serial Ready!");
     Serial1.println("ESP32 Receiver Serial1 Ready!");
 
@@ -734,20 +766,8 @@ void setup()
         attachInterrupt(digitalPinToInterrupt(Channels[i]), isr_functions[i], CHANGE);
     }
 
-    // // 分配PWM输出通道到管脚
     ledcAttachChannel(STEERING_PIN, 50, 14, CH_STEERING);
     ledcAttachChannel(THROTTLE_PIN, 50, 14, CH_THROTTLE);
-
-    // WiFi.mode(WIFI_STA);
-    // for(int i = 0; i < 10; i++)
-    //   Serial.print("STA MAC: "); Serial.println(WiFi.macAddress());
-
-    // if (esp_now_init() != esp_OK) {
-    //   Serial.println("Error initializing ESP-NOW");
-    //   return;
-    // }
-
-    // esp_now_register_recv_cb(OnDataRecv);
 
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
     FastLED.setBrightness(BRIGHTNESS);
@@ -773,11 +793,11 @@ void loop()
     if (Serial.available())
     {
         String CMD = Serial.readStringUntil('\n');
-        int colonIndex = CMD.indexOf(':');
-        if (colonIndex > 0)
+        int throttle, steering;
+        if (parseAndValidateCommand(CMD, &throttle, &steering))
         {
-            pilot_data.throttle = CMD.substring(0, colonIndex).toInt();
-            pilot_data.steering = CMD.substring(colonIndex + 1).toInt();
+            pilot_data.throttle = throttle;
+            pilot_data.steering = steering;
             Serial.print("CMD-T:");
             Serial.print(pilot_data.throttle);
             Serial.print(" CMD-S:");
@@ -790,11 +810,11 @@ void loop()
     {
         String CMD = Serial1.readStringUntil('\n');
         Serial.println(CMD);
-        int colonIndex = CMD.indexOf(':');
-        if (colonIndex > 0)
+        int throttle, steering;
+        if (parseAndValidateCommand(CMD, &throttle, &steering))
         {
-            pilot_data.throttle = CMD.substring(0, colonIndex).toInt();
-            pilot_data.steering = CMD.substring(colonIndex + 1).toInt();
+            pilot_data.throttle = throttle;
+            pilot_data.steering = steering;
             Serial.print("CMD-T:");
             Serial.print(pilot_data.throttle);
             Serial.print(" CMD-S:");
@@ -851,7 +871,7 @@ void loop()
         else
         {
             setLEDColor(CRGB::Yellow); // set LED to blue
-            car_output.throttle = map(rc_data.throttle - 1493, 888 - 1493, 2149 - 1493, -100, 100);
+            car_output.throttle = map(rc_data.throttle, RC_THROTTLE_MIN, RC_THROTTLE_MAX, -100, 100);
         }
         car_output.steering = pilot_data.steering;
     }
@@ -873,26 +893,16 @@ void loop()
             setLEDColor(CRGB::Green); // set LED to blue
 
             // RC => CAR
-            car_output.throttle = map(rc_data.throttle - 1493, 888 - 1493, 2149 - 1493, -100, 100);
+            car_output.throttle = map(rc_data.throttle, RC_THROTTLE_MIN, RC_THROTTLE_MAX, -100, 100);
         }
-        car_output.steering = map(rc_data.steering - 1488, 872 - 1488, 2113 - 1488, -100, 100);
+        car_output.steering = map(rc_data.steering, RC_STEERING_MIN, RC_STEERING_MAX, -100, 100);
 
-        if (counter % 2 == 0) // check per 5 loops to save time amonge pulseIn()
+        if (counter % 2 == 0)
         {
-            // #ifdef ENABLE_GAMEPAD_MODE
-            //   sendGamepadPacket();
-            // #else
-              Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
-              Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
-            // #endif
+            Serial.printf("T%d:S%d\n", car_output.throttle, car_output.steering);  // RC => Pilot
+            Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
         }
     }
-
-    // if (counter % 100 == 0) // check per 100 loops to save time amonge pulseIn()
-    // {
-    //   Serial.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Pilot
-    //   Serial1.printf("M%d:P%d\n", car_output.mode, car_output.park); // RC => Type-C
-    // }
 
 #ifdef DEBUG // Print the values for debugging
     // Read the RC receiver values
@@ -907,13 +917,6 @@ void loop()
     }
 
 #endif
-    // 状态机逻辑已整合到emergencyStop函数中
-
-    // CAR => PWM
-    // if (isEmergencyStopping == false)
-    // {
-    //     car_output.throttle = constrain(car_output.throttle, -40, 100);
-    // }
 
     int pwm_steering = map(car_output.steering, -100, 100, SERVO_MID - SERVO_RANGE, SERVO_MID + SERVO_RANGE);
     int pwm_throttle = map(car_output.throttle, -100, 100, MOTOR_MID - MOTOR_RANGE, MOTOR_MID + MOTOR_RANGE);

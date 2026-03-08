@@ -27,6 +27,7 @@
 #include <FastLED.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+#include <Adafruit_INA219.h>
 
 #define ENABLE_GAMEPAD_MODE
 #ifdef ENABLE_GAMEPAD_MODE
@@ -35,6 +36,7 @@
 #endif
 
 Adafruit_MPU6050 mpu;
+Adafruit_INA219 ina219;
 
 #define DEBUG // Uncomment to enable debugging output
 
@@ -390,19 +392,90 @@ void I2CWriteValue(uint8_t Address, uint8_t Register, uint16_t Data)
 
 void read_ina219()
 {
-    uint16_t current = I2CReadValue(0x41, 1);
-    uint16_t voltage = I2CReadValue(0x41, 2);
+    static unsigned long lastReadTime = 0;
+    static unsigned long readCount = 0;
     
-    if (current == 0xFFFF || voltage == 0xFFFF)
+    float shuntvoltage = 0;
+    float busvoltage = 0;
+    float current_mA = 0;
+    float loadvoltage = 0;
+    float power_mW = 0;
+    
+    // 读取INA219数据
+    shuntvoltage = ina219.getShuntVoltage_mV();
+    busvoltage = ina219.getBusVoltage_V();
+    current_mA = ina219.getCurrent_mA();
+    power_mW = ina219.getPower_mW();
+    loadvoltage = busvoltage + (shuntvoltage / 1000);
+    
+    // 检查数据有效性
+    if (current_mA == 0 && busvoltage == 0 && power_mW == 0)
     {
-        Serial.println("[INA219 ERROR] Failed to read sensor data");
+        Serial.println("[INA219 WARNING] All readings zero, sensor may not be ready");
         return;
     }
     
-    float current_mA = current / 100.0 / 0.01;
-    float voltage_V = voltage / 2 / 1000.0;
+    readCount++;
+    lastReadTime = millis();
     
-    Serial.printf("[INA219] Current: %.2f mA, Voltage: %.2f V\r\n", current_mA, voltage_V);
+    // 输出数据
+    Serial.print("[INA219] Time: ");
+    Serial.print(lastReadTime);
+    Serial.print("ms | Count: ");
+    Serial.print(readCount);
+    Serial.print(" | Status: OK");
+    Serial.println();
+    
+    Serial.print("  Bus Voltage:   ");
+    Serial.print(busvoltage);
+    Serial.println(" V");
+    
+    Serial.print("  Shunt Voltage: ");
+    Serial.print(shuntvoltage);
+    Serial.println(" mV");
+    
+    Serial.print("  Load Voltage:  ");
+    Serial.print(loadvoltage);
+    Serial.println(" V");
+    
+    Serial.print("  Current:       ");
+    Serial.print(current_mA);
+    Serial.println(" mA");
+    
+    Serial.print("  Power:         ");
+    Serial.print(power_mW);
+    Serial.println(" mW");
+    Serial.println();
+}
+
+void setup_ina219()
+{
+    Serial.println("[INA219] Initializing INA219 sensor...");
+    
+    if (!ina219.begin())
+    {
+        Serial.println("[INA219 ERROR] Failed to find INA219 chip");
+        Serial.println("[INA219 ERROR] Please check I2C connection (SDA: GPIO 21, SCL: GPIO 22)");
+        Serial.println("[INA219 ERROR] Possible causes:");
+        Serial.println("  1. I2C address mismatch (default is 0x40)");
+        Serial.println("  2. Wiring issues (SDA/SCL swapped or loose)");
+        Serial.println("  3. Power supply issue");
+        while (1)
+        {
+            delay(1000);
+            Serial.println("[INA219 ERROR] Sensor not detected, waiting...");
+        }
+    }
+    
+    Serial.println("[INA219] Sensor initialized successfully!");
+    
+    // 使用默认校准（32V, 2A范围）
+    // 如需更高精度，可以取消注释以下任一行：
+    // ina219.setCalibration_32V_1A();  // 32V, 1A范围（更高精度）
+    // ina219.setCalibration_16V_400mA(); // 16V, 400mA范围（最高精度）
+    
+    Serial.println("[INA219] Calibration: 32V, 2A range (default)");
+    Serial.println("[INA219] Setup complete, ready for data acquisition");
 }
 
 void read_mpu6050()
@@ -465,7 +538,26 @@ void scanI2CBus()
         {
             Serial.print("[I2C SCAN] Found device at 0x");
             if (address < 16) Serial.print("0");
-            Serial.println(address, HEX);
+            Serial.print(address, HEX);
+            
+            // 识别常见设备
+            switch(address) {
+                case 0x40:
+                    Serial.println(" - INA219");
+                    break;
+                case 0x41:
+                    Serial.println(" - INA219 (alt address)");
+                    break;
+                case 0x68:
+                    Serial.println(" - MPU6050");
+                    break;
+                case 0x69:
+                    Serial.println(" - MPU6050 (alt address)");
+                    break;
+                default:
+                    Serial.println(" - Unknown device");
+                    break;
+            }
             nDevices++;
         }
         else if (error == 4)
@@ -631,6 +723,7 @@ void setup()
     Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 21, SCL = 22, 100kHz
     delay(100);
     scanI2CBus();
+    setup_ina219();
     setup_mpu6050();
     delay(100);
 

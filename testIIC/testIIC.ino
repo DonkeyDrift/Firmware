@@ -14,8 +14,9 @@
 #include <Wire.h>
 
 // I2C引脚定义
-#define SDA_PIN 13
-#define SCL_PIN 14
+// SCL:22，SDA:21
+#define SDA_PIN 21
+#define SCL_PIN 22
 
 // I2C速度定义
 #define I2C_SPEED_100K 100000L    // 标准模式 100kHz

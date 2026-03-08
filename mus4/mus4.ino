@@ -25,8 +25,8 @@
 // #include <WiFi.h>
 #include <Wire.h>
 #include <FastLED.h>
-// #include <Adafruit_MPU6050.h>
-// #include <Adafruit_Sensor.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
 
 #define ENABLE_GAMEPAD_MODE
 #ifdef ENABLE_GAMEPAD_MODE
@@ -34,7 +34,7 @@
   BleGamepad bleGamepad("Gamepad MU03", "Espressif", 100);
 #endif
 
-// Adafruit_MPU6050 mpu; // Create an MPU6050 object
+Adafruit_MPU6050 mpu;
 
 #define DEBUG // Uncomment to enable debugging output
 
@@ -390,120 +390,149 @@ void I2CWriteValue(uint8_t Address, uint8_t Register, uint16_t Data)
 
 void read_ina219()
 {
-    Serial.printf("%d:%f mA\r\n", 1, I2CReadValue(0x41, 1) / 100.0 / 0.01);
-    Serial.printf("%d:%f V\r\n", 2, I2CReadValue(0x41, 2) / 2 / 1000.0);
+    uint16_t current = I2CReadValue(0x41, 1);
+    uint16_t voltage = I2CReadValue(0x41, 2);
+    
+    if (current == 0xFFFF || voltage == 0xFFFF)
+    {
+        Serial.println("[INA219 ERROR] Failed to read sensor data");
+        return;
+    }
+    
+    float current_mA = current / 100.0 / 0.01;
+    float voltage_V = voltage / 2 / 1000.0;
+    
+    Serial.printf("[INA219] Current: %.2f mA, Voltage: %.2f V\r\n", current_mA, voltage_V);
 }
 
-// void read_mpu6050()
-// {
-//     /* Get new sensor events with the readings */
-//     sensors_event_t a, g, temp;
-//     mpu.getEvent(&a, &g, &temp);
+void read_mpu6050()
+{
+    static unsigned long lastReadTime = 0;
+    static unsigned long readCount = 0;
+    
+    /* Get new sensor events with the readings */
+    sensors_event_t a, g, temp;
+    
+    if (!mpu.getEvent(&a, &g, &temp))
+    {
+        Serial.println("[MPU6050 ERROR] Failed to read sensor data");
+        return;
+    }
+    
+    readCount++;
+    lastReadTime = millis();
+    
+    /* Print out the values with timestamp */
+    Serial.print("[MPU6050] Time: ");
+    Serial.print(lastReadTime);
+    Serial.print("ms | Count: ");
+    Serial.print(readCount);
+    Serial.print(" | Status: OK");
+    Serial.println();
+    
+    Serial.print("  Acceleration (m/s^2): X=");
+    Serial.print(a.acceleration.x, 3);
+    Serial.print(" Y=");
+    Serial.print(a.acceleration.y, 3);
+    Serial.print(" Z=");
+    Serial.println(a.acceleration.z, 3);
+    
+    Serial.print("  Gyro (deg/s): X=");
+    Serial.print(g.gyro.x, 3);
+    Serial.print(" Y=");
+    Serial.print(g.gyro.y, 3);
+    Serial.print(" Z=");
+    Serial.println(g.gyro.z, 3);
+    
+    Serial.print("  Temperature: ");
+    Serial.print(temp.temperature, 2);
+    Serial.println(" degC");
+    Serial.println();
+}
 
-//     /* Print out the values */
-//     Serial.print("Acceleration X: ");
-//     Serial.print(a.acceleration.x);
-//     Serial.print(", Y: ");
-//     Serial.print(a.acceleration.y);
-//     Serial.print(", Z: ");
-//     Serial.print(a.acceleration.z);
-//     Serial.println(" m/s^2");
+void setup_mpu6050()
+{
+    // Try to initialize!
+    if (!mpu.begin())
+    {
+        Serial.println("[MPU6050 ERROR] Failed to find MPU6050 chip");
+        Serial.println("[MPU6050 ERROR] Please check I2C connection (SDA: GPIO 13, SCL: GPIO 14)");
+        while (1)
+        {
+            delay(1000);
+            Serial.println("[MPU6050 ERROR] Sensor not detected, waiting...");
+        }
+    }
+    Serial.println("[MPU6050] Sensor initialized successfully!");
 
-//     Serial.print("Rotation X: ");
-//     Serial.print(g.gyro.x);
-//     Serial.print(", Y: ");
-//     Serial.print(g.gyro.y);
-//     Serial.print(", Z: ");
-//     Serial.print(g.gyro.z);
-//     Serial.println(" rad/s");
+    // set accelerometer Range
+    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+    Serial.print("[MPU6050] Accelerometer range set to: ");
 
-//     Serial.print("Temperature: ");
-//     Serial.print(temp.temperature);
-//     Serial.println(" degC");
+    switch (mpu.getAccelerometerRange())
+    {
+    case MPU6050_RANGE_2_G:
+        Serial.println("+-2G");
+        break;
+    case MPU6050_RANGE_4_G:
+        Serial.println("+-4G");
+        break;
+    case MPU6050_RANGE_8_G:
+        Serial.println("+-8G");
+        break;
+    case MPU6050_RANGE_16_G:
+        Serial.println("+-16G");
+        break;
+    }
 
-//     Serial.println("");
-// }
+    // set Gyro Range
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+    Serial.print("[MPU6050] Gyro range set to: ");
+    switch (mpu.getGyroRange())
+    {
+    case MPU6050_RANGE_250_DEG:
+        Serial.println("+- 250 deg/s");
+        break;
+    case MPU6050_RANGE_500_DEG:
+        Serial.println("+- 500 deg/s");
+        break;
+    case MPU6050_RANGE_1000_DEG:
+        Serial.println("+- 1000 deg/s");
+        break;
+    case MPU6050_RANGE_2000_DEG:
+        Serial.println("+- 2000 deg/s");
+        break;
+    }
 
-// void setup_mpu6050()
-// {
-//     // Try to initialize!
-//     if (!mpu.begin())
-//     {
-//         Serial.println("Failed to find MPU6050 chip");
-//         while (1)
-//         {
-//             delay(10);
-//         }
-//     }
-//     Serial.println("MPU6050 Found!");
-
-//     // set accelerometer Range
-//     mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-//     Serial.print("Accelerometer range set to: ");
-
-//     switch (mpu.getAccelerometerRange())
-//     {
-//     case MPU6050_RANGE_2_G:
-//         Serial.println("+-2G");
-//         break;
-//     case MPU6050_RANGE_4_G:
-//         Serial.println("+-4G");
-//         break;
-//     case MPU6050_RANGE_8_G:
-//         Serial.println("+-8G");
-//         break;
-//     case MPU6050_RANGE_16_G:
-//         Serial.println("+-16G");
-//         break;
-//     }
-
-//     // set Gyro Range
-//     mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-//     Serial.print("Gyro range set to: ");
-//     switch (mpu.getGyroRange())
-//     {
-//     case MPU6050_RANGE_250_DEG:
-//         Serial.println("+- 250 deg/s");
-//         break;
-//     case MPU6050_RANGE_500_DEG:
-//         Serial.println("+- 500 deg/s");
-//         break;
-//     case MPU6050_RANGE_1000_DEG:
-//         Serial.println("+- 1000 deg/s");
-//         break;
-//     case MPU6050_RANGE_2000_DEG:
-//         Serial.println("+- 2000 deg/s");
-//         break;
-//     }
-
-//     // Set filter bandwidth
-//     mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-//     Serial.print("Filter bandwidth set to: ");
-//     switch (mpu.getFilterBandwidth())
-//     {
-//     case MPU6050_BAND_260_HZ:
-//         Serial.println("260 Hz");
-//         break;
-//     case MPU6050_BAND_184_HZ:
-//         Serial.println("184 Hz");
-//         break;
-//     case MPU6050_BAND_94_HZ:
-//         Serial.println("94 Hz");
-//         break;
-//     case MPU6050_BAND_44_HZ:
-//         Serial.println("44 Hz");
-//         break;
-//     case MPU6050_BAND_21_HZ:
-//         Serial.println("21 Hz");
-//         break;
-//     case MPU6050_BAND_10_HZ:
-//         Serial.println("10 Hz");
-//         break;
-//     case MPU6050_BAND_5_HZ:
-//         Serial.println("5 Hz");
-//         break;
-//     }
-// }
+    // Set filter bandwidth to 94Hz for approximately 100Hz sampling rate
+    mpu.setFilterBandwidth(MPU6050_BAND_94_HZ);
+    Serial.print("[MPU6050] Filter bandwidth set to: ");
+    switch (mpu.getFilterBandwidth())
+    {
+    case MPU6050_BAND_260_HZ:
+        Serial.println("260 Hz");
+        break;
+    case MPU6050_BAND_184_HZ:
+        Serial.println("184 Hz");
+        break;
+    case MPU6050_BAND_94_HZ:
+        Serial.println("94 Hz (Sampling rate: ~100Hz)");
+        break;
+    case MPU6050_BAND_44_HZ:
+        Serial.println("44 Hz");
+        break;
+    case MPU6050_BAND_21_HZ:
+        Serial.println("21 Hz");
+        break;
+    case MPU6050_BAND_10_HZ:
+        Serial.println("10 Hz");
+        break;
+    case MPU6050_BAND_5_HZ:
+        Serial.println("5 Hz");
+        break;
+    }
+    Serial.println("[MPU6050] Setup complete, ready for data acquisition");
+}
 
 
 // End of MPU6050 functions
@@ -540,11 +569,9 @@ void setup()
       bleGamepad.begin();
     #endif
 
-
-
-    // Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 13, SCL = 14, 400kHz
-    // setup_mpu6050();
-    // delay(100);
+    Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 13, SCL = 14, 400kHz
+    setup_mpu6050();
+    delay(100);
 
     // Set the RC receiver pins as inputs and attach the interrupts
     for (int i = 0; i < 4; i++)
@@ -585,8 +612,8 @@ void setup()
 
 void loop()
 {
-    //   read_ina219();
-    //   read_mpu6050();
+    read_ina219();
+    read_mpu6050();
 
     // Serial represents the Type-C USB port
     if (Serial.available())

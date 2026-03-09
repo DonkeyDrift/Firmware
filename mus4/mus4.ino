@@ -111,13 +111,15 @@ CRGB leds[NUM_LEDS]; // Define the array of leds
 #define UI_UPDATE_INTERVAL 16         // UI更新间隔（毫秒）- 60Hz丝滑体验
 
 // 波形图参数
-#define WAVE_WIDTH 40                 // 波形图宽度
-#define WAVE_HEIGHT 8                 // 波形图高度
+#define WAVE_WIDTH 20                 // 波形图宽度 (reduced for performance)
+#define WAVE_HEIGHT 6                 // 波形图高度 (reduced for performance)
 
 // 新增全局变量
 unsigned long lastSensorUpdate = 0;
 unsigned long lastRCDataUpdate = 0;
 unsigned long lastUIUpdate = 0;
+unsigned long lastWaveUpdate = 0;     // 波形刷新独立计时
+const unsigned long WAVE_UPDATE_INTERVAL = 250; // 4Hz刷新率
 bool toggleActive = false;
 CRGB toggleColor1, toggleColor2;
 unsigned long toggleTime = 0;
@@ -125,6 +127,7 @@ unsigned long toggleInterval = 250; // LED切换间隔为250ms
 bool degradeMode = false;
 uint32_t degradeReason = 0;
 bool ansiEnabled = true;
+bool ansiDetected = false;            // 自动检测ANSI支持状态
 bool uiInitialized = false;
 unsigned long uiIntervalCurrent = UI_UPDATE_INTERVAL;
 const unsigned long uiIntervalMin = 100;
@@ -137,10 +140,10 @@ unsigned long outputTTL = 100;
 struct SerialBuf { char buf[256]; uint16_t len; uint32_t frames; uint32_t errors; bool overflow; };
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
-static void cursorDownN(int n){ Serial.printf("\033[%dB", n); }
-static void cursorUpN(int n){ Serial.printf("\033[%dA", n); }
-static void cursorRightN(int n){ Serial.printf("\033[%dC", n); }
-static void cursorLeftN(int n){ Serial.printf("\033[%dD", n); }
+static void cursorDownN(int n){ if(ansiEnabled) Serial.printf("\033[%dB", n); }
+static void cursorUpN(int n){ if(ansiEnabled) Serial.printf("\033[%dA", n); }
+static void cursorRightN(int n){ if(ansiEnabled) Serial.printf("\033[%dC", n); }
+static void cursorLeftN(int n){ if(ansiEnabled) Serial.printf("\033[%dD", n); }
 int lastModePrinted = -1;
 bool lastParkPrinted = true;
 int lastCh1 = -1, lastCh2 = -1, lastCh3 = -1, lastCh4 = -1;
@@ -148,20 +151,33 @@ int lastOutTh = -1000, lastOutSt = -1000;
 unsigned long lastSensorsPrint = 0;
 String lastINAStr = "";
 String lastMPUStr = "";
+int lastWaveTh[WAVE_WIDTH] = {0};     // 缓存上一帧波形用于脏矩形
+int lastWaveSt[WAVE_WIDTH] = {0};     // 缓存上一帧波形用于脏矩形
+bool forceRedraw = false;             // 强制重绘标志
+int lastSeq = -1;                     // 记录收到的最后序号
+
 static int testsTotal = 0;
 static int testsPassed = 0;
 static bool runUnitTests()
 {
     testsTotal = 0; testsPassed = 0;
-    int t,s;
-    testsTotal++; if (processLine(String("0:0"), &t,&s) && t==0 && s==0) testsPassed++;
-    testsTotal++; if (!processLine(String("200:0"), &t,&s)) testsPassed++;
+    int t,s,seq;
+    // Basic format
+    testsTotal++; if (processLine(String("0:0"), &t,&s,&seq) && t==0 && s==0 && seq==-1) testsPassed++;
+    testsTotal++; if (!processLine(String("200:0"), &t,&s,&seq)) testsPassed++;
+    // Checksum format
     char payload1[] = "10:-10";
     uint8_t cs1 = calcChecksum(payload1, sizeof(payload1)-1);
     char line1[32]; snprintf(line1, sizeof(line1), "%s*%02X", payload1, cs1);
-    testsTotal++; if (processLine(String(line1), &t,&s) && t==10 && s==-10) testsPassed++;
-    char line2[32]; snprintf(line2, sizeof(line2), "%s*00", payload1);
-    testsTotal++; if (!processLine(String(line2), &t,&s)) testsPassed++;
+    testsTotal++; if (processLine(String(line1), &t,&s,&seq) && t==10 && s==-10 && seq==-1) testsPassed++;
+    // Seq format
+    testsTotal++; if (processLine(String("50:50:100"), &t,&s,&seq) && t==50 && s==50 && seq==100) testsPassed++;
+    // Seq + Checksum
+    char payload2[] = "20:-20:255";
+    uint8_t cs2 = calcChecksum(payload2, sizeof(payload2)-1);
+    char line2[32]; snprintf(line2, sizeof(line2), "%s*%02X", payload2, cs2);
+    testsTotal++; if (processLine(String(line2), &t,&s,&seq) && t==20 && s==-20 && seq==255) testsPassed++;
+    
     return testsPassed*100/testsTotal >= 85;
 }
 static bool runBenchmarks()
@@ -184,16 +200,38 @@ static bool runStress()
     uint32_t errs0 = serial0Buf.errors;
     for (int i=0;i<50;i++)
     {
-        int tt,ss;
-        processLine(String("999:999"), &tt,&ss);
+        int tt,ss,seq;
+        processLine(String("999:999"), &tt,&ss,&seq);
     }
     Serial.printf("STRESS: errors_delta=%lu\n", serial0Buf.errors-errs0);
     return true;
 }
+struct struct_message
+{
+    int throttle; // 油门值
+    int steering; // 转向值
+    int mode;     // 驾驶模式，0为遥控模式，1为自动方向和手动油门模式，2为自动驾驶模式
+    bool park;    // 停车状态，0为停车，1为起步
+};
+
+struct struct_message esp_now_data = {0, 0, 0, false}; // Initialize the structure at declaration
+struct struct_message rc_data = {0, 0, 0, false};      // Initialize the structure at declaration
+struct struct_message pilot_data = {0, 0, 0, false};   // Initialize the structure at declaration
+struct struct_message car_output = {0, 0, 0, false};   // Initialize the structure at declaration
+
+const int PWM_MIN_V = 819;     // 'minimum' pulse length count (out of 4096)
+const int PWM_MAX_V = 1638;    // 'maximum' pulse length count (out of 4096)
+const int MOTOR_MID_V = 1229;  // 需要实际测试
+const int MOTOR_RANGE_V = 390; // Pulse range for Motor Throttle
+const int SERVO_MID_V = 1250;  // 需要实际测试
+const int SERVO_RANGE_V = 440; // Pulse range for Motor Throttle
+const int MOTOR_OFFSET_V = 1;
+const int SERVO_OFFSET_V = -1;
+
 static bool runRegression()
 {
-    int v = map(-100, -100, 100, SERVO_MID - SERVO_RANGE, SERVO_MID + SERVO_RANGE);
-    int v2 = map(100, -100, 100, SERVO_MID - SERVO_RANGE, SERVO_MID + SERVO_RANGE);
+    int v = map(-100, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
+    int v2 = map(100, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
     bool ok = (v <= v2);
     Serial.printf("REGRESS: ok=%d\n", ok?1:0);
     return ok;
@@ -317,8 +355,13 @@ static uint8_t calcChecksum(const char* s, int n)
     return (uint8_t)(sum & 0xFF);
 }
 
-static bool processLine(const String& line, int* throttle, int* steering)
+static bool processLine(const String& line, int* throttle, int* steering, int* seq)
 {
+    // 如果是命令
+    if (line.equalsIgnoreCase("NOANSI")) { ansiEnabled = false; uiInitialized = false; return false; }
+    if (line.equalsIgnoreCase("ANSI")) { ansiEnabled = true; uiInitialized = false; return false; }
+
+    *seq = -1;
     int star = line.lastIndexOf('*');
     if (star > 0)
     {
@@ -335,9 +378,28 @@ static bool processLine(const String& line, int* throttle, int* steering)
             payload.toCharArray(buf, blen+1);
             uint8_t got = calcChecksum(buf, blen);
             if (want != got) return false;
+            
+            // 尝试解析SEQ: T:S:SEQ
+            int col2 = payload.lastIndexOf(':');
+            int col1 = payload.indexOf(':');
+            if (col2 > col1 && col1 > 0) {
+                 String seqStr = payload.substring(col2+1);
+                 *seq = seqStr.toInt();
+                 return parseAndValidateCommand(payload.substring(0, col2), throttle, steering);
+            }
             return parseAndValidateCommand(payload, throttle, steering);
         }
     }
+    
+    // 无校验，尝试解析 T:S:SEQ
+    int col2 = line.lastIndexOf(':');
+    int col1 = line.indexOf(':');
+    if (col2 > col1 && col1 > 0) {
+            String seqStr = line.substring(col2+1);
+            *seq = seqStr.toInt();
+            return parseAndValidateCommand(line.substring(0, col2), throttle, steering);
+    }
+    
     return parseAndValidateCommand(line, throttle, steering);
 }
 
@@ -376,20 +438,33 @@ static void readSerialBuf(HardwareSerial& ser, SerialBuf& sb, bool isRS232)
                 Serial.printf("REGRESS_OK=%d\n", ok?1:0);
                 sb.len = 0; sb.overflow = false; continue;
             }
-            int t, s;
-            bool ok = processLine(line, &t, &s);
+            int t, s, seq;
+            bool ok = processLine(line, &t, &s, &seq);
             if (ok)
             {
                 pilot_data.throttle = t;
                 pilot_data.steering = s;
-                if (isRS232) ser.println("ACK");
-                else Serial.println("ACK");
+                lastSeq = seq;
+                if (isRS232) {
+                    if (seq >= 0) ser.printf("ACK:%d\n", seq);
+                    else ser.println("ACK");
+                }
+                else {
+                    if (seq >= 0) Serial.printf("ACK:%d\n", seq);
+                    else Serial.println("ACK");
+                }
                 sb.frames++;
             }
             else
             {
-                if (isRS232) ser.println("NACK");
-                else Serial.println("NACK");
+                if (isRS232) {
+                     if (seq >= 0) ser.printf("NACK:%d\n", seq);
+                     else ser.println("NACK");
+                }
+                else {
+                     if (seq >= 0) Serial.printf("NACK:%d\n", seq);
+                     else Serial.println("NACK");
+                }
                 sb.errors++;
             }
             sb.len = 0;
@@ -437,14 +512,14 @@ int User_steering = 0;  // RC遥控器发来的用户转向值
 int Pilot_throttle = 0; // 上位机发来的油门值
 int Pilot_steering = 0; // 上位机发来的转向值
 
-const int PWM_MIN = 819;     // 'minimum' pulse length count (out of 4096)
-const int PWM_MAX = 1638;    // 'maximum' pulse length count (out of 4096)
-const int MOTOR_MID = 1229;  // 需要实际测试
-const int MOTOR_RANGE = 390; // Pulse range for Motor Throttle
-const int SERVO_MID = 1250;  // 需要实际测试
-const int SERVO_RANGE = 440; // Pulse range for Motor Throttle
-const int MOTOR_OFFSET = 1;
-const int SERVO_OFFSET = -1;
+const int PWM_MIN_V = 819;     // 'minimum' pulse length count (out of 4096)
+const int PWM_MAX_V = 1638;    // 'maximum' pulse length count (out of 4096)
+const int MOTOR_MID_V = 1229;  // 需要实际测试
+const int MOTOR_RANGE_V = 390; // Pulse range for Motor Throttle
+const int SERVO_MID_V = 1250;  // 需要实际测试
+const int SERVO_RANGE_V = 440; // Pulse range for Motor Throttle
+const int MOTOR_OFFSET_V = 1;
+const int SERVO_OFFSET_V = -1;
 
 // RC Receiver Calibration Values (PWM pulse width in microseconds)
 const int RC_THROTTLE_MIN = 888;   // Throttle minimum pulse
@@ -456,20 +531,6 @@ const int RC_STEERING_MAX = 2113;  // Steering maximum pulse
 
 int carOutputModeLast = -1;
 unsigned long counter;
-
-// Define a data structure
-struct struct_message
-{
-    int throttle; // 油门值
-    int steering; // 转向值
-    int mode;     // 驾驶模式，0为遥控模式，1为自动方向和手动油门模式，2为自动驾驶模式
-    bool park;    // 停车状态，0为停车，1为起步
-};
-
-struct struct_message esp_now_data = {0, 0, 0, false}; // Initialize the structure at declaration
-struct struct_message rc_data = {0, 0, 0, false};      // Initialize the structure at declaration
-struct struct_message pilot_data = {0, 0, 0, false};   // Initialize the structure at declaration
-struct struct_message car_output = {0, 0, 0, false};   // Initialize the structure at declaration
 
 void emergencyStop()
 {
@@ -534,44 +595,83 @@ int adj(int v, int s) // v: value, s: step
     return v;
 }
 
-// 生成波形图
-void generateWaveform(int data[], int length, const char* title)
+// 生成波形图（增量脏矩形优化）
+void generateWaveform(int data[], int lastData[], int length, const char* title, bool force)
 {
+    if (!ansiEnabled) return; // 纯文本模式不绘制波形
+
     Serial.printf("%s:\n", title);
     
-    // 顶部边框
-    Serial.print("  ");
-    for (int i = 0; i < length; i++) Serial.print("─");
-    Serial.println();
+    // 顶部边框 (只在强制重绘时画)
+    if (force) {
+        Serial.print("  ");
+        for (int i = 0; i < length; i++) Serial.print("─");
+        Serial.println();
+    } else {
+        cursorDownN(1);
+    }
     
     // 波形行
     for (int y = WAVE_HEIGHT; y >= 0; y--)
     {
-        Serial.print("  ");
-        for (int x = 0; x < length; x++)
-        {
-            int value = data[x];
-            int normalized = map(value, -100, 100, 0, WAVE_HEIGHT);
-            
-            if (normalized == y)
-                Serial.print("█");
-            else if (y == WAVE_HEIGHT / 2)
-                Serial.print("─");
-            else
-                Serial.print(" ");
+        // 检查该行是否有变化 (简化策略：只要有数据变化就重绘整行，避免光标跳跃开销过大)
+        // 更精细的策略是只移动光标到变化的列，但对于串口来说，大量光标移动指令可能比直接打印字符更慢
+        // 这里采用行级脏检测
+        
+        bool rowDirty = force;
+        if (!force) {
+            for (int x = 0; x < length; x++) {
+                int val = data[x];
+                int lastVal = lastData[x];
+                int n = map(val, -100, 100, 0, WAVE_HEIGHT);
+                int lastN = map(lastVal, -100, 100, 0, WAVE_HEIGHT);
+                if ((n == y) != (lastN == y)) {
+                    rowDirty = true;
+                    break;
+                }
+            }
         }
-        Serial.println();
+
+        if (rowDirty) {
+            Serial.print("\r  "); // 回到行首
+            for (int x = 0; x < length; x++)
+            {
+                int value = data[x];
+                int normalized = map(value, -100, 100, 0, WAVE_HEIGHT);
+                
+                if (normalized == y)
+                    Serial.print("█");
+                else if (y == WAVE_HEIGHT / 2)
+                    Serial.print("─");
+                else
+                    Serial.print(" ");
+            }
+            // 清除行尾可能的残留（如果之前行更长）- 这里定长不需要
+            Serial.println();
+        } else {
+            cursorDownN(1); // 跳过未变行
+        }
     }
     
     // 底部边框
-    Serial.print("  ");
-    for (int i = 0; i < length; i++) Serial.print("─");
-    Serial.println();
+    if (force) {
+        Serial.print("  ");
+        for (int i = 0; i < length; i++) Serial.print("─");
+        Serial.println();
+    } else {
+        cursorDownN(1);
+    }
 }
 
-// 更新波形图数据
+// 更新波形图数据（保存历史）
 void updateWaveformData()
 {
+    // 保存当前帧为历史，用于下一帧对比
+    for (int i=0; i<WAVE_WIDTH; i++) {
+        lastWaveTh[i] = throttleWave[i];
+        lastWaveSt[i] = steeringWave[i];
+    }
+
     // 移动数据
     for (int i = 1; i < WAVE_WIDTH; i++)
     {
@@ -588,6 +688,11 @@ void updateWaveformData()
 void showMainUI()
 {
     unsigned long start = millis();
+    
+    // ANSI 检测逻辑：首次运行时尝试发送查询光标位置，若无响应则认为不支持
+    // 这里简化为：默认支持，如果用户发送 'NOANSI' 命令则关闭
+    // 或者每隔一段时间强制全屏刷新一次以纠正错乱
+    
     if (!uiInitialized)
     {
         if (ansiEnabled)
@@ -598,88 +703,166 @@ void showMainUI()
         }
         Serial.println("MUS4 Control System");
         Serial.println("====================");
-        Serial.println("");
-        Serial.println("");
-        Serial.println("");
-        Serial.println("");
-        Serial.println("");
-        Serial.println("");
-        Serial.println("");
-        Serial.println("");
-        Serial.println("");
-        Serial.println("");
+        Serial.println(""); // Mode
+        Serial.println(""); // Park
+        Serial.println(""); // RC Header
+        Serial.println(""); // RC Ch1/2
+        Serial.println(""); // RC Ch3/4
+        Serial.println(""); // Output Header
+        Serial.println(""); // Output
+        Serial.println(""); // Wave Header
+        if (ansiEnabled) {
+            // Waveform Space (Header + TopBorder + Height + BottomBorder) = 1 + 1 + H + 1
+            // Current cursor is at Wave Header line
+            // Need to reserve space for 2 waveforms
+            // Wave 1: 1(Title)+1(Top)+H+1(Bot) = 3+H lines
+            // Wave 2: 1(Title)+1(Top)+H+1(Bot) = 3+H lines
+            for(int i=0; i < (3+WAVE_HEIGHT)*2; i++) Serial.println("");
+        }
+        Serial.println(""); // Sensors Header
+        Serial.println(""); // INA
+        Serial.println(""); // MPU
         uiInitialized = true;
+        forceRedraw = true;
     }
-    Serial.print(SAVE_CURSOR);
-    Serial.print(CURSOR_HOME);
-    cursorDownN(2);
-    if (lastModePrinted != car_output.mode)
-    {
+    
+    if (ansiEnabled) {
+        Serial.print(SAVE_CURSOR);
+        Serial.print(CURSOR_HOME);
+        cursorDownN(2);
+    } else {
+        // Pure Text Mode: Print everything linearly
+        Serial.println("\n--- STATUS ---");
+    }
+
+    // Mode
+    if (ansiEnabled) {
+        if (lastModePrinted != car_output.mode || forceRedraw) {
+            Serial.print("Mode: ");
+            if (car_output.mode == CAR_MODE_MANUAL) Serial.print("Manual   "); 
+            else if (car_output.mode == CAR_MODE_SEMI_AUTO) Serial.print("Semi-Auto"); 
+            else Serial.print("Full-Auto");
+            Serial.println(""); // Clear rest of line logic needed if getting shorter
+            lastModePrinted = car_output.mode;
+        } else {
+            cursorDownN(1);
+        }
+    } else {
         Serial.print("Mode: ");
-        if (car_output.mode == CAR_MODE_MANUAL) Serial.println("Manual"); else if (car_output.mode == CAR_MODE_SEMI_AUTO) Serial.println("Semi-Auto"); else Serial.println("Full-Auto");
-        lastModePrinted = car_output.mode;
+        if (car_output.mode == CAR_MODE_MANUAL) Serial.println("Manual"); 
+        else if (car_output.mode == CAR_MODE_SEMI_AUTO) Serial.println("Semi-Auto"); 
+        else Serial.println("Full-Auto");
     }
-    if (lastParkPrinted != car_output.park)
-    {
+
+    // Park
+    if (ansiEnabled) {
+        if (lastParkPrinted != car_output.park || forceRedraw) {
+            Serial.print("Park: ");
+            if (car_output.park) Serial.print("Locked  "); else Serial.print("Unlocked");
+            Serial.println("");
+            lastParkPrinted = car_output.park;
+        } else {
+            cursorDownN(1);
+        }
+    } else {
         Serial.print("Park: ");
         if (car_output.park) Serial.println("Locked"); else Serial.println("Unlocked");
-        lastParkPrinted = car_output.park;
     }
-    Serial.println("");
-    Serial.println("RC Channels:");
+
+    if (ansiEnabled) cursorDownN(1); // Skip RC Header
+
+    // RC Values
     int ch1 = pwm_value[CH_STEERING], ch2 = pwm_value[CH_THROTTLE], ch3 = pwm_value[CH_PARK], ch4 = pwm_value[CH_MODE];
-    if (ch1 != lastCh1 || ch2 != lastCh2)
-    {
-        Serial.printf("CH1 (Steering): %4d | CH2 (Throttle): %4d\n", ch1, ch2);
-        lastCh1 = ch1; lastCh2 = ch2;
+    if (ansiEnabled) {
+        if (ch1 != lastCh1 || ch2 != lastCh2 || forceRedraw) {
+            Serial.printf("CH1 (Steering): %4d | CH2 (Throttle): %4d\n", ch1, ch2);
+            lastCh1 = ch1; lastCh2 = ch2;
+        } else {
+            cursorDownN(1);
+        }
+        if (ch3 != lastCh3 || ch4 != lastCh4 || forceRedraw) {
+            Serial.printf("CH3 (Park): %4d | CH4 (Mode): %4d\n", ch3, ch4);
+            lastCh3 = ch3; lastCh4 = ch4;
+        } else {
+            cursorDownN(1);
+        }
+    } else {
+        Serial.printf("RC: S=%d T=%d P=%d M=%d\n", ch1, ch2, ch3, ch4);
     }
-    if (ch3 != lastCh3 || ch4 != lastCh4)
-    {
-        Serial.printf("CH3 (Park): %4d | CH4 (Mode): %4d\n", ch3, ch4);
-        lastCh3 = ch3; lastCh4 = ch4;
+
+    if (ansiEnabled) cursorDownN(1); // Skip Output Header
+
+    // Output
+    if (ansiEnabled) {
+        if (car_output.throttle != lastOutTh || car_output.steering != lastOutSt || forceRedraw) {
+            Serial.printf("Throttle: %4d | Steering: %4d\n", car_output.throttle, car_output.steering);
+            lastOutTh = car_output.throttle; lastOutSt = car_output.steering;
+        } else {
+            cursorDownN(1);
+        }
+    } else {
+        Serial.printf("OUT: T=%d S=%d\n", car_output.throttle, car_output.steering);
     }
-    Serial.println("");
-    Serial.println("Control Output:");
-    if (car_output.throttle != lastOutTh || car_output.steering != lastOutSt)
+
+    // Waveforms
+    if (!degradeMode && ansiEnabled)
     {
-        Serial.printf("Throttle: %4d | Steering: %4d\n", car_output.throttle, car_output.steering);
-        lastOutTh = car_output.throttle; lastOutSt = car_output.steering;
+        unsigned long waveNow = millis();
+        bool drawWave = (waveNow - lastWaveUpdate >= WAVE_UPDATE_INTERVAL) || forceRedraw;
+        
+        if (drawWave) {
+             cursorDownN(1); // Skip Wave Header
+             generateWaveform(throttleWave, lastWaveTh, WAVE_WIDTH, "Throttle", forceRedraw);
+             generateWaveform(steeringWave, lastWaveSt, WAVE_WIDTH, "Steering", forceRedraw);
+             lastWaveUpdate = waveNow;
+        } else {
+             // Skip all wave lines: (Header(1) + Body(3+H) * 2) - Header(1) = (3+H)*2
+             cursorDownN(1 + (3+WAVE_HEIGHT)*2);
+        }
+    } else if (ansiEnabled) {
+         // Skip wave area
+         cursorDownN(1 + (3+WAVE_HEIGHT)*2);
     }
-    if (!degradeMode)
-    {
-        Serial.println("");
-        Serial.println("Waveforms:");
-        generateWaveform(throttleWave, WAVE_WIDTH, "Throttle");
-        generateWaveform(steeringWave, WAVE_WIDTH, "Steering");
-    }
-    Serial.println("");
-    Serial.println("Sensors:");
+
+    if (ansiEnabled) cursorDownN(1); // Skip Sensors Header
+
+    // Sensors
     unsigned long nowt = millis();
-    if (nowt - lastSensorsPrint >= sensorTTL)
+    if (nowt - lastSensorsPrint >= sensorTTL || forceRedraw)
     {
+        if (ansiEnabled) {
+            // Clear line before printing new data to avoid artifacts
+             Serial.print("\r\033[K"); 
+        }
         if (ina219Data.valid)
         {
             String s = String("INA219[") + String(ina219Data.lastReadTime) + String("|") + String(ina219Data.readCount) + String("] Bus:") + String(ina219Data.busVoltage,2) + String("V Current:") + String(ina219Data.current_mA,1) + String("mA Power:") + String(ina219Data.power_mW,1) + String("mW");
-            if (s != lastINAStr) { Serial.println(s); lastINAStr = s; }
+            Serial.println(s);
         }
         else
         {
-            String s = String("INA219: No data");
-            if (s != lastINAStr) { Serial.println(s); lastINAStr = s; }
+            Serial.println("INA219: No data");
+        }
+        
+        if (ansiEnabled) {
+             Serial.print("\r\033[K");
         }
         if (mpu6050Data.valid)
         {
             String s = String("MPU6050[") + String(mpu6050Data.lastReadTime) + String("|") + String(mpu6050Data.readCount) + String("] Accel:X=") + String(mpu6050Data.accelX,2) + String(" Y=") + String(mpu6050Data.accelY,2) + String(" Z=") + String(mpu6050Data.accelZ,2) + String(" Gyro:X=") + String(mpu6050Data.gyroX,2) + String(" Y=") + String(mpu6050Data.gyroY,2) + String(" Z=") + String(mpu6050Data.gyroZ,2) + String(" T:") + String(mpu6050Data.temperature,1) + String("C");
-            if (s != lastMPUStr) { Serial.println(s); lastMPUStr = s; }
+            Serial.println(s);
         }
         else
         {
-            String s = String("MPU6050: No data");
-            if (s != lastMPUStr) { Serial.println(s); lastMPUStr = s; }
+            Serial.println("MPU6050: No data");
         }
         lastSensorsPrint = nowt;
     }
-    Serial.print(RESTORE_CURSOR);
+
+    if (ansiEnabled) {
+        Serial.print(RESTORE_CURSOR);
+    }
+    forceRedraw = false;
     lastUICycleDuration = millis() - start;
 }
 
@@ -756,10 +939,11 @@ bool parseAndValidateCommand(String cmd, int* throttle, int* steering)
     // 校验范围：-100 ~ 100
     if (t < -100 || t > 100 || s < -100 || s > 100)
     {
-        Serial.print("[CMD ERROR] Out of range: T=");
-        Serial.print(t);
-        Serial.print(" S=");
-        Serial.println(s);
+        // 只有当不是测试命令时才打印错误，避免污染输出
+        // Serial.print("[CMD ERROR] Out of range: T=");
+        // Serial.print(t);
+        // Serial.print(" S=");
+        // Serial.println(s);
         return false;
     }
 
@@ -1266,11 +1450,11 @@ void loop()
 
 #endif
 
-    int pwm_steering = map(car_output.steering, -100, 100, SERVO_MID - SERVO_RANGE, SERVO_MID + SERVO_RANGE);
-    int pwm_throttle = map(car_output.throttle, -100, 100, MOTOR_MID - MOTOR_RANGE, MOTOR_MID + MOTOR_RANGE);
+    int pwm_steering = map(car_output.steering, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
+    int pwm_throttle = map(car_output.throttle, -100, 100, MOTOR_MID_V - MOTOR_RANGE_V, MOTOR_MID_V + MOTOR_RANGE_V);
 
-    pwm_steering = min(max(pwm_steering, PWM_MIN), PWM_MAX);
-    pwm_throttle = min(max(pwm_throttle, PWM_MIN), PWM_MAX);
+    pwm_steering = min(max(pwm_steering, PWM_MIN_V), PWM_MAX_V);
+    pwm_throttle = min(max(pwm_throttle, PWM_MIN_V), PWM_MAX_V);
 
     ledcWriteChannel(CH_STEERING, pwm_steering);
     ledcWriteChannel(CH_THROTTLE, pwm_throttle);

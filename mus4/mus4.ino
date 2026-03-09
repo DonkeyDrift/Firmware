@@ -122,6 +122,82 @@ bool toggleActive = false;
 CRGB toggleColor1, toggleColor2;
 unsigned long toggleTime = 0;
 unsigned long toggleInterval = 250; // LED切换间隔为250ms
+bool degradeMode = false;
+uint32_t degradeReason = 0;
+bool ansiEnabled = true;
+bool uiInitialized = false;
+unsigned long uiIntervalCurrent = UI_UPDATE_INTERVAL;
+const unsigned long uiIntervalMin = 100;
+const unsigned long uiIntervalMax = 500;
+unsigned long lastPerfEval = 0;
+unsigned long lastUICycleDuration = 0;
+unsigned long sensorTTL = 1000;
+unsigned long rcTTL = 100;
+unsigned long outputTTL = 100;
+struct SerialBuf { char buf[256]; uint16_t len; uint32_t frames; uint32_t errors; bool overflow; };
+SerialBuf serial0Buf = {{0},0,0,0,false};
+SerialBuf serial1Buf = {{0},0,0,0,false};
+static void cursorDownN(int n){ Serial.printf("\033[%dB", n); }
+static void cursorUpN(int n){ Serial.printf("\033[%dA", n); }
+static void cursorRightN(int n){ Serial.printf("\033[%dC", n); }
+static void cursorLeftN(int n){ Serial.printf("\033[%dD", n); }
+int lastModePrinted = -1;
+bool lastParkPrinted = true;
+int lastCh1 = -1, lastCh2 = -1, lastCh3 = -1, lastCh4 = -1;
+int lastOutTh = -1000, lastOutSt = -1000;
+unsigned long lastSensorsPrint = 0;
+String lastINAStr = "";
+String lastMPUStr = "";
+static int testsTotal = 0;
+static int testsPassed = 0;
+static bool runUnitTests()
+{
+    testsTotal = 0; testsPassed = 0;
+    int t,s;
+    testsTotal++; if (processLine(String("0:0"), &t,&s) && t==0 && s==0) testsPassed++;
+    testsTotal++; if (!processLine(String("200:0"), &t,&s)) testsPassed++;
+    char payload1[] = "10:-10";
+    uint8_t cs1 = calcChecksum(payload1, sizeof(payload1)-1);
+    char line1[32]; snprintf(line1, sizeof(line1), "%s*%02X", payload1, cs1);
+    testsTotal++; if (processLine(String(line1), &t,&s) && t==10 && s==-10) testsPassed++;
+    char line2[32]; snprintf(line2, sizeof(line2), "%s*00", payload1);
+    testsTotal++; if (!processLine(String(line2), &t,&s)) testsPassed++;
+    return testsPassed*100/testsTotal >= 85;
+}
+static bool runBenchmarks()
+{
+    unsigned long ts = millis();
+    unsigned long loops = 0;
+    unsigned long durStart = millis();
+    while (millis() - durStart < 200)
+    {
+        showMainUI();
+        loops++;
+    }
+    unsigned long t1 = millis() - ts;
+    unsigned long score = loops;
+    Serial.printf("BENCH: loops=%lu duration=%lums\n", score, t1);
+    return score > 1;
+}
+static bool runStress()
+{
+    uint32_t errs0 = serial0Buf.errors;
+    for (int i=0;i<50;i++)
+    {
+        int tt,ss;
+        processLine(String("999:999"), &tt,&ss);
+    }
+    Serial.printf("STRESS: errors_delta=%lu\n", serial0Buf.errors-errs0);
+    return true;
+}
+static bool runRegression()
+{
+    int v = map(-100, -100, 100, SERVO_MID - SERVO_RANGE, SERVO_MID + SERVO_RANGE);
+    int v2 = map(100, -100, 100, SERVO_MID - SERVO_RANGE, SERVO_MID + SERVO_RANGE);
+    bool ok = (v <= v2);
+    Serial.printf("REGRESS: ok=%d\n", ok?1:0);
+    return ok;
+}
 
 // 波形图数据
 int throttleWave[WAVE_WIDTH] = {0};
@@ -194,6 +270,143 @@ void scanLEDToggle()
         leds[0] = nextColor;
         FastLED.show();
         toggleTime = millis() + toggleInterval;
+    }
+}
+
+static void notifyDegrade()
+{
+    if (ansiEnabled)
+    {
+        Serial.print(COLOR_RED);
+        Serial.println("DEGRADED MODE ACTIVE");
+        Serial.print(COLOR_RESET);
+    }
+    else
+    {
+        Serial.println("DEGRADED MODE ACTIVE");
+    }
+}
+
+static void evalDegrade()
+{
+    degradeReason = 0;
+    if (!ina219Data.valid) degradeReason |= 0x01;
+    if (!mpu6050Data.valid) degradeReason |= 0x02;
+    if (lastUICycleDuration > 150) degradeReason |= 0x04;
+    if (degradeReason != 0 && !degradeMode)
+    {
+        degradeMode = true;
+        notifyDegrade();
+    }
+    if (degradeReason == 0 && degradeMode)
+    {
+        degradeMode = false;
+    }
+}
+
+static uint8_t parseHex2(const char* s)
+{
+    auto hv = [](char c)->uint8_t{ if(c>='0'&&c<='9')return c-'0'; if(c>='a'&&c<='f')return 10+(c-'a'); if(c>='A'&&c<='F')return 10+(c-'A'); return 0; };
+    return (hv(s[0])<<4)|hv(s[1]);
+}
+
+static uint8_t calcChecksum(const char* s, int n)
+{
+    uint32_t sum = 0;
+    for (int i=0;i<n;i++) sum += (uint8_t)s[i];
+    return (uint8_t)(sum & 0xFF);
+}
+
+static bool processLine(const String& line, int* throttle, int* steering)
+{
+    int star = line.lastIndexOf('*');
+    if (star > 0)
+    {
+        String payload = line.substring(0, star);
+        String cs = line.substring(star+1);
+        if (cs.length()>=2)
+        {
+            char cs0 = cs.charAt(0);
+            char cs1 = cs.charAt(1);
+            char tmp[3]; tmp[0]=cs0; tmp[1]=cs1; tmp[2]=0;
+            uint8_t want = parseHex2(tmp);
+            int plen = payload.length();
+            char buf[260]; int blen = plen; if (blen>259) blen=259;
+            payload.toCharArray(buf, blen+1);
+            uint8_t got = calcChecksum(buf, blen);
+            if (want != got) return false;
+            return parseAndValidateCommand(payload, throttle, steering);
+        }
+    }
+    return parseAndValidateCommand(line, throttle, steering);
+}
+
+static void readSerialBuf(HardwareSerial& ser, SerialBuf& sb, bool isRS232)
+{
+    while (ser.available())
+    {
+        int c = ser.read();
+        if (c < 0) break;
+        if (c == '\r') continue;
+        if (c == '\n')
+        {
+            sb.buf[sb.len] = 0;
+            String line = String(sb.buf);
+            if (line.equalsIgnoreCase("TEST"))
+            {
+                bool ok = runUnitTests();
+                Serial.printf("TEST: total=%d passed=%d ok=%d\n", testsTotal, testsPassed, ok?1:0);
+                sb.len = 0; sb.overflow = false; continue;
+            }
+            if (line.equalsIgnoreCase("BENCH"))
+            {
+                bool ok = runBenchmarks();
+                Serial.printf("BENCH_OK=%d\n", ok?1:0);
+                sb.len = 0; sb.overflow = false; continue;
+            }
+            if (line.equalsIgnoreCase("STRESS"))
+            {
+                bool ok = runStress();
+                Serial.printf("STRESS_OK=%d\n", ok?1:0);
+                sb.len = 0; sb.overflow = false; continue;
+            }
+            if (line.equalsIgnoreCase("REGRESS"))
+            {
+                bool ok = runRegression();
+                Serial.printf("REGRESS_OK=%d\n", ok?1:0);
+                sb.len = 0; sb.overflow = false; continue;
+            }
+            int t, s;
+            bool ok = processLine(line, &t, &s);
+            if (ok)
+            {
+                pilot_data.throttle = t;
+                pilot_data.steering = s;
+                if (isRS232) ser.println("ACK");
+                else Serial.println("ACK");
+                sb.frames++;
+            }
+            else
+            {
+                if (isRS232) ser.println("NACK");
+                else Serial.println("NACK");
+                sb.errors++;
+            }
+            sb.len = 0;
+            sb.overflow = false;
+        }
+        else
+        {
+            if (sb.len < sizeof(sb.buf)-1)
+            {
+                sb.buf[sb.len++] = (char)c;
+            }
+            else
+            {
+                sb.len = 0;
+                sb.overflow = true;
+            }
+        }
     }
 }
 
@@ -374,77 +587,100 @@ void updateWaveformData()
 // 显示主界面
 void showMainUI()
 {
-    // 清屏并隐藏光标
-    Serial.print(CLEAR_SCREEN);
+    unsigned long start = millis();
+    if (!uiInitialized)
+    {
+        if (ansiEnabled)
+        {
+            Serial.print(CLEAR_SCREEN);
+            Serial.print(CURSOR_HOME);
+            Serial.print(HIDE_CURSOR);
+        }
+        Serial.println("MUS4 Control System");
+        Serial.println("====================");
+        Serial.println("");
+        Serial.println("");
+        Serial.println("");
+        Serial.println("");
+        Serial.println("");
+        Serial.println("");
+        Serial.println("");
+        Serial.println("");
+        Serial.println("");
+        Serial.println("");
+        uiInitialized = true;
+    }
+    Serial.print(SAVE_CURSOR);
     Serial.print(CURSOR_HOME);
-    Serial.print(HIDE_CURSOR);
-    
-    // 标题
-    Serial.printf(COLOR_CYAN "MUS4 Control System" COLOR_RESET "\n");
-    Serial.println("====================");
-    
-    // 系统状态
-    Serial.printf("Mode: ");
-    switch (car_output.mode)
+    cursorDownN(2);
+    if (lastModePrinted != car_output.mode)
     {
-        case CAR_MODE_MANUAL:
-            Serial.printf(COLOR_GREEN "Manual" COLOR_RESET "\n");
-            break;
-        case CAR_MODE_SEMI_AUTO:
-            Serial.printf(COLOR_YELLOW "Semi-Auto" COLOR_RESET "\n");
-            break;
-        case CAR_MODE_FULL_AUTO:
-            Serial.printf(COLOR_BLUE "Full-Auto" COLOR_RESET "\n");
-            break;
+        Serial.print("Mode: ");
+        if (car_output.mode == CAR_MODE_MANUAL) Serial.println("Manual"); else if (car_output.mode == CAR_MODE_SEMI_AUTO) Serial.println("Semi-Auto"); else Serial.println("Full-Auto");
+        lastModePrinted = car_output.mode;
     }
-    
-    Serial.printf("Park: %s\n", car_output.park ? COLOR_RED "Locked" COLOR_RESET : COLOR_GREEN "Unlocked" COLOR_RESET);
-    
-    // RC 数据
-    Serial.println("\nRC Channels:");
-    Serial.printf("CH1 (Steering): %4d | CH2 (Throttle): %4d\n", pwm_value[CH_STEERING], pwm_value[CH_THROTTLE]);
-    Serial.printf("CH3 (Park): %4d | CH4 (Mode): %4d\n", pwm_value[CH_PARK], pwm_value[CH_MODE]);
-    
-    // 控制输出
-    Serial.println("\nControl Output:");
-    Serial.printf("Throttle: %4d | Steering: %4d\n", car_output.throttle, car_output.steering);
-    
-    // 波形图
-    Serial.println("\nWaveforms:");
-    generateWaveform(throttleWave, WAVE_WIDTH, "Throttle");
-    generateWaveform(steeringWave, WAVE_WIDTH, "Steering");
-    
-    // 传感器数据
-    Serial.println("\nSensors:");
-    
-    // INA219 数据
-    if (ina219Data.valid)
+    if (lastParkPrinted != car_output.park)
     {
-        Serial.printf("INA219[%lu|%lu] Bus:%.2fV Current:%.1fmA Power:%.1fmW\n", 
-            ina219Data.lastReadTime, ina219Data.readCount,
-            ina219Data.busVoltage, ina219Data.current_mA, ina219Data.power_mW);
+        Serial.print("Park: ");
+        if (car_output.park) Serial.println("Locked"); else Serial.println("Unlocked");
+        lastParkPrinted = car_output.park;
     }
-    else
+    Serial.println("");
+    Serial.println("RC Channels:");
+    int ch1 = pwm_value[CH_STEERING], ch2 = pwm_value[CH_THROTTLE], ch3 = pwm_value[CH_PARK], ch4 = pwm_value[CH_MODE];
+    if (ch1 != lastCh1 || ch2 != lastCh2)
     {
-        Serial.println("INA219: No data");
+        Serial.printf("CH1 (Steering): %4d | CH2 (Throttle): %4d\n", ch1, ch2);
+        lastCh1 = ch1; lastCh2 = ch2;
     }
-    
-    // MPU6050 数据
-    if (mpu6050Data.valid)
+    if (ch3 != lastCh3 || ch4 != lastCh4)
     {
-        Serial.printf("MPU6050[%lu|%lu] Accel:X=%.2f Y=%.2f Z=%.2f Gyro:X=%.2f Y=%.2f Z=%.2f T:%.1fC\n",
-            mpu6050Data.lastReadTime, mpu6050Data.readCount,
-            mpu6050Data.accelX, mpu6050Data.accelY, mpu6050Data.accelZ,
-            mpu6050Data.gyroX, mpu6050Data.gyroY, mpu6050Data.gyroZ,
-            mpu6050Data.temperature);
+        Serial.printf("CH3 (Park): %4d | CH4 (Mode): %4d\n", ch3, ch4);
+        lastCh3 = ch3; lastCh4 = ch4;
     }
-    else
+    Serial.println("");
+    Serial.println("Control Output:");
+    if (car_output.throttle != lastOutTh || car_output.steering != lastOutSt)
     {
-        Serial.println("MPU6050: No data");
+        Serial.printf("Throttle: %4d | Steering: %4d\n", car_output.throttle, car_output.steering);
+        lastOutTh = car_output.throttle; lastOutSt = car_output.steering;
     }
-    
-    // 显示光标
-    Serial.print(SHOW_CURSOR);
+    if (!degradeMode)
+    {
+        Serial.println("");
+        Serial.println("Waveforms:");
+        generateWaveform(throttleWave, WAVE_WIDTH, "Throttle");
+        generateWaveform(steeringWave, WAVE_WIDTH, "Steering");
+    }
+    Serial.println("");
+    Serial.println("Sensors:");
+    unsigned long nowt = millis();
+    if (nowt - lastSensorsPrint >= sensorTTL)
+    {
+        if (ina219Data.valid)
+        {
+            String s = String("INA219[") + String(ina219Data.lastReadTime) + String("|") + String(ina219Data.readCount) + String("] Bus:") + String(ina219Data.busVoltage,2) + String("V Current:") + String(ina219Data.current_mA,1) + String("mA Power:") + String(ina219Data.power_mW,1) + String("mW");
+            if (s != lastINAStr) { Serial.println(s); lastINAStr = s; }
+        }
+        else
+        {
+            String s = String("INA219: No data");
+            if (s != lastINAStr) { Serial.println(s); lastINAStr = s; }
+        }
+        if (mpu6050Data.valid)
+        {
+            String s = String("MPU6050[") + String(mpu6050Data.lastReadTime) + String("|") + String(mpu6050Data.readCount) + String("] Accel:X=") + String(mpu6050Data.accelX,2) + String(" Y=") + String(mpu6050Data.accelY,2) + String(" Z=") + String(mpu6050Data.accelZ,2) + String(" Gyro:X=") + String(mpu6050Data.gyroX,2) + String(" Y=") + String(mpu6050Data.gyroY,2) + String(" Z=") + String(mpu6050Data.gyroZ,2) + String(" T:") + String(mpu6050Data.temperature,1) + String("C");
+            if (s != lastMPUStr) { Serial.println(s); lastMPUStr = s; }
+        }
+        else
+        {
+            String s = String("MPU6050: No data");
+            if (s != lastMPUStr) { Serial.println(s); lastMPUStr = s; }
+        }
+        lastSensorsPrint = nowt;
+    }
+    Serial.print(RESTORE_CURSOR);
+    lastUICycleDuration = millis() - start;
 }
 
 void park_change()
@@ -910,11 +1146,12 @@ void setup()
     Serial.println("System Initialized: Park Locked");
 
     delay(1000);
+    uiInitialized = false;
 }
 
 void loop()
 {
-    // 传感器数据更新（限制频率）
+    unsigned long now = millis();
     if (millis() - lastSensorUpdate >= SENSOR_UPDATE_INTERVAL)
     {
         read_ina219();
@@ -922,38 +1159,8 @@ void loop()
         lastSensorUpdate = millis();
     }
 
-    // Serial represents the Type-C USB port
-    if (Serial.available())
-    {
-        String CMD = Serial.readStringUntil('\n');
-        int throttle, steering;
-        if (parseAndValidateCommand(CMD, &throttle, &steering))
-        {
-            pilot_data.throttle = throttle;
-            pilot_data.steering = steering;
-            Serial.print("CMD-T:");
-            Serial.print(pilot_data.throttle);
-            Serial.print(" CMD-S:");
-            Serial.println(pilot_data.steering);
-        }
-    }
-
-    // Serial1 represents the RS232 port
-    if (Serial1.available())
-    {
-        String CMD = Serial1.readStringUntil('\n');
-        Serial.println(CMD);
-        int throttle, steering;
-        if (parseAndValidateCommand(CMD, &throttle, &steering))
-        {
-            pilot_data.throttle = throttle;
-            pilot_data.steering = steering;
-            Serial.print("CMD-T:");
-            Serial.print(pilot_data.throttle);
-            Serial.print(" CMD-S:");
-            Serial.println(pilot_data.steering);
-        }
-    }
+    readSerialBuf(Serial, serial0Buf, false);
+    readSerialBuf(Serial1, serial1Buf, true);
 
     rc_data.steering = pwm_value[CH_STEERING];
     rc_data.throttle = pwm_value[CH_THROTTLE];
@@ -1031,17 +1238,14 @@ void loop()
         car_output.steering = map(rc_data.steering, RC_STEERING_MIN, RC_STEERING_MAX, -100, 100);
     }
 
-    // 更新波形图数据
-    updateWaveformData();
+    if (!degradeMode) updateWaveformData();
 
-    // UI更新（限制频率）
-    if (millis() - lastUIUpdate >= UI_UPDATE_INTERVAL)
+    if (millis() - lastUIUpdate >= uiIntervalCurrent)
     {
         showMainUI();
         lastUIUpdate = millis();
     }
 
-    // RC数据更新（限制频率）- 保持原有功能
     if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
     {
         Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
@@ -1075,4 +1279,11 @@ void loop()
     counter += 1;
 
     scanLEDToggle();
+    if (now - lastPerfEval >= 1000)
+    {
+        evalDegrade();
+        if (lastUICycleDuration > 150) uiIntervalCurrent = min(uiIntervalCurrent + 50, uiIntervalMax);
+        else uiIntervalCurrent = (uiIntervalCurrent > uiIntervalMin ? uiIntervalCurrent - 20 : uiIntervalMin);
+        lastPerfEval = now;
+    }
 }

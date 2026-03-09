@@ -12,6 +12,7 @@ import yaml
 import shutil
 import threading
 import itertools
+import serial
 
 # 配置日志
 class CustomFormatter(logging.Formatter):
@@ -220,10 +221,41 @@ class ArduinoAutomation:
             sys.exit(12)
         return True
 
+    def auto_reset(self):
+        """
+        自动复位单片机：通过串口 DTR 信号模拟复位过程
+        对于 ESP32/ESP8266 等开发板，这可以模拟自动重启
+        """
+        self.logger.info(f"正在自动复位单片机: {self.port}")
+        
+        try:
+            # 打开串口（这会自动断言 DTR 和 RTS 信号）
+            ser = serial.Serial(
+                port=self.port,
+                baudrate=1200,  # 使用低波特率触发复位
+                timeout=1
+            )
+            
+            # 关闭串口以释放 DTR/RTS 信号
+            ser.close()
+            
+            # 等待几毫秒让复位完成
+            time.sleep(0.5)
+            
+            self.logger.debug("自动复位完成")
+            return True
+        except Exception as e:
+            self.logger.warning(f"自动复位失败: {e}")
+            self.logger.warning("可能需要手动复位单片机")
+            return False
+
     def monitor(self):
         if not self.port:
             self.logger.error("未指定串口")
             sys.exit(13)
+            
+        # 打开监控前先尝试自动复位
+        self.auto_reset()
             
         self.logger.info(f"打开串口监控: {self.port} @ {self.baud}")
         self.logger.info("按 Ctrl+C 退出监控")

@@ -342,7 +342,8 @@ class ArduinoAutomation:
             self.arduino_cli, 
             "monitor", 
             "-p", self.port, 
-            "--config", f"baudrate={self.baud}"
+            "--config", f"baudrate={self.baud}",
+            "--quiet"
         ]
         
         # 清屏以避免 TUI 重叠

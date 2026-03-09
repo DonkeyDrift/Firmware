@@ -1,6 +1,6 @@
 ---
-name: "arduino-cli"
-description: "Automates Arduino/ESP32 project compilation, upload, and monitoring. Invoke when user wants to build, upload, or monitor Arduino/ESP32 projects."
+name: arduino-cli
+description: Automates Arduino/ESP32 project compilation, upload, and monitoring. Invoke when user wants to build, upload, or monitor Arduino/ESP32 projects.
 ---
 
 # Arduino CLI Automation
@@ -28,15 +28,15 @@ python c:\Dev\DDC\mus4\arduino-cli.py -cu
 
 **Compile, Upload, and Monitor (All-in-one):**
 ```bash
-python c:\Dev\DDC\mus4\arduino-cli.py -cup
+python c:\Dev\DDC\mus4\arduino-cli.py -cus
 ```
 
 ### Options
 
 - `-c, --compile`: Compile the sketch
 - `-u, --upload`: Upload the firmware
-- `-p, --monitor`: Open serial monitor
-- `-P, --port <PORT>`: Specify the serial port (e.g., COM3, /dev/ttyUSB0)
+- `-s, --serial`: Open serial monitor
+- `-p, --port <PORT>`: Specify the serial port (e.g., COM3, /dev/ttyUSB0)
 - `-b, --baud <BAUD>`: Specify baud rate (default: 115200)
 - `--fqbn <FQBN>`: Specify Board FQBN (default: esp32:esp32:esp32)
 - `--sketch <PATH>`: Specify sketch path (if not defined in config)

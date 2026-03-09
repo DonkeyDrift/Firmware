@@ -26,6 +26,11 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_INA219.h>
+#include "SharedTypes.h"
+#include "TUI.h"
+#include "test_runner.h"
+
+TUI tui(Serial);
 
 #define ENABLE_GAMEPAD_MODE
 #ifdef ENABLE_GAMEPAD_MODE
@@ -187,7 +192,8 @@ static bool runBenchmarks()
     unsigned long durStart = millis();
     while (millis() - durStart < 200)
     {
-        showMainUI();
+        tui.forceRedraw();
+        tui.render();
         loops++;
     }
     unsigned long t1 = millis() - ts;
@@ -244,19 +250,7 @@ int steeringWave[WAVE_WIDTH] = {0};
 int waveIndex = 0;
 
 // 传感器数据存储
-struct SensorData {
-    float busVoltage;
-    float shuntVoltage;
-    float loadVoltage;
-    float current_mA;
-    float power_mW;
-    float accelX, accelY, accelZ;
-    float gyroX, gyroY, gyroZ;
-    float temperature;
-    unsigned long lastReadTime;
-    unsigned long readCount;
-    bool valid;
-} ina219Data = {0}, mpu6050Data = {0};
+SensorData ina219Data = {0}, mpu6050Data = {0};
 enum EmergencyStopState
 {
     EST_IDLE,
@@ -359,8 +353,8 @@ static uint8_t calcChecksum(const char* s, int n)
 static bool processLine(const String& line, int* throttle, int* steering, int* seq)
 {
     // 如果是命令
-    if (line.equalsIgnoreCase("NOANSI")) { ansiEnabled = false; uiInitialized = false; return false; }
-    if (line.equalsIgnoreCase("ANSI")) { ansiEnabled = true; uiInitialized = false; return false; }
+    if (line.equalsIgnoreCase("NOANSI")) { ansiEnabled = false; tui.setAnsiEnabled(false); tui.forceRedraw(); return false; }
+    if (line.equalsIgnoreCase("ANSI")) { ansiEnabled = true; tui.setAnsiEnabled(true); tui.forceRedraw(); return false; }
 
     *seq = -1;
     int star = line.lastIndexOf('*');
@@ -419,6 +413,11 @@ static void readSerialBuf(HardwareSerial& ser, SerialBuf& sb, bool isRS232)
             {
                 bool ok = runUnitTests();
                 Serial.printf("TEST: total=%d passed=%d ok=%d\n", testsTotal, testsPassed, ok?1:0);
+                sb.len = 0; sb.overflow = false; continue;
+            }
+            if (line.equalsIgnoreCase("TEST_TUI"))
+            {
+                TestRegistry::runAll();
                 sb.len = 0; sb.overflow = false; continue;
             }
             if (line.equalsIgnoreCase("BENCH"))
@@ -587,276 +586,9 @@ int adj(int v, int s) // v: value, s: step
     return v;
 }
 
-// 生成波形图（增量脏矩形优化）
-void generateWaveform(int data[], int lastData[], int length, const char* title, bool force)
-{
-    if (!ansiEnabled) return; // 纯文本模式不绘制波形
+// Old TUI functions removed. Using TUI class.
+// See TUI.h/cpp for implementation.
 
-    Serial.printf("%s:\n", title);
-    
-    // 顶部边框 (只在强制重绘时画)
-    if (force) {
-        Serial.print("  ");
-        for (int i = 0; i < length; i++) Serial.print("─");
-        Serial.println();
-    } else {
-        cursorDownN(1);
-    }
-    
-    // 波形行
-    for (int y = WAVE_HEIGHT; y >= 0; y--)
-    {
-        // 检查该行是否有变化 (简化策略：只要有数据变化就重绘整行，避免光标跳跃开销过大)
-        // 更精细的策略是只移动光标到变化的列，但对于串口来说，大量光标移动指令可能比直接打印字符更慢
-        // 这里采用行级脏检测
-        
-        bool rowDirty = force;
-        if (!force) {
-            for (int x = 0; x < length; x++) {
-                int val = data[x];
-                int lastVal = lastData[x];
-                int n = map(val, -100, 100, 0, WAVE_HEIGHT);
-                int lastN = map(lastVal, -100, 100, 0, WAVE_HEIGHT);
-                if ((n == y) != (lastN == y)) {
-                    rowDirty = true;
-                    break;
-                }
-            }
-        }
-
-        if (rowDirty) {
-            Serial.print("\r  "); // 回到行首
-            for (int x = 0; x < length; x++)
-            {
-                int value = data[x];
-                int normalized = map(value, -100, 100, 0, WAVE_HEIGHT);
-                
-                if (normalized == y)
-                    Serial.print("█");
-                else if (y == WAVE_HEIGHT / 2)
-                    Serial.print("─");
-                else
-                    Serial.print(" ");
-            }
-            // 清除行尾可能的残留（如果之前行更长）- 这里定长不需要
-            Serial.println();
-        } else {
-            cursorDownN(1); // 跳过未变行
-        }
-    }
-    
-    // 底部边框
-    if (force) {
-        Serial.print("  ");
-        for (int i = 0; i < length; i++) Serial.print("─");
-        Serial.println();
-    } else {
-        cursorDownN(1);
-    }
-}
-
-// 更新波形图数据（保存历史）
-void updateWaveformData()
-{
-    // 保存当前帧为历史，用于下一帧对比
-    for (int i=0; i<WAVE_WIDTH; i++) {
-        lastWaveTh[i] = throttleWave[i];
-        lastWaveSt[i] = steeringWave[i];
-    }
-
-    // 移动数据
-    for (int i = 1; i < WAVE_WIDTH; i++)
-    {
-        throttleWave[i-1] = throttleWave[i];
-        steeringWave[i-1] = steeringWave[i];
-    }
-    
-    // 添加新数据
-    throttleWave[WAVE_WIDTH-1] = car_output.throttle;
-    steeringWave[WAVE_WIDTH-1] = car_output.steering;
-}
-
-// 显示主界面
-void showMainUI()
-{
-    unsigned long start = millis();
-    
-    // ANSI 检测逻辑：首次运行时尝试发送查询光标位置，若无响应则认为不支持
-    // 这里简化为：默认支持，如果用户发送 'NOANSI' 命令则关闭
-    // 或者每隔一段时间强制全屏刷新一次以纠正错乱
-    
-    if (!uiInitialized)
-    {
-        if (ansiEnabled)
-        {
-            Serial.print(CLEAR_SCREEN);
-            Serial.print(CURSOR_HOME);
-            Serial.print(HIDE_CURSOR);
-        }
-        Serial.println("MUS4 Control System");
-        Serial.println("====================");
-        Serial.println(""); // Mode
-        Serial.println(""); // Park
-        Serial.println(""); // RC Header
-        Serial.println(""); // RC Ch1/2
-        Serial.println(""); // RC Ch3/4
-        Serial.println(""); // Output Header
-        Serial.println(""); // Output
-        Serial.println(""); // Wave Header
-        if (ansiEnabled) {
-            // Waveform Space (Header + TopBorder + Height + BottomBorder) = 1 + 1 + H + 1
-            // Current cursor is at Wave Header line
-            // Need to reserve space for 2 waveforms
-            // Wave 1: 1(Title)+1(Top)+H+1(Bot) = 3+H lines
-            // Wave 2: 1(Title)+1(Top)+H+1(Bot) = 3+H lines
-            for(int i=0; i < (3+WAVE_HEIGHT)*2; i++) Serial.println("");
-        }
-        Serial.println(""); // Sensors Header
-        Serial.println(""); // INA
-        Serial.println(""); // MPU
-        uiInitialized = true;
-        forceRedraw = true;
-    }
-    
-    if (ansiEnabled) {
-        Serial.print(SAVE_CURSOR);
-        Serial.print(CURSOR_HOME);
-        cursorDownN(2);
-    } else {
-        // Pure Text Mode: Print everything linearly
-        Serial.println("\n--- STATUS ---");
-    }
-
-    // Mode
-    if (ansiEnabled) {
-        if (lastModePrinted != car_output.mode || forceRedraw) {
-            Serial.print("Mode: ");
-            if (car_output.mode == CAR_MODE_MANUAL) Serial.print("Manual   "); 
-            else if (car_output.mode == CAR_MODE_SEMI_AUTO) Serial.print("Semi-Auto"); 
-            else Serial.print("Full-Auto");
-            Serial.println(""); // Clear rest of line logic needed if getting shorter
-            lastModePrinted = car_output.mode;
-        } else {
-            cursorDownN(1);
-        }
-    } else {
-        Serial.print("Mode: ");
-        if (car_output.mode == CAR_MODE_MANUAL) Serial.println("Manual"); 
-        else if (car_output.mode == CAR_MODE_SEMI_AUTO) Serial.println("Semi-Auto"); 
-        else Serial.println("Full-Auto");
-    }
-
-    // Park
-    if (ansiEnabled) {
-        if (lastParkPrinted != car_output.park || forceRedraw) {
-            Serial.print("Park: ");
-            if (car_output.park) Serial.print("Locked  "); else Serial.print("Unlocked");
-            Serial.println("");
-            lastParkPrinted = car_output.park;
-        } else {
-            cursorDownN(1);
-        }
-    } else {
-        Serial.print("Park: ");
-        if (car_output.park) Serial.println("Locked"); else Serial.println("Unlocked");
-    }
-
-    if (ansiEnabled) cursorDownN(1); // Skip RC Header
-
-    // RC Values
-    int ch1 = pwm_value[CH_STEERING], ch2 = pwm_value[CH_THROTTLE], ch3 = pwm_value[CH_PARK], ch4 = pwm_value[CH_MODE];
-    if (ansiEnabled) {
-        if (ch1 != lastCh1 || ch2 != lastCh2 || forceRedraw) {
-            Serial.printf("CH1 (Steering): %4d | CH2 (Throttle): %4d\n", ch1, ch2);
-            lastCh1 = ch1; lastCh2 = ch2;
-        } else {
-            cursorDownN(1);
-        }
-        if (ch3 != lastCh3 || ch4 != lastCh4 || forceRedraw) {
-            Serial.printf("CH3 (Park): %4d | CH4 (Mode): %4d\n", ch3, ch4);
-            lastCh3 = ch3; lastCh4 = ch4;
-        } else {
-            cursorDownN(1);
-        }
-    } else {
-        Serial.printf("RC: S=%d T=%d P=%d M=%d\n", ch1, ch2, ch3, ch4);
-    }
-
-    if (ansiEnabled) cursorDownN(1); // Skip Output Header
-
-    // Output
-    if (ansiEnabled) {
-        if (car_output.throttle != lastOutTh || car_output.steering != lastOutSt || forceRedraw) {
-            Serial.printf("Throttle: %4d | Steering: %4d\n", car_output.throttle, car_output.steering);
-            lastOutTh = car_output.throttle; lastOutSt = car_output.steering;
-        } else {
-            cursorDownN(1);
-        }
-    } else {
-        Serial.printf("OUT: T=%d S=%d\n", car_output.throttle, car_output.steering);
-    }
-
-    // Waveforms
-    if (!degradeMode && ansiEnabled)
-    {
-        unsigned long waveNow = millis();
-        bool drawWave = (waveNow - lastWaveUpdate >= WAVE_UPDATE_INTERVAL) || forceRedraw;
-        
-        if (drawWave) {
-             cursorDownN(1); // Skip Wave Header
-             generateWaveform(throttleWave, lastWaveTh, WAVE_WIDTH, "Throttle", forceRedraw);
-             generateWaveform(steeringWave, lastWaveSt, WAVE_WIDTH, "Steering", forceRedraw);
-             lastWaveUpdate = waveNow;
-        } else {
-             // Skip all wave lines: (Header(1) + Body(3+H) * 2) - Header(1) = (3+H)*2
-             cursorDownN(1 + (3+WAVE_HEIGHT)*2);
-        }
-    } else if (ansiEnabled) {
-         // Skip wave area
-         cursorDownN(1 + (3+WAVE_HEIGHT)*2);
-    }
-
-    if (ansiEnabled) cursorDownN(1); // Skip Sensors Header
-
-    // Sensors
-    unsigned long nowt = millis();
-    if (nowt - lastSensorsPrint >= sensorTTL || forceRedraw)
-    {
-        if (ansiEnabled) {
-            // Clear line before printing new data to avoid artifacts
-             Serial.print("\r\033[K"); 
-        }
-        if (ina219Data.valid)
-        {
-            String s = String("INA219[") + String(ina219Data.lastReadTime) + String("|") + String(ina219Data.readCount) + String("] Bus:") + String(ina219Data.busVoltage,2) + String("V Current:") + String(ina219Data.current_mA,1) + String("mA Power:") + String(ina219Data.power_mW,1) + String("mW");
-            Serial.println(s);
-        }
-        else
-        {
-            Serial.println("INA219: No data");
-        }
-        
-        if (ansiEnabled) {
-             Serial.print("\r\033[K");
-        }
-        if (mpu6050Data.valid)
-        {
-            String s = String("MPU6050[") + String(mpu6050Data.lastReadTime) + String("|") + String(mpu6050Data.readCount) + String("] Accel:X=") + String(mpu6050Data.accelX,2) + String(" Y=") + String(mpu6050Data.accelY,2) + String(" Z=") + String(mpu6050Data.accelZ,2) + String(" Gyro:X=") + String(mpu6050Data.gyroX,2) + String(" Y=") + String(mpu6050Data.gyroY,2) + String(" Z=") + String(mpu6050Data.gyroZ,2) + String(" T:") + String(mpu6050Data.temperature,1) + String("C");
-            Serial.println(s);
-        }
-        else
-        {
-            Serial.println("MPU6050: No data");
-        }
-        lastSensorsPrint = nowt;
-    }
-
-    if (ansiEnabled) {
-        Serial.print(RESTORE_CURSOR);
-    }
-    forceRedraw = false;
-    lastUICycleDuration = millis() - start;
-}
 
 void park_change()
 {
@@ -1414,13 +1146,31 @@ void loop()
         car_output.steering = map(rc_data.steering, RC_STEERING_MIN, RC_STEERING_MAX, -100, 100);
     }
 
-    if (!degradeMode) updateWaveformData();
-
-    if (millis() - lastUIUpdate >= uiIntervalCurrent)
-    {
-        showMainUI();
-        lastUIUpdate = millis();
+    // Update TUI
+    tui.setRC(pwm_value[0], pwm_value[1], pwm_value[2], pwm_value[3]);
+    tui.setOutput(car_output.throttle, car_output.steering, car_output.mode, car_output.park);
+    
+    // Merge Sensor Data
+    SensorData combined = ina219Data;
+    if (mpu6050Data.valid) {
+        combined.accelX = mpu6050Data.accelX;
+        combined.accelY = mpu6050Data.accelY;
+        combined.accelZ = mpu6050Data.accelZ;
+        combined.gyroX = mpu6050Data.gyroX;
+        combined.gyroY = mpu6050Data.gyroY;
+        combined.gyroZ = mpu6050Data.gyroZ;
+        combined.temperature = mpu6050Data.temperature;
     }
+    tui.setSensors(combined);
+    
+    // Set refresh rate dynamically based on load (from old logic)
+    tui.setRefreshRate(uiIntervalCurrent);
+    tui.setAnsiEnabled(ansiEnabled);
+    if (degradeMode) tui.setWaveformEnabled(false);
+    else tui.setWaveformEnabled(true);
+    
+    tui.update(millis());
+    lastUICycleDuration = tui.getLastRenderDuration();
 
     if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
     {

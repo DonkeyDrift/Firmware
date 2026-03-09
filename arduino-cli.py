@@ -345,6 +345,12 @@ class ArduinoAutomation:
             "--config", f"baudrate={self.baud}"
         ]
         
+        # 清屏以避免 TUI 重叠
+        if platform.system() == "Windows":
+            os.system("cls")
+        else:
+            os.system("clear")
+        
         # 监控通常是交互式的，这里直接使用 subprocess.call 连接到 stdio
         # 或者如果是自动化测试模式，可以使用 timeout
         monitor_error = None

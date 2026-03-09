@@ -195,17 +195,6 @@ static bool runBenchmarks()
     Serial.printf("BENCH: loops=%lu duration=%lums\n", score, t1);
     return score > 1;
 }
-static bool runStress()
-{
-    uint32_t errs0 = serial0Buf.errors;
-    for (int i=0;i<50;i++)
-    {
-        int tt,ss,seq;
-        processLine(String("999:999"), &tt,&ss,&seq);
-    }
-    Serial.printf("STRESS: errors_delta=%lu\n", serial0Buf.errors-errs0);
-    return true;
-}
 struct struct_message
 {
     int throttle; // 油门值
@@ -227,6 +216,18 @@ const int SERVO_MID_V = 1250;  // 需要实际测试
 const int SERVO_RANGE_V = 440; // Pulse range for Motor Throttle
 const int MOTOR_OFFSET_V = 1;
 const int SERVO_OFFSET_V = -1;
+
+static bool runStress()
+{
+    uint32_t errs0 = serial0Buf.errors;
+    for (int i=0;i<50;i++)
+    {
+        int tt,ss,seq;
+        processLine(String("999:999"), &tt,&ss,&seq);
+    }
+    Serial.printf("STRESS: errors_delta=%lu\n", serial0Buf.errors-errs0);
+    return true;
+}
 
 static bool runRegression()
 {
@@ -511,15 +512,6 @@ int User_throttle = 0;  // RC遥控器发来的用户油门值
 int User_steering = 0;  // RC遥控器发来的用户转向值
 int Pilot_throttle = 0; // 上位机发来的油门值
 int Pilot_steering = 0; // 上位机发来的转向值
-
-const int PWM_MIN_V = 819;     // 'minimum' pulse length count (out of 4096)
-const int PWM_MAX_V = 1638;    // 'maximum' pulse length count (out of 4096)
-const int MOTOR_MID_V = 1229;  // 需要实际测试
-const int MOTOR_RANGE_V = 390; // Pulse range for Motor Throttle
-const int SERVO_MID_V = 1250;  // 需要实际测试
-const int SERVO_RANGE_V = 440; // Pulse range for Motor Throttle
-const int MOTOR_OFFSET_V = 1;
-const int SERVO_OFFSET_V = -1;
 
 // RC Receiver Calibration Values (PWM pulse width in microseconds)
 const int RC_THROTTLE_MIN = 888;   // Throttle minimum pulse

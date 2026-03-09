@@ -159,6 +159,21 @@ class ArduinoAutomation:
         available = interfaces.get(toolchain, ["custom_command"])
         self.logger.info(f"复位接口识别: toolchain={toolchain or 'unknown'} methods={','.join(available)}")
 
+    def detach_console_handlers(self):
+        root_logger = logging.getLogger()
+        removed = []
+        for handler in list(root_logger.handlers):
+            if isinstance(handler, logging.StreamHandler) and handler.stream in (sys.stdout, sys.stderr):
+                removed.append(handler)
+                root_logger.removeHandler(handler)
+        return removed
+
+    def restore_console_handlers(self, handlers):
+        root_logger = logging.getLogger()
+        for handler in handlers:
+            if handler not in root_logger.handlers:
+                root_logger.addHandler(handler)
+
     def run_command(self, cmd, timeout=None, message="Processing... "):
         self.logger.debug(f"执行命令: {' '.join(cmd)}")
         start_time = time.time()
@@ -319,6 +334,7 @@ class ArduinoAutomation:
         # 打开监控前先尝试自动复位
         self.auto_reset()
             
+        console_handlers = self.detach_console_handlers()
         self.logger.info(f"打开串口监控: {self.port} @ {self.baud}")
         self.logger.info("按 Ctrl+C 退出监控")
         
@@ -331,12 +347,20 @@ class ArduinoAutomation:
         
         # 监控通常是交互式的，这里直接使用 subprocess.call 连接到 stdio
         # 或者如果是自动化测试模式，可以使用 timeout
+        monitor_error = None
+        monitor_stopped = False
         try:
             subprocess.run(cmd)
         except KeyboardInterrupt:
-            self.logger.info("用户停止监控")
+            monitor_stopped = True
         except Exception as e:
-            self.logger.error(f"监控异常: {e}")
+            monitor_error = e
+        finally:
+            self.restore_console_handlers(console_handlers)
+        if monitor_stopped:
+            self.logger.info("用户停止监控")
+        if monitor_error is not None:
+            self.logger.error(f"监控异常: {monitor_error}")
 
     def run(self):
         total_start = time.time()

@@ -17,6 +17,7 @@ public:
     void setWaveformEnabled(bool enabled);
     void forceRedraw();
     unsigned long getLastRenderDuration() const { return _lastRenderDuration; }
+    void log(const char* format, ...);
 
 private:
     Print& _out;
@@ -27,6 +28,8 @@ private:
     bool _ansiEnabled;
     bool _waveformEnabled;
     bool _initialized;
+    char _logBuffer[64];
+    unsigned long _logTime;
 
     // Current State
     struct State {
@@ -49,6 +52,7 @@ private:
     void drawOutput();
     void drawWaveforms();
     void drawSensors();
+    void drawLog();
     void cursorTo(int row, int col);
     void updateWaveformData();
 };

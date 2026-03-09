@@ -529,7 +529,7 @@ void emergencyStop()
     if (car_output.park == 0 && emergencyStopState == EST_DONE)
     {
         emergencyStopState = EST_IDLE;
-        Serial.println("Emergency Stop FSM reset: Park unlocked");
+        tui.log("Emergency Stop FSM reset: Park unlocked");
         return;
     }
 
@@ -539,7 +539,7 @@ void emergencyStop()
     case EST_IDLE:
         if (car_output.throttle > 0)
         {
-            Serial.println("Start Emergency stop");
+            tui.log("Start Emergency stop");
             car_output.throttle = 15;
             emergencyStopState = EST_READY;
             emergencyStopStartTime = millis();
@@ -557,7 +557,7 @@ void emergencyStop()
             car_output.throttle = -100;
             emergencyStopState = EST_BRAKING;
             emergencyStopStartTime = millis();
-            Serial.println("Emergency STOP ready");
+            tui.log("Emergency STOP ready");
         }
         break;
 
@@ -565,7 +565,7 @@ void emergencyStop()
         if (millis() - emergencyStopStartTime >= EMERGENCY_STOP_BRAKE_DURATION)
         {
             emergencyStopState = EST_DONE;
-            Serial.println("Emergency STOP done");
+            tui.log("Emergency STOP done");
         }
         break;
 
@@ -620,7 +620,7 @@ void park_change()
                         rc_data.park = false; // Unlock
                         emergencyStopState = EST_IDLE; // Reset Emergency Stop FSM
                         parkActionTaken = true;
-                        Serial.println("System Unlocked: Park Mode Exited");
+                        tui.log("System Unlocked: Park Mode Exited");
                     }
                 }
                 else
@@ -630,7 +630,7 @@ void park_change()
                     {
                         rc_data.park = true; // Lock
                         parkActionTaken = true;
-                        Serial.println("System Locked: Park Mode Entered");
+                        tui.log("System Locked: Park Mode Entered");
                     }
                 }
             }
@@ -704,7 +704,7 @@ bool I2CRead(uint8_t Address, uint8_t Register, uint8_t Nbytes, uint8_t *Data)
     if (Wire.endTransmission())
     {
         ret = false;
-        Serial.println("I2C Read Errro");
+        // Serial.println("I2C Read Errro"); // Suppress
     }
 
     // Read Nbytes
@@ -742,7 +742,7 @@ void I2CWriteValue(uint8_t Address, uint8_t Register, uint16_t Data)
     Wire.write(pData[0]);
     if (Wire.endTransmission())
     {
-        Serial.println("I2C Write Error");
+        // Serial.println("I2C Write Error"); // Suppress
     }
 }
 

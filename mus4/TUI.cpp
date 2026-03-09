@@ -28,6 +28,9 @@ TUI::TUI(Print& out) : _out(out) {
     _lastWaveUpdate = 0;
     _lastRenderDuration = 0;
     
+    memset(_logBuffer, 0, sizeof(_logBuffer));
+    _logTime = 0;
+
     // Initialize state
     memset(&_state, 0, sizeof(_state));
     memset(&_lastState, 0, sizeof(_lastState));
@@ -77,6 +80,15 @@ void TUI::forceRedraw() {
     _initialized = false; // Trigger full clear
 }
 
+void TUI::log(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    vsnprintf(_logBuffer, sizeof(_logBuffer), format, args);
+    va_end(args);
+    _logTime = millis();
+    _forceRedraw = true; // Ensure log is drawn immediately
+}
+
 void TUI::cursorTo(int row, int col) {
     if (_ansiEnabled) {
         _out.printf("\033[%d;%dH", row, col);
@@ -106,7 +118,7 @@ void TUI::render() {
     }
 
     if (_ansiEnabled) {
-        _out.print("\033[s"); // Save cursor position (though we use absolute positioning mostly)
+        _out.print("\033[?25l"); // Ensure cursor hidden
     }
 
     drawMode();
@@ -115,11 +127,8 @@ void TUI::render() {
     drawOutput();
     if (_waveformEnabled) drawWaveforms();
     drawSensors();
+    drawLog();
 
-    if (_ansiEnabled) {
-        _out.print("\033[u"); // Restore cursor
-    }
-    
     // Save state for next diff
     _lastState = _state;
     _forceRedraw = false;
@@ -287,6 +296,23 @@ void TUI::drawWaveforms() {
     }
 }
 
+void TUI::drawLog() {
+    int row = ROW_WAVE_START + 1 + WAVE_HEIGHT + 1 + 1 + WAVE_HEIGHT + 4;
+    cursorTo(row, 1);
+    
+    // Clear line
+    if (_ansiEnabled) _out.print("\033[K");
+    
+    if (strlen(_logBuffer) > 0) {
+        if (_ansiEnabled) _out.print(ANSI_YELLOW);
+        _out.print("LOG: ");
+        _out.print(_logBuffer);
+        if (_ansiEnabled) _out.print(ANSI_RESET);
+    }
+    // Ensure we are below log for any external prints
+    if (_ansiEnabled) _out.printf("\033[%d;1H", row + 1);
+}
+
 void TUI::drawSensors() {
     // Always update sensors? Or check dirty?
     // Sensors update slower usually
@@ -295,22 +321,24 @@ void TUI::drawSensors() {
     cursorTo(row, 1);
     
     if (_state.sensors.valid) {
-        _out.printf("INA: %5.2fV %5.1fmA %5.1fmW  ", 
+        _out.printf("INA: %5.2fV %5.1fmA %5.1fmW", 
             _state.sensors.busVoltage, 
             _state.sensors.current_mA, 
             _state.sensors.power_mW);
     } else {
-        _out.print("INA: N/A                    ");
+        _out.print("INA: N/A");
     }
+    // Clear rest of line
+    if (_ansiEnabled) _out.print("\033[K");
     
     cursorTo(row+1, 1);
-    if (_state.sensors.valid) { // MPU shares valid flag in logic for now? No, check separate
-        // Assuming passed data is combined or we check fields. 
-        // In setSensors we copy SensorData.
+    if (_state.sensors.valid) { 
         _out.printf("MPU: A[%.1f,%.1f,%.1f] G[%.1f,%.1f,%.1f]",
             _state.sensors.accelX, _state.sensors.accelY, _state.sensors.accelZ,
             _state.sensors.gyroX, _state.sensors.gyroY, _state.sensors.gyroZ);
     } else {
-        _out.print("MPU: N/A                                  ");
+        _out.print("MPU: N/A");
     }
+    // Clear rest of line
+    if (_ansiEnabled) _out.print("\033[K");
 }

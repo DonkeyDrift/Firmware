@@ -1047,11 +1047,11 @@ void setup()
     // 替换原有直接设置颜色的方式
     setLEDColor(CRGB::Blue); // 使用新函数设置初始颜色
 
-    // Initialize Park State (Default Locked)
-    rc_data.park = true; 
-    car_output.park = true;
+    // Initialize Park State (Default Unlocked)
+    rc_data.park = false; 
+    car_output.park = false;
     emergencyStopState = EST_IDLE;
-    Serial.println("System Initialized: Park Locked");
+    tui.log("System Unlocked: Park Mode Exited");
 
     delay(1000);
     uiInitialized = false;

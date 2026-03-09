@@ -10,3 +10,11 @@ default:
 logging:
   file: "mus4/ArduinoCLI.log"
   level: "INFO"  # DEBUG, INFO, WARN, ERROR
+
+reset:
+  enable: true
+  delay_ms: 200
+  method: "dtr_rts"
+  boot: "run"
+  toolchain: "arduino-cli"
+  command: ""

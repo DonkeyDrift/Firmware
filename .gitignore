@@ -33,3 +33,4 @@ node_modules/
 *.log
 
 mus4/ArduinoCLI.log
+__pycache__/arduino-cli.cpython-313.pyc

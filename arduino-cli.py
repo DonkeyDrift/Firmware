@@ -13,6 +13,7 @@ import shutil
 import threading
 import itertools
 import serial
+import shlex
 
 # 配置日志
 class CustomFormatter(logging.Formatter):
@@ -103,6 +104,14 @@ class ArduinoAutomation:
         self.baud = args.baud or self.config.get('default', {}).get('baudrate', 115200)
         self.sketch = args.sketch or self.config.get('default', {}).get('sketch_path', '')
         
+        reset_cfg = self.config.get('reset', {})
+        self.reset_enabled = args.auto_reset if args.auto_reset is not None else reset_cfg.get('enable', True)
+        self.reset_delay_ms = args.reset_delay or reset_cfg.get('delay_ms', 200)
+        self.reset_method = (args.reset or reset_cfg.get('method') or 'dtr_rts').lower()
+        self.reset_boot = (args.reset_boot or reset_cfg.get('boot') or 'run').lower()
+        self.reset_toolchain = (args.reset_toolchain or reset_cfg.get('toolchain') or '').lower()
+        self.reset_command = args.reset_command or reset_cfg.get('command', '')
+
         # 转换 sketch 路径为绝对路径
         if not os.path.isabs(self.sketch):
             base_dir = os.path.dirname(os.path.abspath(config_path))
@@ -111,6 +120,7 @@ class ArduinoAutomation:
         # 检测操作系统
         self.os_type = platform.system()
         self.validate_environment()
+        self.log_reset_interfaces()
 
     def load_config(self, path):
         if not os.path.exists(path):
@@ -135,6 +145,19 @@ class ArduinoAutomation:
         if not os.path.exists(self.sketch):
             self.logger.error(f"找不到 Sketch 文件: {self.sketch}")
             sys.exit(3)
+
+    def log_reset_interfaces(self):
+        toolchain = self.reset_toolchain or ("arduino-cli" if self.arduino_cli else "")
+        interfaces = {
+            "arduino-cli": ["dtr_rts", "1200bps"],
+            "openocd": ["monitor reset run", "monitor reset halt"],
+            "jlink": ["JLinkReset", "reset", "r"],
+            "st-link": ["st-flash reset"],
+            "pyocd": ["pyocd reset"],
+            "cmsis": ["NVIC_SystemReset", "AIRCR"]
+        }
+        available = interfaces.get(toolchain, ["custom_command"])
+        self.logger.info(f"复位接口识别: toolchain={toolchain or 'unknown'} methods={','.join(available)}")
 
     def run_command(self, cmd, timeout=None, message="Processing... "):
         self.logger.debug(f"执行命令: {' '.join(cmd)}")
@@ -221,28 +244,67 @@ class ArduinoAutomation:
             sys.exit(12)
         return True
 
+    def dtr_rts_reset(self, boot_mode):
+        ser = serial.Serial(
+            port=self.port,
+            baudrate=self.baud,
+            timeout=1
+        )
+        ser.dtr = False
+        ser.rts = False
+        time.sleep(0.05)
+        if boot_mode == "flash":
+            ser.dtr = True
+            ser.rts = True
+            time.sleep(0.05)
+            ser.rts = False
+            time.sleep(0.05)
+        else:
+            ser.rts = True
+            time.sleep(0.05)
+            ser.rts = False
+            time.sleep(0.05)
+        ser.dtr = False
+        ser.close()
+
+    def baud_toggle_reset(self):
+        ser = serial.Serial(
+            port=self.port,
+            baudrate=1200,
+            timeout=1
+        )
+        ser.close()
+        time.sleep(0.2)
+
+    def command_reset(self):
+        if not self.reset_command:
+            raise RuntimeError("reset.command 未配置")
+        cmd = shlex.split(self.reset_command)
+        success, _ = self.run_command(cmd, message="正在复位... ")
+        return success
+
     def auto_reset(self):
-        """
-        自动复位单片机：通过串口 DTR 信号模拟复位过程
-        对于 ESP32/ESP8266 等开发板，这可以模拟自动重启
-        """
+        if not self.reset_enabled:
+            return False
+        if not self.port and self.reset_method in ["dtr_rts", "1200bps"]:
+            self.logger.warning("自动复位跳过：未指定串口端口")
+            return False
         self.logger.info(f"正在自动复位单片机: {self.port}")
-        
+        start_time = time.time()
+        time.sleep(self.reset_delay_ms / 1000.0)
         try:
-            # 打开串口（这会自动断言 DTR 和 RTS 信号）
-            ser = serial.Serial(
-                port=self.port,
-                baudrate=1200,  # 使用低波特率触发复位
-                timeout=1
-            )
-            
-            # 关闭串口以释放 DTR/RTS 信号
-            ser.close()
-            
-            # 等待几毫秒让复位完成
-            time.sleep(0.5)
-            
-            self.logger.debug("自动复位完成")
+            if self.reset_method == "dtr_rts":
+                self.dtr_rts_reset(self.reset_boot)
+            elif self.reset_method == "1200bps":
+                self.baud_toggle_reset()
+            elif self.reset_method == "command":
+                success = self.command_reset()
+                if not success:
+                    raise RuntimeError("复位命令执行失败")
+            else:
+                raise RuntimeError(f"未知复位方式: {self.reset_method}")
+            duration = (time.time() - start_time) * 1000
+            self.logger.info(f"Auto-reset triggered ({duration:.1f}ms)")
             return True
         except Exception as e:
             self.logger.warning(f"自动复位失败: {e}")
@@ -280,7 +342,7 @@ class ArduinoAutomation:
         total_start = time.time()
         
         # 如果没有指定任何操作，默认显示帮助
-        if not (self.args.compile or self.args.upload or self.args.serial):
+        if not (self.args.compile or self.args.upload or self.args.serial or self.args.regress_reset):
             self.logger.warning("未指定任何操作。请使用 -c, -u, -s 参数。")
             return
 
@@ -291,6 +353,7 @@ class ArduinoAutomation:
         # 2. 上传 (如果只指定上传，也会执行；如果指定了编译+上传，编译失败会终止)
         if self.args.upload:
             self.upload()
+            self.auto_reset()
 
         # 3. 监控
         if self.args.serial:
@@ -298,9 +361,35 @@ class ArduinoAutomation:
             if self.args.upload:
                 time.sleep(1)
             self.monitor()
+
+        if self.args.regress_reset:
+            self.regress_reset(self.args.regress_count)
             
         total_duration = time.time() - total_start
         self.logger.info(f"所有任务完成，总耗时: {total_duration:.2f}s")
+
+    def regress_reset(self, count):
+        if count <= 0:
+            self.logger.warning("回归测试次数无效，跳过")
+            return
+        success_count = 0
+        durations = []
+        self.logger.info(f"开始自动复位回归测试: {count} 次")
+        for i in range(count):
+            self.logger.info(f"回归测试轮次: {i + 1}/{count}")
+            self.upload()
+            start = time.time()
+            ok = self.auto_reset()
+            dur = (time.time() - start) * 1000
+            durations.append(dur)
+            if ok:
+                success_count += 1
+        success_rate = (success_count / count) * 100
+        avg_extra = sum(durations) / len(durations)
+        self.logger.info(f"回归结果: success_rate={success_rate:.2f}% avg_extra={avg_extra:.1f}ms")
+        if success_rate < 99.0 or avg_extra >= 300.0:
+            self.reset_enabled = False
+            self.logger.warning("自动复位达标失败，已回退到手动模式")
 
 def main():
     parser = argparse.ArgumentParser(description="Arduino 项目自动化构建脚本")
@@ -317,6 +406,16 @@ def main():
     parser.add_argument('--sketch', help='Arduino Sketch 文件路径')
     parser.add_argument('--cli', help='ArduinoCLI 可执行文件路径')
     parser.add_argument('--config', default='config.yaml', help='配置文件路径')
+    parser.add_argument('--auto-reset', dest='auto_reset', action='store_true', help='启用自动复位')
+    parser.add_argument('--no-auto-reset', dest='auto_reset', action='store_false', help='禁用自动复位')
+    parser.add_argument('--reset', dest='reset', help='复位方式: dtr_rts|1200bps|command')
+    parser.add_argument('--reset-delay', dest='reset_delay', type=int, help='复位前延时毫秒')
+    parser.add_argument('--reset-boot', dest='reset_boot', help='复位模式: run|flash')
+    parser.add_argument('--reset-command', dest='reset_command', help='自定义复位命令')
+    parser.add_argument('--reset-toolchain', dest='reset_toolchain', help='烧录工具链标识')
+    parser.add_argument('--regress-reset', dest='regress_reset', action='store_true', help='自动复位回归测试')
+    parser.add_argument('--regress-count', dest='regress_count', type=int, default=10, help='回归测试次数')
+    parser.set_defaults(auto_reset=None)
     
     args = parser.parse_args()
     

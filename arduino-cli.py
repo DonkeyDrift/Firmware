@@ -276,10 +276,10 @@ def main():
     # 操作标志
     parser.add_argument('-c', '--compile', action='store_true', help='执行编译')
     parser.add_argument('-u', '--upload', action='store_true', help='执行上传')
-    parser.add_argument('-m', '--monitor', action='store_true', help='打开串口监控')
+    parser.add_argument('-p', '--monitor', action='store_true', help='打开串口监控')
     
     # 配置参数
-    parser.add_argument('--port', '-p', help='串口设备路径 (e.g., /dev/ttyACM0, COM3)')
+    parser.add_argument('--port', '-P', help='串口设备路径 (e.g., /dev/ttyACM0, COM3)')
     parser.add_argument('--baud', '-b', type=int, help='串口波特率')
     parser.add_argument('--fqbn', help='板型定义 (FQBN)')
     parser.add_argument('--sketch', help='Arduino Sketch 文件路径')

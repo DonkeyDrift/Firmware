@@ -31,8 +31,5 @@ node_modules/
 
 # Log files
 *.log
-ArduinoCLI.log
-
-
 
 mus4/ArduinoCLI.log

@@ -38,19 +38,19 @@ python arduino-cli.py -cu
 
 **一键全流程 (编译 + 上传 + 监控):**
 ```bash
-python arduino-cli.py -cum
+python arduino-cli.py -cup
 ```
 
 **指定端口:**
 ```bash
-python arduino-cli.py -cum -p /dev/ttyUSB0
+python arduino-cli.py -cup -P /dev/ttyUSB0
 ```
 
 ## 参数说明
 - `-c, --compile`: 编译项目
 - `-u, --upload`: 上传固件
-- `-m, --monitor`: 打开串口监控
-- `-p, --port`: 指定串口设备
+- `-p, --monitor`: 打开串口监控
+- `-P, --port`: 指定串口设备
 - `-b, --baud`: 指定波特率 (默认 115200)
 - `--fqbn`: 指定板型 (默认 esp32:esp32:esp32)
 

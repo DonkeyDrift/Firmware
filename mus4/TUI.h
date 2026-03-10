@@ -28,6 +28,7 @@ private:
     bool _ansiEnabled;
     bool _waveformEnabled;
     bool _initialized;
+    bool _outputStateInitialized;
     char _logBuffer[64];
     unsigned long _logTime;
 

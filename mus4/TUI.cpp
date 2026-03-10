@@ -24,6 +24,7 @@ TUI::TUI(Print& out) : _out(out) {
     _ansiEnabled = true;
     _waveformEnabled = true;
     _initialized = false;
+    _outputStateInitialized = false;
     _lastUpdate = 0;
     _lastWaveUpdate = 0;
     _lastRenderDuration = 0;
@@ -64,7 +65,14 @@ void TUI::setOutput(int throttle, int steering, int mode, bool park) {
     _state.output.steering = steering;
     _state.output.mode = mode;
     _state.output.park = park;
-    
+
+    // Ensure Mode/Park are shown on first valid output push even if value equals defaults.
+    if (!_outputStateInitialized) {
+        _lastState.output.mode = -1;
+        _lastState.output.park = !park;
+        _outputStateInitialized = true;
+    }
+
     updateWaveformData();
 }
 

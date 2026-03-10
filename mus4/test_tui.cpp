@@ -42,3 +42,21 @@ TEST(TUI, RenderMode) {
     out = mockOut.getOutput();
     ASSERT_TRUE(out.indexOf("Mode: Full-Auto") >= 0);
 }
+
+TEST(TUI, ModeParkShownAfterPreRenderWithDefaultOutput) {
+    MockPrint mockOut;
+    TUI tui(mockOut);
+    tui.setAnsiEnabled(true);
+
+    // Simulate one early frame before first output has been pushed.
+    tui.render();
+
+    mockOut.clear();
+    tui.setOutput(0, 0, CAR_MODE_MANUAL, false);
+    tui.render();
+
+    String out = mockOut.getOutput();
+    ASSERT_TRUE(out.indexOf("Mode:") >= 0);
+    ASSERT_TRUE(out.indexOf("Park:") >= 0);
+}
+

@@ -34,6 +34,10 @@ TUI::TUI(Print& out) : _out(out) {
     // Initialize state
     memset(&_state, 0, sizeof(_state));
     memset(&_lastState, 0, sizeof(_lastState));
+    
+    // Set lastState to invalid values to ensure initial draw
+    _lastState.output.mode = -1;  // Invalid mode to force initial draw
+    _lastState.output.park = true; // Force initial draw (toggle from false)
 }
 
 void TUI::setAnsiEnabled(bool enabled) {

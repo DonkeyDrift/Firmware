@@ -269,14 +269,16 @@ void TUI::drawWaveforms() {
         for (int x = 0; x < WAVE_WIDTH; x++) {
             int val = _state.throttleWave[x];
             int normalized = map(val, -100, 100, 0, WAVE_HEIGHT-1);
-            
-            if (normalized == logicY) {
-                if (_ansiEnabled) _out.print(ANSI_GREEN "█" ANSI_RESET);
-                else _out.print("#");
-            } else if (logicY == (WAVE_HEIGHT-1)/2) {
-                _out.print("-"); // Zero line
-            } else {
-                _out.print(" ");
+
+            for (int w = 0; w < 2; w++) {
+                if (normalized == logicY) {
+                    if (_ansiEnabled) _out.print(ANSI_GREEN "█" ANSI_RESET);
+                    else _out.print("#");
+                } else if (logicY == (WAVE_HEIGHT-1)/2) {
+                    _out.print("-"); // Zero line
+                } else {
+                    _out.print(" ");
+                }
             }
         }
     }
@@ -295,14 +297,16 @@ void TUI::drawWaveforms() {
         for (int x = 0; x < WAVE_WIDTH; x++) {
             int val = _state.steeringWave[x];
             int normalized = map(val, -100, 100, 0, WAVE_HEIGHT-1);
-            
-            if (normalized == logicY) {
-                if (_ansiEnabled) _out.print(ANSI_CYAN "█" ANSI_RESET);
-                else _out.print("#");
-            } else if (logicY == (WAVE_HEIGHT-1)/2) {
-                _out.print("-");
-            } else {
-                _out.print(" ");
+
+            for (int w = 0; w < 2; w++) {
+                if (normalized == logicY) {
+                    if (_ansiEnabled) _out.print(ANSI_CYAN "█" ANSI_RESET);
+                    else _out.print("#");
+                } else if (logicY == (WAVE_HEIGHT-1)/2) {
+                    _out.print("-");
+                } else {
+                    _out.print(" ");
+                }
             }
         }
     }

@@ -81,6 +81,9 @@ Adafruit_INA219 ina219;
 #define CAR_MODE_SEMI_AUTO 1 // 1为自动方向和手动油门模式
 #define CAR_MODE_FULL_AUTO 2 // 2为自动驾驶模式
 
+#define PARK_LOCKED true     // 锁定状态
+#define PARK_UNLOCKED false  // 解锁状态
+
 volatile uint16_t pwm_value[4] = {0, 0, 0, 0};           // value of CH1, CH2, CH3, CH4 (uint16_t for atomic access)
 volatile unsigned long rise_time[4] = {0, 0, 0, 0}; // time of rising edge of CH1, CH2, CH3, CH4
 
@@ -209,10 +212,10 @@ struct struct_message
     bool park;    // 停车状态，0为停车，1为起步
 };
 
-struct struct_message esp_now_data = {0, 0, 0, false}; // Initialize the structure at declaration
-struct struct_message rc_data = {0, 0, 0, false};      // Initialize the structure at declaration
-struct struct_message pilot_data = {0, 0, 0, false};   // Initialize the structure at declaration
-struct struct_message car_output = {0, 0, 0, false};   // Initialize the structure at declaration
+struct struct_message esp_now_data = {0, 0, 0, PARK_LOCKED}; // Initialize the structure at declaration
+struct struct_message rc_data = {0, 0, 0, PARK_LOCKED};      // Initialize the structure at declaration
+struct struct_message pilot_data = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
+struct struct_message car_output = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
 
 const int PWM_MIN_V = 819;     // 'minimum' pulse length count (out of 4096)
 const int PWM_MAX_V = 1638;    // 'maximum' pulse length count (out of 4096)

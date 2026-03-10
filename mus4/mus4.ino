@@ -70,7 +70,7 @@ Adafruit_INA219 ina219;
 
 #define SDA_PIN 21
 #define SCL_PIN 22
-#define I2C_SPEED 100000L
+#define I2C_SPEED 400000L
 
 #define CH_STEERING 0 // index of pwm_value[]
 #define CH_THROTTLE 1 // index of pwm_value[]
@@ -114,7 +114,7 @@ CRGB leds[NUM_LEDS]; // Define the array of leds
 #define COLOR_WHITE "\033[37m"
 
 // 输出控制参数
-#define SENSOR_UPDATE_INTERVAL 1000   // 传感器数据更新间隔（毫秒）- 1Hz足够
+#define SENSOR_UPDATE_INTERVAL 16     // 传感器数据更新间隔（毫秒）- ~60Hz
 #define RC_DATA_UPDATE_INTERVAL 16    // RC数据更新间隔（毫秒）- ~60Hz
 #define UI_UPDATE_INTERVAL 16         // UI更新间隔（毫秒）- 60Hz丝滑体验
 
@@ -1027,7 +1027,7 @@ void setup()
       bleGamepad.begin();
     #endif
 
-    Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 21, SCL = 22, 100kHz
+    Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 21, SCL = 22, 400kHz
     delay(100);
     scanI2CBus();
     setup_ina219();

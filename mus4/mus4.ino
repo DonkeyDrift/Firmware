@@ -96,6 +96,13 @@ volatile uint16_t pwm_value[4] = {0, 0, 0, 0};           // value of CH1, CH2, C
 volatile unsigned long rise_time[4] = {0, 0, 0, 0}; // time of rising edge of CH1, CH2, CH3, CH4
 volatile unsigned long last_valid_time[4] = {0, 0, 0, 0}; // last valid signal time for each channel
 #define RC_SIGNAL_TIMEOUT 1000000UL  // RC信号超时时间 (µs)
+#define RC_PWM_MIN 800   // 最小有效PWM (µs)
+#define RC_PWM_MAX 2200  // 最大有效PWM (µs)
+
+#define PWM_FILTER_SIZE 1  // 滑动平均滤波器窗口大小 - 降低滤波以提高响应速度
+uint16_t pwm_filter_buf[4][PWM_FILTER_SIZE] = {{0}};  // 滤波缓冲区
+uint8_t pwm_filter_idx[4] = {0};
+uint16_t pwm_filtered[4] = {0, 0, 0, 0};  // 滤波后的PWM值
 
 const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
 
@@ -545,9 +552,6 @@ const int RC_THROTTLE_MAX = 2149;  // Throttle maximum pulse
 const int RC_STEERING_MIN = 872;   // Steering minimum pulse
 const int RC_STEERING_MID = 1488;  // Steering center pulse
 const int RC_STEERING_MAX = 2113;  // Steering maximum pulse
-
-#define RC_PWM_MIN 800   // 最小有效PWM (µs)
-#define RC_PWM_MAX 2200  // 最大有效PWM (µs)
 
 int carOutputModeLast = -1;
 unsigned long counter;
@@ -1107,28 +1111,45 @@ void loop()
     readSerialBuf(Serial, serial0Buf, false);
     readSerialBuf(Serial1, serial1Buf, true);
 
-    // RC信号读取：检查超时和有效性
+    // RC信号读取：检查超时和有效性，应用滑动平均滤波
     unsigned long nowUs = micros();
     bool steeringValid = (nowUs - last_valid_time[CH_STEERING]) < RC_SIGNAL_TIMEOUT;
     bool throttleValid = (nowUs - last_valid_time[CH_THROTTLE]) < RC_SIGNAL_TIMEOUT;
     bool parkValid = (nowUs - last_valid_time[CH_PARK]) < RC_SIGNAL_TIMEOUT;
     bool modeValid = (nowUs - last_valid_time[CH_MODE]) < RC_SIGNAL_TIMEOUT;
 
+    // 滑动平均滤波函数（内联）
+    auto filterPWM = [&](int ch, uint16_t raw, bool valid) -> uint16_t {
+        if (!valid) return 1500;
+        uint8_t idx = pwm_filter_idx[ch];
+        pwm_filter_buf[ch][idx] = raw;
+        pwm_filter_idx[ch] = (idx + 1) % PWM_FILTER_SIZE;
+        uint32_t sum = 0;
+        for (int i = 0; i < PWM_FILTER_SIZE; i++) sum += pwm_filter_buf[ch][i];
+        return sum / PWM_FILTER_SIZE;
+    };
+
+    // 对所有通道应用滤波
+    for (int i = 0; i < 4; i++) {
+        bool valid = (nowUs - last_valid_time[i]) < RC_SIGNAL_TIMEOUT;
+        pwm_filtered[i] = filterPWM(i, pwm_value[i], valid);
+    }
+
     // 信号有效时更新rc_data，否则保持默认值（中立位置）
     if (steeringValid) {
-        rc_data.steering = pwm_value[CH_STEERING];
+        rc_data.steering = pwm_filtered[CH_STEERING];
     } else {
         rc_data.steering = RC_STEERING_MID; // 超时后使用中值
     }
     if (throttleValid) {
-        rc_data.throttle = pwm_value[CH_THROTTLE];
+        rc_data.throttle = pwm_filtered[CH_THROTTLE];
     } else {
         rc_data.throttle = RC_THROTTLE_MID; // 超时后使用中值
     }
 
     // Park和Mode通道也做类似处理
-    pwm_value[CH_PARK] = parkValid ? pwm_value[CH_PARK] : 1500;
-    pwm_value[CH_MODE] = modeValid ? pwm_value[CH_MODE] : 1500;
+    pwm_filtered[CH_PARK] = parkValid ? pwm_filtered[CH_PARK] : 1500;
+    pwm_filtered[CH_MODE] = modeValid ? pwm_filtered[CH_MODE] : 1500;
 
     park_change();
     mode_change();
@@ -1205,7 +1226,7 @@ void loop()
     }
 
     // Update TUI
-    tui.setRC(pwm_value[0], pwm_value[1], pwm_value[2], pwm_value[3]);
+    tui.setRC(pwm_filtered[0], pwm_filtered[1], pwm_filtered[2], pwm_filtered[3]);
     tui.setOutput(car_output.throttle, car_output.steering, car_output.mode, car_output.park);
     
     // Merge Sensor Data
@@ -1259,7 +1280,6 @@ void loop()
     ledcWriteChannel(CH_STEERING, pwm_steering);
     ledcWriteChannel(CH_THROTTLE, pwm_throttle);
 
-    delay(10);
     counter += 1;
 
     scanLEDToggle();

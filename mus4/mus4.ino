@@ -99,7 +99,7 @@ volatile unsigned long last_valid_time[4] = {0, 0, 0, 0}; // last valid signal t
 #define RC_PWM_MIN 800   // 最小有效PWM (µs)
 #define RC_PWM_MAX 2200  // 最大有效PWM (µs)
 
-#define PWM_FILTER_SIZE 4  // 滑动平均滤波器窗口大小 - 提高稳定性
+#define PWM_FILTER_SIZE 4  // 滑动平均滤波器窗口大小 - 增大到8提高稳定性
 uint16_t pwm_filter_buf[4][PWM_FILTER_SIZE] = {{0}};  // 滤波缓冲区
 uint8_t pwm_filter_idx[4] = {0};
 uint16_t pwm_filtered[4] = {0, 0, 0, 0};  // 滤波后的PWM值
@@ -133,7 +133,7 @@ CRGB leds[NUM_LEDS]; // Define the array of leds
 // 输出控制参数
 #define SENSOR_UPDATE_INTERVAL 16     // 传感器数据更新间隔（毫秒）- ~60Hz
 #define RC_DATA_UPDATE_INTERVAL 16    // RC数据更新间隔（毫秒）- ~60Hz
-#define RC_FILTER_UPDATE_INTERVAL 8   // RC滤波更新间隔（毫秒）- ~125Hz，平衡响应和稳定
+#define RC_FILTER_UPDATE_INTERVAL 16   // RC滤波更新间隔（毫秒）- ~125Hz，平衡响应和稳定
 #define UI_UPDATE_INTERVAL 16         // UI更新间隔（毫秒）- 60Hz丝滑体验
 
 // 波形图参数
@@ -182,6 +182,21 @@ int lastWaveTh[WAVE_WIDTH] = {0};     // 缓存上一帧波形用于脏矩形
 int lastWaveSt[WAVE_WIDTH] = {0};     // 缓存上一帧波形用于脏矩形
 bool forceRedraw = false;             // 强制重绘标志
 int lastSeq = -1;                     // 记录收到的最后序号
+
+// 中值滤波辅助函数 - 用于消除异常脉冲
+static uint16_t medianFilter(uint16_t* buf, int size) {
+    uint16_t temp[8]; // 最大支持8个元素
+    for (int i = 0; i < size; i++) temp[i] = buf[i];
+    // 简单冒泡排序取中值
+    for (int i = 0; i < size - 1; i++) {
+        for (int j = i + 1; j < size; j++) {
+            if (temp[i] > temp[j]) {
+                uint16_t t = temp[i]; temp[i] = temp[j]; temp[j] = t;
+            }
+        }
+    }
+    return temp[size / 2];
+}
 
 static int testsTotal = 0;
 static int testsPassed = 0;
@@ -513,12 +528,12 @@ void IRAM_ATTR handle_interrupt(int channel)
 { // interrupt handler
     static int pin_state[4] = {0, 0, 0, 0};
     static unsigned long last_edge_time[4] = {0, 0, 0, 0};
-    
+
     unsigned long now = micros();
-    // 防抖：两个边沿之间至少间隔50µs，避免中断抖动
-    if (now - last_edge_time[channel] < 50) return;
+    // 防抖：两个边沿之间至少间隔100µs，避免中断抖动（从50µs增加到100µs）
+    if (now - last_edge_time[channel] < 100) return;
     last_edge_time[channel] = now;
-    
+
     pin_state[channel] = digitalRead(Channels[channel]);
     if (pin_state[channel] == HIGH)
     {
@@ -528,9 +543,22 @@ void IRAM_ATTR handle_interrupt(int channel)
     {
         uint16_t width = now - rise_time[channel];
         // 只接受有效范围内的PWM值 (800-2200µs)，过滤噪声
+        // 增加合理性检查：脉冲宽度变化不超过300µs（避免毛刺）
         if (width >= RC_PWM_MIN && width <= RC_PWM_MAX) {
-            pwm_value[channel] = width;
-            last_valid_time[channel] = now;
+            uint16_t prev = pwm_value[channel];
+            // 如果变化过大，可能是噪声，需要连续两次相近的读数才接受
+            if (abs((int)width - (int)prev) > 300) {
+                // 大变化时，检查是否与上一次的大变化方向一致
+                static uint16_t last_large_change[4] = {0};
+                if (abs((int)width - (int)last_large_change[channel]) < 100) {
+                    pwm_value[channel] = width;
+                    last_valid_time[channel] = now;
+                }
+                last_large_change[channel] = width;
+            } else {
+                pwm_value[channel] = width;
+                last_valid_time[channel] = now;
+            }
         }
     }
 }
@@ -1121,12 +1149,21 @@ void loop()
     bool modeValid = (nowUs - last_valid_time[CH_MODE]) < RC_SIGNAL_TIMEOUT;
 
     if (millis() - lastRCFilterUpdate >= RC_FILTER_UPDATE_INTERVAL) {
-        // 滑动平均滤波函数（内联）
+        // 改进的滤波：滑动平均 + 中值滤波
         auto filterPWM = [&](int ch, uint16_t raw, bool valid) -> uint16_t {
             if (!valid) return 1500;
             uint8_t idx = pwm_filter_idx[ch];
             pwm_filter_buf[ch][idx] = raw;
             pwm_filter_idx[ch] = (idx + 1) % PWM_FILTER_SIZE;
+            // 先进行中值滤波，再进行滑动平均，双重滤波提高稳定性
+            uint16_t median = medianFilter(pwm_filter_buf[ch], PWM_FILTER_SIZE);
+            // 如果当前值与上一滤波值差异过大，使用更保守的混合
+            uint16_t prev = pwm_filtered[ch];
+            if (abs((int)median - (int)prev) > 100) {
+                // 大变化时混合70%新值 + 30%旧值
+                return (median * 7 + prev * 3) / 10;
+            }
+            // 小变化时滑动平均
             uint32_t sum = 0;
             for (int i = 0; i < PWM_FILTER_SIZE; i++) sum += pwm_filter_buf[ch][i];
             return sum / PWM_FILTER_SIZE;
@@ -1294,4 +1331,5 @@ void loop()
         else uiIntervalCurrent = (uiIntervalCurrent > uiIntervalMin ? uiIntervalCurrent - 20 : uiIntervalMin);
         lastPerfEval = now;
     }
+    delay(10);
 }

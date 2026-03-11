@@ -94,6 +94,8 @@ Adafruit_INA219 ina219;
 
 volatile uint16_t pwm_value[4] = {0, 0, 0, 0};           // value of CH1, CH2, CH3, CH4 (uint16_t for atomic access)
 volatile unsigned long rise_time[4] = {0, 0, 0, 0}; // time of rising edge of CH1, CH2, CH3, CH4
+volatile unsigned long last_valid_time[4] = {0, 0, 0, 0}; // last valid signal time for each channel
+#define RC_SIGNAL_TIMEOUT 1000000UL  // RC信号超时时间 (µs)
 
 const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
 
@@ -501,14 +503,26 @@ static void readSerialBuf(HardwareSerial& ser, SerialBuf& sb, bool isRS232)
 void IRAM_ATTR handle_interrupt(int channel)
 { // interrupt handler
     static int pin_state[4] = {0, 0, 0, 0};
+    static unsigned long last_edge_time[4] = {0, 0, 0, 0};
+    
+    unsigned long now = micros();
+    // 防抖：两个边沿之间至少间隔8µs，避免中断抖动
+    if (now - last_edge_time[channel] < 8) return;
+    last_edge_time[channel] = now;
+    
     pin_state[channel] = digitalRead(Channels[channel]);
     if (pin_state[channel] == HIGH)
     {
-        rise_time[channel] = micros();
+        rise_time[channel] = now;
     }
     else
     {
-        pwm_value[channel] = micros() - rise_time[channel];
+        uint16_t width = now - rise_time[channel];
+        // 只接受有效范围内的PWM值 (800-2200µs)，过滤噪声
+        if (width >= RC_PWM_MIN && width <= RC_PWM_MAX) {
+            pwm_value[channel] = width;
+            last_valid_time[channel] = now;
+        }
     }
 }
 
@@ -531,6 +545,9 @@ const int RC_THROTTLE_MAX = 2149;  // Throttle maximum pulse
 const int RC_STEERING_MIN = 872;   // Steering minimum pulse
 const int RC_STEERING_MID = 1488;  // Steering center pulse
 const int RC_STEERING_MAX = 2113;  // Steering maximum pulse
+
+#define RC_PWM_MIN 800   // 最小有效PWM (µs)
+#define RC_PWM_MAX 2200  // 最大有效PWM (µs)
 
 int carOutputModeLast = -1;
 unsigned long counter;
@@ -1090,10 +1107,31 @@ void loop()
     readSerialBuf(Serial, serial0Buf, false);
     readSerialBuf(Serial1, serial1Buf, true);
 
-    rc_data.steering = pwm_value[CH_STEERING];
-    rc_data.throttle = pwm_value[CH_THROTTLE];
-    park_change(); // pwm_value[CH_PARK]
-    mode_change(); // pwm_value[CH_MODE]
+    // RC信号读取：检查超时和有效性
+    unsigned long nowUs = micros();
+    bool steeringValid = (nowUs - last_valid_time[CH_STEERING]) < RC_SIGNAL_TIMEOUT;
+    bool throttleValid = (nowUs - last_valid_time[CH_THROTTLE]) < RC_SIGNAL_TIMEOUT;
+    bool parkValid = (nowUs - last_valid_time[CH_PARK]) < RC_SIGNAL_TIMEOUT;
+    bool modeValid = (nowUs - last_valid_time[CH_MODE]) < RC_SIGNAL_TIMEOUT;
+
+    // 信号有效时更新rc_data，否则保持默认值（中立位置）
+    if (steeringValid) {
+        rc_data.steering = pwm_value[CH_STEERING];
+    } else {
+        rc_data.steering = RC_STEERING_MID; // 超时后使用中值
+    }
+    if (throttleValid) {
+        rc_data.throttle = pwm_value[CH_THROTTLE];
+    } else {
+        rc_data.throttle = RC_THROTTLE_MID; // 超时后使用中值
+    }
+
+    // Park和Mode通道也做类似处理
+    pwm_value[CH_PARK] = parkValid ? pwm_value[CH_PARK] : 1500;
+    pwm_value[CH_MODE] = modeValid ? pwm_value[CH_MODE] : 1500;
+
+    park_change();
+    mode_change();
 
     if (car_output.mode == CAR_MODE_FULL_AUTO)
     {

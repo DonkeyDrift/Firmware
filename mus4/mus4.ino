@@ -1105,7 +1105,13 @@ void setup()
     // Set the RC receiver pins as inputs and attach the interrupts
     for (int i = 0; i < 4; i++)
     {
-        pinMode(Channels[i], INPUT);
+        if (Channels[i] == 26) {
+            // GPIO 26 支持内部下拉电阻
+            pinMode(Channels[i], INPUT_PULLDOWN);
+        } else {
+            // GPIO 36, 39, 34 是仅输入引脚，不支持内部上拉/下拉
+            pinMode(Channels[i], INPUT);
+        }
         attachInterrupt(digitalPinToInterrupt(Channels[i]), isr_functions[i], CHANGE);
     }
 

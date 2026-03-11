@@ -99,7 +99,7 @@ volatile unsigned long last_valid_time[4] = {0, 0, 0, 0}; // last valid signal t
 #define RC_PWM_MIN 800   // 最小有效PWM (µs)
 #define RC_PWM_MAX 2200  // 最大有效PWM (µs)
 
-#define PWM_FILTER_SIZE 1  // 滑动平均滤波器窗口大小 - 降低滤波以提高响应速度
+#define PWM_FILTER_SIZE 4  // 滑动平均滤波器窗口大小 - 提高稳定性
 uint16_t pwm_filter_buf[4][PWM_FILTER_SIZE] = {{0}};  // 滤波缓冲区
 uint8_t pwm_filter_idx[4] = {0};
 uint16_t pwm_filtered[4] = {0, 0, 0, 0};  // 滤波后的PWM值
@@ -133,6 +133,7 @@ CRGB leds[NUM_LEDS]; // Define the array of leds
 // 输出控制参数
 #define SENSOR_UPDATE_INTERVAL 16     // 传感器数据更新间隔（毫秒）- ~60Hz
 #define RC_DATA_UPDATE_INTERVAL 16    // RC数据更新间隔（毫秒）- ~60Hz
+#define RC_FILTER_UPDATE_INTERVAL 8   // RC滤波更新间隔（毫秒）- ~125Hz，平衡响应和稳定
 #define UI_UPDATE_INTERVAL 16         // UI更新间隔（毫秒）- 60Hz丝滑体验
 
 // 波形图参数
@@ -142,6 +143,7 @@ CRGB leds[NUM_LEDS]; // Define the array of leds
 // 新增全局变量
 unsigned long lastSensorUpdate = 0;
 unsigned long lastRCDataUpdate = 0;
+unsigned long lastRCFilterUpdate = 0;
 unsigned long lastUIUpdate = 0;
 unsigned long lastWaveUpdate = 0;     // 波形刷新独立计时
 const unsigned long WAVE_UPDATE_INTERVAL = 250; // 4Hz刷新率
@@ -513,8 +515,8 @@ void IRAM_ATTR handle_interrupt(int channel)
     static unsigned long last_edge_time[4] = {0, 0, 0, 0};
     
     unsigned long now = micros();
-    // 防抖：两个边沿之间至少间隔8µs，避免中断抖动
-    if (now - last_edge_time[channel] < 8) return;
+    // 防抖：两个边沿之间至少间隔50µs，避免中断抖动
+    if (now - last_edge_time[channel] < 50) return;
     last_edge_time[channel] = now;
     
     pin_state[channel] = digitalRead(Channels[channel]);
@@ -1111,28 +1113,31 @@ void loop()
     readSerialBuf(Serial, serial0Buf, false);
     readSerialBuf(Serial1, serial1Buf, true);
 
-    // RC信号读取：检查超时和有效性，应用滑动平均滤波
+    // RC信号读取：检查超时和有效性，应用滑动平均滤波（带更新间隔控制）
     unsigned long nowUs = micros();
     bool steeringValid = (nowUs - last_valid_time[CH_STEERING]) < RC_SIGNAL_TIMEOUT;
     bool throttleValid = (nowUs - last_valid_time[CH_THROTTLE]) < RC_SIGNAL_TIMEOUT;
     bool parkValid = (nowUs - last_valid_time[CH_PARK]) < RC_SIGNAL_TIMEOUT;
     bool modeValid = (nowUs - last_valid_time[CH_MODE]) < RC_SIGNAL_TIMEOUT;
 
-    // 滑动平均滤波函数（内联）
-    auto filterPWM = [&](int ch, uint16_t raw, bool valid) -> uint16_t {
-        if (!valid) return 1500;
-        uint8_t idx = pwm_filter_idx[ch];
-        pwm_filter_buf[ch][idx] = raw;
-        pwm_filter_idx[ch] = (idx + 1) % PWM_FILTER_SIZE;
-        uint32_t sum = 0;
-        for (int i = 0; i < PWM_FILTER_SIZE; i++) sum += pwm_filter_buf[ch][i];
-        return sum / PWM_FILTER_SIZE;
-    };
+    if (millis() - lastRCFilterUpdate >= RC_FILTER_UPDATE_INTERVAL) {
+        // 滑动平均滤波函数（内联）
+        auto filterPWM = [&](int ch, uint16_t raw, bool valid) -> uint16_t {
+            if (!valid) return 1500;
+            uint8_t idx = pwm_filter_idx[ch];
+            pwm_filter_buf[ch][idx] = raw;
+            pwm_filter_idx[ch] = (idx + 1) % PWM_FILTER_SIZE;
+            uint32_t sum = 0;
+            for (int i = 0; i < PWM_FILTER_SIZE; i++) sum += pwm_filter_buf[ch][i];
+            return sum / PWM_FILTER_SIZE;
+        };
 
-    // 对所有通道应用滤波
-    for (int i = 0; i < 4; i++) {
-        bool valid = (nowUs - last_valid_time[i]) < RC_SIGNAL_TIMEOUT;
-        pwm_filtered[i] = filterPWM(i, pwm_value[i], valid);
+        // 对所有通道应用滤波
+        for (int i = 0; i < 4; i++) {
+            bool valid = (nowUs - last_valid_time[i]) < RC_SIGNAL_TIMEOUT;
+            pwm_filtered[i] = filterPWM(i, pwm_value[i], valid);
+        }
+        lastRCFilterUpdate = millis();
     }
 
     // 信号有效时更新rc_data，否则保持默认值（中立位置）

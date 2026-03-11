@@ -19,7 +19,7 @@ const int ROW_OUTPUT = 6;
 const int ROW_WAVE_START = 8;
 
 TUI::TUI(Print& out) : _out(out) {
-    _refreshRate = 100;
+    _refreshRate = 16;
     _forceRedraw = true;
     _ansiEnabled = true;
     _waveformEnabled = true;

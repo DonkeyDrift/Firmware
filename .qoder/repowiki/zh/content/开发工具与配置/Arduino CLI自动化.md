@@ -10,7 +10,17 @@
 - [pin_definitions.md](file://mus4/Doc/Hardware/pin_definitions.md)
 - [getcurrent.ino](file://examples/getcurrent/getcurrent.ino)
 - [testIIC.ino](file://examples/testIIC/testIIC.ino)
+- [build_wsl_fast.ps1](file://build_wsl_fast.ps1)
+- [build_wsl_fast_manual.md](file://mus4/Doc/Tools/build_wsl_fast_manual.md)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 新增构建路径和输入文件支持功能，增强WSL交叉编译场景
+- 改进了错误处理和日志记录机制
+- 优化了命令执行流程和超时控制
+- 增强了自动复位功能和回归测试能力
+- 完善了参数解析和配置管理
 
 ## 目录
 1. [简介](#简介)
@@ -21,13 +31,16 @@
 6. [依赖关系分析](#依赖关系分析)
 7. [性能考虑](#性能考虑)
 8. [故障排除指南](#故障排除指南)
-9. [结论](#结论)
+9. [命令行参数使用指南](#命令行参数使用指南)
+10. [结论](#结论)
 
 ## 简介
 
 Arduino CLI自动化是一个完整的嵌入式系统开发工具链，专为ESP32微控制器项目设计。该项目提供了从代码编译、固件上传到串口监控的一站式解决方案，特别针对LP-MU-S4自动驾驶小车控制系统进行了优化。
 
 该系统的核心目标是简化Arduino项目的开发流程，通过Python脚本自动化整个构建过程，包括环境检测、编译配置、固件上传和实时监控等功能。项目采用模块化设计，支持跨平台运行（Windows、Linux、macOS），并提供了丰富的配置选项和错误处理机制。
+
+**更新** 新增了对WSL交叉编译场景的深度支持，包括构建路径管理和预编译固件文件上传功能。
 
 ## 项目结构
 
@@ -40,28 +53,32 @@ A --> C[config.yaml]
 A --> D[mus4/]
 A --> E[examples/]
 A --> F[docs/]
-D --> G[mus4.ino]
-D --> H[sketch.yaml]
-D --> I[Doc/]
-I --> J[Arch/]
-I --> K[Hardware/]
-I --> L[README/]
-E --> M[getcurrent/]
-E --> N[testIIC/]
-M --> O[getcurrent.ino]
-N --> P[testIIC.ino]
-J --> Q[architecture.md]
-K --> R[pin_definitions.md]
-L --> S[DevNote.md]
+A --> G[build_wsl_fast.ps1]
+D --> H[mus4.ino]
+D --> I[sketch.yaml]
+D --> J[Doc/]
+J --> K[Arch/]
+J --> L[Hardware/]
+J --> M[README/]
+J --> N[Tools/]
+N --> O[build_wsl_fast_manual.md]
+E --> P[getcurrent/]
+E --> Q[testIIC/]
+P --> R[getcurrent.ino]
+Q --> S[testIIC.ino]
+K --> T[architecture.md]
+L --> U[pin_definitions.md]
+M --> V[DevNote.md]
 ```
 
 **图表来源**
-- [arduino-cli.py](file://arduino-cli.py#L1-L315)
-- [config.yaml](file://config.yaml#L1-L13)
+- [arduino-cli.py:1-511](file://arduino-cli.py#L1-L511)
+- [config.yaml:1-21](file://config.yaml#L1-L21)
+- [build_wsl_fast.ps1:1-140](file://build_wsl_fast.ps1#L1-L140)
 
 **章节来源**
-- [arduino-cli.py](file://arduino-cli.py#L1-L315)
-- [config.yaml](file://config.yaml#L1-L13)
+- [arduino-cli.py:1-511](file://arduino-cli.py#L1-L511)
+- [config.yaml:1-21](file://config.yaml#L1-L21)
 
 ## 核心组件
 
@@ -74,6 +91,8 @@ Arduino自动化引擎是整个系统的核心，负责协调所有Arduino CLI�
 - **跨平台兼容**：自动检测操作系统并调整行为
 - **进度可视化**：提供加载动画和详细的状态反馈
 - **错误处理**：全面的异常捕获和用户友好的错误信息
+- **构建路径管理**：支持自定义构建输出目录
+- **预编译固件上传**：支持WSL交叉编译场景
 
 #### 关键功能模块
 
@@ -89,6 +108,8 @@ class ArduinoAutomation {
 +baud int
 +sketch string
 +os_type string
++build_path string
++input_file string
 +load_config(path) dict
 +validate_environment() void
 +run_command(cmd, timeout, message) tuple
@@ -117,10 +138,10 @@ ArduinoAutomation --> CustomFormatter : "uses"
 ```
 
 **图表来源**
-- [arduino-cli.py](file://arduino-cli.py#L92-L315)
+- [arduino-cli.py:94-511](file://arduino-cli.py#L94-L511)
 
 **章节来源**
-- [arduino-cli.py](file://arduino-cli.py#L92-L315)
+- [arduino-cli.py:94-511](file://arduino-cli.py#L94-L511)
 
 ### 配置管理系统
 
@@ -141,9 +162,16 @@ ArduinoAutomation --> CustomFormatter : "uses"
 | baudrate | int | 串口波特率 | 115200 |
 | sketch_path | string | Arduino Sketch文件路径 | "mus4/mus4.ino" |
 | build_path | string | 构建输出目录 | "build" |
+| logging.file | string | 日志文件路径 | "mus4/ArduinoCLI.log" |
+| logging.level | string | 日志级别 | "INFO" |
+| reset.enable | boolean | 自动复位启用 | true |
+| reset.delay_ms | int | 复位延迟毫秒 | 200 |
+| reset.method | string | 复位方式 | "dtr_rts" |
+| reset.boot | string | 复位模式 | "run" |
+| reset.toolchain | string | 烧录工具链标识 | "arduino-cli" |
 
 **章节来源**
-- [config.yaml](file://config.yaml#L1-L13)
+- [config.yaml:1-21](file://config.yaml#L1-L21)
 
 ### ESP32固件系统
 
@@ -192,8 +220,8 @@ LED_Indicator --> Status[状态指示]
 ```
 
 **图表来源**
-- [mus4.ino](file://mus4/mus4.ino#L1-L1290)
-- [pin_definitions.md](file://mus4/Doc/Hardware/pin_definitions.md#L115-L181)
+- [mus4.ino:1-1290](file://mus4/mus4.ino#L1-L1290)
+- [pin_definitions.md:115-181](file://mus4/Doc/Hardware/pin_definitions.md#L115-L181)
 
 #### 核心功能模块
 
@@ -206,8 +234,8 @@ LED_Indicator --> Status[状态指示]
 | 状态指示 | LED颜色显示 | GPIO 5 | FastLED库 |
 
 **章节来源**
-- [mus4.ino](file://mus4/mus4.ino#L1-L1290)
-- [pin_definitions.md](file://mus4/Doc/Hardware/pin_definitions.md#L1-L225)
+- [mus4.ino:1-1290](file://mus4/mus4.ino#L1-L1290)
+- [pin_definitions.md:1-225](file://mus4/Doc/Hardware/pin_definitions.md#L1-L225)
 
 ## 架构概览
 
@@ -231,25 +259,28 @@ subgraph Tools[开发工具]
 L[Python脚本]
 M[配置文件]
 N[日志系统]
+O[PowerShell脚本]
 end
 subgraph Hardware[硬件平台]
-O[ESP32微控制器]
-P[RC接收机]
-Q[执行器]
-R[传感器]
+P[ESP32微控制器]
+Q[RC接收机]
+R[执行器]
+S[传感器]
 end
 D --> L
 C --> M
 D --> N
-J --> O
-K --> P
+J --> P
 K --> Q
 K --> R
+K --> S
+O --> D
 ```
 
 **图表来源**
-- [arduino-cli.py](file://arduino-cli.py#L273-L315)
-- [mus4.ino](file://mus4/mus4.ino#L1104-L1125)
+- [arduino-cli.py:404-511](file://arduino-cli.py#L404-L511)
+- [mus4.ino:1104-1125](file://mus4/mus4.ino#L1104-L1125)
+- [build_wsl_fast.ps1:1-140](file://build_wsl_fast.ps1#L1-L140)
 
 ## 详细组件分析
 
@@ -277,7 +308,7 @@ Success --> End([环境就绪])
 ```
 
 **图表来源**
-- [arduino-cli.py](file://arduino-cli.py#L125-L137)
+- [arduino-cli.py:136-147](file://arduino-cli.py#L136-L147)
 
 #### 命令执行流程
 
@@ -302,7 +333,7 @@ Engine-->>User : 返回执行结果
 ```
 
 **图表来源**
-- [arduino-cli.py](file://arduino-cli.py#L138-L196)
+- [arduino-cli.py:177-234](file://arduino-cli.py#L177-L234)
 
 #### 日志系统设计
 
@@ -317,79 +348,124 @@ Engine-->>User : 返回执行结果
 | CRITICAL | 红色粗体 | 严重错误 | 系统异常 |
 
 **章节来源**
-- [arduino-cli.py](file://arduino-cli.py#L17-L56)
+- [arduino-cli.py:18-58](file://arduino-cli.py#L18-L58)
 
-### ESP32固件系统详细分析
+### 构建路径和输入文件支持
 
-ESP32固件系统是一个复杂的实时控制系统，集成了多种传感器和执行器的协调控制。
+**新增** 系统现在支持自定义构建路径和预编译固件文件上传，特别针对WSL交叉编译场景进行了优化。
 
-#### 传感器数据处理
+#### 构建路径管理
 
-固件系统集成了多种传感器数据的采集和处理：
+系统支持通过命令行参数或配置文件指定自定义构建输出目录：
 
 ```mermaid
 flowchart TD
-SensorStart([传感器数据采集开始]) --> INA219Init["初始化INA219电源监测"]
-INA219Init --> MPU6050Init["初始化MPU6050 IMU"]
-MPU6050Init --> SensorLoop["传感器数据循环采集"]
-SensorLoop --> INA219Read["读取INA219数据"]
-INA219Read --> MPU6050Read["读取MPU6050数据"]
-MPU6050Read --> DataValidation["数据有效性验证"]
-DataValidation --> DataStore["存储传感器数据"]
-DataStore --> UIUpdate["更新UI显示"]
-UIUpdate --> SensorLoop
-DataValidation --> |数据有效| Continue["继续处理"]
-DataValidation --> |数据无效| ErrorHandling["错误处理"]
-ErrorHandling --> SensorLoop
+BuildStart([开始构建]) --> CheckBuildPath["检查构建路径参数"]
+CheckBuildPath --> PathProvided{"提供构建路径?"}
+PathProvided --> |是| UseArgPath["使用命令行参数路径"]
+PathProvided --> |否| CheckConfig["检查配置文件"]
+CheckConfig --> ConfigPath{"配置文件有路径?"}
+ConfigPath --> |是| UseConfigPath["使用配置文件路径"]
+ConfigPath --> |否| DefaultPath["使用默认路径"]
+UseArgPath --> ConvertPath["转换为绝对路径"]
+UseConfigPath --> ConvertPath
+DefaultPath --> ConvertPath
+ConvertPath --> SetBuildPath["设置构建路径参数"]
+SetBuildPath --> ExecuteCompile["执行编译命令"]
 ```
 
 **图表来源**
-- [mus4.ino](file://mus4/mus4.ino#L208-L220)
+- [arduino-cli.py:240-254](file://arduino-cli.py#L240-L254)
 
-#### 控制算法实现
+#### 预编译固件上传
 
-固件系统实现了多种控制算法，支持不同的驾驶模式：
+系统支持直接上传预编译的固件文件，适用于WSL交叉编译场景：
 
 ```mermaid
-stateDiagram-v2
-[*] --> ManualMode : 手动模式
-[*] --> SemiAutoMode : 半自动模式
-[*] --> FullAutoMode : 全自动模式
-ManualMode --> ManualMode : RC遥控器控制
-ManualMode --> SemiAutoMode : 模式切换
-ManualMode --> FullAutoMode : 模式切换
-SemiAutoMode --> ManualMode : 模式切换
-SemiAutoMode --> SemiAutoMode : Pilot控制转向
-SemiAutoMode --> FullAutoMode : 模式切换
-FullAutoMode --> ManualMode : 模式切换
-FullAutoMode --> SemiAutoMode : 模式切换
-FullAutoMode --> FullAutoMode : 自动控制
-ManualMode --> EmergencyStop : 触发紧急停车
-SemiAutoMode --> EmergencyStop : 触发紧急停车
-FullAutoMode --> EmergencyStop : 触发紧急停车
-EmergencyStop --> ManualMode : 停车解除
-EmergencyStop --> SemiAutoMode : 停车解除
-EmergencyStop --> FullAutoMode : 停车解除
+flowchart TD
+UploadStart([开始上传]) --> CheckInputFile["检查输入文件参数"]
+CheckInputFile --> InputProvided{"提供固件文件?"}
+InputProvided --> |是| ValidateFile["验证固件文件存在"]
+ValidateFile --> FileExists{"文件存在?"}
+FileExists --> |否| ErrorFile["错误: 文件不存在"]
+FileExists --> |是| UseCustomUpload["使用自定义上传命令"]
+InputProvided --> |否| UseNormalUpload["使用普通上传命令"]
+UseCustomUpload --> ExecuteUpload["执行上传"]
+UseNormalUpload --> ExecuteUpload
+ErrorFile --> ExitError["退出并返回错误"]
+ExecuteUpload --> Success["上传成功"]
 ```
 
 **图表来源**
-- [mus4.ino](file://mus4/mus4.ino#L474-L525)
-
-#### 串口通信协议
-
-固件系统实现了标准化的串口通信协议，支持上位机控制：
-
-| 协议字段 | 格式 | 范围 | 描述 |
-|----------|------|------|------|
-| Throttle | 整数 | -100到100 | 油门控制值 |
-| Steering | 整数 | -100到100 | 转向控制值 |
-| 分隔符 | 冒号 | ":" | 字段分隔符 |
-| 结束符 | 换行 | "\n" | 消息结束符 |
-| 校验和 | 十六进制 | 2位 | 数据完整性校验 |
+- [arduino-cli.py:274-286](file://arduino-cli.py#L274-L286)
 
 **章节来源**
-- [mus4.ino](file://mus4/mus4.ino#L320-L342)
-- [DevNote.md](file://mus4/Doc/README/DevNote.md#L24-L29)
+- [arduino-cli.py:236-292](file://arduino-cli.py#L236-L292)
+
+### 自动复位和回归测试
+
+系统提供了增强的自动复位功能和回归测试能力：
+
+#### 自动复位机制
+
+```mermaid
+flowchart TD
+ResetStart([开始自动复位]) --> CheckEnabled["检查复位功能启用"]
+CheckEnabled --> Enabled{"复位启用?"}
+Enabled --> |否| SkipReset["跳过复位"]
+Enabled --> |是| CheckPort["检查串口配置"]
+CheckPort --> PortValid{"串口有效?"}
+PortValid --> |否| WarnPort["警告: 未指定串口"]
+PortValid --> |是| Delay["等待复位延迟"]
+Delay --> ExecuteReset["执行复位操作"]
+ExecuteReset --> ResetMethod{"复位方式"}
+ResetMethod --> |dtr_rts| DTRRTS["DTR/RTS复位"]
+ResetMethod --> |1200bps| BaudToggle["波特率切换复位"]
+ResetMethod --> |command| CommandReset["命令复位"]
+DTRRTS --> Success["复位成功"]
+BaudToggle --> Success
+CommandReset --> Success
+WarnPort --> SkipReset
+SkipReset --> End([结束])
+Success --> End
+```
+
+**图表来源**
+- [arduino-cli.py:333-359](file://arduino-cli.py#L333-L359)
+
+#### 回归测试功能
+
+系统支持自动复位回归测试，评估复位功能的可靠性：
+
+```mermaid
+flowchart TD
+RegressStart([开始回归测试]) --> CheckCount["检查测试次数"]
+CheckCount --> CountValid{"测试次数有效?"}
+CountValid --> |否| SkipTest["跳过测试"]
+CountValid --> |是| InitVars["初始化变量"]
+InitVars --> LoopTests["循环执行测试"]
+LoopTests --> UploadFirmware["上传固件"]
+UploadFirmware --> StartTimer["开始计时"]
+StartTimer --> ExecuteReset["执行复位"]
+ExecuteReset --> StopTimer["停止计时"]
+StopTimer --> RecordResult["记录结果"]
+RecordResult --> MoreTests{"还有测试?"}
+MoreTests --> |是| LoopTests
+MoreTests --> |否| CalculateStats["计算统计结果"]
+CalculateStats --> CheckThreshold["检查阈值"]
+CheckThreshold --> Pass{"通过阈值?"}
+Pass --> |是| Success["测试成功"]
+Pass --> |否| DisableReset["禁用自动复位"]
+Success --> End([结束])
+DisableReset --> End
+SkipTest --> End
+```
+
+**图表来源**
+- [arduino-cli.py:434-456](file://arduino-cli.py#L434-L456)
+
+**章节来源**
+- [arduino-cli.py:294-456](file://arduino-cli.py#L294-L456)
 
 ### 示例项目分析
 
@@ -415,7 +491,7 @@ Loop->>Loop : 延时2秒
 ```
 
 **图表来源**
-- [getcurrent.ino](file://examples/getcurrent/getcurrent.ino#L7-L55)
+- [getcurrent.ino:7-55](file://examples/getcurrent/getcurrent.ino#L7-L55)
 
 #### I2C通信测试示例
 
@@ -438,11 +514,11 @@ TestSummary --> TestEnd([测试完成])
 ```
 
 **图表来源**
-- [testIIC.ino](file://examples/testIIC/testIIC.ino#L558-L613)
+- [testIIC.ino:558-613](file://examples/testIIC/testIIC.ino#L558-L613)
 
 **章节来源**
-- [getcurrent.ino](file://examples/getcurrent/getcurrent.ino#L1-L55)
-- [testIIC.ino](file://examples/testIIC/testIIC.ino#L1-L613)
+- [getcurrent.ino:1-55](file://examples/getcurrent/getcurrent.ino#L1-L55)
+- [testIIC.ino:1-613](file://examples/testIIC/testIIC.ino#L1-L613)
 
 ## 依赖关系分析
 
@@ -454,30 +530,33 @@ subgraph Runtime[运行时依赖]
 A[Python 3.x]
 B[Arduino CLI]
 C[ESP32开发板]
+D[PowerShell]
 end
 subgraph Libraries[Python库]
-D[argparse]
-E[subprocess]
-F[yaml]
-G[logging]
-H[threading]
-I[time]
-J=os
-K=platform
+E[argparse]
+F[subprocess]
+G[yaml]
+H[logging]
+I[threading]
+J=time
+K=os
+L=platform
+M=serial
+N=shlex
 end
 subgraph ArduinoLibraries[Arduino库]
-L[Wire]
-M[FastLED]
-N[Adafruit_MPU6050]
-O[Adafruit_INA219]
-P[BleGamepad]
+O[Wire]
+P[FastLED]
+Q[Adafruit_MPU6050]
+R[Adafruit_INA219]
+S[BleGamepad]
 end
 subgraph SystemTools[系统工具]
-Q[串口监视器]
-R[终端]
-S[文件系统]
+T[串口监视器]
+U[终端]
+V[文件系统]
+W[WSL环境]
 end
-A --> D
 A --> E
 A --> F
 A --> G
@@ -485,21 +564,26 @@ A --> H
 A --> I
 A --> J
 A --> K
+A --> L
+A --> M
+A --> N
 B --> C
-L --> M
-L --> N
-L --> O
-L --> P
+D --> W
+O --> P
+O --> Q
+O --> R
+O --> S
 A --> B
 A --> C
-A --> Q
-A --> R
-A --> S
+A --> D
+A --> W
+T --> U
+T --> V
 ```
 
 **图表来源**
-- [arduino-cli.py](file://arduino-cli.py#L4-L15)
-- [mus4.ino](file://mus4/mus4.ino#L24-L34)
+- [arduino-cli.py:4-16](file://arduino-cli.py#L4-L16)
+- [mus4.ino:24-34](file://mus4/mus4.ino#L24-L34)
 
 ### 外部依赖管理
 
@@ -512,10 +596,12 @@ A --> S
 | ESP32开发板 | 硬件 | 支持DFRobot FireBeetle2 | 目标平台 |
 | Arduino库 | 通过CLI管理 | Adafruit库 | 传感器支持 |
 | 第三方库 | 通过CLI安装 | BleGamepad库 | 蓝牙功能 |
+| WSL环境 | 系统安装 | Ubuntu 20.04+ | 交叉编译支持 |
+| PowerShell | 系统安装 | 5.0+ | 自动化脚本 |
 
 **章节来源**
-- [arduino-cli.py](file://arduino-cli.py#L1-L315)
-- [mus4.ino](file://mus4/mus4.ino#L24-L34)
+- [arduino-cli.py:1-511](file://arduino-cli.py#L1-L511)
+- [mus4.ino:24-34](file://mus4/mus4.ino#L24-L34)
 
 ## 性能考虑
 
@@ -551,7 +637,7 @@ PriorityManagement --> CommunicationTask["通信任务"]
 ```
 
 **图表来源**
-- [mus4.ino](file://mus4/mus4.ino#L414-L433)
+- [mus4.ino:414-433](file://mus4/mus4.ino#L414-L433)
 
 ### 并发处理机制
 
@@ -563,10 +649,12 @@ PriorityManagement --> CommunicationTask["通信任务"]
 | 异步I/O | subprocess异步 | Arduino命令执行 | 非阻塞操作 |
 | 中断处理 | ESP32 ISR | RC信号采集 | 实时响应 |
 | 事件驱动 | Python回调 | 用户交互 | 响应式设计 |
+| 进度动画 | 线程同步 | 用户反馈 | 轻量级UI |
+| 超时控制 | 时间限制 | 错误恢复 | 资源保护 |
 
 **章节来源**
-- [arduino-cli.py](file://arduino-cli.py#L58-L91)
-- [mus4.ino](file://mus4/mus4.ino#L414-L433)
+- [arduino-cli.py:60-93](file://arduino-cli.py#L60-L93)
+- [mus4.ino:414-433](file://mus4/mus4.ino#L414-L433)
 
 ## 故障排除指南
 
@@ -580,6 +668,8 @@ PriorityManagement --> CommunicationTask["通信任务"]
 | Sketch文件不存在 | 路径配置错误 | 检查config.yaml中的sketch_path |
 | 串口权限不足 | Linux/Mac权限问题 | 添加用户到dialout组 |
 | 端口不存在 | 硬件连接问题 | 检查USB连接和驱动安装 |
+| 构建路径无效 | 自定义路径不存在或权限不足 | 检查路径权限和存在性 |
+| 固件文件不存在 | 预编译文件路径错误 | 检查输入文件路径 |
 
 #### 编译错误排查
 
@@ -608,7 +698,7 @@ ConfigOK --> |是| Success["编译成功"]
 ```
 
 **图表来源**
-- [arduino-cli.py](file://arduino-cli.py#L125-L137)
+- [arduino-cli.py:136-147](file://arduino-cli.py#L136-L147)
 
 #### 上传失败处理
 
@@ -618,6 +708,7 @@ ConfigOK --> |是| Success["编译成功"]
 2. **权限验证**：确保有访问串口的权限
 3. **波特率匹配**：确认波特率设置正确
 4. **硬件连接**：验证USB连接和驱动安装
+5. **固件文件验证**：检查预编译文件的有效性
 
 #### 监控问题解决
 
@@ -627,10 +718,22 @@ ConfigOK --> |是| Success["编译成功"]
 2. **波特率设置**：检查波特率配置
 3. **终端兼容性**：确保终端软件兼容
 4. **数据流检查**：验证数据传输正常
+5. **自动复位检查**：确认复位功能正常
+
+#### WSL交叉编译问题
+
+**新增** 针对WSL交叉编译场景的专用故障排除：
+
+1. **同步问题**：检查rsync同步是否成功
+2. **构建路径**：验证WSL中的构建路径配置
+3. **权限问题**：确保WSL文件系统权限正确
+4. **工具链问题**：确认WSL中Arduino CLI和工具链安装
+5. **回传问题**：检查编译产物是否正确回传到Windows
 
 **章节来源**
-- [arduino-cli.py](file://arduino-cli.py#L125-L137)
-- [arduino-cli.py](file://arduino-cli.py#L206-L246)
+- [arduino-cli.py:136-147](file://arduino-cli.py#L136-L147)
+- [arduino-cli.py:361-403](file://arduino-cli.py#L361-L403)
+- [build_wsl_fast.ps1:1-140](file://build_wsl_fast.ps1#L1-L140)
 
 ### 调试技巧
 
@@ -642,6 +745,7 @@ ConfigOK --> |是| Success["编译成功"]
 2. **时间戳分析**：利用时间戳定位问题发生的时间点
 3. **错误堆栈跟踪**：查看详细的错误信息和调用栈
 4. **性能指标监控**：分析执行时间和资源使用情况
+5. **WSL日志分析**：检查PowerShell脚本的详细输出
 
 #### 性能监控
 
@@ -652,21 +756,123 @@ A[执行时间]
 B[内存使用]
 C[CPU负载]
 D[网络延迟]
+E[构建时间]
+F[上传时间]
 end
 subgraph MonitoringTools[监控工具]
-E[系统监控]
-F[日志分析]
-G[性能分析器]
-H[调试器]
+G[系统监控]
+H[日志分析]
+I[性能分析器]
+J[调试器]
+K[WSL性能监控]
 end
-A --> E
-B --> F
-C --> G
-D --> H
+A --> G
+B --> H
+C --> I
+D --> J
+E --> K
+F --> K
 ```
 
 **图表来源**
-- [arduino-cli.py](file://arduino-cli.py#L167-L170)
+- [arduino-cli.py:167-170](file://arduino-cli.py#L167-L170)
+
+## 命令行参数使用指南
+
+**更新** 修正了参数标志的描述，反映了当前实际使用的参数格式，并新增了构建路径和输入文件相关参数
+
+### 参数列表
+
+系统支持以下命令行参数，所有参数都支持长格式和短格式两种形式：
+
+| 参数类型 | 短格式 | 长格式 | 描述 | 默认值 |
+|----------|--------|--------|------|--------|
+| 操作控制 | -c | --compile | 执行编译操作 | 无 |
+| 操作控制 | -u | --upload | 执行上传操作 | 无 |
+| 操作控制 | -s | --serial | 打开串口监控 | 无 |
+| 端口设置 | -p | --port | 指定串口设备路径 | 从配置文件读取 |
+| 波特率 | -b | --baud | 指定串口波特率 | 115200 |
+| 板型定义 | 无 | --fqbn | 指定Arduino板型定义 | esp32:esp32:esp32 |
+| Sketch路径 | 无 | --sketch | 指定Arduino Sketch文件路径 | mus4/mus4.ino |
+| CLI路径 | 无 | --cli | 指定Arduino CLI可执行文件路径 | arduino-cli |
+| 配置文件 | 无 | --config | 指定配置文件路径 | config.yaml |
+| 自动复位 | 无 | --auto-reset | 启用自动复位功能 | 从配置文件读取 |
+| 复位方式 | 无 | --reset | 指定复位方式 | dtr_rts |
+| 复位延迟 | 无 | --reset-delay | 指定复位前延时(毫秒) | 200 |
+| 复位模式 | 无 | --reset-boot | 指定复位模式 | run |
+| 复位命令 | 无 | --reset-command | 指定自定义复位命令 | 无 |
+| 工具链标识 | 无 | --reset-toolchain | 指定烧录工具链标识 | arduino-cli |
+| 回归测试 | 无 | --regress-reset | 启用自动复位回归测试 | 无 |
+| 测试次数 | 无 | --regress-count | 指定回归测试次数 | 10 |
+| 固件文件 | -i | --input-file | 指定预编译固件文件路径 | 无 |
+| 构建目录 | 无 | --build-path | 指定构建输出目录 | 无 |
+
+### 使用示例
+
+#### 基本操作
+
+**仅编译项目：**
+```bash
+python arduino-cli.py -c
+```
+
+**编译并上传：**
+```bash
+python arduino-cli.py -cu
+```
+
+**完整流程（编译+上传+监控）：**
+```bash
+python arduino-cli.py -cus
+```
+
+**指定端口进行监控：**
+```bash
+python arduino-cli.py -cus -p COM3
+```
+
+**指定波特率和板型：**
+```bash
+python arduino-cli.py -cus -b 9600 --fqbn esp32:esp32:esp32
+```
+
+#### 高级功能
+
+**使用预编译固件文件：**
+```bash
+python arduino-cli.py -u -i firmware.bin
+```
+
+**指定构建输出目录：**
+```bash
+python arduino-cli.py -c --build-path ./build_output
+```
+
+**WSL交叉编译场景：**
+```bash
+# 在WSL中编译
+arduino-cli compile --fqbn esp32:esp32:esp32 --build-path ~/arduino-build/mus4/build_wsl mus4/mus4.ino
+# 在Windows中上传预编译固件
+python arduino-cli.py -u -i mus4/build_wsl/mus4.ino.bin
+```
+
+**自动复位回归测试：**
+```bash
+python arduino-cli.py --regress-reset --regress-count 20
+```
+
+### 参数优先级规则
+
+参数解析遵循以下优先级顺序（从高到低）：
+
+1. **命令行参数**：直接指定的参数具有最高优先级
+2. **配置文件**：config.yaml中的设置
+3. **默认值**：代码中硬编码的默认值
+
+这种设计允许用户通过命令行快速覆盖配置文件中的设置，同时保持配置文件的持久性。
+
+**章节来源**
+- [arduino-cli.py:457-511](file://arduino-cli.py#L457-L511)
 
 ## 结论
 
@@ -679,6 +885,8 @@ Arduino CLI自动化系统是一个功能完整、设计合理的嵌入式开发
 3. **模块化设计**：清晰的组件分离便于维护和扩展
 4. **完善的错误处理**：全面的异常捕获和用户友好的错误信息
 5. **性能优化**：针对实时控制应用进行了专门的性能优化
+6. **WSL支持**：深度集成WSL交叉编译场景，提升构建性能
+7. **自动化增强**：提供自动复位和回归测试功能
 
 ### 技术特色
 
@@ -687,9 +895,14 @@ Arduino CLI自动化系统是一个功能完整、设计合理的嵌入式开发
 3. **硬件抽象**：通过Arduino CLI实现硬件无关的开发体验
 4. **传感器集成**：完整的传感器数据处理和显示功能
 5. **通信协议**：标准化的串口通信协议支持上位机控制
+6. **构建路径管理**：支持自定义构建输出目录
+7. **预编译固件上传**：优化WSL交叉编译工作流
+8. **自动复位系统**：可靠的硬件复位机制
 
 ### 应用前景
 
 该系统不仅适用于LP-MU-S4自动驾驶小车项目，还可以扩展到其他Arduino项目中。其模块化的设计使得添加新的功能和硬件支持变得相对简单，为未来的功能扩展奠定了良好的基础。
+
+**更新** 新增的WSL交叉编译支持和构建路径管理功能，使其能够更好地适应现代开发工作流，特别是需要高性能构建环境的项目。
 
 通过持续的改进和完善，Arduino CLI自动化系统有望成为嵌入式开发领域的一个重要工具，为开发者提供更加高效和便捷的开发体验。

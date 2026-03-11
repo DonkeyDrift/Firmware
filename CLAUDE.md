@@ -35,7 +35,7 @@ python arduino-cli.py -u -i build/mus4.ino.bin --port COM9
 ### WSL Cross-Compile (Windows + WSL)
 ```powershell
 # Compile in WSL, upload via Windows
-.\build_wsl.ps1
+.\build_wsl_fast.ps1
 ```
 
 ### Configuration

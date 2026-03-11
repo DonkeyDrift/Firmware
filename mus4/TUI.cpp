@@ -217,17 +217,7 @@ void TUI::drawOutput() {
     
     cursorTo(ROW_OUTPUT, 1);
     _out.print("Out: ");
-    
-    // Throttle Bar
-    _out.print("Thr ");
-    int t = _state.output.throttle; // -100 to 100
-    if (_ansiEnabled) {
-        if (t > 0) _out.print(ANSI_GREEN);
-        else if (t < 0) _out.print(ANSI_RED);
-    }
-    _out.printf("%4d ", t);
-    if (_ansiEnabled) _out.print(ANSI_RESET);
-    
+
     // Steering Bar
     _out.print("Str ");
     int s = _state.output.steering;
@@ -235,7 +225,17 @@ void TUI::drawOutput() {
         if (s > 0) _out.print(ANSI_CYAN);
         else if (s < 0) _out.print(ANSI_CYAN);
     }
-    _out.printf("%4d", s);
+    _out.printf("%4d  ", s);
+    if (_ansiEnabled) _out.print(ANSI_RESET);
+
+    // Throttle Bar
+    _out.print("Thr ");
+    int t = _state.output.throttle; // -100 to 100
+    if (_ansiEnabled) {
+        if (t > 0) _out.print(ANSI_GREEN);
+        else if (t < 0) _out.print(ANSI_RED);
+    }
+    _out.printf("%4d", t);
     if (_ansiEnabled) _out.print(ANSI_RESET);
 }
 

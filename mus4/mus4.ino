@@ -131,9 +131,9 @@ CRGB leds[NUM_LEDS]; // Define the array of leds
 #define COLOR_WHITE "\033[37m"
 
 // 输出控制参数
-#define SENSOR_UPDATE_INTERVAL 16     // 传感器数据更新间隔（毫秒）- ~60Hz
-#define RC_DATA_UPDATE_INTERVAL 16    // RC数据更新间隔（毫秒）- ~60Hz
-#define RC_FILTER_UPDATE_INTERVAL 16   // RC滤波更新间隔（毫秒）- ~125Hz，平衡响应和稳定
+#define SENSOR_UPDATE_INTERVAL 8     // 传感器数据更新间隔（毫秒）- ~60Hz
+#define RC_DATA_UPDATE_INTERVAL 8    // RC数据更新间隔（毫秒）- ~60Hz
+#define RC_FILTER_UPDATE_INTERVAL 8   // RC滤波更新间隔（毫秒）- ~125Hz，平衡响应和稳定
 #define UI_UPDATE_INTERVAL 16         // UI更新间隔（毫秒）- 60Hz丝滑体验
 
 // 波形图参数
@@ -1118,11 +1118,11 @@ void setup()
     // 替换原有直接设置颜色的方式
     setLEDColor(CRGB::Blue); // 使用新函数设置初始颜色
 
-    // Initialize Park State (Default Unlocked)
-    rc_data.park = false; 
-    car_output.park = false;
+    // Initialize Park State (Default Locked)
+    rc_data.park = PARK_LOCKED; 
+    car_output.park = PARK_LOCKED;
     emergencyStopState = EST_IDLE;
-    tui.log("System Unlocked: Park Mode Exited");
+    tui.log("System Locked: Park Mode Active");
 
     delay(1000);
     uiInitialized = false;

@@ -99,7 +99,7 @@ volatile unsigned long last_valid_time[4] = {0, 0, 0, 0}; // last valid signal t
 #define RC_PWM_MIN 800   // 最小有效PWM (µs)
 #define RC_PWM_MAX 2200  // 最大有效PWM (µs)
 
-#define PWM_FILTER_SIZE 4  // 滑动平均滤波器窗口大小 - 增大到8提高稳定性
+#define PWM_FILTER_SIZE 8  // 滑动平均滤波器窗口大小 - 增大到8提高稳定性
 uint16_t pwm_filter_buf[4][PWM_FILTER_SIZE] = {{0}};  // 滤波缓冲区
 uint8_t pwm_filter_idx[4] = {0};
 uint16_t pwm_filtered[4] = {0, 0, 0, 0};  // 滤波后的PWM值
@@ -528,36 +528,62 @@ void IRAM_ATTR handle_interrupt(int channel)
 { // interrupt handler
     static int pin_state[4] = {0, 0, 0, 0};
     static unsigned long last_edge_time[4] = {0, 0, 0, 0};
+    static unsigned long last_rise_time[4] = {0, 0, 0, 0};
+    static uint16_t stable_pwm[4] = {1500, 1500, 1500, 1500};
 
     unsigned long now = micros();
-    // 防抖：两个边沿之间至少间隔100µs，避免中断抖动（从50µs增加到100µs）
-    if (now - last_edge_time[channel] < 100) return;
+    // 防抖：两个边沿之间至少间隔500µs（针对330Hz信号优化，周期约3030µs）
+    if (now - last_edge_time[channel] < 500) return;
     last_edge_time[channel] = now;
 
     pin_state[channel] = digitalRead(Channels[channel]);
     if (pin_state[channel] == HIGH)
     {
-        rise_time[channel] = now;
+        last_rise_time[channel] = now;
     }
     else
     {
-        uint16_t width = now - rise_time[channel];
-        // 只接受有效范围内的PWM值 (800-2200µs)，过滤噪声
-        // 增加合理性检查：脉冲宽度变化不超过300µs（避免毛刺）
+        uint16_t width = now - last_rise_time[channel];
+        // 严格的范围检查，只接受有效PWM值
         if (width >= RC_PWM_MIN && width <= RC_PWM_MAX) {
             uint16_t prev = pwm_value[channel];
-            // 如果变化过大，可能是噪声，需要连续两次相近的读数才接受
-            if (abs((int)width - (int)prev) > 300) {
-                // 大变化时，检查是否与上一次的大变化方向一致
-                static uint16_t last_large_change[4] = {0};
-                if (abs((int)width - (int)last_large_change[channel]) < 100) {
+            int diff = abs((int)width - (int)prev);
+            
+            // 小变化直接接受
+            if (diff <= 50) {
+                pwm_value[channel] = width;
+                stable_pwm[channel] = width;
+                last_valid_time[channel] = now;
+            }
+            // 中等变化需要连续两次确认
+            else if (diff <= 200) {
+                static uint16_t candidate_pwm[4] = {0};
+                if (abs((int)width - (int)candidate_pwm[channel]) < 30) {
                     pwm_value[channel] = width;
+                    stable_pwm[channel] = width;
                     last_valid_time[channel] = now;
                 }
-                last_large_change[channel] = width;
-            } else {
-                pwm_value[channel] = width;
-                last_valid_time[channel] = now;
+                candidate_pwm[channel] = width;
+            }
+            // 大变化只在确实偏离稳定值时接受（防止误触发）
+            else {
+                if (abs((int)width - (int)stable_pwm[channel]) > 100) {
+                    // 大变化需要更保守的处理
+                    static uint16_t large_change_count[4] = {0};
+                    static uint16_t last_large_pwm[4] = {0};
+                    if (abs((int)width - (int)last_large_pwm[channel]) < 50) {
+                        large_change_count[channel]++;
+                        if (large_change_count[channel] >= 2) {
+                            pwm_value[channel] = width;
+                            stable_pwm[channel] = width;
+                            last_valid_time[channel] = now;
+                            large_change_count[channel] = 0;
+                        }
+                    } else {
+                        large_change_count[channel] = 0;
+                    }
+                    last_large_pwm[channel] = width;
+                }
             }
         }
     }
@@ -1155,24 +1181,41 @@ void loop()
     bool modeValid = (nowUs - last_valid_time[CH_MODE]) < RC_SIGNAL_TIMEOUT;
 
     if (millis() - lastRCFilterUpdate >= RC_FILTER_UPDATE_INTERVAL) {
-        // 改进的滤波：滑动平均 + 中值滤波
+        // 改进的滤波：滑动平均 + 中值滤波 + 限幅滤波
         auto filterPWM = [&](int ch, uint16_t raw, bool valid) -> uint16_t {
             if (!valid) return 1500;
             uint8_t idx = pwm_filter_idx[ch];
             pwm_filter_buf[ch][idx] = raw;
             pwm_filter_idx[ch] = (idx + 1) % PWM_FILTER_SIZE;
-            // 先进行中值滤波，再进行滑动平均，双重滤波提高稳定性
+            
+            // 先进行中值滤波，去除异常值
             uint16_t median = medianFilter(pwm_filter_buf[ch], PWM_FILTER_SIZE);
-            // 如果当前值与上一滤波值差异过大，使用更保守的混合
-            uint16_t prev = pwm_filtered[ch];
-            if (abs((int)median - (int)prev) > 100) {
-                // 大变化时混合70%新值 + 30%旧值
-                return (median * 7 + prev * 3) / 10;
-            }
-            // 小变化时滑动平均
+            
+            // 计算滑动平均
             uint32_t sum = 0;
             for (int i = 0; i < PWM_FILTER_SIZE; i++) sum += pwm_filter_buf[ch][i];
-            return sum / PWM_FILTER_SIZE;
+            uint16_t avg = sum / PWM_FILTER_SIZE;
+            
+            // 取中值和平均的折中，更平滑
+            uint16_t filtered = (median + avg) / 2;
+            
+            // 限幅滤波，防止突然跳变
+            uint16_t prev = pwm_filtered[ch];
+            int diff = abs((int)filtered - (int)prev);
+            
+            if (diff <= 30) {
+                // 小变化直接接受
+                return filtered;
+            } else if (diff <= 80) {
+                // 中等变化，混合50%新值 + 50%旧值
+                return (filtered + prev) / 2;
+            } else if (diff <= 150) {
+                // 较大变化，混合30%新值 + 70%旧值
+                return (filtered * 3 + prev * 7) / 10;
+            } else {
+                // 超大变化，非常保守，只移动20%
+                return (filtered * 2 + prev * 8) / 10;
+            }
         };
 
         // 对所有通道应用滤波

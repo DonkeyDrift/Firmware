@@ -7,20 +7,21 @@
 - [mus4.ino](file://mus4/mus4.ino)
 - [sketch.yaml](file://mus4/sketch.yaml)
 - [DevNote.md](file://mus4/Doc/README/DevNote.md)
+- [OPERATIONS.md](file://mus4/Doc/README/OPERATIONS.md)
+- [architecture.md](file://mus4/Doc/Arch/architecture.md)
 - [pin_definitions.md](file://mus4/Doc/Hardware/pin_definitions.md)
+- [build_wsl_fast_manual.md](file://mus4/Doc/Tools/build_wsl_fast_manual.md)
 - [getcurrent.ino](file://examples/getcurrent/getcurrent.ino)
 - [testIIC.ino](file://examples/testIIC/testIIC.ino)
 - [build_wsl_fast.ps1](file://build_wsl_fast.ps1)
-- [build_wsl_fast_manual.md](file://mus4/Doc/Tools/build_wsl_fast_manual.md)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 新增构建路径和输入文件支持功能，增强WSL交叉编译场景
-- 改进了错误处理和日志记录机制
-- 优化了命令执行流程和超时控制
-- 增强了自动复位功能和回归测试能力
-- 完善了参数解析和配置管理
+- 文档目录结构重组织：ArduinoCLI相关文档从Doc/README目录迁移至Doc/Tools目录
+- 新增build_wsl_fast_manual.md技术手册，提供WSL高速构建的详细技术说明
+- 更新项目结构图以反映新的文档组织方式
+- 完善WSL交叉编译场景的技术文档和使用指南
 
 ## 目录
 1. [简介](#简介)
@@ -40,7 +41,7 @@ Arduino CLI自动化是一个完整的嵌入式系统开发工具链，专为ESP
 
 该系统的核心目标是简化Arduino项目的开发流程，通过Python脚本自动化整个构建过程，包括环境检测、编译配置、固件上传和实时监控等功能。项目采用模块化设计，支持跨平台运行（Windows、Linux、macOS），并提供了丰富的配置选项和错误处理机制。
 
-**更新** 新增了对WSL交叉编译场景的深度支持，包括构建路径管理和预编译固件文件上传功能。
+**更新** 新增了对WSL交叉编译场景的深度支持，包括构建路径管理和预编译固件文件上传功能。文档结构已重新组织，将ArduinoCLI相关技术文档迁移至Doc/Tools目录，提供更清晰的文档分类。
 
 ## 项目结构
 
@@ -52,8 +53,7 @@ A[项目根目录] --> B[arduino-cli.py]
 A --> C[config.yaml]
 A --> D[mus4/]
 A --> E[examples/]
-A --> F[docs/]
-A --> G[build_wsl_fast.ps1]
+A --> F[build_wsl_fast.ps1]
 D --> H[mus4.ino]
 D --> I[sketch.yaml]
 D --> J[Doc/]
@@ -69,6 +69,7 @@ Q --> S[testIIC.ino]
 K --> T[architecture.md]
 L --> U[pin_definitions.md]
 M --> V[DevNote.md]
+M --> W[OPERATIONS.md]
 ```
 
 **图表来源**
@@ -260,27 +261,30 @@ L[Python脚本]
 M[配置文件]
 N[日志系统]
 O[PowerShell脚本]
+P[WSL技术手册]
 end
 subgraph Hardware[硬件平台]
-P[ESP32微控制器]
-Q[RC接收机]
-R[执行器]
-S[传感器]
+Q[ESP32微控制器]
+R[RC接收机]
+S[执行器]
+T[传感器]
 end
 D --> L
 C --> M
 D --> N
-J --> P
-K --> Q
+J --> Q
 K --> R
 K --> S
+K --> T
 O --> D
+P --> O
 ```
 
 **图表来源**
 - [arduino-cli.py:404-511](file://arduino-cli.py#L404-L511)
 - [mus4.ino:1104-1125](file://mus4/mus4.ino#L1104-L1125)
 - [build_wsl_fast.ps1:1-140](file://build_wsl_fast.ps1#L1-L140)
+- [build_wsl_fast_manual.md:1-142](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L1-L142)
 
 ## 详细组件分析
 
@@ -352,7 +356,7 @@ Engine-->>User : 返回执行结果
 
 ### 构建路径和输入文件支持
 
-**新增** 系统现在支持自定义构建路径和预编译固件文件上传，特别针对WSL交叉编译场景进行了优化。
+**更新** 系统现在支持自定义构建路径和预编译固件文件上传，特别针对WSL交叉编译场景进行了优化。
 
 #### 构建路径管理
 
@@ -467,6 +471,52 @@ SkipTest --> End
 **章节来源**
 - [arduino-cli.py:294-456](file://arduino-cli.py#L294-L456)
 
+### WSL高速构建技术手册
+
+**新增** 项目新增了build_wsl_fast_manual.md技术手册，详细介绍了WSL交叉编译的系统架构和性能优化原理。
+
+#### 系统架构与数据流
+
+WSL高速构建脚本通过将源码同步到WSL原生文件系统进行编译，实现了比直接挂载编译快5倍以上的构建速度：
+
+```mermaid
+graph TD
+subgraph Windows[Windows 11 Host]
+SourceCode["Source Code\n(NTFS)"]
+PS_Script["build_wsl_fast.ps1\n(PowerShell)"]
+Py_Uploader["arduino-cli.py\n(Python)"]
+COM_Port["ESP32 Device\n(COM Port)"]
+end
+subgraph WSL[WSL2 Ubuntu]
+Rsync_Server["Rsync\n(Receiver)"]
+Arduino_CLI["arduino-cli\n(Linux Binary)"]
+Build_Dir["~/arduino-build\n(Ext4)"]
+Compiler["xtensa-esp32-elf-g++\n(Toolchain)"]
+end
+SourceCode --"1. Sync Source (rsync)" --> Rsync_Server
+Rsync_Server --"Write" --> Build_Dir
+Build_Dir --"Read Source" --> Arduino_CLI
+Arduino_CLI --"Invoke" --> Compiler
+Compiler --"Compile & Link" --> Build_Dir
+Build_Dir --"2. Copy Artifacts (.bin)" --> SourceCode
+PS_Script --"3. Trigger Upload" --> Py_Uploader
+Py_Uploader --"Flash Firmware" --> COM_Port
+```
+
+**图表来源**
+- [build_wsl_fast_manual.md:21-45](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L21-L45)
+
+#### 性能优化原理
+
+系统通过"Copy-Compile-CopyBack"模式解决了WSL2中的I/O性能瓶颈：
+
+1. **利用Ext4高速缓存**：将工作区迁移到WSL的虚拟磁盘中，Linux内核可充分利用Page Cache
+2. **减少元数据转换**：避免了Linux权限位与Windows ACL之间的实时转换开销
+3. **增量同步**：使用rsync仅传输修改过的源文件，同步耗时通常在0.5秒以内
+
+**章节来源**
+- [build_wsl_fast_manual.md:1-142](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L1-L142)
+
 ### 示例项目分析
 
 项目包含了多个示例程序，用于演示特定功能的实现。
@@ -531,33 +581,34 @@ A[Python 3.x]
 B[Arduino CLI]
 C[ESP32开发板]
 D[PowerShell]
+E[WSL2 Ubuntu]
 end
 subgraph Libraries[Python库]
-E[argparse]
-F[subprocess]
-G[yaml]
-H[logging]
-I[threading]
-J=time
-K=os
-L=platform
-M=serial
-N=shlex
+F[argparse]
+G[subprocess]
+H[yaml]
+I[logging]
+J[threading]
+K=time
+L=os
+M=platform
+N=serial
+O=shlex
 end
 subgraph ArduinoLibraries[Arduino库]
-O[Wire]
-P[FastLED]
-Q[Adafruit_MPU6050]
-R[Adafruit_INA219]
-S[BleGamepad]
+P[Wire]
+Q[FastLED]
+R[Adafruit_MPU6050]
+S[Adafruit_INA219]
+T[BleGamepad]
 end
 subgraph SystemTools[系统工具]
-T[串口监视器]
-U[终端]
-V[文件系统]
-W[WSL环境]
+U[串口监视器]
+V[终端]
+W[文件系统]
+X[rsync]
+Y[xtensa-esp32-elf-g++]
 end
-A --> E
 A --> F
 A --> G
 A --> H
@@ -567,23 +618,28 @@ A --> K
 A --> L
 A --> M
 A --> N
+A --> O
 B --> C
-D --> W
-O --> P
-O --> Q
-O --> R
-O --> S
+D --> E
+E --> X
+E --> Y
+F --> P
+F --> Q
+F --> R
+F --> S
+F --> T
 A --> B
 A --> C
 A --> D
-A --> W
-T --> U
-T --> V
+A --> E
+U --> V
+U --> W
 ```
 
 **图表来源**
 - [arduino-cli.py:4-16](file://arduino-cli.py#L4-L16)
 - [mus4.ino:24-34](file://mus4/mus4.ino#L24-L34)
+- [build_wsl_fast.ps1:1-140](file://build_wsl_fast.ps1#L1-L140)
 
 ### 外部依赖管理
 
@@ -598,10 +654,13 @@ T --> V
 | 第三方库 | 通过CLI安装 | BleGamepad库 | 蓝牙功能 |
 | WSL环境 | 系统安装 | Ubuntu 20.04+ | 交叉编译支持 |
 | PowerShell | 系统安装 | 5.0+ | 自动化脚本 |
+| rsync工具 | WSL安装 | 3.1+ | 增量同步 |
+| 交叉编译工具链 | WSL安装 | xtensa-esp32-elf | ESP32编译 |
 
 **章节来源**
 - [arduino-cli.py:1-511](file://arduino-cli.py#L1-L511)
 - [mus4.ino:24-34](file://mus4/mus4.ino#L24-L34)
+- [build_wsl_fast.ps1:1-140](file://build_wsl_fast.ps1#L1-L140)
 
 ## 性能考虑
 
@@ -651,10 +710,12 @@ PriorityManagement --> CommunicationTask["通信任务"]
 | 事件驱动 | Python回调 | 用户交互 | 响应式设计 |
 | 进度动画 | 线程同步 | 用户反馈 | 轻量级UI |
 | 超时控制 | 时间限制 | 错误恢复 | 资源保护 |
+| WSL同步 | rsync异步 | 文件传输 | 高效I/O |
 
 **章节来源**
 - [arduino-cli.py:60-93](file://arduino-cli.py#L60-L93)
 - [mus4.ino:414-433](file://mus4/mus4.ino#L414-L433)
+- [build_wsl_fast.ps1:20-92](file://build_wsl_fast.ps1#L20-L92)
 
 ## 故障排除指南
 
@@ -670,6 +731,8 @@ PriorityManagement --> CommunicationTask["通信任务"]
 | 端口不存在 | 硬件连接问题 | 检查USB连接和驱动安装 |
 | 构建路径无效 | 自定义路径不存在或权限不足 | 检查路径权限和存在性 |
 | 固件文件不存在 | 预编译文件路径错误 | 检查输入文件路径 |
+| WSL同步失败 | rsync工具未安装或权限问题 | 在WSL中安装rsync并检查权限 |
+| 交叉编译工具链缺失 | WSL中工具链未安装 | 安装xtensa-esp32-elf工具链 |
 
 #### 编译错误排查
 
@@ -709,6 +772,7 @@ ConfigOK --> |是| Success["编译成功"]
 3. **波特率匹配**：确认波特率设置正确
 4. **硬件连接**：验证USB连接和驱动安装
 5. **固件文件验证**：检查预编译文件的有效性
+6. **WSL文件同步**：确认编译产物已正确回传
 
 #### 监控问题解决
 
@@ -729,11 +793,13 @@ ConfigOK --> |是| Success["编译成功"]
 3. **权限问题**：确保WSL文件系统权限正确
 4. **工具链问题**：确认WSL中Arduino CLI和工具链安装
 5. **回传问题**：检查编译产物是否正确回传到Windows
+6. **性能问题**：验证Ext4文件系统缓存效果
 
 **章节来源**
 - [arduino-cli.py:136-147](file://arduino-cli.py#L136-L147)
 - [arduino-cli.py:361-403](file://arduino-cli.py#L361-L403)
 - [build_wsl_fast.ps1:1-140](file://build_wsl_fast.ps1#L1-L140)
+- [build_wsl_fast_manual.md:119-128](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L119-L128)
 
 ### 调试技巧
 
@@ -758,24 +824,35 @@ C[CPU负载]
 D[网络延迟]
 E[构建时间]
 F[上传时间]
+G[WSL同步时间]
+H[编译时间]
 end
 subgraph MonitoringTools[监控工具]
-G[系统监控]
-H[日志分析]
-I[性能分析器]
-J[调试器]
-K[WSL性能监控]
+I[系统监控]
+J[日志分析]
+K[性能分析器]
+L[调试器]
+M[WSL性能监控]
+N[PowerShell性能报告]
 end
-A --> G
-B --> H
-C --> I
-D --> J
-E --> K
-F --> K
+A --> I
+B --> J
+C --> K
+D --> L
+E --> M
+F --> N
+G --> M
+H --> M
+I --> M
+J --> N
+K --> N
+L --> N
+M --> N
 ```
 
 **图表来源**
 - [arduino-cli.py:167-170](file://arduino-cli.py#L167-L170)
+- [build_wsl_fast.ps1:119-126](file://build_wsl_fast.ps1#L119-L126)
 
 ## 命令行参数使用指南
 
@@ -887,6 +964,7 @@ Arduino CLI自动化系统是一个功能完整、设计合理的嵌入式开发
 5. **性能优化**：针对实时控制应用进行了专门的性能优化
 6. **WSL支持**：深度集成WSL交叉编译场景，提升构建性能
 7. **自动化增强**：提供自动复位和回归测试功能
+8. **文档完善**：系统化的技术文档和故障排除指南
 
 ### 技术特色
 
@@ -898,11 +976,12 @@ Arduino CLI自动化系统是一个功能完整、设计合理的嵌入式开发
 6. **构建路径管理**：支持自定义构建输出目录
 7. **预编译固件上传**：优化WSL交叉编译工作流
 8. **自动复位系统**：可靠的硬件复位机制
+9. **WSL性能优化**：基于Ext4文件系统的高速构建架构
 
 ### 应用前景
 
 该系统不仅适用于LP-MU-S4自动驾驶小车项目，还可以扩展到其他Arduino项目中。其模块化的设计使得添加新的功能和硬件支持变得相对简单，为未来的功能扩展奠定了良好的基础。
 
-**更新** 新增的WSL交叉编译支持和构建路径管理功能，使其能够更好地适应现代开发工作流，特别是需要高性能构建环境的项目。
+**更新** 新增的WSL交叉编译支持和构建路径管理功能，使其能够更好地适应现代开发工作流，特别是需要高性能构建环境的项目。文档结构的重新组织使得技术文档更加清晰，便于开发者查找和使用相关技术资料。
 
 通过持续的改进和完善，Arduino CLI自动化系统有望成为嵌入式开发领域的一个重要工具，为开发者提供更加高效和便捷的开发体验。

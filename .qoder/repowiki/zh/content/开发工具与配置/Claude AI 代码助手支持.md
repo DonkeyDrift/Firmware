@@ -12,11 +12,20 @@
 - [arduino-cli.py](file://arduino-cli.py)
 - [config.yaml](file://config.yaml)
 - [build_wsl_fast.ps1](file://build_wsl_fast.ps1)
+- [build_wsl.ps1](file://build_wsl.ps1)
 - [architecture.md](file://mus4/Doc/Arch/architecture.md)
+- [build_wsl_fast_manual.md](file://mus4/Doc/Tools/build_wsl_fast_manual.md)
 - [getcurrent.ino](file://examples/getcurrent/getcurrent.ino)
 - [testIIC.ino](file://examples/testIIC/testIIC.ino)
 - [sketch.yaml](file://mus4/sketch.yaml)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 更新构建和部署章节，重点介绍新的高性能 build_wsl_fast.ps1 脚本
+- 添加 WSL 高速构建技术原理和性能对比
+- 更新构建流程图表以反映新的优化架构
+- 增强故障排除指南，包含新脚本特有的问题诊断
 
 ## 目录
 1. [简介](#简介)
@@ -39,7 +48,7 @@ MUS4 是一个基于 ESP32 的自动驾驶小车控制系统，专为 MUS4-v2.3 
 - **安全机制**：紧急停车状态机和停车控制
 - **传感器集成**：INA219 电源监控和 MPU6050 IMU 传感器
 - **蓝牙手柄支持**：RC 信号到蓝牙手柄的转换
-- **自动化构建**：Python 脚本支持本地和 WSL 交叉编译
+- **高性能构建**：Python 脚本支持本地和 WSL 交叉编译，其中 build_wsl_fast.ps1 提供 5 倍性能提升
 
 ## 项目结构
 
@@ -67,7 +76,9 @@ Sketch[sketch.yaml]
 end
 subgraph "Tools"
 CLI[arduino-cli.py]
-WSL[build_wsl_fast.ps1]
+WSL_Fast[build_wsl_fast.ps1<br/>高性能 WSL 构建]
+WSL_Slow[build_wsl.ps1<br/>传统 WSL 构建]
+Manual[build_wsl_fast_manual.md<br/>技术文档]
 end
 Root --> Docs
 Root --> Examples
@@ -81,13 +92,16 @@ Core --> Shared
 Config --> Config
 Config --> Sketch
 Scripts --> CLI
-Scripts --> WSL
+Scripts --> WSL_Fast
+Scripts --> WSL_Slow
+Tools --> Manual
 ```
 
 **图表来源**
 - [mus4.ino:1-50](file://mus4/mus4.ino#L1-L50)
 - [TUI.h:1-60](file://mus4/TUI.h#L1-L60)
 - [SharedTypes.h:1-34](file://mus4/SharedTypes.h#L1-L34)
+- [build_wsl_fast_manual.md:19-45](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L19-L45)
 
 **章节来源**
 - [CLAUDE.md:1-120](file://CLAUDE.md#L1-L120)
@@ -152,6 +166,11 @@ subgraph "监控层"
 TUI[终端界面]
 Sensors[传感器数据]
 end
+subgraph "构建层"
+CLI[arduino-cli.py]
+WSL_Fast[build_wsl_fast.ps1<br/>高性能 WSL 构建]
+WSL_Slow[build_wsl.ps1<br/>传统 WSL 构建]
+end
 RC --> Interrupt
 Serial --> Parser
 Interrupt --> Logic
@@ -166,11 +185,14 @@ Logic --> Feedback
 Logic --> TUI
 Sensors --> TUI
 TUI --> Serial
+CLI --> WSL_Fast
+CLI --> WSL_Slow
 ```
 
 **图表来源**
 - [architecture.md:18-45](file://mus4/Doc/Arch/architecture.md#L18-L45)
 - [mus4.ino:493-510](file://mus4/mus4.ino#L493-L510)
+- [build_wsl_fast_manual.md:19-45](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L19-L45)
 
 ## 详细组件分析
 
@@ -328,6 +350,11 @@ mus4.ino[主程序]
 TUI[TUI 类]
 SharedTypes[共享类型]
 end
+subgraph "构建工具"
+arduino_cli_py[arduino-cli.py]
+build_wsl_fast_ps1[build_wsl_fast.ps1]
+build_wsl_ps1[build_wsl.ps1]
+end
 Wire --> Adafruit_MPU6050
 Wire --> Adafruit_INA219
 FastLED --> TUI
@@ -337,11 +364,16 @@ ESP32Core --> mus4.ino
 ESP32Core --> TUI
 mus4.ino --> SharedTypes
 TUI --> SharedTypes
+arduino_cli_py --> build_wsl_fast_ps1
+arduino_cli_py --> build_wsl_ps1
+build_wsl_fast_ps1 --> mus4_ino[mus4.ino]
+build_wsl_ps1 --> mus4_ino
 ```
 
 **图表来源**
 - [mus4.ino:24-31](file://mus4/mus4.ino#L24-L31)
 - [AGENTS.md:48-52](file://AGENTS.md#L48-L52)
+- [build_wsl_fast_manual.md:19-45](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L19-L45)
 
 **章节来源**
 - [AGENTS.md:46-52](file://AGENTS.md#L46-L52)
@@ -357,6 +389,32 @@ TUI --> SharedTypes
 - **内存管理**：使用 volatile 关键字处理共享变量
 - **刷新率控制**：可配置的 UI 刷新间隔 (16ms ~ 500ms)
 - **波形优化**：减少波形图的渲染开销
+
+### 构建性能优化
+
+**更新** 新的 build_wsl_fast.ps1 脚本通过以下方式提供 5 倍性能提升：
+
+#### I/O 性能瓶颈分析
+
+在 WSL2 中直接编译 `/mnt/c` 下的文件时，文件系统调用路径为：
+`syscall` -> `VFS` -> `9P Client` -> `Vsock` -> `9P Server (Windows)` -> `NTFS`
+每个文件的读写（open, read, write, close, stat）都需要跨越虚拟机边界，产生极高的延迟。对于包含数千个小文件的 C++ 编译过程，这种延迟会被放大数千倍。
+
+#### 优化策略
+
+新的 build_wsl_fast.ps1 采用了 **"Copy-Compile-CopyBack"** 模式：
+
+1. **利用 Ext4 高速缓存**：将工作区迁移到 WSL 的虚拟磁盘（ext4.vhdx）中。Linux 内核可以充分利用 Page Cache，大幅减少物理 I/O。
+2. **减少元数据转换**：避免了 Linux 权限位与 Windows ACL 之间的实时转换开销。
+3. **增量同步**：使用 `rsync` 仅传输修改过的源文件，同步耗时通常在 0.5s 以内。
+
+#### 性能对比数据
+
+| 指标 | 原始挂载编译 | 优化后原生编译 | 提升 |
+| :--- | :--- | :--- | :--- |
+| **全量编译** | ~170s | ~35s | **~5x** |
+| **增量编译** | ~20s | ~3s | **~6x** |
+| **CPU 利用率** | 等待 I/O，利用率低 | 满载，计算密集 | 更高 |
 
 ### 内存使用分析
 
@@ -429,9 +487,49 @@ Buffer --> IncreaseSize[增加缓冲区大小]
 - [CLAUDE.md:76-82](file://CLAUDE.md#L76-L82)
 - [mus4.ino:404-490](file://mus4/mus4.ino#L404-L490)
 
+#### WSL 构建问题
+
+**新增** 针对新的 build_wsl_fast.ps1 脚本的专用故障排除：
+
+```mermaid
+flowchart TD
+WSLIssue[WSL 构建问题] --> SyncFail[同步失败]
+WSLIssue --> CompileFail[编译失败]
+WSLIssue --> UploadFail[上传失败]
+SyncFail --> CheckRsync[检查 rsync 权限]
+SyncFail --> CheckDiskSpace[检查磁盘空间]
+SyncFail --> CheckPath[检查路径配置]
+CompileFail --> CheckLibs[检查库依赖]
+CompileFail --> CheckToolchain[检查工具链]
+CompileFail --> CheckMemory[检查内存限制]
+UploadFail --> CheckPort[检查 COM 端口]
+UploadFail --> CheckFirmware[检查固件文件]
+UploadFail --> CheckPermissions[检查权限]
+CheckRsync --> FixRsync[修复 rsync 权限]
+CheckDiskSpace --> CleanTemp[清理临时文件]
+CheckPath --> UpdateConfig[更新配置]
+CheckLibs --> InstallLibs[安装缺失库]
+CheckToolchain --> ReinstallToolchain[重新安装工具链]
+CheckMemory --> IncreaseMemory[增加内存限制]
+FixRsync --> RetrySync[重试同步]
+CleanTemp --> RetrySync
+UpdateConfig --> RetrySync
+InstallLibs --> RetryCompile[重试编译]
+ReinstallToolchain --> RetryCompile
+IncreaseMemory --> RetryCompile
+RetrySync --> RetryCompile
+RetryCompile --> RetryUpload[重试上传]
+RetryUpload --> Success[问题解决]
+```
+
+**图表来源**
+- [build_wsl_fast_manual.md:119-142](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L119-L142)
+- [build_wsl_fast.ps1:81-88](file://build_wsl_fast.ps1#L81-L88)
+
 **章节来源**
 - [AGENTS.md:75-87](file://AGENTS.md#L75-L87)
 - [testIIC.ino:125-174](file://examples/testIIC/testIIC.ino#L125-L174)
+- [build_wsl_fast_manual.md:119-142](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L119-L142)
 
 ## 结论
 
@@ -444,6 +542,7 @@ MUS4 项目展现了现代嵌入式控制系统的设计理念，具有以下特
 3. **用户友好**：直观的终端界面和调试工具
 4. **安全性**：完善的紧急停车和状态监控机制
 5. **可扩展性**：灵活的配置和测试框架
+6. **高性能构建**：build_wsl_fast.ps1 提供 5 倍性能提升的 WSL 构建解决方案
 
 ### 开发价值
 
@@ -471,14 +570,28 @@ python arduino-cli.py -cus --port COM9
 
 #### WSL 交叉编译
 
+**更新** 推荐使用高性能的 build_wsl_fast.ps1 脚本：
+
 ```powershell
-# 在 Windows 上执行 WSL 优化构建
+# 在 Windows 上执行 WSL 优化构建（推荐）
 .\build_wsl_fast.ps1
+
+# 传统 WSL 构建（较慢）
+.\build_wsl.ps1
 ```
+
+**新增** build_wsl_fast.ps1 的技术优势：
+
+- **5 倍性能提升**：通过将源码同步到 WSL 原生文件系统进行编译
+- **增量同步**：使用 rsync 仅传输修改过的源文件
+- **原生编译**：在 WSL 的 Ext4 文件系统上执行 arduino-cli 编译
+- **可视化反馈**：提供 Braille Spinner 进度动画和精确到毫秒的耗时统计
+- **无缝集成**：自动调用 Windows 端的 arduino-cli.py 完成固件上传和串口复位
 
 **章节来源**
 - [CLAUDE.md:15-44](file://CLAUDE.md#L15-L44)
 - [build_wsl_fast.ps1:94-140](file://build_wsl_fast.ps1#L94-L140)
+- [build_wsl_fast_manual.md:1-142](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L1-L142)
 
 ### 测试命令
 
@@ -493,3 +606,44 @@ python arduino-cli.py -cus --port COM9
 **章节来源**
 - [CLAUDE.md:106-114](file://CLAUDE.md#L106-L114)
 - [AGENTS.md:33-40](file://AGENTS.md#L33-L40)
+
+### WSL 高速构建技术详解
+
+**新增** 详细的构建流程和技术原理：
+
+#### 系统架构与数据流
+
+```mermaid
+graph TD
+subgraph Windows [Windows 11 Host]
+SourceCode["Source Code\n(NTFS)"]
+PS_Script["build_wsl_fast.ps1\n(PowerShell)"]
+Py_Uploader["arduino-cli.py\n(Python)"]
+COM_Port["ESP32 Device\n(COM Port)"]
+end
+subgraph WSL [WSL2 Ubuntu]
+Rsync_Server["Rsync\n(Receiver)"]
+Arduino_CLI["arduino-cli\n(Linux Binary)"]
+Build_Dir["~/arduino-build\n(Ext4)"]
+Compiler["xtensa-esp32-elf-g++\n(Toolchain)"]
+end
+SourceCode --"1. Sync Source (rsync)" --> Rsync_Server
+Rsync_Server --"Write" --> Build_Dir
+Build_Dir --"Read Source" --> Arduino_CLI
+Arduino_CLI --"Invoke" --> Compiler
+Compiler --"Compile & Link" --> Build_Dir
+Build_Dir --"2. Copy Artifacts (.bin)" --> SourceCode
+PS_Script --"3. Trigger Upload" --> Py_Uploader
+Py_Uploader --"Flash Firmware" --> COM_Port
+```
+
+#### 性能优化原理
+
+1. **I/O 瓶颈分析**：WSL2 中直接编译产生的高延迟文件系统调用路径
+2. **优化策略**："Copy-Compile-CopyBack" 模式避免 9P 协议跨文件系统的开销
+3. **增量同步**：rsync 仅传输修改过的源文件，同步耗时通常在 0.5s 以内
+4. **原生编译环境**：在 WSL 的 Ext4 文件系统上执行编译，利用 Linux 内核高速 I/O
+
+**章节来源**
+- [build_wsl_fast_manual.md:17-86](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L17-L86)
+- [build_wsl_fast_manual.md:89-142](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L89-L142)

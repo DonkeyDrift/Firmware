@@ -3,28 +3,19 @@
 
 int Buzzer::_channelCounter = 2; // 从2开始避免与PWM通道(0,1)冲突
 
-// 手动模式旋律 - 稳定感，大三和弦 C4-E4-G4
+// 手动模式 - 低音单音调
 BuzzerNote melodyManual[] = {
-    { NOTE_C4, N8 },
-    { NOTE_E4, N8 },
-    { NOTE_G4, N4 },
-    { NOTE_REST, N8 }
+    { NOTE_C4, N4 }
 };
 
-// 半自动模式旋律 - 过渡感，中音跳跃 E4-G4-A4
+// 半自动模式 - 中音单音调
 BuzzerNote melodySemiAuto[] = {
-    { NOTE_E4, N8 },
-    { NOTE_G4, N8 },
-    { NOTE_A4, N4 },
-    { NOTE_REST, N8 }
+    { NOTE_E4, N4 }
 };
 
-// 全自动模式旋律 - 科技感，高音递进 G4-B4-D5
+// 全自动模式 - 高音单音调
 BuzzerNote melodyFullAuto[] = {
-    { NOTE_G4, N8 },
-    { NOTE_B4, N8 },
-    { NOTE_D5, N4 },
-    { NOTE_REST, N8 }
+    { NOTE_G4, N4 }
 };
 
 // 锁定提示音 - 下降音阶 G4-E4-C4

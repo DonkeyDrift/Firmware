@@ -1245,8 +1245,7 @@ void loop()
     // Set refresh rate dynamically based on load (from old logic)
     tui.setRefreshRate(uiIntervalCurrent);
     tui.setAnsiEnabled(ansiEnabled);
-    if (degradeMode) tui.setWaveformEnabled(false);
-    else tui.setWaveformEnabled(true);
+    tui.setWaveformEnabled(false); // 禁用波形显示，因为滤波会引入延迟
     
     tui.update(millis());
     lastUICycleDuration = tui.getLastRenderDuration();

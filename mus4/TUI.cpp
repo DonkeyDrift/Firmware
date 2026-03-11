@@ -272,7 +272,7 @@ void TUI::drawWaveforms() {
 
             for (int w = 0; w < 2; w++) {
                 if (normalized == logicY) {
-                    if (_ansiEnabled) _out.print(ANSI_GREEN "█" ANSI_RESET);
+                    if (_ansiEnabled) _out.print(ANSI_GREEN "#" ANSI_RESET);
                     else _out.print("#");
                 } else if (logicY == (WAVE_HEIGHT-1)/2) {
                     _out.print("-"); // Zero line
@@ -300,7 +300,7 @@ void TUI::drawWaveforms() {
 
             for (int w = 0; w < 2; w++) {
                 if (normalized == logicY) {
-                    if (_ansiEnabled) _out.print(ANSI_CYAN "█" ANSI_RESET);
+                    if (_ansiEnabled) _out.print(ANSI_CYAN "#" ANSI_RESET);
                     else _out.print("#");
                 } else if (logicY == (WAVE_HEIGHT-1)/2) {
                     _out.print("-");

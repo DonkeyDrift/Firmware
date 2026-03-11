@@ -28,9 +28,17 @@
 #include <Adafruit_INA219.h>
 #include "SharedTypes.h"
 #include "TUI.h"
+
+#define BUZZER_PIN 2
+
+#include "Buzzer.h"
 // #include "test_runner.h"
 
 TUI tui(Serial);
+Buzzer buzzer(BUZZER_PIN);
+
+int lastCarMode = -1;
+bool lastParkState = false;
 
 #define ENABLE_GAMEPAD_MODE
 #ifdef ENABLE_GAMEPAD_MODE
@@ -625,6 +633,7 @@ void park_change()
                         emergencyStopState = EST_IDLE; // Reset Emergency Stop FSM
                         parkActionTaken = true;
                         tui.log("System Unlocked: Park Mode Exited");
+                        buzzer.playParkUnlockSound();
                     }
                 }
                 else
@@ -635,6 +644,7 @@ void park_change()
                         rc_data.park = true; // Lock
                         parkActionTaken = true;
                         tui.log("System Locked: Park Mode Entered");
+                        buzzer.playParkLockSound();
                     }
                 }
             }
@@ -694,6 +704,12 @@ void mode_change() // 根据遥控器的mode值，切换驾驶模式
     else
     {
         car_output.mode = CAR_MODE_FULL_AUTO; // 2为自动驾驶模式
+    }
+
+    if (car_output.mode != lastCarMode)
+    {
+        buzzer.playModeSound(car_output.mode);
+        lastCarMode = car_output.mode;
     }
 }
 

@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(python:*)",
+      "Bash(gh pr:*)"
     ]
   }
 }

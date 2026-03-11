@@ -3,6 +3,15 @@
 
 import os
 import sys
+
+# 强制设置UTF-8编码（解决Windows控制台乱码问题）
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 import argparse
 import subprocess
 import logging
@@ -14,6 +23,7 @@ import threading
 import itertools
 import serial
 import shlex
+import select
 
 # 配置日志
 class CustomFormatter(logging.Formatter):
@@ -358,48 +368,105 @@ class ArduinoAutomation:
             self.logger.warning("可能需要手动复位单片机")
             return False
 
+    def _keyboard_listener(self, stop_event):
+        """监听键盘输入，检测ESC键"""
+        try:
+            if self.os_type == "Windows":
+                import msvcrt
+                while not stop_event.is_set():
+                    if msvcrt.kbhit():
+                        ch = msvcrt.getch()
+                        if ch == b'\x1b':  # ESC key
+                            stop_event.set()
+                            break
+                    time.sleep(0.02)
+            else:
+                # Linux/Mac: 使用 select
+                import tty
+                import termios
+                old_settings = termios.tcgetattr(sys.stdin)
+                try:
+                    tty.setcbreak(sys.stdin.fileno())
+                    while not stop_event.is_set():
+                        if select.select([sys.stdin], [], [], 0.1)[0]:
+                            ch = sys.stdin.read(1)
+                            if ch == '\x1b':  # ESC key
+                                stop_event.set()
+                                break
+                finally:
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        except Exception as e:
+            self.logger.debug(f"键盘监听线程异常: {e}")
+
     def monitor(self):
         if not self.port:
             self.logger.error("未指定串口")
             sys.exit(13)
-            
+
         # 打开监控前先尝试自动复位
         self.auto_reset()
-            
+
         console_handlers = self.detach_console_handlers()
         self.logger.info(f"打开串口监控: {self.port} @ {self.baud}")
-        self.logger.info("按 Ctrl+C 退出监控")
-        
-        cmd = [
-            self.arduino_cli, 
-            "monitor", 
-            "-p", self.port, 
-            "--config", f"baudrate={self.baud}",
-            "--quiet"
-        ]
-        
+        self.logger.info("按 ESC 或 Ctrl+C 退出监控")
+
         # 清屏以避免 TUI 重叠
         if platform.system() == "Windows":
             os.system("cls")
         else:
             os.system("clear")
-        
-        # 监控通常是交互式的，这里直接使用 subprocess.call 连接到 stdio
-        # 或者如果是自动化测试模式，可以使用 timeout
-        monitor_error = None
-        monitor_stopped = False
+
+        ser = None
+        stop_event = threading.Event()
+        keyboard_thread = None
+
         try:
-            subprocess.run(cmd)
+            # 打开串口
+            ser = serial.Serial(self.port, self.baud, timeout=0.1)
+
+            # 启动键盘监听线程
+            keyboard_thread = threading.Thread(
+                target=self._keyboard_listener,
+                args=(stop_event,),
+                daemon=True
+            )
+            keyboard_thread.start()
+
+            # 读取并显示串口数据
+            while not stop_event.is_set():
+                if ser.in_waiting:
+                    data = ser.read(ser.in_waiting)
+                    try:
+                        # 尝试UTF-8解码，失败则替换乱码
+                        text = data.decode('utf-8', errors='replace')
+                        sys.stdout.write(text)
+                        sys.stdout.flush()
+                    except Exception:
+                        pass
+                time.sleep(0.005)
+
         except KeyboardInterrupt:
-            monitor_stopped = True
+            pass
+        except serial.SerialException as e:
+            self.logger.error(f"串口错误: {e}")
         except Exception as e:
-            monitor_error = e
+            self.logger.error(f"监控异常: {e}")
         finally:
+            stop_event.set()
+            if keyboard_thread and keyboard_thread.is_alive():
+                keyboard_thread.join(timeout=0.5)
+            if ser and ser.is_open:
+                ser.close()
+            # 恢复光标显示并清屏
+            if self.os_type == "Windows":
+                os.system("cls")
+            else:
+                os.system("clear")
+            sys.stdout.write("\033[?25h")
+            sys.stdout.flush()
             self.restore_console_handlers(console_handlers)
-        if monitor_stopped:
-            self.logger.info("用户停止监控")
-        if monitor_error is not None:
-            self.logger.error(f"监控异常: {monitor_error}")
+
+        self.logger.info("用户停止监控")
 
     def run(self):
         total_start = time.time()

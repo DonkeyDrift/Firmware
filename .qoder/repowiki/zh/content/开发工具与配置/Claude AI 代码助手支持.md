@@ -11,10 +11,10 @@
 - [SharedTypes.h](file://mus4/SharedTypes.h)
 - [arduino-cli.py](file://arduino-cli.py)
 - [config.yaml](file://config.yaml)
-- [build_wsl_fast.ps1](file://build_wsl_fast.ps1)
+- [arduino-cli-wsl.ps1](file://arduino-cli-wsl.ps1)
 - [build_wsl.ps1](file://build_wsl.ps1)
 - [architecture.md](file://mus4/Doc/Arch/architecture.md)
-- [build_wsl_fast_manual.md](file://mus4/Doc/Tools/build_wsl_fast_manual.md)
+- [arduino-cli-wsl_manual.md](file://mus4/Doc/Tools/arduino-cli-wsl_manual.md)
 - [getcurrent.ino](file://examples/getcurrent/getcurrent.ino)
 - [testIIC.ino](file://examples/testIIC/testIIC.ino)
 - [sketch.yaml](file://mus4/sketch.yaml)
@@ -22,7 +22,7 @@
 
 ## 更新摘要
 **所做更改**
-- 更新构建和部署章节，重点介绍新的高性能 build_wsl_fast.ps1 脚本
+- 更新构建和部署章节，重点介绍新的高性能 arduino-cli-wsl.ps1 脚本
 - 添加 WSL 高速构建技术原理和性能对比
 - 更新构建流程图表以反映新的优化架构
 - 增强故障排除指南，包含新脚本特有的问题诊断
@@ -48,7 +48,7 @@ MUS4 是一个基于 ESP32 的自动驾驶小车控制系统，专为 MUS4-v2.3 
 - **安全机制**：紧急停车状态机和停车控制
 - **传感器集成**：INA219 电源监控和 MPU6050 IMU 传感器
 - **蓝牙手柄支持**：RC 信号到蓝牙手柄的转换
-- **高性能构建**：Python 脚本支持本地和 WSL 交叉编译，其中 build_wsl_fast.ps1 提供 5 倍性能提升
+- **高性能构建**：Python 脚本支持本地和 WSL 交叉编译，其中 arduino-cli-wsl.ps1 提供 5 倍性能提升
 
 ## 项目结构
 
@@ -76,9 +76,9 @@ Sketch[sketch.yaml]
 end
 subgraph "Tools"
 CLI[arduino-cli.py]
-WSL_Fast[build_wsl_fast.ps1<br/>高性能 WSL 构建]
+WSL_Fast[arduino-cli-wsl.ps1<br/>高性能 WSL 构建]
 WSL_Slow[build_wsl.ps1<br/>传统 WSL 构建]
-Manual[build_wsl_fast_manual.md<br/>技术文档]
+Manual[arduino-cli-wsl_manual.md<br/>技术文档]
 end
 Root --> Docs
 Root --> Examples

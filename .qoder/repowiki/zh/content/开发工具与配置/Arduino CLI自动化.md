@@ -10,16 +10,16 @@
 - [OPERATIONS.md](file://mus4/Doc/README/OPERATIONS.md)
 - [architecture.md](file://mus4/Doc/Arch/architecture.md)
 - [pin_definitions.md](file://mus4/Doc/Hardware/pin_definitions.md)
-- [build_wsl_fast_manual.md](file://mus4/Doc/Tools/build_wsl_fast_manual.md)
+- [arduino-cli-wsl_manual.md](file://mus4/Doc/Tools/arduino-cli-wsl_manual.md)
 - [getcurrent.ino](file://examples/getcurrent/getcurrent.ino)
 - [testIIC.ino](file://examples/testIIC/testIIC.ino)
-- [build_wsl_fast.ps1](file://build_wsl_fast.ps1)
+- [arduino-cli-wsl.ps1](file://arduino-cli-wsl.ps1)
 </cite>
 
 ## 更新摘要
 **变更内容**
 - 文档目录结构重组织：ArduinoCLI相关文档从Doc/README目录迁移至Doc/Tools目录
-- 新增build_wsl_fast_manual.md技术手册，提供WSL高速构建的详细技术说明
+- 新增arduino-cli-wsl_manual.md技术手册，提供WSL高速构建的详细技术说明
 - 更新项目结构图以反映新的文档组织方式
 - 完善WSL交叉编译场景的技术文档和使用指南
 
@@ -53,7 +53,7 @@ A[项目根目录] --> B[arduino-cli.py]
 A --> C[config.yaml]
 A --> D[mus4/]
 A --> E[examples/]
-A --> F[build_wsl_fast.ps1]
+A --> F[arduino-cli-wsl.ps1]
 D --> H[mus4.ino]
 D --> I[sketch.yaml]
 D --> J[Doc/]
@@ -61,7 +61,7 @@ J --> K[Arch/]
 J --> L[Hardware/]
 J --> M[README/]
 J --> N[Tools/]
-N --> O[build_wsl_fast_manual.md]
+N --> O[arduino-cli-wsl_manual.md]
 E --> P[getcurrent/]
 E --> Q[testIIC/]
 P --> R[getcurrent.ino]
@@ -75,7 +75,7 @@ M --> W[OPERATIONS.md]
 **图表来源**
 - [arduino-cli.py:1-511](file://arduino-cli.py#L1-L511)
 - [config.yaml:1-21](file://config.yaml#L1-L21)
-- [build_wsl_fast.ps1:1-140](file://build_wsl_fast.ps1#L1-L140)
+- [arduino-cli-wsl.ps1:1-140](file://arduino-cli-wsl.ps1#L1-L140)
 
 **章节来源**
 - [arduino-cli.py:1-511](file://arduino-cli.py#L1-L511)

@@ -4,10 +4,10 @@
 **本文档引用的文件**
 - [README.md](file://README.md)
 - [build_wsl.ps1](file://build_wsl.ps1)
-- [build_wsl_fast.ps1](file://build_wsl_fast.ps1)
+- [arduino-cli-wsl.ps1](file://arduino-cli-wsl.ps1)
 - [arduino-cli.py](file://arduino-cli.py)
 - [config.yaml](file://config.yaml)
-- [build_wsl_fast_manual.md](file://mus4/Doc/Tools/build_wsl_fast_manual.md)
+- [arduino-cli-wsl_manual.md](file://mus4/Doc/Tools/arduino-cli-wsl_manual.md)
 - [DevNote.md](file://mus4/Doc/README/DevNote.md)
 - [OPERATIONS.md](file://mus4/Doc/README/OPERATIONS.md)
 - [mus4.ino](file://mus4/mus4.ino)
@@ -31,7 +31,7 @@
 
 WSL 交叉编译支持是一个专门为 Windows 用户设计的 Arduino/ESP32 项目开发解决方案。该项目解决了在 Windows 环境下使用 WSL2 进行嵌入式开发时遇到的性能瓶颈问题，通过创新的 "Copy-Compile-CopyBack" 模式显著提升了编译效率。
 
-**更新** 新增了高性能构建脚本 `build_wsl_fast.ps1`，该脚本专门针对 WSL2 的 I/O 性能瓶颈进行了深度优化，实现了 5-6 倍的编译速度提升。
+**更新** 新增了高性能构建脚本 `arduino-cli-wsl.ps1`，该脚本专门针对 WSL2 的 I/O 性能瓶颈进行了深度优化，实现了 5-6 倍的编译速度提升。
 
 该系统的核心目标是在保持 Windows 开发体验的同时，充分利用 WSL2 的 Linux 文件系统性能优势，实现接近原生 Linux 的编译速度。通过将源代码同步到 WSL 的原生 ext4 文件系统进行编译，然后将产物回传到 Windows 环境，整体编译速度提升了 5-6 倍。
 
@@ -43,10 +43,10 @@ WSL 交叉编译支持是一个专门为 Windows 用户设计的 Arduino/ESP32 �
 graph TB
 subgraph "Windows 主机"
 A[build_wsl.ps1<br/>标准构建脚本]
-B[build_wsl_fast.ps1<br/>高性能构建脚本]
+B[arduino-cli-wsl.ps1<br/>高性能构建脚本]
 C[arduino-cli.py<br/>Python 上传脚本]
 D[config.yaml<br/>配置文件]
-E[build_wsl_fast_manual.md<br/>技术文档]
+E[arduino-cli-wsl_manual.md<br/>技术文档]
 end
 subgraph "WSL2 Ubuntu"
 F[rsync<br/>增量同步]
@@ -74,12 +74,12 @@ K --> J
 
 **图表来源**
 - [build_wsl.ps1:1-163](file://build_wsl.ps1#L1-L163)
-- [build_wsl_fast.ps1:1-140](file://build_wsl_fast.ps1#L1-L140)
+- [arduino-cli-wsl.ps1:1-140](file://arduino-cli-wsl.ps1#L1-L140)
 - [arduino-cli.py:1-511](file://arduino-cli.py#L1-L511)
 
 **章节来源**
 - [README.md:1-39](file://README.md#L1-L39)
-- [build_wsl_fast_manual.md:1-142](file://mus4/Doc/Tools/build_wsl_fast_manual.md#L1-L142)
+- [arduino-cli-wsl_manual.md:1-142](file://mus4/Doc/Tools/arduino-cli-wsl_manual.md#L1-L142)
 
 ## 核心组件
 
@@ -92,7 +92,7 @@ K --> J
 - 提供进度动画和错误处理机制
 - 自动检测编译统计信息
 
-**高性能构建脚本 (build_wsl_fast.ps1)**
+**高性能构建脚本 (arduino-cli-wsl.ps1)**
 - **新增** 专为解决 WSL2 I/O 性能瓶颈而设计
 - 采用 "Copy-Compile-CopyBack" 模式
 - 实现 5-6 倍的编译速度提升

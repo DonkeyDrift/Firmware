@@ -2,7 +2,7 @@
 
 ## 1. 简介
 
-`build_wsl_fast.ps1` 是一个专为解决 Windows 下 WSL2 编译 Arduino/ESP32 项目 I/O 性能瓶颈而设计的 PowerShell 自动化脚本。通过将源码同步到 WSL 原生文件系统进行编译，再将产物回传，实现了比直接挂载编译快 5 倍以上的构建速度。
+`arduino-cli-wsl.ps1` 是一个专为解决 Windows 下 WSL2 编译 Arduino/ESP32 项目 I/O 性能瓶颈而设计的 PowerShell 自动化脚本。通过将源码同步到 WSL 原生文件系统进行编译，再将产物回传，实现了比直接挂载编译快 5 倍以上的构建速度。
 
 ### 核心功能
 
@@ -22,7 +22,7 @@
 graph TD
     subgraph Windows [Windows 11 Host]
         SourceCode["Source Code\n(NTFS)"]
-        PS_Script["build_wsl_fast.ps1\n(PowerShell)"]
+        PS_Script["arduino-cli-wsl.ps1\n(PowerShell)"]
         Py_Uploader["arduino-cli.py\n(Python)"]
         COM_Port["ESP32 Device\n(COM Port)"]
     end
@@ -99,7 +99,7 @@ graph TD
 
 ```powershell
 # 执行完整构建流程（编译+上传）
-.\build_wsl_fast.ps1
+.\arduino-cli-wsl.ps1
 ```
 
 如果只想编译不上传（需修改脚本最后几行或增加参数支持，目前脚本默认执行上传）：

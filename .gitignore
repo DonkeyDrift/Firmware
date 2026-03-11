@@ -34,3 +34,4 @@ node_modules/
 
 mus4/ArduinoCLI.log
 __pycache__/arduino-cli.cpython-313.pyc
+build_wsl/

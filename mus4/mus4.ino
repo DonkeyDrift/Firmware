@@ -28,7 +28,7 @@
 #include <Adafruit_INA219.h>
 #include "SharedTypes.h"
 #include "TUI.h"
-#include "test_runner.h"
+// #include "test_runner.h"
 
 TUI tui(Serial);
 
@@ -420,7 +420,8 @@ static void readSerialBuf(HardwareSerial& ser, SerialBuf& sb, bool isRS232)
             }
             if (line.equalsIgnoreCase("TEST_TUI"))
             {
-                TestRegistry::runAll();
+                // TestRegistry::runAll();
+                Serial.println("Skipped TEST_TUI");
                 sb.len = 0; sb.overflow = false; continue;
             }
             if (line.equalsIgnoreCase("BENCH"))

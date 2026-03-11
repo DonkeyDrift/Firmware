@@ -235,7 +235,25 @@ class ArduinoAutomation:
 
     def compile(self):
         self.logger.info(f"开始编译: {os.path.basename(self.sketch)} ({self.fqbn})")
-        cmd = [self.arduino_cli, "compile", "--fqbn", self.fqbn, self.sketch]
+        cmd = [self.arduino_cli, "compile", "--fqbn", self.fqbn]
+        
+        # 支持指定构建输出目录
+        build_path = None
+        if self.args and getattr(self.args, 'build_path', None):
+            build_path = self.args.build_path
+        else:
+            # 检查配置文件中的build_path
+            build_path = self.config.get('default', {}).get('build_path')
+        
+        if build_path:
+            # 转换为绝对路径
+            if not os.path.isabs(build_path):
+                base_dir = os.path.dirname(os.path.abspath(self.args.config if self.args else 'config.yaml'))
+                build_path = os.path.join(base_dir, build_path)
+            cmd.extend(["--build-path", build_path, "--output-dir", build_path])
+            self.logger.info(f"构建输出目录: {build_path}")
+        
+        cmd.append(self.sketch)
         success, _ = self.run_command(cmd, message="正在编译... ")
         if not success:
             self.logger.error("编译失败，终止流程")
@@ -252,7 +270,21 @@ class ArduinoAutomation:
              self.logger.warning(f"端口 {self.port} 未在文件系统中检测到，尝试继续...")
         
         self.logger.info(f"开始上传到端口: {self.port}")
-        cmd = [self.arduino_cli, "upload", "-p", self.port, "--fqbn", self.fqbn, self.sketch]
+        
+        # 判断是否使用预编译的固件文件
+        if self.args and getattr(self.args, 'input_file', None):
+            # 使用指定的固件文件上传
+            input_file = self.args.input_file
+            if not os.path.exists(input_file):
+                self.logger.error(f"指定的固件文件不存在: {input_file}")
+                sys.exit(14)
+            self.logger.info(f"使用预编译固件: {input_file}")
+            cmd = [self.arduino_cli, "upload", "-p", self.port, "--fqbn", self.fqbn, 
+                   "--input-file", input_file, self.sketch]
+        else:
+            # 普通上传（不带固件文件参数）
+            cmd = [self.arduino_cli, "upload", "-p", self.port, "--fqbn", self.fqbn, self.sketch]
+        
         success, _ = self.run_command(cmd, message="正在上传... ")
         if not success:
             self.logger.error("上传失败，终止流程")
@@ -446,6 +478,8 @@ def main():
     parser.add_argument('--reset-toolchain', dest='reset_toolchain', help='烧录工具链标识')
     parser.add_argument('--regress-reset', dest='regress_reset', action='store_true', help='自动复位回归测试')
     parser.add_argument('--regress-count', dest='regress_count', type=int, default=10, help='回归测试次数')
+    parser.add_argument('--input-file', '-i', dest='input_file', help='指定预编译的固件文件(.bin)路径，用于WSL交叉编译场景')
+    parser.add_argument('--build-path', dest='build_path', help='指定构建输出目录(用于编译时指定输出位置)')
     parser.set_defaults(auto_reset=None)
     
     args = parser.parse_args()

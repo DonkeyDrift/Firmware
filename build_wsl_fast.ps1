@@ -31,7 +31,19 @@ param(
     [string]$SyncMode = "rsync",
 
     [Parameter(HelpMessage="自定义附加参数")]
-    [string]$ExtraArgs = ""
+    [string]$ExtraArgs = "",
+
+    [Parameter(HelpMessage="启用串口监视器")]
+    [Alias("s")]
+    [switch]$Serial,
+
+    [Parameter(HelpMessage="执行编译")]
+    [Alias("c")]
+    [switch]$Compile,
+
+    [Parameter(HelpMessage="执行上传")]
+    [Alias("u")]
+    [switch]$Upload
 )
 
 $ErrorActionPreference = "Stop"
@@ -272,49 +284,71 @@ if ($SyncLibs) {
     Sync-ArduinoLibraries
 }
 
-Write-Host ">>> Starting Optimized WSL Build (Fast I/O)..." -ForegroundColor Cyan
-
-# 1. Sync Source to WSL Native FS
-$syncCmd = "wsl"
-# 使用 rsync 进行增量同步，排除构建目录和不必要的文件
-$syncArgs = "-d DKC bash -c 'mkdir -p $WSLWorkDir && rsync -av --delete --exclude=build_wsl --exclude=.git --exclude=.venv ""$WSLProjectRoot/"" ""$WSLWorkDir/""'"
-$syncStart = Get-Date
-if (-not (Run-WithAnimation -Command $syncCmd -Arguments $syncArgs -TaskName "Syncing Source to WSL")) { exit 1 }
-$syncTime = ((Get-Date) - $syncStart).TotalSeconds
-
-# 2. Compile in WSL Native FS
-$compileCmd = "wsl"
-$compileArgs = "-d DKC bash -c '~/bin/arduino-cli compile --fqbn esp32:esp32:esp32 --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir"" ""$WSLSketchPath""'"
-$compileStart = Get-Date
-if (-not (Run-WithAnimation -Command $compileCmd -Arguments $compileArgs -TaskName "Compiling in WSL (Native FS)")) { exit 1 }
-$compileTime = ((Get-Date) - $compileStart).TotalSeconds
-
-# 3. Sync Artifacts Back to Windows
-$syncBackCmd = "wsl"
-# 只同步生成的 .bin 和 .elf 文件回 Windows
-$syncBackArgs = "-d DKC bash -c 'mkdir -p ""$WSLProjectRoot/$BuildDir"" && cp ""$WSLBuildDir""/*.bin ""$WSLProjectRoot/$BuildDir/"" && cp ""$WSLBuildDir""/*.elf ""$WSLProjectRoot/$BuildDir/""'"
-$syncBackStart = Get-Date
-if (-not (Run-WithAnimation -Command $syncBackCmd -Arguments $syncBackArgs -TaskName "Syncing Artifacts to Windows")) { exit 1 }
-$syncBackTime = ((Get-Date) - $syncBackStart).TotalSeconds
-
-# Output Performance Report
-Write-Host "`n=== Performance Report ===" -ForegroundColor Yellow
-Write-Host "Sync to WSL:   $("{0:N2}" -f $syncTime)s"
-Write-Host "Compilation:   $("{0:N2}" -f $compileTime)s"
-Write-Host "Sync back:     $("{0:N2}" -f $syncBackTime)s"
-$totalTime = $syncTime + $compileTime + $syncBackTime
-Write-Host "Total Build:   $("{0:N2}" -f $totalTime)s"
-Write-Host "========================`n" -ForegroundColor Yellow
-
-Write-Host ">>> Build successful. Starting Upload..." -ForegroundColor Cyan
-
-# Run upload using Python script
-$BinPath = "$ProjectRoot\$BuildDir\mus4.ino.bin"
-if (-not (Test-Path $BinPath)) {
-    Write-Error "Binary file not found: $BinPath"
+# 默认行为逻辑：如果未指定 -c, -u, -s，则默认执行编译和上传
+if (-not $Compile.IsPresent -and -not $Upload.IsPresent -and -not $Serial.IsPresent) {
+    $Compile = $true
+    $Upload = $true
 }
 
-# Call upload
-python "$ProjectRoot\arduino-cli.py" -u -i "$BinPath"
+if ($Compile) {
+    Write-Host ">>> Starting Optimized WSL Build (Fast I/O)..." -ForegroundColor Cyan
+
+    # 1. Sync Source to WSL Native FS
+    $syncCmd = "wsl"
+    # 使用 rsync 进行增量同步，排除构建目录和不必要的文件
+    $syncArgs = "-d DKC bash -c 'mkdir -p $WSLWorkDir && rsync -av --delete --exclude=build_wsl --exclude=.git --exclude=.venv ""$WSLProjectRoot/"" ""$WSLWorkDir/""'"
+    $syncStart = Get-Date
+    if (-not (Run-WithAnimation -Command $syncCmd -Arguments $syncArgs -TaskName "Syncing Source to WSL")) { exit 1 }
+    $syncTime = ((Get-Date) - $syncStart).TotalSeconds
+
+    # 2. Compile in WSL Native FS
+    $compileCmd = "wsl"
+    $compileArgs = "-d DKC bash -c '~/bin/arduino-cli compile --fqbn esp32:esp32:esp32 --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir"" ""$WSLSketchPath""'"
+    $compileStart = Get-Date
+    if (-not (Run-WithAnimation -Command $compileCmd -Arguments $compileArgs -TaskName "Compiling in WSL (Native FS)")) { exit 1 }
+    $compileTime = ((Get-Date) - $compileStart).TotalSeconds
+
+    # 3. Sync Artifacts Back to Windows
+    $syncBackCmd = "wsl"
+    # 只同步生成的 .bin 和 .elf 文件回 Windows
+    $syncBackArgs = "-d DKC bash -c 'mkdir -p ""$WSLProjectRoot/$BuildDir"" && cp ""$WSLBuildDir""/*.bin ""$WSLProjectRoot/$BuildDir/"" && cp ""$WSLBuildDir""/*.elf ""$WSLProjectRoot/$BuildDir/""'"
+    $syncBackStart = Get-Date
+    if (-not (Run-WithAnimation -Command $syncBackCmd -Arguments $syncBackArgs -TaskName "Syncing Artifacts to Windows")) { exit 1 }
+    $syncBackTime = ((Get-Date) - $syncBackStart).TotalSeconds
+
+    # Output Performance Report
+    Write-Host "`n=== Performance Report ===" -ForegroundColor Yellow
+    Write-Host "Sync to WSL:   $("{0:N2}" -f $syncTime)s"
+    Write-Host "Compilation:   $("{0:N2}" -f $compileTime)s"
+    Write-Host "Sync back:     $("{0:N2}" -f $syncBackTime)s"
+    $totalTime = $syncTime + $compileTime + $syncBackTime
+    Write-Host "Total Build:   $("{0:N2}" -f $totalTime)s"
+    Write-Host "========================`n" -ForegroundColor Yellow
+}
+
+$BinPath = "$ProjectRoot\$BuildDir\mus4.ino.bin"
+
+if ($Upload -or $Serial) {
+    if ($Upload) {
+        Write-Host ">>> Build successful. Starting Upload..." -ForegroundColor Cyan
+        if (-not (Test-Path $BinPath)) {
+            Write-Error "Binary file not found: $BinPath"
+            exit 1
+        }
+    }
+
+    # Call upload / serial
+    $pyArgs = @()
+    if ($Upload) {
+        $pyArgs += "-u"
+        $pyArgs += "-i"
+        $pyArgs += "`"$BinPath`""
+    }
+    if ($Serial) {
+        $pyArgs += "-s"
+    }
+    
+    python "$ProjectRoot\arduino-cli.py" $pyArgs
+}
 
 Write-Host ">>> All Done!" -ForegroundColor Green

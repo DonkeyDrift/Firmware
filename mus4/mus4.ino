@@ -251,12 +251,18 @@ struct struct_message rc_data = {0, 0, 0, PARK_LOCKED};      // Initialize the s
 struct struct_message pilot_data = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
 struct struct_message car_output = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
 
-const int PWM_MIN_V = 819;     // 'minimum' pulse length count (out of 4096)
-const int PWM_MAX_V = 1638;    // 'maximum' pulse length count (out of 4096)
-const int MOTOR_MID_V = 1229;  // 需要实际测试
-const int MOTOR_RANGE_V = 390; // Pulse range for Motor Throttle
-const int SERVO_MID_V = 1250;  // 需要实际测试
-const int SERVO_RANGE_V = 440; // Pulse range for Motor Throttle
+// 300Hz PWM输出参数 (适用于舵机和电调)
+// 频率 = 80MHz / (prescale * resolution)
+// 300Hz = 80000000 / (prescale * 16384) → prescale ≈ 16
+// 脉宽计算: count = (pulse_us / period_us) * 2^14
+// 周期 = 1000000/300 = 3333.33µs
+const int PWM_PERIOD_US = 3333;  // 300Hz周期 (µs)
+const int PWM_MIN_V = 4915;      // 1000µs @ 300Hz (1000/3333.33×16384 ≈ 4915)
+const int PWM_MAX_V = 9830;      // 2000µs @ 300Hz (2000/3333.33×16384 ≈ 9830)
+const int MOTOR_MID_V = 7372;    // 1500µs @ 300Hz
+const int MOTOR_RANGE_V = 2458; // ±500µs范围
+const int SERVO_MID_V = 7372;    // 1500µs @ 300Hz
+const int SERVO_RANGE_V = 2458; // ±500µs范围
 const int MOTOR_OFFSET_V = 1;
 const int SERVO_OFFSET_V = -1;
 
@@ -1134,8 +1140,8 @@ void setup()
         attachInterrupt(digitalPinToInterrupt(Channels[i]), isr_functions[i], CHANGE);
     }
 
-    ledcAttachChannel(STEERING_PIN, 50, 14, CH_STEERING);
-    ledcAttachChannel(THROTTLE_PIN, 50, 14, CH_THROTTLE);
+    ledcAttachChannel(STEERING_PIN, 300, 14, CH_STEERING);
+    ledcAttachChannel(THROTTLE_PIN, 300, 14, CH_THROTTLE);
 
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
     FastLED.setBrightness(BRIGHTNESS);
@@ -1373,5 +1379,5 @@ void loop()
         else uiIntervalCurrent = (uiIntervalCurrent > uiIntervalMin ? uiIntervalCurrent - 20 : uiIntervalMin);
         lastPerfEval = now;
     }
-    delay(1);
+    delay(10);
 }

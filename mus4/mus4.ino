@@ -1379,5 +1379,5 @@ void loop()
         else uiIntervalCurrent = (uiIntervalCurrent > uiIntervalMin ? uiIntervalCurrent - 20 : uiIntervalMin);
         lastPerfEval = now;
     }
-    delay(9);
+    delay(10);
 }

@@ -99,7 +99,7 @@ volatile unsigned long last_valid_time[4] = {0, 0, 0, 0}; // last valid signal t
 #define RC_PWM_MIN 800   // 最小有效PWM (µs)
 #define RC_PWM_MAX 2200  // 最大有效PWM (µs)
 
-#define PWM_FILTER_SIZE 5  // 滑动平均滤波器窗口大小 - 平衡响应和稳定性
+#define PWM_FILTER_SIZE 3  // 滑动平均滤波器窗口大小 - 更灵敏
 uint16_t pwm_filter_buf[4][PWM_FILTER_SIZE] = {{0}};  // 滤波缓冲区
 uint8_t pwm_filter_idx[4] = {0};
 uint16_t pwm_filtered[4] = {0, 0, 0, 0};  // 滤波后的PWM值
@@ -531,8 +531,8 @@ void IRAM_ATTR handle_interrupt(int channel)
     static unsigned long last_rise_time[4] = {0, 0, 0, 0};
 
     unsigned long now = micros();
-    // 防抖：两个边沿之间至少间隔200µs（平衡响应和抗噪）
-    if (now - last_edge_time[channel] < 200) return;
+    // 防抖：两个边沿之间至少间隔100µs（更灵敏）
+    if (now - last_edge_time[channel] < 100) return;
     last_edge_time[channel] = now;
 
     pin_state[channel] = digitalRead(Channels[channel]);
@@ -549,14 +549,14 @@ void IRAM_ATTR handle_interrupt(int channel)
             int diff = abs((int)width - (int)prev);
             
             // 小变化直接接受
-            if (diff <= 80) {
+            if (diff <= 120) {
                 pwm_value[channel] = width;
                 last_valid_time[channel] = now;
             }
             // 中等变化需要一次确认
-            else if (diff <= 150) {
+            else if (diff <= 200) {
                 static uint16_t candidate_pwm[4] = {0};
-                if (abs((int)width - (int)candidate_pwm[channel]) < 50) {
+                if (abs((int)width - (int)candidate_pwm[channel]) < 80) {
                     pwm_value[channel] = width;
                     last_valid_time[channel] = now;
                 }
@@ -566,7 +566,7 @@ void IRAM_ATTR handle_interrupt(int channel)
             else {
                 static uint16_t large_change_count[4] = {0};
                 static uint16_t last_large_pwm[4] = {0};
-                if (abs((int)width - (int)last_large_pwm[channel]) < 60) {
+                if (abs((int)width - (int)last_large_pwm[channel]) < 100) {
                     large_change_count[channel]++;
                     if (large_change_count[channel] >= 2) {
                         pwm_value[channel] = width;
@@ -1192,22 +1192,22 @@ void loop()
             // 取中值和平均的折中，更平滑
             uint16_t filtered = (median + avg) / 2;
             
-            // 限幅滤波，平衡响应和稳定
+            // 限幅滤波，高灵敏度模式
             uint16_t prev = pwm_filtered[ch];
             int diff = abs((int)filtered - (int)prev);
             
-            if (diff <= 50) {
-                // 小变化直接接受，快速响应
+            if (diff <= 80) {
+                // 小变化直接接受，极快响应
                 return filtered;
-            } else if (diff <= 100) {
-                // 中等变化，混合70%新值 + 30%旧值
+            } else if (diff <= 150) {
+                // 中等变化，混合85%新值 + 15%旧值
+                return (filtered * 17 + prev * 3) / 20;
+            } else if (diff <= 250) {
+                // 较大变化，混合70%新值 + 30%旧值
                 return (filtered * 7 + prev * 3) / 10;
-            } else if (diff <= 200) {
-                // 较大变化，混合50%新值 + 50%旧值
-                return (filtered + prev) / 2;
             } else {
-                // 超大变化，混合30%新值 + 70%旧值，防止失控
-                return (filtered * 3 + prev * 7) / 10;
+                // 超大变化，混合50%新值 + 50%旧值，防止失控
+                return (filtered + prev) / 2;
             }
         };
 

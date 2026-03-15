@@ -99,10 +99,11 @@ volatile unsigned long last_valid_time[4] = {0, 0, 0, 0}; // last valid signal t
 #define RC_PWM_MIN 800   // 最小有效PWM (µs)
 #define RC_PWM_MAX 2200  // 最大有效PWM (µs)
 
-#define PWM_FILTER_SIZE 3  // 滑动平均滤波器窗口大小 - 更灵敏
+#define PWM_FILTER_SIZE 5  // 滑动窗口中值滤波器大小 (5-7)
 uint16_t pwm_filter_buf[4][PWM_FILTER_SIZE] = {{0}};  // 滤波缓冲区
 uint8_t pwm_filter_idx[4] = {0};
 uint16_t pwm_filtered[4] = {0, 0, 0, 0};  // 滤波后的PWM值
+bool filterDebugEnabled = false;          // 调试输出开关
 
 const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
 
@@ -183,19 +184,61 @@ int lastWaveSt[WAVE_WIDTH] = {0};     // 缓存上一帧波形用于脏矩形
 bool forceRedraw = false;             // 强制重绘标志
 int lastSeq = -1;                     // 记录收到的最后序号
 
-// 中值滤波辅助函数 - 用于消除异常脉冲
+// 优化的插入排序中值滤波 (O(n^2)但对于n=5非常快且稳定)
 static uint16_t medianFilter(uint16_t* buf, int size) {
     uint16_t temp[8]; // 最大支持8个元素
+    // 复制数据
     for (int i = 0; i < size; i++) temp[i] = buf[i];
-    // 简单冒泡排序取中值
-    for (int i = 0; i < size - 1; i++) {
-        for (int j = i + 1; j < size; j++) {
-            if (temp[i] > temp[j]) {
-                uint16_t t = temp[i]; temp[i] = temp[j]; temp[j] = t;
-            }
+    
+    // 插入排序
+    for (int i = 1; i < size; i++) {
+        uint16_t key = temp[i];
+        int j = i - 1;
+        while (j >= 0 && temp[j] > key) {
+            temp[j + 1] = temp[j];
+            j = j - 1;
         }
+        temp[j + 1] = key;
     }
+    
+    // 返回中值
     return temp[size / 2];
+}
+
+static bool runFilterTests()
+{
+    Serial.println("Running Filter Tests...");
+    bool passed = true;
+    
+    // 模拟缓冲区
+    uint16_t testBuf[PWM_FILTER_SIZE];
+    for(int i=0; i<PWM_FILTER_SIZE; i++) testBuf[i] = 1500;
+    
+    // Test 1: 稳态测试
+    uint16_t out = medianFilter(testBuf, PWM_FILTER_SIZE);
+    if (out != 1500) { Serial.printf("Filter Test 1 Failed: Expected 1500, got %d\n", out); passed = false; }
+    
+    // Test 2: 单点尖峰抑制 (2000us 突变)
+    testBuf[2] = 2000; // 中间突变
+    out = medianFilter(testBuf, PWM_FILTER_SIZE);
+    if (out != 1500) { Serial.printf("Filter Test 2 Failed: Spike not suppressed, got %d\n", out); passed = false; }
+    testBuf[2] = 1500; // 恢复
+    
+    // Test 3: 双点尖峰 (连续两个异常值，对于5点窗口仍应被抑制)
+    testBuf[1] = 2000;
+    testBuf[2] = 2000;
+    out = medianFilter(testBuf, PWM_FILTER_SIZE);
+    if (out != 1500) { Serial.printf("Filter Test 3 Failed: Double spike not suppressed, got %d\n", out); passed = false; }
+    
+    // Test 4: 阶跃响应 (多数变为新值)
+    testBuf[0] = 1600;
+    testBuf[1] = 1600;
+    testBuf[2] = 1600; // 3/5 变为 1600
+    out = medianFilter(testBuf, PWM_FILTER_SIZE);
+    if (out != 1600) { Serial.printf("Filter Test 4 Failed: Step response failed, got %d\n", out); passed = false; }
+
+    if (passed) Serial.println("Filter Tests Passed!");
+    return passed;
 }
 
 static int testsTotal = 0;
@@ -398,6 +441,15 @@ static bool processLine(const String& line, int* throttle, int* steering, int* s
     // 如果是命令
     if (line.equalsIgnoreCase("NOANSI")) { ansiEnabled = false; tui.setAnsiEnabled(false); tui.forceRedraw(); return false; }
     if (line.equalsIgnoreCase("ANSI")) { ansiEnabled = true; tui.setAnsiEnabled(true); tui.forceRedraw(); return false; }
+    if (line.equalsIgnoreCase("FILTER_DEBUG")) { 
+        filterDebugEnabled = !filterDebugEnabled; 
+        Serial.printf("Filter Debug: %s\n", filterDebugEnabled ? "ON" : "OFF"); 
+        return false; 
+    }
+    if (line.equalsIgnoreCase("FILTER_TEST")) { 
+        runFilterTests(); 
+        return false; 
+    }
 
     *seq = -1;
     int star = line.lastIndexOf('*');
@@ -1180,41 +1232,29 @@ void loop()
     bool modeValid = (nowUs - last_valid_time[CH_MODE]) < RC_SIGNAL_TIMEOUT;
 
     if (millis() - lastRCFilterUpdate >= RC_FILTER_UPDATE_INTERVAL) {
-        // 改进的滤波：滑动平均 + 中值滤波 + 限幅滤波
+        // 改进的滤波：滑动窗口中值滤波 (Size=5)
         auto filterPWM = [&](int ch, uint16_t raw, bool valid) -> uint16_t {
             if (!valid) return 1500;
+            
+            // 边界保护：检查是否在合理 PWM 范围内 (800-2200us)
+            // 如果超出范围，视为噪声丢弃（不更新缓冲区，直接返回上一次滤波值）
+            if (raw < RC_PWM_MIN || raw > RC_PWM_MAX) {
+                return pwm_filtered[ch];
+            }
+
             uint8_t idx = pwm_filter_idx[ch];
             pwm_filter_buf[ch][idx] = raw;
             pwm_filter_idx[ch] = (idx + 1) % PWM_FILTER_SIZE;
             
-            // 先进行中值滤波，去除异常值
+            // 纯中值滤波：确保输出为窗口内排序后的中间值
             uint16_t median = medianFilter(pwm_filter_buf[ch], PWM_FILTER_SIZE);
             
-            // 计算滑动平均
-            uint32_t sum = 0;
-            for (int i = 0; i < PWM_FILTER_SIZE; i++) sum += pwm_filter_buf[ch][i];
-            uint16_t avg = sum / PWM_FILTER_SIZE;
-            
-            // 取中值和平均的折中，更平滑
-            uint16_t filtered = (median + avg) / 2;
-            
-            // 限幅滤波，高灵敏度模式
-            uint16_t prev = pwm_filtered[ch];
-            int diff = abs((int)filtered - (int)prev);
-            
-            if (diff <= 80) {
-                // 小变化直接接受，极快响应
-                return filtered;
-            } else if (diff <= 150) {
-                // 中等变化，混合85%新值 + 15%旧值
-                return (filtered * 17 + prev * 3) / 20;
-            } else if (diff <= 250) {
-                // 较大变化，混合70%新值 + 30%旧值
-                return (filtered * 7 + prev * 3) / 10;
-            } else {
-                // 超大变化，混合50%新值 + 50%旧值，防止失控
-                return (filtered + prev) / 2;
+            // 调试输出
+            if (filterDebugEnabled && ch == CH_THROTTLE) {
+                 Serial.printf("F_DBG: ch=%d, raw=%d, med=%d\n", ch, raw, median);
             }
+
+            return median;
         };
 
         // 对所有通道应用滤波

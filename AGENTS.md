@@ -6,7 +6,13 @@ ESP32-based autonomous vehicle control system for MUS4-v2.3 PCB.
 
 ## Build Commands
 
-### Native Build (Windows/Linux)
+### WSL Cross-Compile (Default / Recommended)
+```powershell
+# Compile in WSL, upload via Windows
+.\arduino-cli-wsl.ps1
+```
+
+### Native Build (Windows/Linux) (Alternative)
 ```bash
 # Compile only
 python arduino-cli.py -c
@@ -22,12 +28,6 @@ python arduino-cli.py -cus --port COM9
 
 # Use pre-compiled firmware
 python arduino-cli.py -u -i build/mus4.ino.bin --port COM9
-```
-
-### WSL Cross-Compile
-```powershell
-# Compile in WSL, upload via Windows
-.\arduino-cli-wsl.ps1
 ```
 
 ### Testing (Serial Commands)

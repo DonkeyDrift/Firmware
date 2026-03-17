@@ -362,9 +362,15 @@ void TUI::drawSensors() {
     } else {
         _out.print("MPU: N/A");
     }
+
+    if (_forceRedraw) {
+        cursorTo(row+3, 1);
+        if (_ansiEnabled) _out.print("\033[K");
+        _out.print("[按下 ESC 退出系统]");
+        if (_ansiEnabled) _out.print("\033[K");
+    }
+
     // Clear rest of line
     if (_ansiEnabled) _out.print("\033[K");
-    
-    cursorTo(row+3, 1);
-    _out.print("[按下 ESC 退出系统]");
+
 }

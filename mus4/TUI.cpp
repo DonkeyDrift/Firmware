@@ -10,13 +10,13 @@
 #define ANSI_CYAN "\033[36m"
 #define ANSI_WHITE "\033[37m"
 
-// Layout
 const int ROW_HEADER = 1;
 const int ROW_MODE = 3;
 const int ROW_PARK = 4;
-const int ROW_RC = 5;
-const int ROW_OUTPUT = 6;
-const int ROW_WAVE_START = 8;
+const int ROW_LOG = 5;
+const int ROW_RC = 7;
+const int ROW_OUTPUT = 8;
+const int ROW_WAVE_START = 10;
 
 TUI::TUI(Print& out) : _out(out) {
     _refreshRate = 16;
@@ -46,7 +46,9 @@ void TUI::setAnsiEnabled(bool enabled) {
 }
 
 void TUI::setWaveformEnabled(bool enabled) {
+    if (_waveformEnabled == enabled) return;
     _waveformEnabled = enabled;
+    forceRedraw();
 }
 
 void TUI::setRefreshRate(unsigned long ms) {
@@ -135,11 +137,11 @@ void TUI::render() {
 
     drawMode();
     drawPark();
+    drawLog();
     drawRC();
     drawOutput();
     if (_waveformEnabled) drawWaveforms();
     drawSensors();
-    drawLog();
 
     // Save state for next diff
     _lastState = _state;
@@ -150,7 +152,7 @@ void TUI::render() {
 void TUI::drawHeader() {
     cursorTo(ROW_HEADER, 1);
     if (_ansiEnabled) _out.print(ANSI_CYAN);
-    _out.println("MUS4 Control System (nvtop-style)");
+    _out.println("DonkeyCar Control System - v1.0");
     _out.println("===================================");
     if (_ansiEnabled) _out.print(ANSI_RESET);
 }
@@ -313,7 +315,7 @@ void TUI::drawWaveforms() {
 }
 
 void TUI::drawLog() {
-    int row = ROW_WAVE_START + 1 + WAVE_HEIGHT + 1 + 1 + WAVE_HEIGHT + 4;
+    int row = (_waveformEnabled ? (ROW_WAVE_START + 1 + WAVE_HEIGHT + 1 + 1 + WAVE_HEIGHT + 4) : ROW_LOG);
     cursorTo(row, 1);
     
     // Clear line
@@ -333,7 +335,12 @@ void TUI::drawSensors() {
     // Always update sensors? Or check dirty?
     // Sensors update slower usually
     
-    int row = ROW_WAVE_START + 1 + WAVE_HEIGHT + 1 + 1 + WAVE_HEIGHT + 2;
+    int row = 0;
+    if (_waveformEnabled) {
+        row = ROW_WAVE_START + 1 + WAVE_HEIGHT + 1 + 1 + WAVE_HEIGHT + 2;
+    } else {
+        row = ROW_OUTPUT + 2;
+    }
     cursorTo(row, 1);
     
     if (_state.sensors.valid) {
@@ -357,4 +364,7 @@ void TUI::drawSensors() {
     }
     // Clear rest of line
     if (_ansiEnabled) _out.print("\033[K");
+    
+    cursorTo(row+3, 1);
+    _out.print("[按下 ESC 退出系统]");
 }

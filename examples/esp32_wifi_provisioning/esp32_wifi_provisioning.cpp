@@ -234,6 +234,11 @@ void sendConfigToMU() {
   Serial.print(savedConfig.ssid);
   Serial.print("|");
   Serial.println(savedConfig.password);
+  // 协议格式：WIFI|SSID|PASSWORD\r\n
+  Serial1.print("WIFI|");
+  Serial1.print(savedConfig.ssid);
+  Serial1.print("|");
+  Serial1.println(savedConfig.password);
 }
 
 /*

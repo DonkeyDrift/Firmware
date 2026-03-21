@@ -1,6 +1,6 @@
 ---
-name: "mus4-wsl-build"
-description: "指导 MUS4 的 WSL 高速构建脚本用法，重点解释 .\\arduino-cli-wsl.ps1 的 -c/-u/-s。用户要编译/烧录/串口监控或问这些参数时调用。"
+name: mus4-wsl-build
+description: 指导 MUS4 的 WSL 高速构建脚本用法，重点解释 .\arduino-cli-wsl.ps1 的 -c/-u/-s。用户要编译/烧录/串口监控或问这些参数时调用。
 ---
 
 # MUS4 WSL 高速构建（arduino-cli-wsl.ps1）

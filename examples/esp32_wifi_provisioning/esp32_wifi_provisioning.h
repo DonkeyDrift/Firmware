@@ -50,5 +50,7 @@ void handleUartCommunication();
 void handleWebServer();
 void provisioningLoop();
 void clearConfig();
+void debugPrint(const String &msg);
+void debugPrintln(const String &msg);
 
 #endif // ESP32_WIFI_PROVISIONING_H

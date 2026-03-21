@@ -13,11 +13,19 @@
  */
 
 #include "esp32_wifi_provisioning.h"
+#define UART_SEL 12
 
 void setup() {
+
+  pinMode(UART_SEL, OUTPUT);
+  digitalWrite(UART_SEL, LOW);
+  
   // 初始化串口（波特率根据实际情况调整）
   Serial.begin(115200);
+  Serial1.begin(115200, SERIAL_8N1, 16, 17);
   delay(10);
+
+  debugPrintln("[ESP32] 系统启动");
   
   // 初始化配网系统
   initProvisioning();

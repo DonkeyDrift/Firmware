@@ -21,10 +21,23 @@ void handleConfigSubmit();
 void sendConfigToMU();
 bool readUartLine(String &line);
 
+// 调试打印函数：同时向Serial和Serial1输出
+void debugPrint(const String &msg) {
+  Serial.print(msg);
+  Serial1.print(msg);
+}
+
+void debugPrintln(const String &msg) {
+  Serial.println(msg);
+  Serial1.println(msg);
+}
+
 /*
  * 初始化配网系统
  */
 void initProvisioning() {
+  debugPrintln("[ESP32] 初始化配网系统...");
+
   // 初始化EEPROM
   EEPROM.begin(512);
   
@@ -37,13 +50,16 @@ void initProvisioning() {
   
   // 读取已有配置
   bool hasConfig = readConfigFromFlash();
+  debugPrintln("[ESP32] 配置检查: " + String(hasConfig ? "有配置" : "无配置"));
   
   // 检查是否需要触发配网
   if (!checkProvisioningTrigger()) {
     // 不需要触发配网，检查已有配置
     if (hasConfig) {
+      debugPrintln("[ESP32] 已有WiFi配置: " + String(savedConfig.ssid));
       // 检查串口是否就绪
       if (Serial) {
+        debugPrintln("[ESP32] 串口就绪，发送配置给MU...");
         // 串口就绪，发送配置给MU
         sendConfigToMU();
         // 等待回复，超时自动进入AP
@@ -56,6 +72,7 @@ void initProvisioning() {
               // 成功，提取IP
               muIpAddress = line.substring(3);
               provisioningResultMessage = "联网成功，MU IP: " + muIpAddress;
+              debugPrintln("[ESP32] MU联网成功，IP: " + muIpAddress);
               currentState = STATE_STA_WORKING;
               stopApProvisioning();
               startStaWorking();
@@ -64,6 +81,7 @@ void initProvisioning() {
             } else if (line.startsWith("FAIL")) {
               // 失败，进入配网
               provisioningResultMessage = "MU联网失败，请重新配置";
+              debugPrintln("[ESP32] MU联网失败");
               gotReply = true;
               break;
             }
@@ -72,19 +90,23 @@ void initProvisioning() {
         }
         if (!gotReply) {
           provisioningResultMessage = "等待MU回复超时，进入配网模式";
+          debugPrintln("[ESP32] 等待MU回复超时，进入配网模式");
         }
       } else {
         // 串口未就绪，直接进入STA工作
+        debugPrintln("[ESP32] 串口未就绪，直接进入STA工作模式");
         currentState = STATE_STA_WORKING;
         startStaWorking();
       }
     }
   } else {
     provisioningResultMessage = "手动触发配网";
+    debugPrintln("[ESP32] 手动触发配网模式");
   }
   
   // 如果还是配网模式，启动AP
   if (currentState == STATE_AP_PROVISIONING) {
+    debugPrintln("[ESP32] 启动AP配网模式");
     startApProvisioning();
   }
 }

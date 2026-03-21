@@ -316,6 +316,14 @@ if ($Compile) {
     if (-not (Run-WithAnimation -Command $syncBackCmd -Arguments $syncBackArgs -TaskName "Syncing Artifacts to Windows")) { exit 1 }
     $syncBackTime = ((Get-Date) - $syncBackStart).TotalSeconds
 
+    # 4. Get actual bin filename from build output
+    $actualBinFile = wsl -d DKC bash -c "ls ""$WSLBuildDir""/*.bin 2>/dev/null | head -1 | xargs -r basename"
+    if ([string]::IsNullOrWhiteSpace($actualBinFile)) {
+        Write-Error "No .bin file found in build output: $WSLBuildDir"
+        exit 1
+    }
+    $BinPath = "$ProjectRoot\$BuildDir\$actualBinFile"
+
     # Output Performance Report
     Write-Host "`n=== Performance Report ===" -ForegroundColor Yellow
     Write-Host "Sync to WSL:   $("{0:N2}" -f $syncTime)s"
@@ -326,7 +334,15 @@ if ($Compile) {
     Write-Host "========================`n" -ForegroundColor Yellow
 }
 
-$BinPath = "$ProjectRoot\$BuildDir\mus4.ino.bin"
+# If $BinPath not set (e.g., only -u flag), try to detect from WSL build output
+if (-not $BinPath -or -not (Test-Path $BinPath)) {
+    $actualBinFile = wsl -d DKC bash -c "ls ""$WSLBuildDir""/*.bin 2>/dev/null | head -1 | xargs -r basename"
+    if ([string]::IsNullOrWhiteSpace($actualBinFile)) {
+        Write-Error "No .bin file found in build output: $WSLBuildDir"
+        exit 1
+    }
+    $BinPath = "$ProjectRoot\$BuildDir\$actualBinFile"
+}
 
 if ($Upload -or $Serial) {
     if ($Upload) {

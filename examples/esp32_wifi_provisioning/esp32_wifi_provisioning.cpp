@@ -58,7 +58,7 @@ void initProvisioning() {
     if (hasConfig) {
       debugPrintln("[ESP32] 已有WiFi配置: " + String(savedConfig.ssid));
       // 检查串口是否就绪
-      if (Serial) {
+      if (Serial1) {
         debugPrintln("[ESP32] 串口就绪，发送配置给MU...");
         // 串口就绪，发送配置给MU
         sendConfigToMU();
@@ -227,8 +227,8 @@ void startStaWorking() {
  * 发送WiFi配置给MU
  */
 void sendConfigToMU() {
-  if (!Serial) return;
-  
+  if (!Serial1) return;
+
   // 协议格式：WIFI|SSID|PASSWORD\r\n
   Serial.print("WIFI|");
   Serial.print(savedConfig.ssid);
@@ -239,6 +239,7 @@ void sendConfigToMU() {
   Serial1.print(savedConfig.ssid);
   Serial1.print("|");
   Serial1.println(savedConfig.password);
+  debugPrintln("[ESP32] 已发送WiFi配置到MU");
 }
 
 /*
@@ -246,7 +247,7 @@ void sendConfigToMU() {
  * 应该在loop()中定期调用
  */
 void handleUartCommunication() {
-  if (!Serial) return;
+  if (!Serial1) return;
   
   String line;
   if (readUartLine(line)) {
@@ -280,8 +281,8 @@ void handleWebServer() {
  */
 bool readUartLine(String &line) {
   line = "";
-  while (Serial.available()) {
-    char c = Serial.read();
+  while (Serial1.available()) {
+    char c = Serial1.read();
     if (c == '\n') {
       return line.length() > 0;
     }

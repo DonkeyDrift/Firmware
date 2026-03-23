@@ -28,7 +28,7 @@
 #define ENABLE_GAMEPAD_MODE
 #ifdef ENABLE_GAMEPAD_MODE
   #include <BleGamepad.h>
-  BleGamepad bleGamepad("Gamepad MU03", "Espressif", 100);
+  BleGamepad bleGamepad("Gamepad MU02", "Espressif", 100);
 #endif
 
 // Adafruit_MPU6050 mpu; // Create an MPU6050 object
@@ -100,6 +100,39 @@ bool parkBtnPressed = false;
 bool parkActionTaken = false;
 const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
 const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
+
+// --- Steering Signal Processing Constants & Globals ---
+const int PWM_VALID_MIN = 800; // Increased from 500 to reject noise
+const int PWM_VALID_MAX = 2200; // Decreased from 2500 to reject noise
+const int MA_WINDOW_SIZE = 10;
+const int MAX_ERROR_COUNT = 3;
+
+// PID Parameters
+struct PIDConfig {
+    float Kp = 0.8; // 0.6  
+    float Ki = 0.05;
+    float Kd = 0.2;
+    float integral_limit = 50.0;
+    float deadband = 2.0;
+};
+
+struct PIDState {
+    float integral = 0;
+    float prev_error = 0;
+    float current_smooth_output = 0;
+};
+
+PIDConfig pid_config;
+PIDState pid_state;
+
+int steering_history[MA_WINDOW_SIZE] = {0};
+int steering_index = 0;
+int last_valid_steering_pwm = 1488; // Default to center
+int steering_error_count = 0;
+int valid_signal_count = 0; // New: Counter for valid signals to exit safe mode
+bool safe_mode_active = false;
+bool is_history_initialized = false;
+// ------------------------------------------------------
 
 // 修改setLEDColor函数
 void setLEDColor(CRGB targetColor)
@@ -519,6 +552,206 @@ void sendGamepadPacket() {
 }
 #endif
 
+// --- Steering Signal Processing Logic ---
+
+void reset_steering_filter() {
+    for (int i = 0; i < MA_WINDOW_SIZE; i++) {
+        steering_history[i] = 1488;
+    }
+    steering_index = 0;
+    last_valid_steering_pwm = 1488;
+    steering_error_count = 0;
+    valid_signal_count = 0;
+    safe_mode_active = false;
+    is_history_initialized = true;
+    
+    // Reset PID State
+    pid_state.integral = 0;
+    pid_state.prev_error = 0;
+    pid_state.current_smooth_output = 0;
+}
+
+int process_steering_signal(int raw_pwm) {
+    // 0. Initialize history if needed
+    if (!is_history_initialized) {
+        reset_steering_filter();
+    }
+
+    // 1. Input Validation (Data Acquisition Layer)
+    int current_pwm = raw_pwm;
+    bool is_signal_valid = true;
+    
+    // Check range
+    if (raw_pwm < PWM_VALID_MIN || raw_pwm > PWM_VALID_MAX) {
+        // Invalid signal: use last valid value
+        current_pwm = last_valid_steering_pwm;
+        is_signal_valid = false;
+    } 
+    // Check slew rate (spike detection)
+    // Reject if change > 800us in single frame (impossible for human input)
+    // unless it persists (handled by consecutive valid checks, but for now simple rejection)
+    else if (abs(raw_pwm - last_valid_steering_pwm) > 800) {
+        // Treat as noise spike
+        current_pwm = last_valid_steering_pwm;
+        is_signal_valid = false; 
+        // Serial.println("Warn: Steering Signal Spike Detected!");
+    }
+    else {
+        last_valid_steering_pwm = current_pwm;
+    }
+
+    // 2. Smoothing (Moving Average) - Pre-filter
+    steering_history[steering_index] = current_pwm;
+    steering_index = (steering_index + 1) % MA_WINDOW_SIZE;
+
+    long sum = 0;
+    for (int i = 0; i < MA_WINDOW_SIZE; i++) {
+        sum += steering_history[i];
+    }
+    int filtered_pwm = sum / MA_WINDOW_SIZE;
+
+    // 3. Mapping to Control Range (-100 to 100)
+    // Target steering based on filtered PWM
+    float target_steering = map(filtered_pwm - 1488, 872 - 1488, 2113 - 1488, -100, 100);
+
+    // 4. PID Calculation
+    float error = target_steering - pid_state.current_smooth_output;
+    
+    // Deadband check
+    if (abs(error) < pid_config.deadband) {
+        error = 0;
+    }
+    
+    // Integral term
+    pid_state.integral += error;
+    pid_state.integral = constrain(pid_state.integral, -pid_config.integral_limit, pid_config.integral_limit);
+    
+    // Derivative term
+    float derivative = error - pid_state.prev_error;
+    
+    // Calculate output change
+    float output_change = (pid_config.Kp * error) + (pid_config.Ki * pid_state.integral) + (pid_config.Kd * derivative);
+    
+    // Update state
+    pid_state.prev_error = error;
+    pid_state.current_smooth_output += output_change;
+    
+    // 5. Post-Clamping
+    int final_steering = constrain((int)pid_state.current_smooth_output, -100, 100);
+
+    // 6. Fault Detection & Safety Mode Logic
+    // Condition A: Sensor out of range (checked in step 1) or excessive value
+    // Note: Since we clamp final_steering, we check the mapped target or raw signal validity
+    
+    if (!is_signal_valid || abs(target_steering) > 120) { // Allow some margin over 100 before error
+        steering_error_count++;
+        valid_signal_count = 0; // Reset recovery counter
+        
+        if (steering_error_count >= MAX_ERROR_COUNT) {
+            if (!safe_mode_active) {
+                safe_mode_active = true;
+                Serial.println("ALARM: Steering Sensor Fault! Safe Mode Activated.");
+            }
+        }
+    } else {
+        // Signal is valid
+        steering_error_count = 0; // Reset error counter
+        
+        if (safe_mode_active) {
+            // Recovery logic
+            valid_signal_count++;
+            if (valid_signal_count > 50) { // Approx 1 second @ 50Hz (assuming loop speed)
+                safe_mode_active = false;
+                valid_signal_count = 0;
+                Serial.println("INFO: Steering Signal Recovered. Exiting Safe Mode.");
+                
+                // Soft reset PID output to current target to avoid jump
+                pid_state.current_smooth_output = target_steering;
+            }
+        }
+    }
+
+    // Override if safe mode
+    if (safe_mode_active) {
+        final_steering = 0; // Center steering
+        pid_state.current_smooth_output = 0; // Reset PID output
+        pid_state.integral = 0; // Reset integral
+    }
+
+    return final_steering;
+}
+
+void run_steering_tests() {
+    Serial.println("--- Starting Steering Signal Processing Unit Tests (PID Enabled) ---");
+    
+    // Test 1: Normal Value (PID Convergence)
+    reset_steering_filter();
+    int res = 0;
+    // Simulate convergence
+    for(int i=0; i<20; i++) {
+        res = process_steering_signal(1488);
+    }
+    Serial.printf("Test 1 (Normal 1488 -> 0): Output=%d, Pass=%d\n", res, res == 0);
+
+    // Test 2: Boundary Values
+    reset_steering_filter();
+    // Fill buffer to avoid smoothing delay effect for test
+    for(int i=0; i<10; i++) process_steering_signal(872); 
+    // Run PID loop to converge
+    for(int i=0; i<20; i++) res = process_steering_signal(872);
+    Serial.printf("Test 2A (Min 872 -> -100): Output=%d, Pass=%d\n", res, res == -100);
+
+    reset_steering_filter();
+    for(int i=0; i<10; i++) process_steering_signal(2113);
+    for(int i=0; i<20; i++) res = process_steering_signal(2113);
+    Serial.printf("Test 2B (Max 2113 -> 100): Output=%d, Pass=%d\n", res, res == 100);
+
+    // Test 3: Noise Injection (Should be ignored or dampened)
+    reset_steering_filter();
+    // Converge to center
+    for(int i=0; i<20; i++) process_steering_signal(1488); 
+    
+    // Inject single frame noise (0 is invalid PWM, so it uses last valid 1488)
+    int noise_res = process_steering_signal(0); 
+    Serial.printf("Test 3 (Invalid Input 0 -> Hold Last): Output=%d, Pass=%d\n", noise_res, noise_res == 0);
+
+    // Test 4: Hard Clamping
+    reset_steering_filter();
+    // Inject value that maps to > 100 but is valid PWM (e.g. 2200)
+    for(int i=0; i<30; i++) res = process_steering_signal(2200);
+    Serial.printf("Test 4 (Clamp 2200 -> 100): Output=%d, Pass=%d\n", res, res == 100);
+
+    // Test 5: Safety Mode Activation
+    reset_steering_filter();
+    // Trigger error. 
+    // Since we have a 10-point moving average, we need enough samples for the average to cross the threshold.
+    // Target threshold > 120 corresponds to filtered_pwm > approx 2237.
+    // Input 2300.
+    for(int i=0; i<15; i++) {
+        process_steering_signal(2300);
+    }
+    Serial.printf("Test 5 (Safety Mode Activation): Active=%d, Pass=%d\n", safe_mode_active, safe_mode_active == true);
+
+    // Test 6: Safety Mode Recovery
+    // Continue from Test 5, safe_mode_active is true.
+    // Feed valid signals. We need > 50 valid signals.
+    for(int i=0; i<50; i++) {
+        process_steering_signal(1488);
+    }
+    // Should still be active (count = 50)
+    bool still_active = safe_mode_active;
+    
+    // One more
+    process_steering_signal(1488);
+    bool recovered = !safe_mode_active;
+    
+    Serial.printf("Test 6 (Safety Mode Recovery): Still Active at 50=%d, Recovered at 51=%d, Pass=%d\n", 
+                  still_active, recovered, still_active && recovered);
+
+    Serial.println("--- End Tests ---");
+    reset_steering_filter(); // Reset for actual operation
+}
+
 void setup()
 {
     pinMode(UART_SEL, OUTPUT);
@@ -529,6 +762,8 @@ void setup()
     Serial1.begin(BUAD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
     Serial.println("ESP32 Receiver Serial Ready!");
     Serial1.println("ESP32 Receiver Serial1 Ready!");
+
+    run_steering_tests(); // Run unit tests for steering signal processing
 
     #ifdef ENABLE_GAMEPAD_MODE
       bleGamepad.begin();
@@ -574,7 +809,7 @@ void setup()
     emergencyStopState = EST_IDLE;
     Serial.println("System Initialized: Park Locked");
 
-    delay(1000);
+    delay(500);
 }
 
 void loop()
@@ -617,6 +852,10 @@ void loop()
 
     rc_data.steering = pwm_value[CH_STEERING];
     rc_data.throttle = pwm_value[CH_THROTTLE];
+    
+    // Process steering signal (Filter -> Smooth -> Check -> Clamp)
+    int safe_steering = process_steering_signal(pwm_value[CH_STEERING]);
+
     park_change(); // pwm_value[CH_PARK]
     mode_change(); // pwm_value[CH_MODE]
 
@@ -626,7 +865,7 @@ void loop()
         if (car_output.park == 1)
         {
             // car_output.throttle = 0;
-            emergencyStop();
+            // emergencyStop();
             if (carOutputModeLast != CAR_MODE_FULL_AUTO || toggleActive == false)
             {
                 setLEDToggle(CRGB::Blue, CRGB::Red);
@@ -654,7 +893,7 @@ void loop()
         if (car_output.park == 1)
         {
             // car_output.throttle = 0;
-            emergencyStop();
+            // emergencyStop();
             if (carOutputModeLast != CAR_MODE_SEMI_AUTO || toggleActive == false)
             {
                 setLEDToggle(CRGB::Yellow, CRGB::Red);
@@ -674,7 +913,7 @@ void loop()
         if (car_output.park == 1)
         {
             // car_output.throttle = 0;
-            emergencyStop();
+            // emergencyStop();
             if (carOutputModeLast != CAR_MODE_MANUAL || toggleActive == false)
             {
                 setLEDToggle(CRGB::Green, CRGB::Red);
@@ -687,10 +926,16 @@ void loop()
 
             // RC => CAR
             car_output.throttle = map(rc_data.throttle - 1493, 888 - 1493, 2149 - 1493, -100, 100);
-        }
-        car_output.steering = map(rc_data.steering - 1488, 872 - 1488, 2113 - 1488, -100, 100);
 
-        if (counter % 2 == 0) // check per 5 loops to save time amonge pulseIn()
+            // Safety Mode Action
+            if (safe_mode_active) {
+                car_output.throttle = 0;
+                setLEDColor(CRGB::Red);
+            }
+        }
+        car_output.steering = safe_steering;
+
+        if (counter % 1 == 0) // check per 5 loops to save time amonge pulseIn()
         {
             // #ifdef ENABLE_GAMEPAD_MODE
             //   sendGamepadPacket();
@@ -737,7 +982,7 @@ void loop()
     ledcWriteChannel(CH_STEERING, pwm_steering);
     ledcWriteChannel(CH_THROTTLE, pwm_throttle);
 
-    delay(10);
+    delay(1);
     counter += 1;
 
     scanLEDToggle();

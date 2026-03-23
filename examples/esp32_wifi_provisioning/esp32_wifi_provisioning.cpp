@@ -11,6 +11,8 @@ WifiConfig savedConfig;
 WebServer* apServer;
 String provisioningResultMessage;
 String muIpAddress;
+bool apCloseScheduled;
+unsigned long apCloseAtMs;
 
 // 引脚定义（根据硬件调整）
 #define PROVISIONING_PIN   0    // BOOT按键，可修改
@@ -47,6 +49,8 @@ void initProvisioning() {
   currentState = STATE_AP_PROVISIONING;
   provisioningResultMessage = "";
   muIpAddress = "";
+  apCloseScheduled = false;
+  apCloseAtMs = 0;
   
   // 读取已有配置
   bool hasConfig = readConfigFromFlash();
@@ -74,7 +78,6 @@ void initProvisioning() {
               provisioningResultMessage = "联网成功，MU IP: " + muIpAddress;
               debugPrintln("[ESP32] MU联网成功，IP: " + muIpAddress);
               currentState = STATE_STA_WORKING;
-              stopApProvisioning();
               startStaWorking();
               gotReply = true;
               break;
@@ -248,21 +251,21 @@ void sendConfigToMU() {
  */
 void handleUartCommunication() {
   if (!Serial1) return;
-  
   String line;
   if (readUartLine(line)) {
     if (line.startsWith("OK:")) {
-      // 成功
       muIpAddress = line.substring(3);
       provisioningResultMessage = "联网成功，MU IP: " + muIpAddress;
+      debugPrintln("[ESP32] MU联网成功，IP: " + muIpAddress); // 打印到 Serial 和 Serial1
       if (currentState == STATE_AP_PROVISIONING) {
-        stopApProvisioning();
         currentState = STATE_STA_WORKING;
         startStaWorking();
+        apCloseAtMs = millis() + 10000;
+        apCloseScheduled = true;
       }
     } else if (line.startsWith("FAIL")) {
-      // 失败
       provisioningResultMessage = "MU联网失败，请检查WiFi信息重试";
+      debugPrintln("[ESP32] MU联网失败");
     }
   }
 }
@@ -271,7 +274,7 @@ void handleUartCommunication() {
  * 处理Web服务器（AP模式下在loop调用）
  */
 void handleWebServer() {
-  if (currentState == STATE_AP_PROVISIONING && apServer != nullptr) {
+  if (apServer != nullptr) {
     apServer->handleClient();
   }
 }
@@ -322,7 +325,28 @@ void handleRoot() {
   
   if (provisioningResultMessage.length() > 0) {
     if (provisioningResultMessage.startsWith("联网成功")) {
-      html += "<div class=\"message success\">" + provisioningResultMessage + "</div>";
+      if (apCloseScheduled) {
+        long remainingMs = (long)(apCloseAtMs - millis());
+        if (remainingMs < 0) remainingMs = 0;
+        int remainingSec = (int)((remainingMs + 999) / 1000);
+        html += "<div class=\"message success\">"
+                + String("联网成功，MU IP: ") + muIpAddress
+                + "<div id=\"apStatus\">AP将在 <span id=\"apCountdown\">" + String(remainingSec) + "</span> 秒后关闭</div>"
+                + "<div style=\"margin-top:6px;\">关闭后小车进入驱动模式</div>"
+                + "</div>";
+        html += "<script>"
+                "let s=parseInt(document.getElementById('apCountdown').textContent||'0',10)||0;"
+                "const cd=document.getElementById('apCountdown');"
+                "const st=document.getElementById('apStatus');"
+                "const t=setInterval(()=>{"
+                "s=Math.max(0,s-1);"
+                "cd.textContent=String(s);"
+                "if(s<=0){clearInterval(t);st.textContent='AP已关闭，小车进入驱动模式';}"
+                "},1000);"
+                "</script>";
+      } else {
+        html += "<div class=\"message success\">" + provisioningResultMessage + "</div>";
+      }
     } else {
       html += "<div class=\"message error\">" + provisioningResultMessage + "</div>";
     }
@@ -397,5 +421,13 @@ void handleConfigSubmit() {
  */
 void provisioningLoop() {
   handleUartCommunication();
+  if (apCloseScheduled && apServer != nullptr) {
+    long remaining = (long)(apCloseAtMs - millis());
+    if (remaining <= 0) {
+      stopApProvisioning();
+      apCloseScheduled = false;
+      apCloseAtMs = 0;
+    }
+  }
   handleWebServer();
 }

@@ -37,6 +37,8 @@ extern WifiConfig savedConfig;
 extern WebServer* apServer;
 extern String provisioningResultMessage;
 extern String muIpAddress;
+extern bool apCloseScheduled;
+extern unsigned long apCloseAtMs;
 
 // 函数声明
 void initProvisioning();

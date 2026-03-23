@@ -14,7 +14,7 @@
 
 #include "esp32_wifi_provisioning.h"
 #define UART_SEL 12
-#define DEBUG_SerialTransparent
+// #define DEBUG_SerialTransparent
 
 void setup() {
 
@@ -37,10 +37,10 @@ void setup() {
 
 void loop() {
   #ifdef DEBUG_SerialTransparent
-  // 注释掉这里的 Serial1 读取，否则会把配网协议数据吃掉，导致状态机收不到 OK:IP
-  // while (Serial1.available()) {
-  //   Serial.write(Serial1.read());
-  // }
+  注释掉这里的 Serial1 读取，否则会把配网协议数据吃掉，导致状态机收不到 OK:IP
+  while (Serial1.available()) {
+    Serial.write(Serial1.read());
+  }
   while (Serial.available()) {
     Serial1.write(Serial.read());
   }

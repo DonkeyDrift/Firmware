@@ -164,7 +164,7 @@ test.describe('MUS4 智能配网端到端自动化测试', () => {
           logInfo(`前端成功展示了 IPv4 地址: ${match[0]}`);
         }
       } else {
-        logInfo(`配网流程完成，状态为失败或超时 (预期内的环境隔离): ${statusText}`);
+        logInfo(`配网流程完成，状态为失败或超时: ${statusText}`);
       }
 
       // 截图: 断言页 (配网结束状态)

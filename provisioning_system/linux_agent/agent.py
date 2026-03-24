@@ -7,7 +7,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 class ProvisioningAgent:
     """Linux端配网代理守护进程"""
-    def __init__(self, interface="wlp1s0", port="/dev/ttyS4"):
+    def __init__(self, interface="wlan0", port="/dev/ttyS4"):
         self.wifi_manager = WifiManager(interface)
         self.serial_comm = SerialComm(port)
         self.running = False

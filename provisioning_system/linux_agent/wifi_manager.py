@@ -4,7 +4,7 @@ import logging
 
 class WifiManager:
     """处理Linux主机的WiFi连接操作"""
-    def __init__(self, interface="wlan0"):
+    def __init__(self, interface="wlp1s0"):
         self.interface = interface
         self.logger = logging.getLogger("WifiManager")
 

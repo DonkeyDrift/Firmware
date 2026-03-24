@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>ESP32 智能控制终端</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
+        h1 { color: #333; text-align: center; }
+        .status { padding: 10px; margin-bottom: 20px; border-radius: 4px; text-align: center; font-weight: bold; }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .control-group { display: flex; justify-content: space-between; margin-top: 20px; }
+        button { padding: 10px 20px; border: none; border-radius: 4px; background-color: #007bff; color: white; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        #log { margin-top: 20px; background: #333; color: #0f0; padding: 10px; height: 150px; overflow-y: scroll; font-family: monospace; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>设备控制面板</h1>
+    <div id="statusIndicator" class="status disconnected">未连接到 ESP32</div>
+    
+    <div class="control-group">
+        <button onclick="sendCommand('LED_ON')">打开 LED</button>
+        <button onclick="sendCommand('LED_OFF')">关闭 LED</button>
+        <button onclick="sendCommand('GET_SENSOR')">读取传感器</button>
+    </div>
+
+    <div id="log">系统就绪...</div>
+</div>
+
+<script>
+    let ws = null;
+    const wsUrl = "ws://192.168.4.1/ws"; // ESP32 AP 默认 IP 的 WebSocket 地址
+
+    function initWebSocket() {
+        log("尝试连接到 " + wsUrl + " ...");
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            document.getElementById('statusIndicator').className = 'status connected';
+            document.getElementById('statusIndicator').innerText = '已连接到 ESP32';
+            log("WebSocket 连接成功!");
+        };
+
+        ws.onmessage = (event) => {
+            log(">> 收到数据: " + event.data);
+        };
+
+        ws.onclose = () => {
+            document.getElementById('statusIndicator').className = 'status disconnected';
+            document.getElementById('statusIndicator').innerText = '连接已断开';
+            log("WebSocket 断开连接，5秒后重试...");
+            setTimeout(initWebSocket, 5000);
+        };
+
+        ws.onerror = (error) => {
+            log("WebSocket 发生错误");
+        };
+    }
+
+    function sendCommand(cmd) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            log("<< 发送指令: " + cmd);
+            ws.send(cmd);
+        } else {
+            log("发送失败: WebSocket 未连接");
+        }
+    }
+
+    function log(msg) {
+        const logDiv = document.getElementById('log');
+        logDiv.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    // 页面加载后启动连接
+    window.onload = initWebSocket;
+</script>
+
+</body>
+</html>

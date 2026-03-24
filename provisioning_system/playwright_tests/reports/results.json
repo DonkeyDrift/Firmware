@@ -95,25 +95,25 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2306,
+                      "duration": 2334,
                       "errors": [],
                       "stdout": [
                         {
-                          "text": "[2026-03-24T06:25:44.394Z] 已开启串口监听: /dev/ttyACM1 @ 115200\n"
+                          "text": "[2026-03-24T06:34:37.871Z] 已开启串口监听: /dev/ttyACM1 @ 115200\n"
                         },
                         {
-                          "text": "[2026-03-24T06:25:44.528Z] 等待 ESP32 LwIP 释放资源...\n"
+                          "text": "[2026-03-24T06:34:38.017Z] 等待 ESP32 LwIP 释放资源...\n"
                         },
                         {
-                          "text": "[2026-03-24T06:25:46.533Z] 执行测试: 加载配网页面\n"
+                          "text": "[2026-03-24T06:34:40.021Z] 执行测试: 加载配网页面\n"
                         },
                         {
-                          "text": "[2026-03-24T06:25:46.671Z] 页面加载成功且预填充正确\n"
+                          "text": "[2026-03-24T06:34:40.183Z] 页面加载成功且预填充正确\n"
                         }
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-24T06:25:44.333Z",
+                      "startTime": "2026-03-24T06:34:37.805Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -142,25 +142,25 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 34366,
+                      "duration": 9236,
                       "errors": [],
                       "stdout": [
                         {
-                          "text": "[2026-03-24T06:25:46.836Z] 等待 ESP32 LwIP 释放资源...\n"
+                          "text": "[2026-03-24T06:34:40.350Z] 等待 ESP32 LwIP 释放资源...\n"
                         },
                         {
-                          "text": "[2026-03-24T06:25:48.838Z] 执行测试: 提交配网表单\n"
+                          "text": "[2026-03-24T06:34:42.352Z] 执行测试: 提交配网表单\n"
                         },
                         {
-                          "text": "[2026-03-24T06:25:50.160Z] 成功在串口日志中捕获到配网指令下发\n"
+                          "text": "[2026-03-24T06:34:43.573Z] 成功在串口日志中捕获到配网指令下发\n"
                         },
                         {
-                          "text": "[2026-03-24T06:26:21.066Z] 配网流程完成，状态为失败或超时: 配网超时 (30s)，请检查密码是否正确\n"
+                          "text": "[2026-03-24T06:34:49.447Z] 前端成功展示了 IPv4 地址: 192.168.3.30\n"
                         }
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-24T06:25:46.782Z",
+                      "startTime": "2026-03-24T06:34:40.286Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -189,22 +189,22 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3264,
+                      "duration": 3182,
                       "errors": [],
                       "stdout": [
                         {
-                          "text": "[2026-03-24T06:26:21.212Z] 等待 ESP32 LwIP 释放资源...\n"
+                          "text": "[2026-03-24T06:34:49.590Z] 等待 ESP32 LwIP 释放资源...\n"
                         },
                         {
-                          "text": "[2026-03-24T06:26:23.218Z] 执行测试: HTTP API 直接测试\n"
+                          "text": "[2026-03-24T06:34:51.596Z] 执行测试: HTTP API 直接测试\n"
                         },
                         {
-                          "text": "[2026-03-24T06:26:24.404Z] API 接口联通性测试通过\n"
+                          "text": "[2026-03-24T06:34:52.695Z] API 接口联通性测试通过\n"
                         }
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-24T06:26:21.171Z",
+                      "startTime": "2026-03-24T06:34:49.550Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -214,7 +214,7 @@
               ],
               "id": "ed908899f68c5eac16a8-00c414ec0da70e09265d",
               "file": "provisioning.spec.js",
-              "line": 180,
+              "line": 181,
               "column": 7
             }
           ]
@@ -224,8 +224,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-03-24T06:25:43.028Z",
-    "duration": 41490.746,
+    "startTime": "2026-03-24T06:34:36.431Z",
+    "duration": 16383.677,
     "expected": 3,
     "skipped": 0,
     "unexpected": 0,

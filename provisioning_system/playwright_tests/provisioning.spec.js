@@ -24,7 +24,7 @@ function logInfo(msg) {
 test.describe('MUS4 智能配网端到端自动化测试', () => {
 
   test.beforeAll(async () => {
-    // 1. 初始化串口监听 (监听ESP32的调试输出，或与代理通信的输出)
+    // 1. 初始化串口监听 (监听ESP32的调试输出)
     try {
       port = new SerialPort({ path: SERIAL_PORT_PATH, baudRate: BAUD_RATE, autoOpen: false });
       
@@ -165,6 +165,7 @@ test.describe('MUS4 智能配网端到端自动化测试', () => {
         }
       } else {
         logInfo(`配网流程完成，状态为失败或超时: ${statusText}`);
+        throw new Error(`配网未成功: ${statusText}`); // 强制抛出错误以便触发 Playwright 的重试或失败机制
       }
 
       // 截图: 断言页 (配网结束状态)

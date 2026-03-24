@@ -12,12 +12,12 @@
 ## 二、 部署指南
 
 ### 1. ESP32 固件编译与烧录
-环境依赖：ESP-IDF v5.0+
+环境依赖：Arduino IDE / Arduino-CLI 及 Python
 ```bash
-cd /home/dkc/project/mus4/provisioning_system/esp32
-arduino-cli set-target esp32
-arduino-cli build
-arduino-cli -p /dev/ttyUSB0 flash monitor
+cd /home/dkc/project/mus4
+# 使用工作区内置的 arduino-cli.py 脚本进行一键编译、烧录和监控
+# 假设 sketch 路径为 provisioning_system/esp32/esp32_wifi_provisioning
+python arduino-cli.py -cus --sketch provisioning_system/esp32/esp32_wifi_provisioning --port /dev/ttyACM1
 ```
 
 ### 2. Linux 配网代理守护进程部署 (LattePanda MU)

@@ -294,8 +294,22 @@ class ArduinoAutomation:
             cmd = [self.arduino_cli, "upload", "-p", self.port, "--fqbn", self.fqbn, 
                    "--input-file", input_file, self.sketch]
         else:
-            # 普通上传（不带固件文件参数）
-            cmd = [self.arduino_cli, "upload", "-p", self.port, "--fqbn", self.fqbn, self.sketch]
+            # 普通上传（指定编译时的输出目录，防止缓存找不到问题）
+            build_path = None
+            if self.args and getattr(self.args, 'build_path', None):
+                build_path = self.args.build_path
+            else:
+                build_path = self.config.get('default', {}).get('build_path')
+                
+            cmd = [self.arduino_cli, "upload", "-p", self.port, "--fqbn", self.fqbn]
+            
+            if build_path:
+                if not os.path.isabs(build_path):
+                    base_dir = os.path.dirname(os.path.abspath(self.args.config if self.args else 'config.yaml'))
+                    build_path = os.path.join(base_dir, build_path)
+                cmd.extend(["--input-dir", build_path])
+                
+            cmd.append(self.sketch)
         
         success, _ = self.run_command(cmd, message="正在上传... ")
         if not success:

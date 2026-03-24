@@ -95,25 +95,25 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2314,
+                      "duration": 2291,
                       "errors": [],
                       "stdout": [
                         {
-                          "text": "[2026-03-24T05:54:40.714Z] [WARN] 串口打开失败: Error Resource temporarily unavailable Cannot lock port\n"
+                          "text": "[2026-03-24T05:57:29.100Z] 已开启串口监听: /dev/ttyACM1 @ 115200\n"
                         },
                         {
-                          "text": "[2026-03-24T05:54:40.865Z] 等待 ESP32 LwIP 释放资源...\n"
+                          "text": "[2026-03-24T05:57:29.236Z] 等待 ESP32 LwIP 释放资源...\n"
                         },
                         {
-                          "text": "[2026-03-24T05:54:42.870Z] 执行测试: 加载配网页面\n"
+                          "text": "[2026-03-24T05:57:31.240Z] 执行测试: 加载配网页面\n"
                         },
                         {
-                          "text": "[2026-03-24T05:54:43.013Z] 页面加载成功且预填充正确\n"
+                          "text": "[2026-03-24T05:57:31.372Z] 页面加载成功且预填充正确\n"
                         }
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-24T05:54:40.656Z",
+                      "startTime": "2026-03-24T05:57:29.044Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -142,7 +142,7 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "timedOut",
-                      "duration": 30058,
+                      "duration": 30053,
                       "error": {
                         "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
                         "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
@@ -155,28 +155,28 @@
                           "location": {
                             "file": "/home/dkc/project/mus4/provisioning_system/playwright_tests/provisioning.spec.js",
                             "column": 48,
-                            "line": 142
+                            "line": 148
                           },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    27 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 140 |\u001b[39m       \u001b[90m// **核心功能 2**: 等待配网成功，并在 30 秒内断言 IP 地址展示\u001b[39m\n \u001b[90m 141 |\u001b[39m       \u001b[90m// 因为实际物理网卡连接需要几秒钟，我们设置 timeout\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 142 |\u001b[39m       \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[32m'配网成功'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m25000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 143 |\u001b[39m       \n \u001b[90m 144 |\u001b[39m       \u001b[90m// 提取状态框中的文本\u001b[39m\n \u001b[90m 145 |\u001b[39m       \u001b[36mconst\u001b[39m statusText \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m)\u001b[33m.\u001b[39minnerText()\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/dkc/project/mus4/provisioning_system/playwright_tests/provisioning.spec.js:142:48\u001b[22m"
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    26 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 146 |\u001b[39m       \u001b[90m// **核心功能 2**: 等待配网成功，并在 30 秒内断言 IP 地址展示\u001b[39m\n \u001b[90m 147 |\u001b[39m       \u001b[90m// 因为实际物理网卡连接需要几秒钟，我们设置 timeout\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 148 |\u001b[39m       \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[32m'配网成功'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m25000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 149 |\u001b[39m       \n \u001b[90m 150 |\u001b[39m       \u001b[90m// 提取状态框中的文本\u001b[39m\n \u001b[90m 151 |\u001b[39m       \u001b[36mconst\u001b[39m statusText \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m)\u001b[33m.\u001b[39minnerText()\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/dkc/project/mus4/provisioning_system/playwright_tests/provisioning.spec.js:148:48\u001b[22m"
                         }
                       ],
                       "stdout": [
                         {
-                          "text": "[2026-03-24T05:54:43.216Z] 等待 ESP32 LwIP 释放资源...\n"
+                          "text": "[2026-03-24T05:57:31.539Z] 等待 ESP32 LwIP 释放资源...\n"
                         },
                         {
-                          "text": "[2026-03-24T05:54:45.218Z] 执行测试: 提交配网表单\n"
+                          "text": "[2026-03-24T05:57:33.542Z] 执行测试: 提交配网表单\n"
                         },
                         {
-                          "text": "[2026-03-24T05:54:49.592Z] [WARN] 未能在串口监视器中捕获到配网指令，可能串口被其他进程占用\n"
+                          "text": "[2026-03-24T05:57:38.794Z] [WARN] 未能在串口监视器中捕获到配网指令，可能串口被其他进程占用\n"
                         },
                         {
-                          "text": "[2026-03-24T05:55:13.235Z] [WARN] 测试失败或跳过: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    27 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n"
+                          "text": "[2026-03-24T05:58:01.547Z] [WARN] 测试失败或跳过: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    26 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n"
                         }
                       ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-24T05:54:43.118Z",
+                      "startTime": "2026-03-24T05:57:31.474Z",
                       "annotations": [],
                       "attachments": [
                         {
@@ -194,48 +194,45 @@
                     {
                       "workerIndex": 1,
                       "parallelIndex": 0,
-                      "status": "interrupted",
-                      "duration": 15304,
+                      "status": "timedOut",
+                      "duration": 30109,
                       "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    12 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    12 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n\n    at /home/dkc/project/mus4/provisioning_system/playwright_tests/provisioning.spec.js:142:48",
-                        "location": {
-                          "file": "/home/dkc/project/mus4/provisioning_system/playwright_tests/provisioning.spec.js",
-                          "column": 48,
-                          "line": 142
-                        },
-                        "snippet": "\u001b[0m \u001b[90m 140 |\u001b[39m       \u001b[90m// **核心功能 2**: 等待配网成功，并在 30 秒内断言 IP 地址展示\u001b[39m\n \u001b[90m 141 |\u001b[39m       \u001b[90m// 因为实际物理网卡连接需要几秒钟，我们设置 timeout\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 142 |\u001b[39m       \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[32m'配网成功'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m25000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 143 |\u001b[39m       \n \u001b[90m 144 |\u001b[39m       \u001b[90m// 提取状态框中的文本\u001b[39m\n \u001b[90m 145 |\u001b[39m       \u001b[36mconst\u001b[39m statusText \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m)\u001b[33m.\u001b[39minnerText()\u001b[33m;\u001b[39m\u001b[0m"
+                        "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
                       },
                       "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                        },
                         {
                           "location": {
                             "file": "/home/dkc/project/mus4/provisioning_system/playwright_tests/provisioning.spec.js",
                             "column": 48,
-                            "line": 142
+                            "line": 148
                           },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    12 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 140 |\u001b[39m       \u001b[90m// **核心功能 2**: 等待配网成功，并在 30 秒内断言 IP 地址展示\u001b[39m\n \u001b[90m 141 |\u001b[39m       \u001b[90m// 因为实际物理网卡连接需要几秒钟，我们设置 timeout\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 142 |\u001b[39m       \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[32m'配网成功'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m25000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 143 |\u001b[39m       \n \u001b[90m 144 |\u001b[39m       \u001b[90m// 提取状态框中的文本\u001b[39m\n \u001b[90m 145 |\u001b[39m       \u001b[36mconst\u001b[39m statusText \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m)\u001b[33m.\u001b[39minnerText()\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/dkc/project/mus4/provisioning_system/playwright_tests/provisioning.spec.js:142:48\u001b[22m"
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    26 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 146 |\u001b[39m       \u001b[90m// **核心功能 2**: 等待配网成功，并在 30 秒内断言 IP 地址展示\u001b[39m\n \u001b[90m 147 |\u001b[39m       \u001b[90m// 因为实际物理网卡连接需要几秒钟，我们设置 timeout\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 148 |\u001b[39m       \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[32m'配网成功'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m25000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 149 |\u001b[39m       \n \u001b[90m 150 |\u001b[39m       \u001b[90m// 提取状态框中的文本\u001b[39m\n \u001b[90m 151 |\u001b[39m       \u001b[36mconst\u001b[39m statusText \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m)\u001b[33m.\u001b[39minnerText()\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/dkc/project/mus4/provisioning_system/playwright_tests/provisioning.spec.js:148:48\u001b[22m"
                         }
                       ],
                       "stdout": [
                         {
-                          "text": "[2026-03-24T05:55:14.527Z] 已开启串口监听: /dev/ttyACM1 @ 115200\n"
+                          "text": "[2026-03-24T05:58:02.861Z] 已开启串口监听: /dev/ttyACM1 @ 115200\n"
                         },
                         {
-                          "text": "[2026-03-24T05:55:14.666Z] 等待 ESP32 LwIP 释放资源...\n"
+                          "text": "[2026-03-24T05:58:03.000Z] 等待 ESP32 LwIP 释放资源...\n"
                         },
                         {
-                          "text": "[2026-03-24T05:55:16.676Z] 执行测试: 提交配网表单\n"
+                          "text": "[2026-03-24T05:58:05.012Z] 执行测试: 提交配网表单\n"
                         },
                         {
-                          "text": "[2026-03-24T05:55:21.128Z] [WARN] 未能在串口监视器中捕获到配网指令，可能串口被其他进程占用\n"
+                          "text": "[2026-03-24T05:58:10.544Z] [WARN] 未能在串口监视器中捕获到配网指令，可能串口被其他进程占用\n"
                         },
                         {
-                          "text": "[2026-03-24T05:55:29.899Z] [WARN] 测试失败或跳过: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    12 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n"
+                          "text": "[2026-03-24T05:58:33.034Z] [WARN] 测试失败或跳过: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    26 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n"
                         }
                       ],
                       "stderr": [],
                       "retry": 1,
-                      "startTime": "2026-03-24T05:55:14.473Z",
+                      "startTime": "2026-03-24T05:58:02.805Z",
                       "annotations": [],
                       "attachments": [
                         {
@@ -244,16 +241,72 @@
                           "path": "/home/dkc/project/mus4/provisioning_system/playwright_tests/test-results/provisioning-MUS4-智能配网端到端自动化测试-测试用例2-提交配网表单并验证串口下发机制-chromium-retry1/test-failed-1.png"
                         },
                         {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/dkc/project/mus4/provisioning_system/playwright_tests/test-results/provisioning-MUS4-智能配网端到端自动化测试-测试用例2-提交配网表单并验证串口下发机制-chromium-retry1/error-context.md"
+                        },
+                        {
                           "name": "trace",
                           "contentType": "application/zip",
                           "path": "/home/dkc/project/mus4/provisioning_system/playwright_tests/test-results/provisioning-MUS4-智能配网端到端自动化测试-测试用例2-提交配网表单并验证串口下发机制-chromium-retry1/trace.zip"
                         }
+                      ]
+                    },
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 30063,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/home/dkc/project/mus4/provisioning_system/playwright_tests/provisioning.spec.js",
+                            "column": 48,
+                            "line": 148
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    26 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n\n\n\u001b[0m \u001b[90m 146 |\u001b[39m       \u001b[90m// **核心功能 2**: 等待配网成功，并在 30 秒内断言 IP 地址展示\u001b[39m\n \u001b[90m 147 |\u001b[39m       \u001b[90m// 因为实际物理网卡连接需要几秒钟，我们设置 timeout\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 148 |\u001b[39m       \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m))\u001b[33m.\u001b[39mtoContainText(\u001b[32m'配网成功'\u001b[39m\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m25000\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 149 |\u001b[39m       \n \u001b[90m 150 |\u001b[39m       \u001b[90m// 提取状态框中的文本\u001b[39m\n \u001b[90m 151 |\u001b[39m       \u001b[36mconst\u001b[39m statusText \u001b[33m=\u001b[39m \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mlocator(\u001b[32m'#statusMsg'\u001b[39m)\u001b[33m.\u001b[39minnerText()\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /home/dkc/project/mus4/provisioning_system/playwright_tests/provisioning.spec.js:148:48\u001b[22m"
+                        }
                       ],
-                      "errorLocation": {
-                        "file": "/home/dkc/project/mus4/provisioning_system/playwright_tests/provisioning.spec.js",
-                        "column": 48,
-                        "line": 142
-                      }
+                      "stdout": [
+                        {
+                          "text": "[2026-03-24T05:58:34.401Z] 已开启串口监听: /dev/ttyACM1 @ 115200\n"
+                        },
+                        {
+                          "text": "[2026-03-24T05:58:34.533Z] 等待 ESP32 LwIP 释放资源...\n"
+                        },
+                        {
+                          "text": "[2026-03-24T05:58:36.538Z] 执行测试: 提交配网表单\n"
+                        },
+                        {
+                          "text": "[2026-03-24T05:58:41.795Z] [WARN] 未能在串口监视器中捕获到配网指令，可能串口被其他进程占用\n"
+                        },
+                        {
+                          "text": "[2026-03-24T05:59:04.532Z] [WARN] 测试失败或跳过: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#statusMsg')\nExpected substring: \u001b[32m\"配网成功\"\u001b[39m\nReceived string:    \u001b[31m\"等待操作...\"\u001b[39m\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 25000ms\u001b[22m\n\u001b[2m  - waiting for locator('#statusMsg')\u001b[22m\n\u001b[2m    26 × locator resolved to <div id=\"statusMsg\" class=\"status\">等待操作...</div>\u001b[22m\n\u001b[2m       - unexpected value \"等待操作...\"\u001b[22m\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 2,
+                      "startTime": "2026-03-24T05:58:34.346Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/home/dkc/project/mus4/provisioning_system/playwright_tests/test-results/provisioning-MUS4-智能配网端到端自动化测试-测试用例2-提交配网表单并验证串口下发机制-chromium-retry2/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/home/dkc/project/mus4/provisioning_system/playwright_tests/test-results/provisioning-MUS4-智能配网端到端自动化测试-测试用例2-提交配网表单并验证串口下发机制-chromium-retry2/error-context.md"
+                        }
+                      ]
                     }
                   ],
                   "status": "unexpected"
@@ -275,13 +328,40 @@
                   "expectedStatus": "passed",
                   "projectId": "chromium",
                   "projectName": "chromium",
-                  "results": [],
-                  "status": "skipped"
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3327,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[2026-03-24T05:59:05.836Z] 已开启串口监听: /dev/ttyACM1 @ 115200\n"
+                        },
+                        {
+                          "text": "[2026-03-24T05:59:05.983Z] 等待 ESP32 LwIP 释放资源...\n"
+                        },
+                        {
+                          "text": "[2026-03-24T05:59:07.990Z] 执行测试: HTTP API 直接测试\n"
+                        },
+                        {
+                          "text": "[2026-03-24T05:59:09.190Z] API 接口联通性测试通过\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-24T05:59:05.782Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
               "id": "ed908899f68c5eac16a8-00c414ec0da70e09265d",
               "file": "provisioning.spec.js",
-              "line": 166,
+              "line": 172,
               "column": 7
             }
           ]
@@ -291,10 +371,10 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-03-24T05:54:39.331Z",
-    "duration": 50694.235,
-    "expected": 1,
-    "skipped": 1,
+    "startTime": "2026-03-24T05:57:27.720Z",
+    "duration": 101615.14,
+    "expected": 2,
+    "skipped": 0,
     "unexpected": 1,
     "flaky": 0
   }

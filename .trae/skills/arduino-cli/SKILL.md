@@ -12,23 +12,23 @@ This skill automates the workflow for Arduino/ESP32 projects using the `arduino-
 Use the `RunCommand` tool to execute the `arduino-cli.py` script.
 
 ### Script Location
-`c:\Dev\DDC\mus4\arduino-cli.py`
+**Important**: Do not hardcode the path to `arduino-cli.py`. First, use the `Glob` tool (e.g., `**/arduino-cli.py`) to search for and locate the `arduino-cli.py` script within the current workspace before running any commands. This ensures flexible configuration across different environments.
 
-### Common Commands
+### Common Commands (Assuming script is found at `<FOUND_PATH>`)
 
 **Compile only:**
 ```bash
-python c:\Dev\DDC\mus4\arduino-cli.py -c
+python <FOUND_PATH> -c
 ```
 
 **Compile and Upload:**
 ```bash
-python c:\Dev\DDC\mus4\arduino-cli.py -cu
+python <FOUND_PATH> -cu
 ```
 
 **Compile, Upload, and Monitor (All-in-one):**
 ```bash
-python c:\Dev\DDC\mus4\arduino-cli.py -cus
+python <FOUND_PATH> -cus
 ```
 
 ### Options

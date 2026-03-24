@@ -15,9 +15,9 @@
 环境依赖：ESP-IDF v5.0+
 ```bash
 cd /home/dkc/project/mus4/provisioning_system/esp32
-idf.py set-target esp32
-idf.py build
-idf.py -p /dev/ttyUSB0 flash monitor
+arduino-cli set-target esp32
+arduino-cli build
+arduino-cli -p /dev/ttyUSB0 flash monitor
 ```
 
 ### 2. Linux 配网代理守护进程部署 (LattePanda MU)

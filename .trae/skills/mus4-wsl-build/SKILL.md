@@ -9,16 +9,16 @@ description: 指导 MUS4 的 WSL 高速构建脚本用法，重点解释 .\ardui
 
 ## 入口脚本
 
-- PowerShell 脚本：`c:\Dev\DDC\mus4\arduino-cli-wsl.ps1`
-- 上传/串口由 Python 脚本执行：`c:\Dev\DDC\mus4\arduino-cli.py`
-- 默认端口/板型/波特率从 `c:\Dev\DDC\mus4\config.yaml` 读取（除非你直接运行 `arduino-cli.py` 并覆盖参数）
+- PowerShell 脚本：`arduino-cli-wsl.ps1` (需在工作区搜索定位)
+- 上传/串口由 Python 脚本执行：`arduino-cli.py` (需在工作区搜索定位)
+- 默认端口/板型/波特率从 `config.yaml` 读取（除非你直接运行 `arduino-cli.py` 并覆盖参数）
 
 ## -c / -u / -s 的含义（在 arduino-cli-wsl.ps1 中）
 
 ### `-c`（Compile）
 
 - 执行“WSL 内编译”流程：Windows → WSL 同步源码（rsync）→ WSL 编译（Linux arduino-cli）→ 把产物拷回 Windows。
-- 产物默认写回：`c:\Dev\DDC\mus4\build_wsl\mus4.ino.bin`（以及 `.elf`）。
+- 产物默认写回：`build_wsl\mus4.ino.bin`（以及 `.elf`）。
 - 只加 `-c` 不会上传、不打开串口监控。
 
 ### `-u`（Upload）

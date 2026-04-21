@@ -506,6 +506,18 @@ class ArduinoAutomation:
 
     def resolve_port(self, required=False):
         ports = self.enumerate_serial_ports()
+
+        # 对于自动模式（且未显式传 --port），优先使用上次成功串口。
+        if not getattr(self.args, "port", None) and self._configured_port_mode() == "auto":
+            remembered_port = self.get_last_success_port()
+            if remembered_port:
+                for port in ports:
+                    if port["device"].lower() == remembered_port.lower():
+                        self.port = port["device"]
+                        self.logger.info(f"串口解析结果: {self.port} (命中上一次成功串口)")
+                        return self.port
+                self.logger.warning(f"上一次成功串口 {remembered_port} 当前不可用，改为自动匹配")
+
         selected, reason = self.select_best_port(ports)
         if selected:
             resolved_port = selected["device"]

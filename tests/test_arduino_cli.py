@@ -141,6 +141,7 @@ class TestSerialPortSelection(unittest.TestCase):
                 "preferred_description_keywords": ["serial-a"],
             },
         )
+        automation.get_last_success_port = MagicMock(return_value="")
         automation.enumerate_serial_ports = MagicMock(return_value=[
             make_port("COM19", description="USB-Enhanced-SERIAL-B CH342 (COM19)", manufacturer="wch.cn", serial_number="ABC"),
             make_port("COM20", description="USB-Enhanced-SERIAL-A CH342 (COM20)", manufacturer="wch.cn", serial_number="ABC"),
@@ -160,6 +161,7 @@ class TestSerialPortSelection(unittest.TestCase):
                 "preferred_description_keywords": ["serial-a"],
             },
         )
+        automation.get_last_success_port = MagicMock(return_value="")
         automation.enumerate_serial_ports = MagicMock(return_value=[
             make_port("COM19", description="USB-Enhanced-SERIAL-B CH342 (COM19)", manufacturer="wch.cn", serial_number="ABC"),
             make_port("COM20", description="USB-Enhanced-SERIAL-A CH342 (COM20)", manufacturer="wch.cn", serial_number="ABC"),
@@ -216,6 +218,25 @@ class TestSerialPortSelection(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(automation.port, "COM19")
         automation.save_last_success_port.assert_called_once_with("COM19")
+
+    def test_resolve_port_prefers_last_success_port_for_serial_mode(self):
+        automation = make_automation(
+            port="auto",
+            serial_detection_cfg={
+                "enabled": True,
+                "preferred_description_keywords": ["serial-a"],
+            },
+        )
+        automation.get_last_success_port = MagicMock(return_value="COM27")
+        automation.enumerate_serial_ports = MagicMock(return_value=[
+            make_port("COM26", description="USB-Enhanced-SERIAL-A CH342 (COM26)", manufacturer="wch.cn", serial_number="ABC"),
+            make_port("COM27", description="USB-Enhanced-SERIAL-B CH342 (COM27)", manufacturer="wch.cn", serial_number="ABC"),
+        ])
+
+        resolved = automation.resolve_port(required=True)
+
+        self.assertEqual(resolved, "COM27")
+        self.assertEqual(automation.port, "COM27")
 
 
 class TestSerialPortState(unittest.TestCase):

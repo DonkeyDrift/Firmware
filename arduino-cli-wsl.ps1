@@ -1,47 +1,47 @@
-﻿<#
+<#
 .SYNOPSIS
-    WSL 高速构建脚本 (支持库同步)
+    Fast WSL build script with optional library sync.
 .DESCRIPTION
-    将项目同步到 WSL 原生文件系统进行编译，并支持将 Windows 端 Arduino 库同步到 WSL。
+    Sync project to WSL native filesystem for compile, and optionally sync Arduino libs.
 #>
 [CmdletBinding()]
 param(
-    # --- 库同步参数 ---
-    [Parameter(HelpMessage="是否启用库同步 (默认不启用)")]
+    # --- Library sync options ---
+    [Parameter(HelpMessage="Enable library sync before build (default: off)")]
     [Alias("Sync")]
     [switch]$SyncLibs,
 
-    [Parameter(HelpMessage="Windows端Arduino库路径")]
+    [Parameter(HelpMessage="Windows Arduino libraries path")]
     [string]$WinLibPath = "$env:USERPROFILE\Documents\Arduino\libraries",
 
-    [Parameter(HelpMessage="WSL端目标路径")]
+    [Parameter(HelpMessage="Target libraries path in WSL")]
     [string]$WslLibPath = "~/Arduino/libraries",
 
-    [Parameter(HelpMessage="是否覆盖已有库")]
+    [Parameter(HelpMessage="Overwrite existing libs in target")]
     [bool]$OverwriteLibs = $true,
 
-    [Parameter(HelpMessage="是否保留旧版本备份")]
+    [Parameter(HelpMessage="Backup old libs before sync")]
     [switch]$BackupLibs,
 
-    [Parameter(HelpMessage="排除列表(正则表达式数组)")]
+    [Parameter(HelpMessage="Exclude list (regex array)")]
     [string[]]$ExcludeLibs = @("^\.", "^tmp$"),
 
-    [Parameter(HelpMessage="同步模式: rsync 或 robocopy")]
+    [Parameter(HelpMessage="Sync mode: rsync or robocopy")]
     [ValidateSet("rsync", "robocopy")]
     [string]$SyncMode = "rsync",
 
-    [Parameter(HelpMessage="自定义附加参数")]
+    [Parameter(HelpMessage="Extra args for sync command")]
     [string]$ExtraArgs = "",
 
-    [Parameter(HelpMessage="启用串口监视器")]
+    [Parameter(HelpMessage="Open serial monitor")]
     [Alias("s")]
     [switch]$Serial,
 
-    [Parameter(HelpMessage="执行编译")]
+    [Parameter(HelpMessage="Run compile")]
     [Alias("c")]
     [switch]$Compile,
 
-    [Parameter(HelpMessage="执行上传")]
+    [Parameter(HelpMessage="Run upload")]
     [Alias("u")]
     [switch]$Upload
 )
@@ -62,8 +62,8 @@ $WSLWorkDir = "`$HOME/arduino-build/mus4"
 $WSLSketchPath = "$WSLWorkDir/mus4/mus4.ino"
 $WSLBuildDir = "$WSLWorkDir/$BuildDir"
 
-# 动画字符集
-$frames = @('⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷')
+# Spinner frames (ASCII-safe for PowerShell 5 encoding)
+$frames = @('|', '/', '-', '\')
 
 function Run-WithAnimation {
     param(
@@ -334,8 +334,8 @@ if ($Compile) {
     Write-Host "========================`n" -ForegroundColor Yellow
 }
 
-# If $BinPath not set (e.g., only -u flag), try to detect from WSL build output
-if (-not $BinPath -or -not (Test-Path $BinPath)) {
+# 仅上传场景需要固件文件；串口监视(-s)不应依赖 .bin
+if ($Upload -and (-not $BinPath -or -not (Test-Path $BinPath))) {
     $actualBinFile = wsl -d DKC bash -c "ls ""$WSLBuildDir""/*.bin 2>/dev/null | head -1 | xargs -r basename"
     if ([string]::IsNullOrWhiteSpace($actualBinFile)) {
         Write-Error "No .bin file found in build output: $WSLBuildDir"

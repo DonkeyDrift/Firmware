@@ -1,5 +1,6 @@
 import importlib.util
 import pathlib
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -53,6 +54,7 @@ def make_automation(port="auto", serial_detection_cfg=None):
     automation.sketch = "mus4/mus4.ino"
     automation.config = {"default": {}}
     automation.os_type = "Windows"
+    automation.serial_state_file = str(PROJECT_ROOT / ".tmp_serial_state_test.json")
     return automation
 
 
@@ -173,6 +175,57 @@ class TestSerialPortSelection(unittest.TestCase):
         second_cmd = automation.run_command.call_args_list[1].args[0]
         self.assertIn("COM20", first_cmd)
         self.assertIn("COM19", second_cmd)
+
+    def test_build_upload_port_attempts_prefers_last_success_port(self):
+        automation = make_automation(
+            port="auto",
+            serial_detection_cfg={
+                "enabled": True,
+                "preferred_description_keywords": ["serial-a"],
+            },
+        )
+        automation.get_last_success_port = MagicMock(return_value="COM19")
+        automation.enumerate_serial_ports = MagicMock(return_value=[
+            make_port("COM19", description="USB-Enhanced-SERIAL-B CH342 (COM19)", manufacturer="wch.cn", serial_number="ABC"),
+            make_port("COM20", description="USB-Enhanced-SERIAL-A CH342 (COM20)", manufacturer="wch.cn", serial_number="ABC"),
+        ])
+
+        attempts, error = automation.build_upload_port_attempts()
+
+        self.assertIsNone(error)
+        self.assertEqual([item["port"]["device"] for item in attempts], ["COM19", "COM20"])
+
+    def test_upload_records_success_port_after_fallback(self):
+        automation = make_automation(
+            port="auto",
+            serial_detection_cfg={
+                "enabled": True,
+                "preferred_description_keywords": ["serial-a"],
+            },
+        )
+        automation.get_last_success_port = MagicMock(return_value="COM20")
+        automation.save_last_success_port = MagicMock()
+        automation.enumerate_serial_ports = MagicMock(return_value=[
+            make_port("COM19", description="USB-Enhanced-SERIAL-B CH342 (COM19)", manufacturer="wch.cn", serial_number="ABC"),
+            make_port("COM20", description="USB-Enhanced-SERIAL-A CH342 (COM20)", manufacturer="wch.cn", serial_number="ABC"),
+        ])
+        automation.run_command = MagicMock(side_effect=[(False, "busy"), (True, "ok")])
+
+        result = automation.upload()
+
+        self.assertTrue(result)
+        self.assertEqual(automation.port, "COM19")
+        automation.save_last_success_port.assert_called_once_with("COM19")
+
+
+class TestSerialPortState(unittest.TestCase):
+    def test_save_and_load_last_success_port(self):
+        automation = make_automation(port="auto")
+        with tempfile.TemporaryDirectory() as tmp:
+            automation.serial_state_file = str(pathlib.Path(tmp) / "serial_state.json")
+            automation.save_last_success_port("COM27")
+            loaded = automation.get_last_success_port()
+        self.assertEqual(loaded, "COM27")
 
 
 if __name__ == "__main__":

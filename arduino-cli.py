@@ -3,6 +3,7 @@
 
 import os
 import sys
+import json
 
 # 强制设置UTF-8编码（解决Windows控制台乱码问题）
 if sys.platform == "win32":
@@ -128,10 +129,12 @@ class ArduinoAutomation:
     DEFAULT_PREFERRED_DESCRIPTION_KEYWORDS = []
     DEFAULT_PREFERRED_MANUFACTURER_KEYWORDS = []
     DEFAULT_PREFERRED_HWID_KEYWORDS = []
+    DEFAULT_STATE_FILE = ".arduino_cli_state.json"
 
     def __init__(self, config_path, args):
         self.logger = logging.getLogger("ArduinoCLI")
         self.config = self.load_config(config_path)
+        self.config_path = config_path
         self.args = args
         
         # 参数优先级：命令行 > 配置文件 > 默认值
@@ -150,6 +153,7 @@ class ArduinoAutomation:
         self.reset_command = args.reset_command or reset_cfg.get('command', '')
         self.serial_detection_cfg = self.config.get('serial_detection', {}) or {}
         self.serial_detection_enabled = self.serial_detection_cfg.get('enabled', True)
+        self.serial_state_file = self._resolve_serial_state_file()
 
         # 转换 sketch 路径为绝对路径
         if not os.path.isabs(self.sketch):
@@ -160,6 +164,50 @@ class ArduinoAutomation:
         self.os_type = platform.system()
         self.validate_environment()
         self.log_reset_interfaces()
+
+    def _resolve_serial_state_file(self):
+        configured = self.serial_detection_cfg.get("state_file", self.DEFAULT_STATE_FILE)
+        state_file = (configured or self.DEFAULT_STATE_FILE).strip()
+        if not os.path.isabs(state_file):
+            base_dir = os.path.dirname(os.path.abspath(self.config_path))
+            state_file = os.path.join(base_dir, state_file)
+        return state_file
+
+    def _load_serial_state(self):
+        if not os.path.exists(self.serial_state_file):
+            return {}
+        try:
+            with open(self.serial_state_file, "r", encoding="utf-8") as f:
+                state = json.load(f)
+                if isinstance(state, dict):
+                    return state
+        except Exception as e:
+            self.logger.warning(f"读取串口状态缓存失败，已忽略: {e}")
+        return {}
+
+    def get_last_success_port(self):
+        state = self._load_serial_state()
+        last_port = str(state.get("last_success_port", "")).strip()
+        if not last_port:
+            return ""
+        return last_port
+
+    def save_last_success_port(self, port):
+        if not port:
+            return
+        state_dir = os.path.dirname(self.serial_state_file)
+        if state_dir and not os.path.exists(state_dir):
+            os.makedirs(state_dir, exist_ok=True)
+
+        state = self._load_serial_state()
+        state["last_success_port"] = port
+        state["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with open(self.serial_state_file, "w", encoding="utf-8") as f:
+                json.dump(state, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"已记录本次成功串口: {port}")
+        except Exception as e:
+            self.logger.warning(f"写入串口状态缓存失败: {e}")
 
     def load_config(self, path):
         if not os.path.exists(path):
@@ -394,31 +442,65 @@ class ArduinoAutomation:
 
     def build_upload_port_attempts(self):
         ports = self.enumerate_serial_ports()
-        primary, reason = self.select_best_port(ports)
-        if not primary:
-            return [], reason or "未指定上传端口或自动匹配失败"
-
-        attempts = [{
-            "port": primary,
-            "reason": reason,
-        }]
+        if not ports:
+            return [], "未检测到可用串口"
 
         # 显式指定命令行端口时，尊重用户意图，不自动切换其他端口。
         if getattr(self.args, "port", None):
+            primary, reason = self.select_best_port(ports)
+            if not primary:
+                return [], reason or "未指定上传端口或自动匹配失败"
+            attempts = [{
+                "port": primary,
+                "reason": reason,
+            }]
             return attempts, None
 
-        primary_identity = self.get_port_identity(primary)
+        attempts = []
+        seen_ports = set()
+        port_lookup = {p["device"].lower(): p for p in ports}
+
+        # 优先尝试上一次成功的串口，避免每次都重新猜测。
+        remembered_port = self.get_last_success_port()
+        if remembered_port:
+            remembered = port_lookup.get(remembered_port.lower())
+            if remembered:
+                attempts.append({
+                    "port": remembered,
+                    "reason": "命中上一次成功上传端口"
+                })
+                seen_ports.add(remembered["device"].lower())
+            else:
+                self.logger.warning(f"上一次成功串口 {remembered_port} 当前不可用，自动切换到候选端口")
+
+        primary, reason = self.select_best_port(ports)
+        if not primary and not attempts:
+            return [], reason or "未指定上传端口或自动匹配失败"
+        if primary and primary["device"].lower() not in seen_ports:
+            attempts.append({
+                "port": primary,
+                "reason": reason,
+            })
+            seen_ports.add(primary["device"].lower())
+
+        identity_source = attempts[0]["port"] if attempts else primary
+        if not identity_source:
+            return [], reason or "未指定上传端口或自动匹配失败"
+
+        primary_identity = self.get_port_identity(identity_source)
         if not primary_identity:
             return attempts, None
 
         for port in ports:
-            if port["device"].lower() == primary["device"].lower():
+            normalized = port["device"].lower()
+            if normalized in seen_ports:
                 continue
             if self.get_port_identity(port) == primary_identity:
                 attempts.append({
                     "port": port,
-                    "reason": f"备用候选：与 {primary['device']} 属于同一 USB 串口设备"
+                    "reason": f"备用候选：与 {identity_source['device']} 属于同一 USB 串口设备"
                 })
+                seen_ports.add(normalized)
 
         return attempts, None
 
@@ -593,6 +675,7 @@ class ArduinoAutomation:
             cmd = self.build_upload_command(self.port)
             success, output = self.run_command(cmd, message="正在上传... ")
             if success:
+                self.save_last_success_port(self.port)
                 return True
 
             last_error = output

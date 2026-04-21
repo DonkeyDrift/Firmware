@@ -339,6 +339,7 @@ int waveIndex = 0;
 SensorData ina219Data = {0}, mpu6050Data = {0};
 uint8_t g_mpuCandidateAddress = 0;
 uint8_t g_mpuWhoAmIValue = 0;
+uint32_t g_i2cWorkingSpeed = I2C_SPEED;
 enum EmergencyStopState
 {
     EST_IDLE,
@@ -1109,10 +1110,8 @@ void scanI2CBus()
     }
 }
 
-void setup_mpu6050()
+bool tryInitMPU6050OnCurrentBus(uint8_t *activeAddress, int maxRetriesPerAddress)
 {
-    Serial.println("[MPU6050] Initializing MPU6050 sensor...");
-
     uint8_t tryAddress[2] = {0x68, 0x69};
     if (g_mpuCandidateAddress == 0x69)
     {
@@ -1120,11 +1119,7 @@ void setup_mpu6050()
         tryAddress[1] = 0x68;
     }
 
-    bool initOk = false;
-    uint8_t activeAddress = 0;
-    const int maxRetriesPerAddress = 2;
-
-    for (int i = 0; i < 2 && !initOk; i++)
+    for (int i = 0; i < 2; i++)
     {
         for (int retryCount = 1; retryCount <= maxRetriesPerAddress; retryCount++)
         {
@@ -1133,14 +1128,43 @@ void setup_mpu6050()
 
             if (mpu.begin(addr, &Wire))
             {
-                initOk = true;
-                activeAddress = addr;
-                break;
+                *activeAddress = addr;
+                return true;
             }
 
             Serial.printf("[MPU6050] Init failed at 0x%02X\n", addr);
             delay(300);
         }
+    }
+
+    return false;
+}
+
+void setup_mpu6050()
+{
+    Serial.println("[MPU6050] Initializing MPU6050 sensor...");
+    uint8_t activeAddress = 0;
+    const int maxRetriesPerAddress = 2;
+    bool initOk = tryInitMPU6050OnCurrentBus(&activeAddress, maxRetriesPerAddress);
+
+    if (!initOk)
+    {
+        Serial.println("[MPU6050] Retry with lower I2C speed: 100kHz");
+        Wire.begin(SDA_PIN, SCL_PIN, 100000L);
+        g_i2cWorkingSpeed = 100000L;
+        delay(50);
+        scanI2CBus();
+        initOk = tryInitMPU6050OnCurrentBus(&activeAddress, maxRetriesPerAddress);
+    }
+
+    if (!initOk)
+    {
+        Serial.println("[MPU6050] Retry with lower I2C speed: 50kHz");
+        Wire.begin(SDA_PIN, SCL_PIN, 50000L);
+        g_i2cWorkingSpeed = 50000L;
+        delay(50);
+        scanI2CBus();
+        initOk = tryInitMPU6050OnCurrentBus(&activeAddress, maxRetriesPerAddress);
     }
 
     if (!initOk)
@@ -1168,6 +1192,7 @@ void setup_mpu6050()
 
     Serial.println("[MPU6050] Sensor initialized successfully!");
     Serial.printf("[MPU6050] Active I2C address: 0x%02X\n", activeAddress);
+    Serial.printf("[MPU6050] Active I2C speed: %lu Hz\n", g_i2cWorkingSpeed);
     if (g_mpuWhoAmIValue != 0)
     {
         Serial.printf("[MPU6050] WHO_AM_I = 0x%02X\n", g_mpuWhoAmIValue);
@@ -1291,7 +1316,8 @@ void setup()
       bleGamepad.begin();
     #endif
 
-    Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 21, SCL = 22, 400kHz
+    g_i2cWorkingSpeed = I2C_SPEED;
+    Wire.begin(SDA_PIN, SCL_PIN, g_i2cWorkingSpeed); // SDA = 21, SCL = 22
     delay(100);
     scanI2CBus();
     setup_ina219();

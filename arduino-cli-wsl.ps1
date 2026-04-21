@@ -43,7 +43,11 @@ param(
 
     [Parameter(HelpMessage="Run upload")]
     [Alias("u")]
-    [switch]$Upload
+    [switch]$Upload,
+
+    [Parameter(HelpMessage="Arduino Sketch file path")]
+    [Alias("i")]
+    [string]$Sketch = "mus4/mus4.ino"
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,14 +56,14 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $ProjectRoot = "C:\Dev\DDC\mus4"
-$SketchPath = "mus4/mus4.ino"
+$SketchPath = $Sketch.Replace('\', '/')
 $BuildDir = "build_wsl"
 $WSLProjectRoot = "/mnt/c/Dev/DDC/mus4"
 
 # 优化后的 WSL 原生工作路径
 # 使用 $HOME 环境变量而不是 ~，因为在引号中 ~ 不会被 bash 展开
 $WSLWorkDir = "`$HOME/arduino-build/mus4"
-$WSLSketchPath = "$WSLWorkDir/mus4/mus4.ino"
+$WSLSketchPath = "$WSLWorkDir/$SketchPath"
 $WSLBuildDir = "$WSLWorkDir/$BuildDir"
 
 # Spinner frames (ASCII-safe for PowerShell 5 encoding)
@@ -362,6 +366,12 @@ if ($Upload -or $Serial) {
     }
     if ($Serial) {
         $pyArgs += "-s"
+    }
+    
+    # 传递 Sketch 路径给 python 脚本以保持一致性
+    if ($Sketch) {
+        $pyArgs += "--sketch"
+        $pyArgs += "`"$Sketch`""
     }
     
     python "$ProjectRoot\arduino-cli.py" $pyArgs

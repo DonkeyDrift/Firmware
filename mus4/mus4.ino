@@ -337,6 +337,11 @@ int waveIndex = 0;
 
 // 传感器数据存储
 SensorData ina219Data = {0}, mpu6050Data = {0};
+uint8_t g_mpuCandidateAddress = 0;
+uint8_t g_mpuWhoAmIValue = 0;
+uint32_t g_i2cWorkingSpeed = I2C_SPEED;
+uint8_t g_i2cScanAddresses[16] = {0};
+uint8_t g_i2cScanCount = 0;
 enum EmergencyStopState
 {
     EST_IDLE,
@@ -927,6 +932,81 @@ void I2CWriteValue(uint8_t Address, uint8_t Register, uint16_t Data)
     }
 }
 
+const char *identifyI2CDeviceByAddress(uint8_t address)
+{
+    switch (address)
+    {
+    case 0x3C:
+    case 0x3D:
+        return "SSD1306 OLED / SH1106";
+    case 0x40:
+        return "INA219 / PCA9685";
+    case 0x41:
+        return "INA219 (alt address)";
+    case 0x48:
+    case 0x49:
+    case 0x4A:
+    case 0x4B:
+        return "ADS1115 / TMP102";
+    case 0x68:
+    case 0x69:
+        return "MPU6050 / MPU9250 / DS3231";
+    case 0x76:
+    case 0x77:
+        return "BME280 / BMP280";
+    default:
+        return "Unknown";
+    }
+}
+
+bool I2CReadRegister8(uint8_t address, uint8_t reg, uint8_t *value)
+{
+    Wire.beginTransmission(address);
+    Wire.write(reg);
+    if (Wire.endTransmission(false) != 0)
+    {
+        return false;
+    }
+
+    if (Wire.requestFrom((int)address, 1) != 1)
+    {
+        return false;
+    }
+
+    *value = Wire.read();
+    return true;
+}
+
+bool probeMPU6050AtAddress(uint8_t address, uint8_t *whoAmI)
+{
+    const uint8_t MPU6050_WHO_AM_I_REG = 0x75;
+    uint8_t id = 0;
+
+    if (!I2CReadRegister8(address, MPU6050_WHO_AM_I_REG, &id))
+    {
+        return false;
+    }
+
+    *whoAmI = id;
+    return (id == 0x68 || id == 0x69);
+}
+
+void printLastI2CScanSummary()
+{
+    Serial.println("[I2C SCAN] Last scan summary:");
+    if (g_i2cScanCount == 0)
+    {
+        Serial.println("[I2C SCAN]   No devices recorded in last scan");
+        return;
+    }
+
+    for (uint8_t i = 0; i < g_i2cScanCount; i++)
+    {
+        uint8_t addr = g_i2cScanAddresses[i];
+        Serial.printf("[I2C SCAN]   0x%02X - %s\n", addr, identifyI2CDeviceByAddress(addr));
+    }
+}
+
 void read_ina219()
 {
     // 读取INA219数据
@@ -1013,6 +1093,9 @@ void scanI2CBus()
     Serial.println("[I2C SCAN] Scanning I2C bus...");
     byte error, address;
     int nDevices = 0;
+    g_mpuCandidateAddress = 0;
+    g_mpuWhoAmIValue = 0;
+    g_i2cScanCount = 0;
     
     for(address = 1; address < 127; address++)
     {
@@ -1024,24 +1107,44 @@ void scanI2CBus()
             Serial.print("[I2C SCAN] Found device at 0x");
             if (address < 16) Serial.print("0");
             Serial.print(address, HEX);
-            
-            // 识别常见设备
-            switch(address) {
-                case 0x40:
-                    Serial.println(" - INA219");
-                    break;
-                case 0x41:
-                    Serial.println(" - INA219 (alt address)");
-                    break;
-                case 0x68:
-                    Serial.println(" - MPU6050");
-                    break;
-                case 0x69:
-                    Serial.println(" - MPU6050 (alt address)");
-                    break;
-                default:
-                    Serial.println(" - Unknown device");
-                    break;
+            Serial.print(" - ");
+            Serial.println(identifyI2CDeviceByAddress(address));
+            if (g_i2cScanCount < sizeof(g_i2cScanAddresses))
+            {
+                g_i2cScanAddresses[g_i2cScanCount++] = address;
+            }
+
+            if (address == 0x68 || address == 0x69)
+            {
+                uint8_t whoAmI = 0;
+                if (probeMPU6050AtAddress(address, &whoAmI))
+                {
+                    g_mpuCandidateAddress = address;
+                    g_mpuWhoAmIValue = whoAmI;
+                    Serial.print("[I2C SCAN] MPU probe OK at 0x");
+                    if (address < 16) Serial.print("0");
+                    Serial.print(address, HEX);
+                    Serial.print(" (WHO_AM_I=0x");
+                    if (whoAmI < 16) Serial.print("0");
+                    Serial.print(whoAmI, HEX);
+                    Serial.println(")");
+                }
+                else if (I2CReadRegister8(address, 0x75, &whoAmI))
+                {
+                    Serial.print("[I2C SCAN] MPU-family device at 0x");
+                    if (address < 16) Serial.print("0");
+                    Serial.print(address, HEX);
+                    Serial.print(" but WHO_AM_I=0x");
+                    if (whoAmI < 16) Serial.print("0");
+                    Serial.print(whoAmI, HEX);
+                    Serial.println(" (not MPU6050)");
+                }
+                else
+                {
+                    Serial.print("[I2C SCAN] Could not read WHO_AM_I at 0x");
+                    if (address < 16) Serial.print("0");
+                    Serial.println(address, HEX);
+                }
             }
             nDevices++;
         }
@@ -1063,43 +1166,126 @@ void scanI2CBus()
     }
 }
 
-void setup_mpu6050()
+bool tryInitMPU6050OnCurrentBus(uint8_t *activeAddress, int maxRetriesPerAddress)
 {
-    int retryCount = 0;
-    const int maxRetries = 3;
-    
-    while (retryCount < maxRetries)
+    uint8_t tryAddress[2] = {0x68, 0x69};
+    if (g_mpuCandidateAddress == 0x69)
     {
-        if (!mpu.begin())
+        tryAddress[0] = 0x69;
+        tryAddress[1] = 0x68;
+    }
+
+    for (int i = 0; i < 2; i++)
+    {
+        for (int retryCount = 1; retryCount <= maxRetriesPerAddress; retryCount++)
         {
-            retryCount++;
-            Serial.printf("[MPU6050] Initialization attempt %d/%d failed\n", retryCount, maxRetries);
-            
-            if (retryCount < maxRetries)
+            uint8_t addr = tryAddress[i];
+            Serial.printf("[MPU6050] Try addr 0x%02X (attempt %d/%d)\n", addr, retryCount, maxRetriesPerAddress);
+
+            if (mpu.begin(addr, &Wire))
             {
-                delay(500);
-                continue;
+                *activeAddress = addr;
+                return true;
             }
-            
-            Serial.println("[MPU6050 ERROR] Failed to find MPU6050 chip");
-            Serial.println("[MPU6050 ERROR] Please check I2C connection (SDA: GPIO 21, SCL: GPIO 22)");
-            Serial.println("[MPU6050 ERROR] Possible causes:");
-            Serial.println("  1. I2C address mismatch (try 0x68 or 0x69)");
-            Serial.println("  2. Wiring issues (SDA/SCL swapped or loose)");
-            Serial.println("  3. Power supply issue");
-            Serial.println("  4. I2C bus speed too high");
-            while (1)
-            {
-                delay(1000);
-                Serial.println("[MPU6050 ERROR] Sensor not detected, waiting...");
-            }
-        }
-        else
-        {
-            break;
+
+            Serial.printf("[MPU6050] Init failed at 0x%02X\n", addr);
+            delay(300);
         }
     }
+
+    return false;
+}
+
+void setup_mpu6050()
+{
+    Serial.println("[MPU6050] Initializing MPU6050 sensor...");
+    uint8_t activeAddress = 0;
+    const int maxRetriesPerAddress = 2;
+    bool initOk = tryInitMPU6050OnCurrentBus(&activeAddress, maxRetriesPerAddress);
+
+    if (!initOk)
+    {
+        Serial.println("[MPU6050] Retry with lower I2C speed: 100kHz");
+        Wire.begin(SDA_PIN, SCL_PIN, 100000L);
+        g_i2cWorkingSpeed = 100000L;
+        delay(50);
+        scanI2CBus();
+        initOk = tryInitMPU6050OnCurrentBus(&activeAddress, maxRetriesPerAddress);
+    }
+
+    if (!initOk)
+    {
+        Serial.println("[MPU6050] Retry with lower I2C speed: 50kHz");
+        Wire.begin(SDA_PIN, SCL_PIN, 50000L);
+        g_i2cWorkingSpeed = 50000L;
+        delay(50);
+        scanI2CBus();
+        initOk = tryInitMPU6050OnCurrentBus(&activeAddress, maxRetriesPerAddress);
+    }
+
+    if (!initOk)
+    {
+        Serial.println("[MPU6050 ERROR] Failed to find MPU6050 chip");
+        Serial.println("[MPU6050 ERROR] Please check I2C connection (SDA: GPIO 21, SCL: GPIO 22)");
+        Serial.println("[MPU6050 ERROR] Possible causes:");
+        Serial.println("  1. I2C address mismatch (try 0x68 or 0x69)");
+        Serial.println("  2. Wiring issues (SDA/SCL swapped or loose)");
+        Serial.println("  3. Power supply issue");
+        Serial.println("  4. I2C bus speed too high");
+        printLastI2CScanSummary();
+
+        if (g_mpuCandidateAddress != 0)
+        {
+            Serial.printf("[MPU6050 ERROR] Probe saw candidate at 0x%02X, WHO_AM_I=0x%02X\n",
+                          g_mpuCandidateAddress, g_mpuWhoAmIValue);
+        }
+
+        unsigned long lastWaitLogMs = 0;
+        unsigned long lastRescanMs = millis();
+        while (1)
+        {
+            unsigned long now = millis();
+
+            if (now - lastWaitLogMs >= 1000UL)
+            {
+                lastWaitLogMs = now;
+                Serial.println("[MPU6050 ERROR] Sensor not detected, waiting...");
+            }
+
+            if (now - lastRescanMs >= 5000UL)
+            {
+                lastRescanMs = now;
+                Serial.println("[MPU6050 ERROR] Auto re-scan I2C bus (5s interval)...");
+                scanI2CBus();
+                printLastI2CScanSummary();
+            }
+
+            delay(50);
+        }
+    }
+
     Serial.println("[MPU6050] Sensor initialized successfully!");
+    Serial.printf("[MPU6050] Active I2C address: 0x%02X\n", activeAddress);
+    Serial.printf("[MPU6050] Active I2C speed: %lu Hz\n", g_i2cWorkingSpeed);
+    if (g_mpuWhoAmIValue != 0)
+    {
+        Serial.printf("[MPU6050] WHO_AM_I = 0x%02X\n", g_mpuWhoAmIValue);
+    }
+
+    // 对已初始化地址做一次WHO_AM_I确认，避免总线干扰导致误识别
+    uint8_t whoAmI = 0;
+    if (I2CReadRegister8(activeAddress, 0x75, &whoAmI))
+    {
+        Serial.printf("[MPU6050] WHO_AM_I readback: 0x%02X\n", whoAmI);
+        if (whoAmI != 0x68 && whoAmI != 0x69)
+        {
+            Serial.println("[MPU6050 WARNING] WHO_AM_I mismatch, device may not be MPU6050");
+        }
+    }
+    else
+    {
+        Serial.println("[MPU6050 WARNING] WHO_AM_I readback failed after init");
+    }
 
     // set accelerometer Range
     mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
@@ -1166,10 +1352,12 @@ void setup_mpu6050()
     case MPU6050_BAND_5_HZ:
         Serial.println("5 Hz");
         break;
+    default:
+        Serial.println("Unknown");
+        break;
     }
     Serial.println("[MPU6050] Setup complete, ready for data acquisition");
 }
-
 
 // End of MPU6050 functions
 
@@ -1407,7 +1595,8 @@ void setup()
       bleGamepad.begin();
     #endif
 
-    Wire.begin(SDA_PIN, SCL_PIN, I2C_SPEED); // SDA = 21, SCL = 22, 400kHz
+    g_i2cWorkingSpeed = I2C_SPEED;
+    Wire.begin(SDA_PIN, SCL_PIN, g_i2cWorkingSpeed); // SDA = 21, SCL = 22
     delay(100);
     scanI2CBus();
     setup_ina219();

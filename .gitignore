@@ -36,3 +36,5 @@ mus4/ArduinoCLI.log
 __pycache__/arduino-cli.cpython-313.pyc
 build_wsl/
 provisioning_system/playwright_tests/
+.arduino_cli_state.json
+

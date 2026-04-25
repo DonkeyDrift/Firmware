@@ -414,8 +414,10 @@ class ArduinoAutomation:
             if len(best) == 1:
                 score, reasons, port = best[0]
                 return port, f"自动匹配命中 {port['device']} (score={score}, {', '.join(reasons)})"
-            devices = ", ".join(item[2]["device"] for item in best)
-            return None, f"检测到多个同分候选串口: {devices}"
+            best.sort(key=lambda item: item[2]["device"].lower())
+            score, reasons, port = best[0]
+            self.logger.warning(f"检测到多个同分候选串口，自动选择 {port['device']}")
+            return port, f"自动匹配命中 {port['device']} (score={score}, {', '.join(reasons)})"
 
         if len(ports) == 1:
             port = ports[0]

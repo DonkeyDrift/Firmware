@@ -1,0 +1,27 @@
+[Unit]
+Description=MUS4 Provisioning Agent Service
+Documentation=https://github.com/dkc/mus4/provisioning_system
+After=network.target NetworkManager.service
+Wants=network.target NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/dkc/project/mus4/provisioning_system/linux_agent
+ExecStart=/usr/bin/python3 /home/dkc/project/mus4/provisioning_system/linux_agent/agent.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mus4-provisioning-agent
+
+# 环境变量
+Environment="PYTHONUNBUFFERED=1"
+
+# 安全设置
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp /var/tmp
+
+[Install]
+WantedBy=multi-user.target

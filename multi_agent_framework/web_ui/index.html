@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>ESP32 智能控制终端</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #f4f4f9; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 600px; margin: 0 auto; }
+        h1 { color: #333; text-align: center; }
+        .status { padding: 10px; margin-bottom: 20px; border-radius: 4px; text-align: center; font-weight: bold; }
+        .connected { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .disconnected { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        
+        .dashboard { display: grid; grid-template-columns: 1fr 1px 1fr; gap: 20px; background: #fafafa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd; }
+        .dash-item { text-align: center; }
+        .dash-label { font-size: 0.9em; color: #666; margin-bottom: 5px; }
+        .dash-value { font-size: 1.5em; font-weight: bold; color: #007bff; }
+        .divider { background-color: #ddd; }
+
+        .control-group { display: flex; justify-content: center; gap: 15px; margin-top: 20px; }
+        button { padding: 10px 20px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-on { background-color: #28a745; color: white; }
+        .btn-on:hover { background-color: #218838; }
+        .btn-off { background-color: #dc3545; color: white; }
+        .btn-off:hover { background-color: #c82333; }
+        .btn-info { background-color: #17a2b8; color: white; }
+        .btn-info:hover { background-color: #138496; }
+
+        #log { margin-top: 20px; background: #2b2b2b; color: #0f0; padding: 15px; height: 200px; overflow-y: scroll; font-family: 'Courier New', Courier, monospace; font-size: 0.9em; border-radius: 4px; }
+        .log-time { color: #888; margin-right: 10px; }
+        .log-tx { color: #f39c12; }
+        .log-rx { color: #00ff00; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>ESP32 实时控制面板</h1>
+    <div id="statusIndicator" class="status disconnected">未连接到 ESP32 (等待中...)</div>
+    
+    <div class="dashboard">
+        <div class="dash-item">
+            <div class="dash-label">板载 LED 状态</div>
+            <div id="ledState" class="dash-value" style="color: #666;">未知</div>
+        </div>
+        <div class="divider"></div>
+        <div class="dash-item">
+            <div class="dash-label">传感器读数 (ADC)</div>
+            <div id="sensorValue" class="dash-value">--</div>
+        </div>
+    </div>
+
+    <div class="control-group">
+        <button class="btn-on" onclick="sendCommand('LED_ON')">打开 LED</button>
+        <button class="btn-off" onclick="sendCommand('LED_OFF')">关闭 LED</button>
+        <button class="btn-info" onclick="sendCommand('GET_SENSOR')">刷新传感器</button>
+    </div>
+
+    <div id="log"></div>
+</div>
+
+<script>
+    let ws = null;
+    const wsUrl = "ws://192.168.4.1/ws"; // ESP32 AP 默认 IP
+
+    function initWebSocket() {
+        log("系统", "尝试连接到 " + wsUrl + " ...");
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            document.getElementById('statusIndicator').className = 'status connected';
+            document.getElementById('statusIndicator').innerText = '已连接到 ESP32';
+            log("系统", "WebSocket 连接成功! 准备就绪。");
+            
+            // 自动请求一次状态
+            setTimeout(() => sendCommand('GET_SENSOR'), 500);
+        };
+
+        ws.onmessage = (event) => {
+            log("RX", event.data);
+            try {
+                // 尝试解析 ESP32 返回的 JSON
+                const data = JSON.parse(event.data);
+                if (data.event === 'led_update') {
+                    const ledEl = document.getElementById('ledState');
+                    ledEl.innerText = data.state;
+                    ledEl.style.color = data.state === 'ON' ? '#28a745' : '#dc3545';
+                } 
+                else if (data.event === 'sensor_data') {
+                    document.getElementById('sensorValue').innerText = data.value;
+                }
+            } catch (e) {
+                // 非 JSON 格式，忽略解析错误
+                console.log("无法解析为 JSON: " + event.data);
+            }
+        };
+
+        ws.onclose = () => {
+            document.getElementById('statusIndicator').className = 'status disconnected';
+            document.getElementById('statusIndicator').innerText = '连接已断开，正在重连...';
+            log("系统", "WebSocket 断开连接，5秒后重试...");
+            setTimeout(initWebSocket, 5000);
+        };
+
+        ws.onerror = (error) => {
+            log("系统", "WebSocket 发生错误!");
+        };
+    }
+
+    function sendCommand(cmd) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            log("TX", cmd);
+            // 这里为了简单，我们发送纯文本指令，ESP32 收到后会返回 JSON
+            ws.send(cmd);
+        } else {
+            log("错误", "发送失败: WebSocket 未连接");
+        }
+    }
+
+    function log(type, msg) {
+        const logDiv = document.getElementById('log');
+        const time = new Date().toLocaleTimeString();
+        let colorClass = '';
+        if (type === 'TX') colorClass = 'log-tx';
+        else if (type === 'RX') colorClass = 'log-rx';
+        
+        logDiv.innerHTML += `<div><span class="log-time">[${time}]</span><span class="${colorClass}">[${type}] ${msg}</span></div>`;
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    // 页面加载后启动连接
+    window.onload = initWebSocket;
+</script>
+
+</body>
+</html>

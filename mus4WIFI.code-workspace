@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../WIFIConnect"
+		}
+	],
+	"settings": {
+		"liveServer.settings.multiRootWorkspaceName": "mus4"
+	}
+}

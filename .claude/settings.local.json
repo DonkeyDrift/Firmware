@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git branch:*)",
+      "Bash(python:*)",
+      "Bash(gh pr:*)",
+      "Bash(~/.arduino15/packages/esp32/tools/xtensa-esp32-elf-gcc/esp-12.2.0_20230208/bin/xtensa-esp32-elf-g++:*)"
+    ]
+  }
+}

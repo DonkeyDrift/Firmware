@@ -8,6 +8,7 @@
 - **自动编译**: 调用 `arduino-cli` 编译 Sketch。
 - **自动上传**: 自动检测端口并上传固件。
 - **串口监控**: 打开串口监视器。
+- **自动复位**: 打开监控前自动复位单片机（提升开发效率）。
 - **流程组合**: 支持单一操作或组合操作 (如 编译+上传+监控)。
 - **配置管理**: 通过 `config.yaml` 管理默认参数。
 - **视觉反馈**: 命令行进度条和旋转动画，实时显示任务状态。
@@ -18,7 +19,7 @@
 ### 1. 依赖
 确保已安装 Python 3 和 `arduino-cli`。
 ```bash
-pip install pyyaml
+pip install pyyaml pyserial
 ```
 
 ### 2. 配置
@@ -38,18 +39,18 @@ python arduino-cli.py -cu
 
 **一键全流程 (编译 + 上传 + 监控):**
 ```bash
-python arduino-cli.py -cum
+python arduino-cli.py -cus
 ```
 
 **指定端口:**
 ```bash
-python arduino-cli.py -cum -p /dev/ttyUSB0
+python arduino-cli.py -cus -p COM3
 ```
 
 ## 参数说明
 - `-c, --compile`: 编译项目
 - `-u, --upload`: 上传固件
-- `-m, --monitor`: 打开串口监控
+- `-s, --serial`: 打开串口监控（会自动复位单片机）
 - `-p, --port`: 指定串口设备
 - `-b, --baud`: 指定波特率 (默认 115200)
 - `--fqbn`: 指定板型 (默认 esp32:esp32:esp32)

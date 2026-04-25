@@ -1,0 +1,234 @@
+{
+  "config": {
+    "configFile": "/home/dkc/project/mus4/provisioning_system/playwright_tests/playwright.config.js",
+    "rootDir": "/home/dkc/project/mus4/provisioning_system/playwright_tests",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/dkc/project/mus4/provisioning_system/playwright_tests/test-results",
+        "repeatEach": 1,
+        "retries": 2,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/dkc/project/mus4/provisioning_system/playwright_tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report",
+          "open": "never"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "reports/results.json"
+        }
+      ],
+      [
+        "list",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "provisioning.spec.js",
+      "file": "provisioning.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "MUS4 智能配网端到端自动化测试",
+          "file": "provisioning.spec.js",
+          "line": 24,
+          "column": 6,
+          "specs": [
+            {
+              "title": "测试用例1: 正常加载配网页面并检查预填充",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2334,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[2026-03-24T06:34:37.871Z] 已开启串口监听: /dev/ttyACM1 @ 115200\n"
+                        },
+                        {
+                          "text": "[2026-03-24T06:34:38.017Z] 等待 ESP32 LwIP 释放资源...\n"
+                        },
+                        {
+                          "text": "[2026-03-24T06:34:40.021Z] 执行测试: 加载配网页面\n"
+                        },
+                        {
+                          "text": "[2026-03-24T06:34:40.183Z] 页面加载成功且预填充正确\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-24T06:34:37.805Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ed908899f68c5eac16a8-328b28692845a86dc312",
+              "file": "provisioning.spec.js",
+              "line": 70,
+              "column": 7
+            },
+            {
+              "title": "测试用例2: 提交配网表单并验证串口下发机制",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9236,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[2026-03-24T06:34:40.350Z] 等待 ESP32 LwIP 释放资源...\n"
+                        },
+                        {
+                          "text": "[2026-03-24T06:34:42.352Z] 执行测试: 提交配网表单\n"
+                        },
+                        {
+                          "text": "[2026-03-24T06:34:43.573Z] 成功在串口日志中捕获到配网指令下发\n"
+                        },
+                        {
+                          "text": "[2026-03-24T06:34:49.447Z] 前端成功展示了 IPv4 地址: 192.168.3.30\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-24T06:34:40.286Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ed908899f68c5eac16a8-6599755e6d5c1d1d5c2b",
+              "file": "provisioning.spec.js",
+              "line": 102,
+              "column": 7
+            },
+            {
+              "title": "测试用例3: API 接口联通性与状态轮询机制测试",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3182,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[2026-03-24T06:34:49.590Z] 等待 ESP32 LwIP 释放资源...\n"
+                        },
+                        {
+                          "text": "[2026-03-24T06:34:51.596Z] 执行测试: HTTP API 直接测试\n"
+                        },
+                        {
+                          "text": "[2026-03-24T06:34:52.695Z] API 接口联通性测试通过\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-24T06:34:49.550Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ed908899f68c5eac16a8-00c414ec0da70e09265d",
+              "file": "provisioning.spec.js",
+              "line": 181,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-03-24T06:34:36.431Z",
+    "duration": 16383.677,
+    "expected": 3,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

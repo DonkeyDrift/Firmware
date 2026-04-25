@@ -1,7 +1,8 @@
 default:
   arduino_cli: "arduino-cli"
   fqbn: "esp32:esp32:esp32"
-  port: "/dev/ttyACM1"
+  # port: "/dev/ttyACM1" # for linux
+  port: "COM9" # for windows
   baudrate: 115200
   sketch_path: "mus4/mus4.ino"
   build_path: "build"
@@ -9,3 +10,11 @@ default:
 logging:
   file: "mus4/ArduinoCLI.log"
   level: "INFO"  # DEBUG, INFO, WARN, ERROR
+
+reset:
+  enable: true
+  delay_ms: 200
+  method: "dtr_rts"
+  boot: "run"
+  toolchain: "arduino-cli"
+  command: ""

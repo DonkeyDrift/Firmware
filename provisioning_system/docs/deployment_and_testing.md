@@ -26,9 +26,41 @@ python arduino-cli.py -cus --sketch provisioning_system/esp32/esp32_wifi_provisi
 # 1. 安装依赖
 sudo apt update && sudo apt install -y python3-serial network-manager
 
-# 2. 运行代理守护进程 (建议配置为 systemd 服务以开机自启)
+# 2. Linux 配网代理守护进程部署 (LattePanda MU)
+
+环境依赖：Python 3.x, `pyserial`, `NetworkManager`
+
+## 方式一：配置为 systemd 服务 (推荐，开机自启)
+
+```bash
+# 1. 安装依赖
+sudo apt update && sudo apt install -y python3-serial network-manager
+
+# 2. 复制服务文件到 systemd 目录
+sudo cp /home/dkc/project/mus4/provisioning_system/linux_agent/mus4-provisioning-agent.service /etc/systemd/system/
+
+# 3. 重新加载 systemd 配置
+sudo systemctl daemon-reload
+
+# 4. 启用服务 (开机自启)
+sudo systemctl enable mus4-provisioning-agent.service
+
+# 5. 启动服务
+sudo systemctl start mus4-provisioning-agent.service
+
+# 6. 查看服务状态
+sudo systemctl status mus4-provisioning-agent.service
+
+# 7. 查看日志
+sudo journalctl -u mus4-provisioning-agent -f
+```
+
+## 方式二：手动运行 (调试使用)
+
+```bash
 cd /home/dkc/project/mus4/provisioning_system/linux_agent
 sudo python3 agent.py
+```
 ```
 > **注意**：脚本中默认使用了 `wlan0` 和 `/dev/ttyS4`。若您的实际硬件接口不同，请在 `agent.py` 的初始化参数中修改。
 

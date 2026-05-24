@@ -278,23 +278,50 @@ function Run-WithAnimation {
 #>
 function Get-DefaultWslDistro {
     try {
-        $output = wsl --list --verbose 2>&1
-        # 匹配带 * 默认标记的行
+        # 先检查 wsl 命令是否可用
+        $null = wsl --version 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "WSL 命令执行失败，请确认 WSL 是否已正确安装"
+            return $null
+        }
+
+        # 方法1: 用 wsl --status 获取默认发行版（输出更稳定）
+        $statusOutput = wsl --status 2>&1
+        foreach ($line in $statusOutput) {
+            # 匹配中英文输出: "默认分发版:" / "Default Distribution:"
+            if ($line -match '(默认分发版|Default Distribution)[:：]\s*(\S+)') {
+                Write-Host "通过 wsl --status 探测到默认发行版: $($matches[2])" -ForegroundColor DarkGray
+                return $matches[2]
+            }
+        }
+
+        # 方法2: wsl -l --verbose 匹配带 * 号的默认发行版
+        $output = wsl -l --verbose 2>&1
         foreach ($line in $output) {
-            if ($line -match '^\*\s+(\S+)\s+') {
+            # 处理编码问题，移除不可见字符
+            $cleanLine = $line -replace '[^\x20-\x7E]', ''
+            if ($cleanLine -match '^\*\s+(\S+)\s+') {
+                Write-Host "通过 wsl -l 探测到默认发行版: $($matches[1])" -ForegroundColor DarkGray
                 return $matches[1]
             }
         }
-        # 匹配失败时回退第一个发行版
+
+        # 方法3: 取列表中第一个发行版
         foreach ($line in $output) {
-            if ($line -match '^\s*(\S+)\s+(Running|Stopped)') {
+            $cleanLine = $line -replace '[^\x20-\x7E]', ''
+            if ($cleanLine -match '^\s*(\S+)\s+(Running|Stopped)') {
+                Write-Host "使用第一个可用发行版: $($matches[1])" -ForegroundColor DarkGray
                 return $matches[1]
             }
         }
+
+        # 所有方法都失败，但 wsl 命令可用，就让 wsl 自己用默认发行版
+        Write-Host "未明确探测到发行版，将使用 WSL 默认发行版" -ForegroundColor DarkGray
+        return ""
     } catch {
         Write-Warning "无法探测 WSL 发行版列表: $_"
     }
-    Write-Warning "无法自动探测 WSL 发行版，请通过 -Distro 参数显式指定，或确认 WSL 是否已正确安装。"
+    Write-Warning "WSL 可能未正确安装，请检查后重试，或通过 -Distro 参数显式指定。"
     return $null
 }
 
@@ -458,7 +485,7 @@ function Invoke-PreFlightCheck {
     }
 
     # 2. 检查指定发行版是否存在
-    if ($script:WslDistro) {
+    if (-not [string]::IsNullOrWhiteSpace($script:WslDistro)) {
         $distros = wsl --list 2>&1
         if ($distros -match [regex]::Escape($script:WslDistro)) {
             Write-Host "  [OK] WSL distro '$script:WslDistro' exists" -ForegroundColor Green
@@ -467,11 +494,12 @@ function Invoke-PreFlightCheck {
             Write-Host "         可用的发行版: $($distros -join ', ')" -ForegroundColor Yellow
             $allPass = $false
         }
+    } else {
+        Write-Host "  [OK] Using WSL default distro" -ForegroundColor Green
     }
 
-    # 3. 检查 WSL 端依赖
-    if ($script:WslDistro) {
-        $requiredTools = @("rsync", "python3", "find", "wc", "cp")
+    # 3. 检查 WSL 端依赖（只要 WSL 可用就检查）
+    $requiredTools = @("rsync", "python3", "find", "wc", "cp")
         if ($script:ArduinoCliPath) { $requiredTools += "arduino-cli" }
 
         foreach ($tool in $requiredTools) {
@@ -484,7 +512,6 @@ function Invoke-PreFlightCheck {
                 $allPass = $false
             }
         }
-    }
 
     # 4. 检查 Windows 端 Python
     try {
@@ -522,11 +549,13 @@ function Sync-ArduinoLibraries {
         exit 1
     }
 
-    # 检查 WSL 状态
-    $wslStatus = wsl -d $script:WslDistro --list --running
-    if ($wslStatus -notmatch [regex]::Escape($script:WslDistro)) {
-        Write-Warning "WSL distro '$script:WslDistro' is not running. Starting it..."
-        wsl -d $script:WslDistro echo "Starting..." | Out-Null
+    # 检查 WSL 状态（有指定发行版才检查）
+    if (-not [string]::IsNullOrWhiteSpace($script:WslDistro)) {
+        $wslStatus = wsl -d $script:WslDistro echo "ok" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "WSL distro '$script:WslDistro' is not running. Starting it..."
+            wsl -d $script:WslDistro echo "Starting..." | Out-Null
+        }
     }
 
     # Expand tilde in WslLibPath for proper bash execution
@@ -566,10 +595,15 @@ function Sync-ArduinoLibraries {
             $rsyncBase += " $ExtraArgs"
         }
 
+        $distroArg = if (-not [string]::IsNullOrWhiteSpace($script:WslDistro)) { "-d $script:WslDistro " } else { "" }
         $finalCmd = "$rsyncBase `"$wslSourcePath`" `"$WslLibPath/`""
-        $syncSuccess = Run-WithAnimation -Command "wsl" -Arguments "-d $script:WslDistro bash -c '$finalCmd'" -TaskName "Syncing Libraries (rsync)"
+        $syncSuccess = Run-WithAnimation -Command "wsl" -Arguments "${distroArg}bash -c '$finalCmd'" -TaskName "Syncing Libraries (rsync)"
 
     } elseif ($SyncMode -eq "robocopy") {
+        if ([string]::IsNullOrWhiteSpace($script:WslDistro)) {
+            Write-Error "robocopy 模式需要显式指定 WSL 发行版名称，请通过 -Distro 参数指定"
+            exit 1
+        }
         $absWslPath = Invoke-WslCommand -Command "readlink -f `"$WslLibPath`""
         $wslNetPath = "\\wsl.localhost\$script:WslDistro$absWslPath".Replace('/', '\')
 
@@ -782,11 +816,14 @@ if ($Compile) {
         }
     }
 
+    # 构造 WSL 命令前缀（仅当有指定发行版时才加 -d 参数）
+    $distroPrefix = if (-not [string]::IsNullOrWhiteSpace($script:WslDistro)) { "-d $script:WslDistro " } else { "" }
+
     # native 模式需要同步源码到 WSL 原生分区
     if ($IoMode -eq "native") {
         # 1. Sync Source to WSL Native FS
         $syncCmd = "wsl"
-        $syncArgs = "-d $script:WslDistro bash -c 'mkdir -p $WSLWorkDir && rsync -av --delete --exclude=build_wsl --exclude=.git --exclude=.venv ""$WSLProjectRoot/"" ""$WSLWorkDir/""'"
+        $syncArgs = "${distroPrefix}bash -c 'mkdir -p $WSLWorkDir && rsync -av --delete --exclude=build_wsl --exclude=.git --exclude=.venv ""$WSLProjectRoot/"" ""$WSLWorkDir/""'"
         $syncStart = Get-Date
         if (-not (Run-WithAnimation -Command $syncCmd -Arguments $syncArgs -TaskName "Syncing Source to WSL")) { exit 1 }
         $syncTime = ((Get-Date) - $syncStart).TotalSeconds
@@ -795,7 +832,7 @@ if ($Compile) {
     # 2. Compile
     $compileCmd = "wsl"
     $compileTask = if ($IoMode -eq "native") { "Compiling in WSL (Native FS)" } else { "Compiling in WSL (Mounted FS)" }
-    $compileArgs = "-d $script:WslDistro bash -c '$script:ArduinoCliPath compile --fqbn $FQBN --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir"" ""$WSLSketchPath""'"
+    $compileArgs = "${distroPrefix}bash -c '$script:ArduinoCliPath compile --fqbn $FQBN --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir"" ""$WSLSketchPath""'"
     $compileStart = Get-Date
     if (-not (Run-WithAnimation -Command $compileCmd -Arguments $compileArgs -TaskName $compileTask)) { exit 1 }
     $compileTime = ((Get-Date) - $compileStart).TotalSeconds
@@ -803,7 +840,7 @@ if ($Compile) {
     # 3. Sync Artifacts Back to Windows (仅 native 模式需要，mnt 模式已经在同目录下)
     if ($IoMode -eq "native") {
         $syncBackCmd = "wsl"
-        $syncBackArgs = "-d $script:WslDistro bash -c 'mkdir -p ""$WSLProjectRoot/$BuildDir"" && cp ""$WSLBuildDir""/*.bin ""$WSLProjectRoot/$BuildDir/"" && cp ""$WSLBuildDir""/*.elf ""$WSLProjectRoot/$BuildDir/""'"
+        $syncBackArgs = "${distroPrefix}bash -c 'mkdir -p ""$WSLProjectRoot/$BuildDir"" && cp ""$WSLBuildDir""/*.bin ""$WSLProjectRoot/$BuildDir/"" && cp ""$WSLBuildDir""/*.elf ""$WSLProjectRoot/$BuildDir/""'"
         $syncBackStart = Get-Date
         if (-not (Run-WithAnimation -Command $syncBackCmd -Arguments $syncBackArgs -TaskName "Syncing Artifacts to Windows")) { exit 1 }
         $syncBackTime = ((Get-Date) - $syncBackStart).TotalSeconds

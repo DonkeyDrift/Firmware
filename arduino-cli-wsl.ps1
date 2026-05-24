@@ -92,8 +92,11 @@ param(
     [Parameter(HelpMessage="Arduino board FQBN (default: auto-detect from config files)")]
     [string]$FQBN,
 
-    [Parameter(HelpMessage="Skip pre-flight dependency check")]
-    [switch]$NoCheck,
+    [Parameter(HelpMessage="Skip pre-flight dependency check (default: true)")]
+    [switch]$NoCheck = $true,
+
+    [Parameter(HelpMessage="Force run pre-flight dependency check")]
+    [switch]$Check,
 
     [Parameter(HelpMessage="I/O mode: 'native' = sync to WSL ext4 for build (fast, default); 'mnt' = build directly on /mnt/c mounted NTFS (no sync, for small projects)")]
     [ValidateSet("native", "mnt")]
@@ -798,8 +801,16 @@ $script:ArduinoCliPath = Get-WslArduinoCliPath
 
 # --------------------------
 # 2. 前置检查
+# 优先级：-Check 强制开启 > -NoCheck 强制关闭 > 默认不检查
 # --------------------------
-if (-not $NoCheck) {
+$runCheck = $false
+if ($Check) {
+    $runCheck = $true
+} elseif (-not $NoCheck) {
+    $runCheck = $true
+}
+
+if ($runCheck) {
     Invoke-PreFlightCheck
 }
 

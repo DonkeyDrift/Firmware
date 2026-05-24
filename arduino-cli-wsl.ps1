@@ -852,7 +852,7 @@ if ($Compile) {
         Write-Error "No .bin file found in build output: $WSLBuildDir"
         exit 1
     }
-    $BinPath = Join-Path $ProjectRoot $BuildDir $actualBinFile
+    $BinPath = Join-Path (Join-Path $ProjectRoot $BuildDir) $actualBinFile
 
     # Output Performance Report
     Write-Host "`n=== Performance Report ===" -ForegroundColor Yellow
@@ -878,7 +878,7 @@ if ($Upload -and (-not $BinPath -or -not (Test-Path $BinPath))) {
         Write-Error "No .bin file found in build output: $WSLBuildDir"
         exit 1
     }
-    $BinPath = Join-Path $ProjectRoot $BuildDir $actualBinFile
+    $BinPath = Join-Path (Join-Path $ProjectRoot $BuildDir) $actualBinFile
 }
 
 if ($Upload -or $Serial) {

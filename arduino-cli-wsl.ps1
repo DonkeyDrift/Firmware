@@ -524,7 +524,8 @@ function Invoke-PreFlightCheck {
             $cleanOutput = ($output | Out-String).Trim() -replace '[^\x20-\x7E/]', ''
 
             if (-not [string]::IsNullOrWhiteSpace($cleanOutput)) {
-                Write-Host "  [OK] WSL: $tool is available ($cleanOutput)" -ForegroundColor Green
+                Write-Host "  [OK] WSL: $tool is available" -ForegroundColor Green
+                Write-Verbose "        path: $cleanOutput"
             } else {
                 Write-Host "  [FAIL] WSL: $tool is not installed" -ForegroundColor Red
                 Write-Host "         请在 WSL 中执行: sudo apt install $tool" -ForegroundColor Yellow
@@ -536,7 +537,8 @@ function Invoke-PreFlightCheck {
     try {
         $pyVer = python --version 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "  [OK] Python is available ($pyVer)" -ForegroundColor Green
+            Write-Host "  [OK] Python is available" -ForegroundColor Green
+            Write-Verbose "        version: $pyVer"
         } else {
             throw ""
         }

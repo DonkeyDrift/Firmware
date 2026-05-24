@@ -397,16 +397,19 @@ function Get-ProjectFQBN {
     探测 WSL 端 arduino-cli 的实际路径
 #>
 function Get-WslArduinoCliPath {
-    $output = Invoke-WslCommand -Command "which arduino-cli 2>/dev/null || echo ''" -IgnoreExitCode
-    if ($output -and -not [string]::IsNullOrWhiteSpace($output)) {
-        return $output.Trim()
+    # 1. 用 command -v 探测（最可靠）
+    $output = Invoke-WslCommand -Command "command -v arduino-cli 2>/dev/null || echo ''" -IgnoreExitCode
+    $cleanOutput = ($output | Out-String).Trim() -replace '[^\x20-\x7E/]', ''
+    if (-not [string]::IsNullOrWhiteSpace($cleanOutput)) {
+        return $cleanOutput
     }
 
-    # 回退到常见路径
-    $commonPaths = @("~/bin/arduino-cli", "/usr/local/bin/arduino-cli", "/usr/bin/arduino-cli")
+    # 2. 回退到常见路径
+    $commonPaths = @("~/bin/arduino-cli", "/usr/local/bin/arduino-cli", "/usr/bin/arduino-cli", "\$HOME/bin/arduino-cli")
     foreach ($p in $commonPaths) {
-        $exists = Invoke-WslCommand -Command "test -f $p && echo 1 || echo ''" -IgnoreExitCode
-        if ($exists -eq "1") {
+        $exists = Invoke-WslCommand -Command "test -f $p && echo OK || echo ''" -IgnoreExitCode
+        $cleanExists = ($exists | Out-String).Trim()
+        if ($cleanExists -eq "OK") {
             return $p
         }
     }
@@ -486,12 +489,23 @@ function Invoke-PreFlightCheck {
 
     # 2. 检查指定发行版是否存在
     if (-not [string]::IsNullOrWhiteSpace($script:WslDistro)) {
-        $distros = wsl --list 2>&1
-        if ($distros -match [regex]::Escape($script:WslDistro)) {
+        # wsl --list 输出是 UTF-16 编码，会有乱码和空字符，先清理
+        $distrosRaw = wsl --list 2>&1
+        $distrosClean = $distrosRaw | ForEach-Object { $_ -replace '[^\x20-\x7Ea-zA-Z0-9_\-\(\) ]', '' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+        $found = $false
+        foreach ($d in $distrosClean) {
+            if ($d -match [regex]::Escape($script:WslDistro)) {
+                $found = $true
+                break
+            }
+        }
+
+        if ($found) {
             Write-Host "  [OK] WSL distro '$script:WslDistro' exists" -ForegroundColor Green
         } else {
             Write-Host "  [FAIL] WSL distro '$script:WslDistro' not found" -ForegroundColor Red
-            Write-Host "         可用的发行版: $($distros -join ', ')" -ForegroundColor Yellow
+            Write-Host "         可用的发行版: $($distrosClean -join ', ')" -ForegroundColor Yellow
             $allPass = $false
         }
     } else {
@@ -503,9 +517,12 @@ function Invoke-PreFlightCheck {
         if ($script:ArduinoCliPath) { $requiredTools += "arduino-cli" }
 
         foreach ($tool in $requiredTools) {
-            $exists = Invoke-WslCommand -Command "which $tool 2>/dev/null && echo 1 || echo ''" -IgnoreExitCode
-            if ($exists -match '1') {
-                Write-Host "  [OK] WSL: $tool is available" -ForegroundColor Green
+            # 使用 command -v 比 which 更可靠，同时清理输出中的乱码和空字符
+            $output = Invoke-WslCommand -Command "command -v $tool 2>/dev/null || echo ''" -IgnoreExitCode
+            $cleanOutput = ($output | Out-String).Trim() -replace '[^\x20-\x7E/]', ''
+
+            if (-not [string]::IsNullOrWhiteSpace($cleanOutput)) {
+                Write-Host "  [OK] WSL: $tool is available ($cleanOutput)" -ForegroundColor Green
             } else {
                 Write-Host "  [FAIL] WSL: $tool is not installed" -ForegroundColor Red
                 Write-Host "         请在 WSL 中执行: sudo apt install $tool" -ForegroundColor Yellow

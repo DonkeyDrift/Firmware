@@ -292,7 +292,7 @@ function Get-DefaultWslDistro {
         foreach ($line in $statusOutput) {
             # 匹配中英文输出: "默认分发版:" / "Default Distribution:"
             if ($line -match '(默认分发版|Default Distribution)[:：]\s*(\S+)') {
-                Write-Host "通过 wsl --status 探测到默认发行版: $($matches[2])" -ForegroundColor DarkGray
+                Write-Verbose "通过 wsl --status 探测到默认发行版: $($matches[2])"
                 return $matches[2]
             }
         }
@@ -303,7 +303,7 @@ function Get-DefaultWslDistro {
             # 处理编码问题，移除不可见字符
             $cleanLine = $line -replace '[^\x20-\x7E]', ''
             if ($cleanLine -match '^\*\s+(\S+)\s+') {
-                Write-Host "通过 wsl -l 探测到默认发行版: $($matches[1])" -ForegroundColor DarkGray
+                Write-Verbose "通过 wsl -l 探测到默认发行版: $($matches[1])"
                 return $matches[1]
             }
         }
@@ -312,13 +312,13 @@ function Get-DefaultWslDistro {
         foreach ($line in $output) {
             $cleanLine = $line -replace '[^\x20-\x7E]', ''
             if ($cleanLine -match '^\s*(\S+)\s+(Running|Stopped)') {
-                Write-Host "使用第一个可用发行版: $($matches[1])" -ForegroundColor DarkGray
+                Write-Verbose "使用第一个可用发行版: $($matches[1])"
                 return $matches[1]
             }
         }
 
         # 所有方法都失败，但 wsl 命令可用，就让 wsl 自己用默认发行版
-        Write-Host "未明确探测到发行版，将使用 WSL 默认发行版" -ForegroundColor DarkGray
+        Write-Verbose "未明确探测到发行版，将使用 WSL 默认发行版"
         return ""
     } catch {
         Write-Warning "无法探测 WSL 发行版列表: $_"
@@ -653,7 +653,7 @@ function Sync-ArduinoLibraries {
     $winSize = (Get-ChildItem -Recurse $script:WinLibPath -File | Measure-Object -Property Length -Sum).Sum
 
     $debugInfo = Invoke-WslCommand -Command "id -un && ls -ld `"$WslLibPath`""
-    Write-Host "WSL Debug: User=$($debugInfo[0]), Path=$($debugInfo[1])" -ForegroundColor DarkGray
+    Write-Verbose "WSL Debug: User=$($debugInfo[0]), Path=$($debugInfo[1])"
 
     $wslStats = Invoke-WslCommand -Command "find `"$WslLibPath`" -type f | wc -l && find `"$WslLibPath`" -type f -printf '%s\n' | python3 -c 'import sys; print(sum(int(l) for l in sys.stdin))'"
     $wslCount = [int]$wslStats[0]
@@ -701,14 +701,14 @@ if ([string]::IsNullOrWhiteSpace($Config)) {
 }
 $projectConfig = Get-ProjectConfig -ConfigPath $Config
 if ($projectConfig.Count -gt 0) {
-    Write-Host "Loaded config from: $Config" -ForegroundColor DarkGray
+    Write-Verbose "Loaded config from: $Config"
 }
 
 # --------------------------
 # 2. 初始化基础配置（优先级：命令行参数 > 环境变量 > 配置文件 > 默认值）
 # --------------------------
 
-Write-Host "Project root: $ProjectRoot" -ForegroundColor DarkGray
+Write-Verbose "Project root: $ProjectRoot"
 
 # WSL 发行版：优先参数，其次环境变量，其次配置文件，其次自动探测
 if ([string]::IsNullOrWhiteSpace($Distro)) {
@@ -721,7 +721,7 @@ if ([string]::IsNullOrWhiteSpace($Distro)) {
     $Distro = Get-DefaultWslDistro
 }
 $script:WslDistro = $Distro
-Write-Host "Using WSL distro: $Distro" -ForegroundColor DarkGray
+Write-Verbose "Using WSL distro: $Distro"
 
 # Sketch 路径：优先参数，其次配置文件，其次自动探测
 if ([string]::IsNullOrWhiteSpace($Sketch) -and $projectConfig["sketch"]) {
@@ -731,7 +731,7 @@ if ([string]::IsNullOrWhiteSpace($Sketch)) {
     $Sketch = Find-SketchFile -Root $ProjectRoot
 }
 $SketchPath = $Sketch.Replace('\', '/')
-Write-Host "Using sketch: $SketchPath" -ForegroundColor DarkGray
+Write-Verbose "Using sketch: $SketchPath"
 
 # FQBN：优先参数，其次配置文件，其次 sketch.yaml / config.yaml
 if ([string]::IsNullOrWhiteSpace($FQBN) -and $projectConfig["fqbn"]) {
@@ -740,7 +740,7 @@ if ([string]::IsNullOrWhiteSpace($FQBN) -and $projectConfig["fqbn"]) {
 if ([string]::IsNullOrWhiteSpace($FQBN)) {
     $FQBN = Get-ProjectFQBN -Root $ProjectRoot
 }
-Write-Host "Using FQBN: $FQBN" -ForegroundColor DarkGray
+Write-Verbose "Using FQBN: $FQBN"
 
 # 工作目录：优先配置文件，其次默认
 if ($projectConfig["work_dir"]) {
@@ -753,7 +753,7 @@ if ($projectConfig["work_dir"]) {
 if ($IoMode -eq "native" -and $projectConfig["io_mode"]) {
     $IoMode = $projectConfig["io_mode"]
 }
-Write-Host "Using I/O mode: $IoMode" -ForegroundColor DarkGray
+Write-Verbose "Using I/O mode: $IoMode"
 
 # 库同步相关配置
 if ($projectConfig["sync_libs"] -and $projectConfig["sync_libs"] -match "^(true|1|yes)$") {
@@ -784,10 +784,10 @@ if ($IoMode -eq "mnt") {
     # 直接使用挂载分区下的项目目录，不需要同步
     $WSLWorkDir = $WSLProjectRoot
     $WSLBuildDir = "$WSLWorkDir/$BuildDir"
-    Write-Host "Using direct mount mode: building on $WSLProjectRoot" -ForegroundColor DarkGray
+    Write-Verbose "Using direct mount mode: building on $WSLProjectRoot"
 } else {
     $WSLBuildDir = "$WSLWorkDir/$BuildDir"
-    Write-Host "WSL work dir: $WSLWorkDir" -ForegroundColor DarkGray
+    Write-Verbose "WSL work dir: $WSLWorkDir"
 }
 $WSLSketchPath = "$WSLWorkDir/$SketchPath"
 

@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "current": {
     "board": {
-      "name": "ESP32-S3 (Generic)",
-      "fqbn": "esp32:esp32:esp32s3",
+      "name": "ESP32 Dev Module",
+      "fqbn": "esp32:esp32:esp32",
       "compileArgs": [],
       "pinDefines": {
         "ws2812_pin": 48,
@@ -18,7 +18,7 @@
     "port": {
       "address": "COM24",
       "auto": true,
-      "lastSuccessfulAddress": ""
+      "lastSuccessfulAddress": "COM24"
     },
     "build": {
       "outputDir": "",

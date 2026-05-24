@@ -168,6 +168,7 @@ function ConvertTo-WinPath {
 <#
 .SYNOPSIS
     在指定 WSL 发行版中执行命令，返回输出结果
+    使用 bash -lc (login shell) 加载 .profile，确保用户 PATH（如 ~/bin）完整
 #>
 function Invoke-WslCommand {
     param(
@@ -180,7 +181,8 @@ function Invoke-WslCommand {
     if (-not [string]::IsNullOrWhiteSpace($Distro)) {
         $wslArgs += @("-d", $Distro)
     }
-    $wslArgs += @("bash", "-c", $Command)
+    # 使用 -lc 而非 -c，加载登录配置文件，确保 PATH 包含 ~/bin 等用户自定义路径
+    $wslArgs += @("bash", "-lc", $Command)
 
     $output = & wsl @wslArgs 2>&1
     if (-not $IgnoreExitCode -and $LASTEXITCODE -ne 0) {
@@ -614,7 +616,7 @@ function Sync-ArduinoLibraries {
 
         $distroArg = if (-not [string]::IsNullOrWhiteSpace($script:WslDistro)) { "-d $script:WslDistro " } else { "" }
         $finalCmd = "$rsyncBase `"$wslSourcePath`" `"$WslLibPath/`""
-        $syncSuccess = Run-WithAnimation -Command "wsl" -Arguments "${distroArg}bash -c '$finalCmd'" -TaskName "Syncing Libraries (rsync)"
+        $syncSuccess = Run-WithAnimation -Command "wsl" -Arguments "${distroArg}bash -lc '$finalCmd'" -TaskName "Syncing Libraries (rsync)"
 
     } elseif ($SyncMode -eq "robocopy") {
         if ([string]::IsNullOrWhiteSpace($script:WslDistro)) {
@@ -840,7 +842,7 @@ if ($Compile) {
     if ($IoMode -eq "native") {
         # 1. Sync Source to WSL Native FS
         $syncCmd = "wsl"
-        $syncArgs = "${distroPrefix}bash -c 'mkdir -p $WSLWorkDir && rsync -av --delete --exclude=build_wsl --exclude=.git --exclude=.venv ""$WSLProjectRoot/"" ""$WSLWorkDir/""'"
+        $syncArgs = "${distroPrefix}bash -lc 'mkdir -p $WSLWorkDir && rsync -av --delete --exclude=build_wsl --exclude=.git --exclude=.venv ""$WSLProjectRoot/"" ""$WSLWorkDir/""'"
         $syncStart = Get-Date
         if (-not (Run-WithAnimation -Command $syncCmd -Arguments $syncArgs -TaskName "Syncing Source to WSL")) { exit 1 }
         $syncTime = ((Get-Date) - $syncStart).TotalSeconds
@@ -849,7 +851,7 @@ if ($Compile) {
     # 2. Compile
     $compileCmd = "wsl"
     $compileTask = if ($IoMode -eq "native") { "Compiling in WSL (Native FS)" } else { "Compiling in WSL (Mounted FS)" }
-    $compileArgs = "${distroPrefix}bash -c '$script:ArduinoCliPath compile --fqbn $FQBN --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir"" ""$WSLSketchPath""'"
+    $compileArgs = "${distroPrefix}bash -lc '$script:ArduinoCliPath compile --fqbn $FQBN --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir"" ""$WSLSketchPath""'"
     $compileStart = Get-Date
     if (-not (Run-WithAnimation -Command $compileCmd -Arguments $compileArgs -TaskName $compileTask)) { exit 1 }
     $compileTime = ((Get-Date) - $compileStart).TotalSeconds
@@ -857,7 +859,7 @@ if ($Compile) {
     # 3. Sync Artifacts Back to Windows (仅 native 模式需要，mnt 模式已经在同目录下)
     if ($IoMode -eq "native") {
         $syncBackCmd = "wsl"
-        $syncBackArgs = "${distroPrefix}bash -c 'mkdir -p ""$WSLProjectRoot/$BuildDir"" && cp ""$WSLBuildDir""/*.bin ""$WSLProjectRoot/$BuildDir/"" && cp ""$WSLBuildDir""/*.elf ""$WSLProjectRoot/$BuildDir/""'"
+        $syncBackArgs = "${distroPrefix}bash -lc 'mkdir -p ""$WSLProjectRoot/$BuildDir"" && cp ""$WSLBuildDir""/*.bin ""$WSLProjectRoot/$BuildDir/"" && cp ""$WSLBuildDir""/*.elf ""$WSLProjectRoot/$BuildDir/""'"
         $syncBackStart = Get-Date
         if (-not (Run-WithAnimation -Command $syncBackCmd -Arguments $syncBackArgs -TaskName "Syncing Artifacts to Windows")) { exit 1 }
         $syncBackTime = ((Get-Date) - $syncBackStart).TotalSeconds

@@ -373,4 +373,27 @@ void TUI::drawSensors() {
     // Clear rest of line
     if (_ansiEnabled) _out.print("\033[K");
 
+    // 漂移辅助状态显示
+    extern bool drift_assist_enabled;
+    extern bool drift_assist_active;
+    extern float drift_compensation;
+    extern float gyro_z_filtered;
+
+    cursorTo(row + 2, 1);
+    if (drift_assist_enabled) {
+        if (_ansiEnabled) _out.print(ANSI_GREEN);
+        _out.print("DRIFT: ON");
+        if (drift_assist_active) {
+            if (_ansiEnabled) _out.print(ANSI_YELLOW);
+            _out.printf(" ACTIVE  GyroZ: %+5.2f  Comp: %+4.0f", gyro_z_filtered, drift_compensation);
+        } else {
+            _out.printf(" STANDBY GyroZ: %+5.2f", gyro_z_filtered);
+        }
+    } else {
+        if (_ansiEnabled) _out.print(ANSI_WHITE);
+        _out.print("DRIFT: OFF");
+    }
+    if (_ansiEnabled) _out.print(ANSI_RESET);
+    // Clear rest of line
+    if (_ansiEnabled) _out.print("\033[K");
 }

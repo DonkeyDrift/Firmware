@@ -4,7 +4,7 @@ default:
   # port: "/dev/ttyACM1" # for linux
   port: "auto" # 自动检索并匹配当前开发板串口
   baudrate: 115200
-  sketch_path: "mus4/mus4.ino"
+  sketch_path: "mus4.ino"
   build_path: "build"
 
 serial_detection:

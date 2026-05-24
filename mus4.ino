@@ -392,6 +392,22 @@ int steering_error_count = 0;
 int valid_signal_count = 0; // New: Counter for valid signals to exit safe mode
 bool safe_mode_active = false;
 bool is_history_initialized = false;
+
+// --- Drift Assist Constants & Globals ---
+#define DRIFT_ASSIST_ENABLED     1        // 全局编译启用漂移辅助
+#define DRIFT_ASSIST_GAIN        25.0f    // 反打增益系数 (gyroZ rad/s -> 补偿量 ±100)
+#define DRIFT_ASSIST_THRESHOLD   1.2f     // 侧滑触发阈值 rad/s，低于此值不介入
+#define DRIFT_ASSIST_MAX_COMP    70       // 最大补偿角度 (±70)，防止过度反打
+#define DRIFT_ASSIST_SMOOTH      0.25f    // 补偿量一阶平滑系数，避免输出抖动
+#define DRIFT_ASSIST_DECAY       0.85f    // 未触发时补偿量衰减系数
+
+const int DRIFT_CH3_LOW_THRESHOLD  = 1400;  // CH3 低位: 锁车
+const int DRIFT_CH3_MID_THRESHOLD  = 1600;  // CH3 中位: 解锁+辅助关闭，高位: 解锁+辅助开启
+
+bool drift_assist_enabled = false;   // 用户是否开启辅助（通过CH3控制）
+bool drift_assist_active = false;    // 当前辅助是否正在介入
+float drift_compensation = 0.0f;     // 当前补偿量（平滑后的最终值）
+float gyro_z_filtered = 0.0f;        // 经过滤波的 gyroZ 值
 // ------------------------------------------------------
 
 // 修改setLEDColor函数
@@ -821,6 +837,27 @@ void park_change()
         // Button Released
         parkBtnPressed = false;
         parkActionTaken = false;
+    }
+
+    // --- Drift Assist 三态开关（根据 CH3 脉宽位置） ---
+    uint16_t ch3_pwm = pwm_value[CH_PARK];
+    if (ch3_pwm <= DRIFT_CH3_LOW_THRESHOLD) {
+        // CH3 低位：保持原有锁车逻辑，关闭漂移辅助
+        drift_assist_enabled = false;
+    } else if (ch3_pwm <= DRIFT_CH3_MID_THRESHOLD) {
+        // CH3 中位：解锁 + 漂移辅助关闭
+        drift_assist_enabled = false;
+        if (rc_data.park) {
+            rc_data.park = false;
+            emergencyStopState = EST_IDLE;
+        }
+    } else {
+        // CH3 高位：解锁 + 漂移辅助开启
+        drift_assist_enabled = true;
+        if (rc_data.park) {
+            rc_data.park = false;
+            emergencyStopState = EST_IDLE;
+        }
     }
 
     car_output.park = rc_data.park;
@@ -1507,6 +1544,75 @@ int process_steering_signal(int raw_pwm) {
     return final_steering;
 }
 
+// --- Drift Assist Logic ---
+// 输入: driver_steering - 驾驶员原始转向输入 (-100~100)
+// 输出: 叠加了漂移补偿后的最终转向值 (-100~100)
+int apply_drift_assist(int driver_steering) {
+#if DRIFT_ASSIST_ENABLED
+    // 仅在手动模式且开启漂移辅助时生效
+    if (car_output.mode != CAR_MODE_MANUAL || !drift_assist_enabled) {
+        drift_assist_active = false;
+        drift_compensation = 0.0f;
+        return driver_steering;
+    }
+
+    // 1. 对 gyroZ 做一阶低通滤波，消除传感器噪声
+    gyro_z_filtered = gyro_z_filtered * (1.0f - DRIFT_ASSIST_SMOOTH) +
+                      mpu6050Data.gyroZ * DRIFT_ASSIST_SMOOTH;
+
+    // 2. 判断是否触发侧滑
+    float abs_gyro = fabs(gyro_z_filtered);
+    if (abs_gyro > DRIFT_ASSIST_THRESHOLD) {
+        // 3. 计算反打补偿量：负号实现反打（顺时针滑移->gyro负->补偿正->向右打？不对，需要对齐物理方向）
+        // 用户定义: 尾部顺时针滑移 gyroZ 为负 -> 需要向左反打 (<-1439 -> 负值)
+        // 因此: gyroZ 负 -> 补偿量负 -> 向左反打
+        //       gyroZ 正 -> 补偿量正 -> 向右反打
+        // 所以 compensation 应该与 gyroZ 同号？不对，需要再次仔细分析：
+        // 尾部顺时针滑移(甩尾向右) -> 车身向右转过度 -> 需要向左反打(转向值减小/变负)
+        // 用户定义: 尾部顺时针滑移 gyroZ 为负值
+        // 所以: gyroZ 负 -> 补偿量负 -> 向左反打
+        // 结论: compensation = gyroZ * GAIN (同号)
+        // 等等，我再重新看用户的定义：
+        // "当尾部顺时针滑移时数值为负，逆时针滑移时数值为正"
+        // "当遥控器端信号小于1439时车轮向左，大于1439时车轮向右"
+        // 映射到 -100~100: -100 左转，+100 右转
+        // 尾部顺时针滑移(甩尾向右/过度转向右转) -> 向左反打 -> 转向叠加负值
+        // 此时 gyroZ 为负 -> 补偿量应该也是负
+        // 所以 compensation = gyroZ * GAIN
+        // 让我先按照这个逻辑实现，实车调试时再调整符号
+        float raw_comp = gyro_z_filtered * DRIFT_ASSIST_GAIN;
+
+        // 4. 补偿量限幅
+        raw_comp = constrain(raw_comp, -DRIFT_ASSIST_MAX_COMP, DRIFT_ASSIST_MAX_COMP);
+
+        // 5. 对补偿量做平滑输出
+        drift_compensation = drift_compensation * (1.0f - DRIFT_ASSIST_SMOOTH) +
+                             raw_comp * DRIFT_ASSIST_SMOOTH;
+
+        drift_assist_active = true;
+    } else {
+        // 未达到阈值，补偿量逐渐衰减到 0
+        drift_compensation *= DRIFT_ASSIST_DECAY;
+        if (fabs(drift_compensation) < 0.5f) {
+            drift_compensation = 0.0f;
+            drift_assist_active = false;
+        } else {
+            drift_assist_active = true;
+        }
+    }
+
+    // 6. 叠加补偿量到驾驶员原始输入，并限幅
+    int final_steering = driver_steering + (int)drift_compensation;
+    final_steering = constrain(final_steering, -100, 100);
+
+    return final_steering;
+#else
+    drift_assist_active = false;
+    drift_compensation = 0.0f;
+    return driver_steering;
+#endif
+}
+
 void run_steering_tests() {
     Serial.println("--- Starting Steering Signal Processing Unit Tests (PID Enabled) ---");
     
@@ -1777,6 +1883,8 @@ void loop()
             car_output.throttle = map(rc_data.throttle, RC_THROTTLE_MIN, RC_THROTTLE_MAX, -100, 100);
         }
         car_output.steering = map(rc_data.steering, RC_STEERING_MIN, RC_STEERING_MAX, -100, 100);
+        // 漂移辅助：仅在手动模式下叠加反打补偿
+        car_output.steering = apply_drift_assist(car_output.steering);
     }
 
     // Update TUI

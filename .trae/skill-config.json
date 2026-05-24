@@ -1,5 +1,6 @@
 {
   "disabledSkills": [
-    "mus4-wsl-build"
+    "arduino-cli",
+    "git-automation"
   ]
 }

@@ -1,8 +1,41 @@
 <#
 .SYNOPSIS
-    Fast WSL build script with optional library sync.
+    Fast WSL build script with optional library sync (universal version).
 .DESCRIPTION
     Sync project to WSL native filesystem for compile, and optionally sync Arduino libs.
+    Auto-detects project root, WSL distro, arduino-cli path, sketch file and FQBN.
+.PARAMETER SyncLibs
+    Enable library sync before build (default: off)
+.PARAMETER WinLibPath
+    Windows Arduino libraries path (default: auto-detect Documents/Arduino/libraries)
+.PARAMETER WslLibPath
+    Target libraries path in WSL (default: ~/Arduino/libraries)
+.PARAMETER OverwriteLibs
+    Overwrite existing libs in target (default: $true)
+.PARAMETER BackupLibs
+    Backup old libs before sync
+.PARAMETER ExcludeLibs
+    Exclude list (regex array)
+.PARAMETER SyncMode
+    Sync mode: rsync or robocopy (default: rsync)
+.PARAMETER ExtraArgs
+    Extra args for sync command
+.PARAMETER Serial
+    Open serial monitor after build
+.PARAMETER Compile
+    Run compile (alias: -c)
+.PARAMETER Upload
+    Run upload (alias: -u)
+.PARAMETER Sketch
+    Arduino Sketch file path (default: auto-detect)
+.PARAMETER Distro
+    WSL distro name to use (default: auto-detect default distro)
+.PARAMETER ProjectRoot
+    Project root directory (default: directory containing this script)
+.PARAMETER FQBN
+    Arduino board FQBN (default: read from sketch.yaml / config.yaml, fallback to esp32:esp32:esp32)
+.PARAMETER NoCheck
+    Skip pre-flight dependency check
 #>
 [CmdletBinding()]
 param(
@@ -12,7 +45,7 @@ param(
     [switch]$SyncLibs,
 
     [Parameter(HelpMessage="Windows Arduino libraries path")]
-    [string]$WinLibPath = "$env:USERPROFILE\Documents\Arduino\libraries",
+    [string]$WinLibPath,
 
     [Parameter(HelpMessage="Target libraries path in WSL")]
     [string]$WslLibPath = "~/Arduino/libraries",
@@ -45,30 +78,121 @@ param(
     [Alias("u")]
     [switch]$Upload,
 
-    [Parameter(HelpMessage="Arduino Sketch file path")]
+    [Parameter(HelpMessage="Arduino Sketch file path (default: auto-detect)")]
     [Alias("i")]
-    [string]$Sketch = "mus4/mus4.ino"
+    [string]$Sketch,
+
+    # --- New universal options ---
+    [Parameter(HelpMessage="WSL distro name (default: auto-detect default distro)")]
+    [string]$Distro,
+
+    [Parameter(HelpMessage="Project root directory (default: script directory)")]
+    [string]$ProjectRoot,
+
+    [Parameter(HelpMessage="Arduino board FQBN (default: auto-detect from config files)")]
+    [string]$FQBN,
+
+    [Parameter(HelpMessage="Skip pre-flight dependency check")]
+    [switch]$NoCheck,
+
+    [Parameter(HelpMessage="I/O mode: 'native' = sync to WSL ext4 for build (fast, default); 'mnt' = build directly on /mnt/c mounted NTFS (no sync, for small projects)")]
+    [ValidateSet("native", "mnt")]
+    [string]$IoMode = "native",
+
+    [Parameter(HelpMessage="Clean build: remove WSL build directory before compiling")]
+    [switch]$Clean,
+
+    [Parameter(HelpMessage="Path to wslbuild.yaml config file (default: project root/wslbuild.yaml)")]
+    [string]$Config
 )
 
 $ErrorActionPreference = "Stop"
 
-# 配置输出编码为UTF8
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+# ==============================================================================
+# 公共工具函数
+# ==============================================================================
 
-$ProjectRoot = "C:\Dev\DDC\mus4"
-$SketchPath = $Sketch.Replace('\', '/')
-$BuildDir = "build_wsl"
-$WSLProjectRoot = "/mnt/c/Dev/DDC/mus4"
+<#
+.SYNOPSIS
+    将 Windows 路径转换为 WSL 挂载路径格式
+    例如: C:\Dev\foo\bar -> /mnt/c/Dev/foo/bar
+#>
+function ConvertTo-WslPath {
+    param([Parameter(Mandatory=$true)][string]$Path)
 
-# 优化后的 WSL 原生工作路径
-# 使用 $HOME 环境变量而不是 ~，因为在引号中 ~ 不会被 bash 展开
-$WSLWorkDir = "`$HOME/arduino-build/mus4"
-$WSLSketchPath = "$WSLWorkDir/$SketchPath"
-$WSLBuildDir = "$WSLWorkDir/$BuildDir"
+    if ([string]::IsNullOrWhiteSpace($Path)) { return "" }
 
-# Spinner frames (ASCII-safe for PowerShell 5 encoding)
-$frames = @('|', '/', '-', '\')
+    # 处理已经是 WSL 路径的情况
+    if ($Path.StartsWith("/") -or $Path.StartsWith("~")) {
+        return $Path
+    }
 
+    # 规范化路径分隔符
+    $normalized = $Path.Replace('\', '/')
+
+    # 处理带盘符的路径
+    if ($normalized -match '^([A-Za-z]):/(.*)$') {
+        $drive = $matches[1].ToLower()
+        $rest = $matches[2]
+        return "/mnt/$drive/$rest"
+    }
+
+    return $normalized
+}
+
+<#
+.SYNOPSIS
+    将 WSL 路径转换为 Windows 路径格式
+    例如: /mnt/c/Dev/foo/bar -> C:\Dev\foo\bar
+#>
+function ConvertTo-WinPath {
+    param([Parameter(Mandatory=$true)][string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) { return "" }
+
+    # 处理已经是 Windows 路径的情况
+    if ($Path -match '^[A-Za-z]:\\' -or $Path -match '^[A-Za-z]:/') {
+        return $Path.Replace('/', '\')
+    }
+
+    # 处理 /mnt/x/... 格式
+    if ($Path -match '^/mnt/([a-z])/(.*)$') {
+        $drive = $matches[1].ToUpper()
+        $rest = $matches[2].Replace('/', '\')
+        return "${drive}:\$rest"
+    }
+
+    return $Path.Replace('/', '\')
+}
+
+<#
+.SYNOPSIS
+    在指定 WSL 发行版中执行命令，返回输出结果
+#>
+function Invoke-WslCommand {
+    param(
+        [Parameter(Mandatory=$true)][string]$Command,
+        [string]$Distro = $script:WslDistro,
+        [switch]$IgnoreExitCode
+    )
+
+    $wslArgs = @()
+    if (-not [string]::IsNullOrWhiteSpace($Distro)) {
+        $wslArgs += @("-d", $Distro)
+    }
+    $wslArgs += @("bash", "-c", $Command)
+
+    $output = & wsl @wslArgs 2>&1
+    if (-not $IgnoreExitCode -and $LASTEXITCODE -ne 0) {
+        Write-Error "WSL command failed: $Command`n$output"
+    }
+    return $output
+}
+
+<#
+.SYNOPSIS
+    执行命令并显示带动画的进度条
+#>
 function Run-WithAnimation {
     param(
         [string]$Command,
@@ -92,10 +216,11 @@ function Run-WithAnimation {
         Write-Host "无法启动命令: $Command $Arguments" -ForegroundColor Red
         return $false
     }
-    
+
     $startTime = Get-Date
     $frameIdx = 0
-    
+    $frames = @('|', '/', '-', '\')
+
     try { [Console]::CursorVisible = $false } catch {}
 
     $outputBuffer = New-Object System.Text.StringBuilder
@@ -104,10 +229,10 @@ function Run-WithAnimation {
     $outEvent = { if (-not [string]::IsNullOrEmpty($EventArgs.Data)) { $null = $Event.MessageData.outputBuffer.AppendLine($EventArgs.Data) } }
     $errEvent = { if (-not [string]::IsNullOrEmpty($EventArgs.Data)) { $null = $Event.MessageData.errorBuffer.AppendLine($EventArgs.Data) } }
     $eventData = @{ outputBuffer = $outputBuffer; errorBuffer = $errorBuffer }
-    
+
     $sub1 = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -Action $outEvent -MessageData $eventData
     $sub2 = Register-ObjectEvent -InputObject $p -EventName ErrorDataReceived -Action $errEvent -MessageData $eventData
-    
+
     $p.BeginOutputReadLine()
     $p.BeginErrorReadLine()
 
@@ -120,10 +245,10 @@ function Run-WithAnimation {
         Write-Host -NoNewline "`r$status   "
         Start-Sleep -Milliseconds 150
     }
-    
+
     $p.WaitForExit()
     try { [Console]::CursorVisible = $true } catch {}
-    Write-Host "" 
+    Write-Host ""
 
     Unregister-Event -SourceIdentifier $sub1.Name -ErrorAction SilentlyContinue
     Unregister-Event -SourceIdentifier $sub2.Name -ErrorAction SilentlyContinue
@@ -143,22 +268,265 @@ function Run-WithAnimation {
     }
 }
 
+# ==============================================================================
+# 自动探测模块
+# ==============================================================================
+
+<#
+.SYNOPSIS
+    探测默认 WSL 发行版
+#>
+function Get-DefaultWslDistro {
+    try {
+        $output = wsl --list --verbose 2>&1
+        # 匹配带 * 默认标记的行
+        foreach ($line in $output) {
+            if ($line -match '^\*\s+(\S+)\s+') {
+                return $matches[1]
+            }
+        }
+        # 匹配失败时回退第一个发行版
+        foreach ($line in $output) {
+            if ($line -match '^\s*(\S+)\s+(Running|Stopped)') {
+                return $matches[1]
+            }
+        }
+    } catch {
+        Write-Warning "无法探测 WSL 发行版列表: $_"
+    }
+    Write-Warning "无法自动探测 WSL 发行版，请通过 -Distro 参数显式指定，或确认 WSL 是否已正确安装。"
+    return $null
+}
+
+<#
+.SYNOPSIS
+    探测项目中的 sketch 文件路径
+    优先选择项目根目录下的 .ino 文件（排除 examples、provisioning_system 等子目录）
+#>
+function Find-SketchFile {
+    param([string]$Root)
+
+    # 第一步：优先查找根目录下的 .ino 文件
+    $rootInos = Get-ChildItem -Path $Root -Filter "*.ino" -File
+    if ($rootInos.Count -eq 1) {
+        return $rootInos[0].Name
+    }
+    if ($rootInos.Count -gt 1) {
+        Write-Host "根目录下存在多个 .ino 文件，请通过 -Sketch 参数指定：" -ForegroundColor Yellow
+        $rootInos | ForEach-Object { Write-Host "  - $($_.Name)" }
+        exit 1
+    }
+
+    # 第二步：根目录下没有，再递归查找
+    $inoFiles = Get-ChildItem -Path $Root -Filter "*.ino" -Recurse -File
+    if ($inoFiles.Count -eq 0) {
+        Write-Error "在项目目录 $Root 下未找到任何 .ino 文件，请通过 -Sketch 参数显式指定。"
+        exit 1
+    }
+    if ($inoFiles.Count -eq 1) {
+        $relative = $inoFiles[0].FullName.Substring($Root.Length).TrimStart('\', '/')
+        return $relative.Replace('\', '/')
+    }
+
+    Write-Host "找到多个 .ino 文件，请通过 -Sketch 参数指定：" -ForegroundColor Yellow
+    $inoFiles | ForEach-Object { Write-Host "  - $($_.FullName.Substring($Root.Length).TrimStart('\','/'))" }
+    exit 1
+}
+
+<#
+.SYNOPSIS
+    读取 FQBN 配置：优先 sketch.yaml，其次 config.yaml
+#>
+function Get-ProjectFQBN {
+    param([string]$Root)
+
+    # 1. 读取 sketch.yaml
+    $sketchYaml = Join-Path $Root "sketch.yaml"
+    if (Test-Path $sketchYaml) {
+        $content = Get-Content $sketchYaml -Raw
+        if ($content -match 'default_fqbn\s*[:=]\s*[""]?([^\s""'']+)[""]?') {
+            return $matches[1]
+        }
+    }
+
+    # 2. 读取 config.yaml
+    $configYaml = Join-Path $Root "config.yaml"
+    if (Test-Path $configYaml) {
+        $content = Get-Content $configYaml -Raw
+        if ($content -match 'fqbn\s*[:=]\s*[""]?([^\s""'']+)[""]?') {
+            return $matches[1]
+        }
+        if ($content -match 'build\s*:[\s\S]*?fqbn\s*[:=]\s*[""]?([^\s""'']+)[""]?') {
+            return $matches[1]
+        }
+    }
+
+    Write-Warning "未在配置文件中找到 FQBN，使用默认值 esp32:esp32:esp32"
+    return "esp32:esp32:esp32"
+}
+
+<#
+.SYNOPSIS
+    探测 WSL 端 arduino-cli 的实际路径
+#>
+function Get-WslArduinoCliPath {
+    $output = Invoke-WslCommand -Command "which arduino-cli 2>/dev/null || echo ''" -IgnoreExitCode
+    if ($output -and -not [string]::IsNullOrWhiteSpace($output)) {
+        return $output.Trim()
+    }
+
+    # 回退到常见路径
+    $commonPaths = @("~/bin/arduino-cli", "/usr/local/bin/arduino-cli", "/usr/bin/arduino-cli")
+    foreach ($p in $commonPaths) {
+        $exists = Invoke-WslCommand -Command "test -f $p && echo 1 || echo ''" -IgnoreExitCode
+        if ($exists -eq "1") {
+            return $p
+        }
+    }
+
+    Write-Warning "未在 WSL 中找到 arduino-cli，请先安装：https://arduino.github.io/arduino-cli/latest/installation"
+    return $null
+}
+
+<#
+.SYNOPSIS
+    获取 Windows 文档目录路径，兼容中英文系统
+#>
+function Get-WindowsDocumentsPath {
+    return [Environment]::GetFolderPath("MyDocuments")
+}
+
+<#
+.SYNOPSIS
+    读取 wslbuild.yaml 配置文件，返回配置对象
+    为避免引入外部依赖，仅解析简单的 key: value 格式和列表格式，支持注释
+#>
+function Get-ProjectConfig {
+    param([string]$ConfigPath)
+
+    if (-not (Test-Path $ConfigPath)) {
+        return @{}
+    }
+
+    $config = @{}
+    $lastKey = $null
+    $lines = Get-Content $ConfigPath
+
+    foreach ($line in $lines) {
+        # 跳过空行和注释
+        if ($line -match '^\s*#' -or [string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+
+        # 匹配 key: value 格式
+        if ($line -match '^\s*([a-zA-Z0-9_]+)\s*:\s*[""]?([^""'']*?)[""]?\s*$') {
+            $lastKey = $matches[1]
+            $value = $matches[2]
+            $config[$lastKey] = $value
+            continue
+        }
+
+        # 匹配数组（简单支持：- item 格式）
+        if ($line -match '^\s*-\s*[""]?([^""'']*?)[""]?\s*$' -and $lastKey) {
+            $item = $matches[1]
+            if (-not $config[$lastKey] -or $config[$lastKey] -isnot [array]) {
+                $config[$lastKey] = @()
+            }
+            $config[$lastKey] += $item
+            continue
+        }
+    }
+    return $config
+}
+
+# ==============================================================================
+# 依赖自检模块
+# ==============================================================================
+
+function Invoke-PreFlightCheck {
+    Write-Host ">>> Running pre-flight checks..." -ForegroundColor Cyan
+    $allPass = $true
+
+    # 1. 检查 WSL 是否可用
+    try {
+        $null = wsl --version 2>&1
+        Write-Host "  [OK] WSL is available" -ForegroundColor Green
+    } catch {
+        Write-Host "  [FAIL] WSL is not installed or not enabled" -ForegroundColor Red
+        Write-Host "         请先启用 WSL 功能并安装 Linux 发行版" -ForegroundColor Yellow
+        $allPass = $false
+    }
+
+    # 2. 检查指定发行版是否存在
+    if ($script:WslDistro) {
+        $distros = wsl --list 2>&1
+        if ($distros -match [regex]::Escape($script:WslDistro)) {
+            Write-Host "  [OK] WSL distro '$script:WslDistro' exists" -ForegroundColor Green
+        } else {
+            Write-Host "  [FAIL] WSL distro '$script:WslDistro' not found" -ForegroundColor Red
+            Write-Host "         可用的发行版: $($distros -join ', ')" -ForegroundColor Yellow
+            $allPass = $false
+        }
+    }
+
+    # 3. 检查 WSL 端依赖
+    if ($script:WslDistro) {
+        $requiredTools = @("rsync", "python3", "find", "wc", "cp")
+        if ($script:ArduinoCliPath) { $requiredTools += "arduino-cli" }
+
+        foreach ($tool in $requiredTools) {
+            $exists = Invoke-WslCommand -Command "which $tool 2>/dev/null && echo 1 || echo ''" -IgnoreExitCode
+            if ($exists -match '1') {
+                Write-Host "  [OK] WSL: $tool is available" -ForegroundColor Green
+            } else {
+                Write-Host "  [FAIL] WSL: $tool is not installed" -ForegroundColor Red
+                Write-Host "         请在 WSL 中执行: sudo apt install $tool" -ForegroundColor Yellow
+                $allPass = $false
+            }
+        }
+    }
+
+    # 4. 检查 Windows 端 Python
+    try {
+        $pyVer = python --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  [OK] Python is available ($pyVer)" -ForegroundColor Green
+        } else {
+            throw ""
+        }
+    } catch {
+        Write-Host "  [FAIL] Python is not installed or not in PATH" -ForegroundColor Red
+        Write-Host "         上传和串口监视功能需要 Python 3" -ForegroundColor Yellow
+        $allPass = $false
+    }
+
+    if (-not $allPass) {
+        Write-Host "`nPre-flight checks failed. Fix issues above or use -NoCheck to skip." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host ">>> All checks passed.`n" -ForegroundColor Green
+}
+
+# ==============================================================================
+# 库同步模块
+# ==============================================================================
+
 function Sync-ArduinoLibraries {
     Write-Host "`n>>> Starting Library Sync..." -ForegroundColor Cyan
-    Write-Host "Source (Win): $WinLibPath" -ForegroundColor Gray
+    Write-Host "Source (Win): $script:WinLibPath" -ForegroundColor Gray
     Write-Host "Target (WSL): $WslLibPath" -ForegroundColor Gray
 
     # 1. 预检查
-    if (-not (Test-Path $WinLibPath)) {
-        Write-Error "Windows source library path not found: $WinLibPath"
+    if (-not (Test-Path $script:WinLibPath)) {
+        Write-Error "Windows source library path not found: $script:WinLibPath"
         exit 1
     }
-    
-    # Check WSL status
-    $wslStatus = wsl --list --running
-    if ($wslStatus -notmatch "DKC") {
-        Write-Warning "WSL distro 'DKC' is not running. Starting it..."
-        wsl -d DKC echo "Starting..." | Out-Null
+
+    # 检查 WSL 状态
+    $wslStatus = wsl -d $script:WslDistro --list --running
+    if ($wslStatus -notmatch [regex]::Escape($script:WslDistro)) {
+        Write-Warning "WSL distro '$script:WslDistro' is not running. Starting it..."
+        wsl -d $script:WslDistro echo "Starting..." | Out-Null
     }
 
     # Expand tilde in WslLibPath for proper bash execution
@@ -167,7 +535,7 @@ function Sync-ArduinoLibraries {
     }
 
     # Check/Create WSL path
-    wsl -d DKC bash -c "mkdir -p `"$WslLibPath`""
+    Invoke-WslCommand -Command "mkdir -p `"$WslLibPath`""
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to create/access WSL path: $WslLibPath"
         exit 1
@@ -177,60 +545,45 @@ function Sync-ArduinoLibraries {
     if ($BackupLibs) {
         $backupPath = "${WslLibPath}_backup_$(Get-Date -Format 'yyyyMMddHHmmss')"
         Write-Host "Backing up existing libraries to $backupPath ..." -ForegroundColor Gray
-        wsl -d DKC cp -r "$WslLibPath" "$backupPath"
+        Invoke-WslCommand -Command "cp -r `"$WslLibPath`" `"$backupPath`""
     }
 
     # 3. 执行同步
     $syncSuccess = $false
-    
+
     if ($SyncMode -eq "rsync") {
-        # Convert Win path to WSL mount path
-        # e.g. C:\Users\xxx -> /mnt/c/Users/xxx
-        $drive = $WinLibPath.Substring(0,1).ToLower()
-        $pathWithoutDrive = $WinLibPath.Substring(3).Replace('\', '/')
-        $wslSourcePath = "/mnt/$drive/$pathWithoutDrive/"
-        
-        # Build rsync command
-        # -a: archive mode, -v: verbose
-        # --delete: remove files in dest not in src (if overwrite/mirror)
+        $wslSourcePath = ConvertTo-WslPath -Path $script:WinLibPath
+        if (-not $wslSourcePath.EndsWith("/")) { $wslSourcePath += "/" }
+
         $rsyncBase = "rsync -av"
         if ($OverwriteLibs) { $rsyncBase += " --delete" }
-        
-        # Add exclusions
+
         foreach ($ex in $ExcludeLibs) {
             $rsyncBase += " --exclude='$ex'"
         }
-        
+
         if (-not [string]::IsNullOrEmpty($ExtraArgs)) {
             $rsyncBase += " $ExtraArgs"
         }
-        
+
         $finalCmd = "$rsyncBase `"$wslSourcePath`" `"$WslLibPath/`""
-        $syncSuccess = Run-WithAnimation -Command "wsl" -Arguments "-d DKC bash -c '$finalCmd'" -TaskName "Syncing Libraries (rsync)"
-        
+        $syncSuccess = Run-WithAnimation -Command "wsl" -Arguments "-d $script:WslDistro bash -c '$finalCmd'" -TaskName "Syncing Libraries (rsync)"
+
     } elseif ($SyncMode -eq "robocopy") {
-        # Robocopy needs \\wsl.localhost path
-        $wslNetPath = "\\wsl.localhost\DKC\home\$(wsl -d DKC whoami)\Arduino\libraries"
-        # Note: mapping user home path from WslLibPath is tricky if it contains ~, 
-        # so we assume standard layout or user provides full path. 
-        # For robustness, we'll try to resolve the path inside WSL first to get absolute path
-        $absWslPath = wsl -d DKC readlink -f "$WslLibPath"
-        $wslNetPath = "\\wsl.localhost\DKC$absWslPath".Replace('/', '\')
-        
-        $roboArgs = "`"$WinLibPath`" `"$wslNetPath`" /E"
-        if ($OverwriteLibs) { $roboArgs += " /MIR" } # Mirror implies delete destination extras
-        
-        # Exclusions for robocopy (/XD dirs)
-        # Note: Robocopy regex support is limited, assumes simple names
+        $absWslPath = Invoke-WslCommand -Command "readlink -f `"$WslLibPath`""
+        $wslNetPath = "\\wsl.localhost\$script:WslDistro$absWslPath".Replace('/', '\')
+
+        $roboArgs = "`"$script:WinLibPath`" `"$wslNetPath`" /E"
+        if ($OverwriteLibs) { $roboArgs += " /MIR" }
+
         if ($ExcludeLibs.Count -gt 0) {
             $roboArgs += " /XD " + ($ExcludeLibs -join " ")
         }
-        
+
         if (-not [string]::IsNullOrEmpty($ExtraArgs)) {
             $roboArgs += " $ExtraArgs"
         }
-        
-        # Robocopy returns exit codes 0-7 for success
+
         $p = Start-Process "robocopy" -ArgumentList $roboArgs -NoNewWindow -PassThru -Wait
         if ($p.ExitCode -le 8) { $syncSuccess = $true } else { $syncSuccess = $false }
     }
@@ -242,23 +595,14 @@ function Sync-ArduinoLibraries {
 
     # 4. 验证校验
     Write-Host "Verifying sync integrity..." -ForegroundColor Gray
-    
-    # Get Win Stats
-    $winCount = (Get-ChildItem -Recurse $WinLibPath -File | Measure-Object).Count
-    $winSize = (Get-ChildItem -Recurse $WinLibPath -File | Measure-Object -Property Length -Sum).Sum
-    
-    # Get WSL Stats
-    # Convert WinLibPath to WSL format again for exclusion logic consistency if needed, 
-    # but here we just verify destination.
-    # We use 'find' to sum only file sizes (bytes) to match Windows 'Get-ChildItem -File | Measure-Object -Sum' logic.
-    # du -sb includes directory entry sizes (4KB per dir), which causes mismatches.
-    # Method: find prints sizes, python3 calculates sum.
-    # Strategy: Use double quotes for paths (to allow $HOME expansion by Bash) and single quotes for Python command.
-    # Use single quotes for -printf format to avoid backslash escaping hell.
-    $debugInfo = wsl -d DKC bash -c "id -un && ls -ld `"$WslLibPath`""
+
+    $winCount = (Get-ChildItem -Recurse $script:WinLibPath -File | Measure-Object).Count
+    $winSize = (Get-ChildItem -Recurse $script:WinLibPath -File | Measure-Object -Property Length -Sum).Sum
+
+    $debugInfo = Invoke-WslCommand -Command "id -un && ls -ld `"$WslLibPath`""
     Write-Host "WSL Debug: User=$($debugInfo[0]), Path=$($debugInfo[1])" -ForegroundColor DarkGray
-    
-    $wslStats = wsl -d DKC bash -c "find `"$WslLibPath`" -type f | wc -l && find `"$WslLibPath`" -type f -printf '%s\n' | python3 -c 'import sys; print(sum(int(l) for l in sys.stdin))'"
+
+    $wslStats = Invoke-WslCommand -Command "find `"$WslLibPath`" -type f | wc -l && find `"$WslLibPath`" -type f -printf '%s\n' | python3 -c 'import sys; print(sum(int(l) for l in sys.stdin))'"
     $wslCount = [int]$wslStats[0]
     if ($wslStats.Count -ge 2 -and [string]::IsNullOrWhiteSpace($wslStats[1]) -eq $false) {
         $wslSize = [int64]$wslStats[1]
@@ -268,84 +612,236 @@ function Sync-ArduinoLibraries {
 
     Write-Host "Windows: $winCount files, $([math]::Round($winSize/1MB, 2)) MB"
     Write-Host "WSL:     $wslCount files, $([math]::Round($wslSize/1MB, 2)) MB"
-    
-    # Allow 1% tolerance (metadata diffs, line endings etc)
+
     if ($winSize -eq 0) { $diffPercent = 0 } else {
         $diffPercent = [math]::Abs(($winSize - $wslSize) / $winSize) * 100
     }
-    
+
     if ($diffPercent -gt 1) {
         Write-Error "Sync verification failed! Size difference is ${diffPercent}% (>1%)"
         exit 2
     }
-    
+
     Write-Host "Library Sync Completed Successfully." -ForegroundColor Green
     Write-Host "----------------------------------------`n"
 }
 
-# 如果启用了同步，则先执行库同步
+# ==============================================================================
+# 主流程
+# ==============================================================================
+
+# 配置输出编码为UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# --------------------------
+# 1. 加载配置文件
+# --------------------------
+# 项目根目录：优先参数，其次脚本所在目录
+if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
+    $ProjectRoot = $PSScriptRoot
+}
+$ProjectRoot = Resolve-Path $ProjectRoot
+
+# 配置文件路径：优先参数，其次项目根目录
+if ([string]::IsNullOrWhiteSpace($Config)) {
+    $Config = Join-Path $ProjectRoot "wslbuild.yaml"
+}
+$projectConfig = Get-ProjectConfig -ConfigPath $Config
+if ($projectConfig.Count -gt 0) {
+    Write-Host "Loaded config from: $Config" -ForegroundColor DarkGray
+}
+
+# --------------------------
+# 2. 初始化基础配置（优先级：命令行参数 > 环境变量 > 配置文件 > 默认值）
+# --------------------------
+
+Write-Host "Project root: $ProjectRoot" -ForegroundColor DarkGray
+
+# WSL 发行版：优先参数，其次环境变量，其次配置文件，其次自动探测
+if ([string]::IsNullOrWhiteSpace($Distro)) {
+    $Distro = $env:WSL_DISTRO_NAME
+}
+if ([string]::IsNullOrWhiteSpace($Distro) -and $projectConfig["distro"]) {
+    $Distro = $projectConfig["distro"]
+}
+if ([string]::IsNullOrWhiteSpace($Distro)) {
+    $Distro = Get-DefaultWslDistro
+}
+$script:WslDistro = $Distro
+Write-Host "Using WSL distro: $Distro" -ForegroundColor DarkGray
+
+# Sketch 路径：优先参数，其次配置文件，其次自动探测
+if ([string]::IsNullOrWhiteSpace($Sketch) -and $projectConfig["sketch"]) {
+    $Sketch = $projectConfig["sketch"]
+}
+if ([string]::IsNullOrWhiteSpace($Sketch)) {
+    $Sketch = Find-SketchFile -Root $ProjectRoot
+}
+$SketchPath = $Sketch.Replace('\', '/')
+Write-Host "Using sketch: $SketchPath" -ForegroundColor DarkGray
+
+# FQBN：优先参数，其次配置文件，其次 sketch.yaml / config.yaml
+if ([string]::IsNullOrWhiteSpace($FQBN) -and $projectConfig["fqbn"]) {
+    $FQBN = $projectConfig["fqbn"]
+}
+if ([string]::IsNullOrWhiteSpace($FQBN)) {
+    $FQBN = Get-ProjectFQBN -Root $ProjectRoot
+}
+Write-Host "Using FQBN: $FQBN" -ForegroundColor DarkGray
+
+# 工作目录：优先配置文件，其次默认
+if ($projectConfig["work_dir"]) {
+    $WSLWorkDir = $projectConfig["work_dir"]
+} else {
+    $WSLWorkDir = "`$HOME/arduino-build/$(Split-Path $ProjectRoot -Leaf)"
+}
+
+# IO 模式：优先参数，其次配置文件
+if ($IoMode -eq "native" -and $projectConfig["io_mode"]) {
+    $IoMode = $projectConfig["io_mode"]
+}
+Write-Host "Using I/O mode: $IoMode" -ForegroundColor DarkGray
+
+# 库同步相关配置
+if ($projectConfig["sync_libs"] -and $projectConfig["sync_libs"] -match "^(true|1|yes)$") {
+    $SyncLibs = $true
+}
+if ($projectConfig["lib_exclude"] -and $ExcludeLibs.Count -eq 2 -and $ExcludeLibs[0] -eq "^\." -and $ExcludeLibs[1] -eq "^tmp$") {
+    # 用户没有显式传入 ExcludeLibs 参数，使用配置文件中的
+    $ExcludeLibs = $projectConfig["lib_exclude"]
+}
+if ($projectConfig["extra_sync_args"]) {
+    $ExtraArgs = $projectConfig["extra_sync_args"]
+}
+
+# Windows 库路径：优先参数，其次自动探测文档目录
+if ([string]::IsNullOrWhiteSpace($WinLibPath)) {
+    $docPath = Get-WindowsDocumentsPath
+    $script:WinLibPath = Join-Path $docPath "Arduino\libraries"
+} else {
+    $script:WinLibPath = $WinLibPath
+}
+
+# WSL 项目路径与工作目录
+$WSLProjectRoot = ConvertTo-WslPath -Path $ProjectRoot
+$BuildDir = "build_wsl"
+
+# 根据 IO 模式决定编译路径
+if ($IoMode -eq "mnt") {
+    # 直接使用挂载分区下的项目目录，不需要同步
+    $WSLWorkDir = $WSLProjectRoot
+    $WSLBuildDir = "$WSLWorkDir/$BuildDir"
+    Write-Host "Using direct mount mode: building on $WSLProjectRoot" -ForegroundColor DarkGray
+} else {
+    $WSLBuildDir = "$WSLWorkDir/$BuildDir"
+    Write-Host "WSL work dir: $WSLWorkDir" -ForegroundColor DarkGray
+}
+$WSLSketchPath = "$WSLWorkDir/$SketchPath"
+
+# WSL 端 arduino-cli 路径
+$script:ArduinoCliPath = Get-WslArduinoCliPath
+
+# --------------------------
+# 2. 前置检查
+# --------------------------
+if (-not $NoCheck) {
+    Invoke-PreFlightCheck
+}
+
+# --------------------------
+# 3. 库同步
+# --------------------------
 if ($SyncLibs) {
     Sync-ArduinoLibraries
 }
 
-# 默认行为逻辑：如果未指定 -c, -u, -s，则默认执行编译和上传
+# --------------------------
+# 4. 默认行为逻辑
+# --------------------------
 if (-not $Compile.IsPresent -and -not $Upload.IsPresent -and -not $Serial.IsPresent) {
     $Compile = $true
     $Upload = $true
 }
 
+# --------------------------
+# 5. 编译流程
+# --------------------------
+$BinPath = $null
 if ($Compile) {
-    Write-Host ">>> Starting Optimized WSL Build (Fast I/O)..." -ForegroundColor Cyan
+    Write-Host ">>> Starting WSL Build (mode: $IoMode)..." -ForegroundColor Cyan
 
-    # 1. Sync Source to WSL Native FS
-    $syncCmd = "wsl"
-    # 使用 rsync 进行增量同步，排除构建目录和不必要的文件
-    $syncArgs = "-d DKC bash -c 'mkdir -p $WSLWorkDir && rsync -av --delete --exclude=build_wsl --exclude=.git --exclude=.venv ""$WSLProjectRoot/"" ""$WSLWorkDir/""'"
-    $syncStart = Get-Date
-    if (-not (Run-WithAnimation -Command $syncCmd -Arguments $syncArgs -TaskName "Syncing Source to WSL")) { exit 1 }
-    $syncTime = ((Get-Date) - $syncStart).TotalSeconds
+    $syncTime = 0
+    $syncBackTime = 0
 
-    # 2. Compile in WSL Native FS
+    # Clean 模式：清理构建目录
+    if ($Clean) {
+        Write-Host "Cleaning previous build directory..." -ForegroundColor Gray
+        Invoke-WslCommand -Command "rm -rf ""$WSLBuildDir""" -IgnoreExitCode
+        if ($IoMode -eq "native") {
+            Invoke-WslCommand -Command "rm -rf ""$WSLWorkDir""" -IgnoreExitCode
+        }
+    }
+
+    # native 模式需要同步源码到 WSL 原生分区
+    if ($IoMode -eq "native") {
+        # 1. Sync Source to WSL Native FS
+        $syncCmd = "wsl"
+        $syncArgs = "-d $script:WslDistro bash -c 'mkdir -p $WSLWorkDir && rsync -av --delete --exclude=build_wsl --exclude=.git --exclude=.venv ""$WSLProjectRoot/"" ""$WSLWorkDir/""'"
+        $syncStart = Get-Date
+        if (-not (Run-WithAnimation -Command $syncCmd -Arguments $syncArgs -TaskName "Syncing Source to WSL")) { exit 1 }
+        $syncTime = ((Get-Date) - $syncStart).TotalSeconds
+    }
+
+    # 2. Compile
     $compileCmd = "wsl"
-    $compileArgs = "-d DKC bash -c '~/bin/arduino-cli compile --fqbn esp32:esp32:esp32 --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir"" ""$WSLSketchPath""'"
+    $compileTask = if ($IoMode -eq "native") { "Compiling in WSL (Native FS)" } else { "Compiling in WSL (Mounted FS)" }
+    $compileArgs = "-d $script:WslDistro bash -c '$script:ArduinoCliPath compile --fqbn $FQBN --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir"" ""$WSLSketchPath""'"
     $compileStart = Get-Date
-    if (-not (Run-WithAnimation -Command $compileCmd -Arguments $compileArgs -TaskName "Compiling in WSL (Native FS)")) { exit 1 }
+    if (-not (Run-WithAnimation -Command $compileCmd -Arguments $compileArgs -TaskName $compileTask)) { exit 1 }
     $compileTime = ((Get-Date) - $compileStart).TotalSeconds
 
-    # 3. Sync Artifacts Back to Windows
-    $syncBackCmd = "wsl"
-    # 只同步生成的 .bin 和 .elf 文件回 Windows
-    $syncBackArgs = "-d DKC bash -c 'mkdir -p ""$WSLProjectRoot/$BuildDir"" && cp ""$WSLBuildDir""/*.bin ""$WSLProjectRoot/$BuildDir/"" && cp ""$WSLBuildDir""/*.elf ""$WSLProjectRoot/$BuildDir/""'"
-    $syncBackStart = Get-Date
-    if (-not (Run-WithAnimation -Command $syncBackCmd -Arguments $syncBackArgs -TaskName "Syncing Artifacts to Windows")) { exit 1 }
-    $syncBackTime = ((Get-Date) - $syncBackStart).TotalSeconds
+    # 3. Sync Artifacts Back to Windows (仅 native 模式需要，mnt 模式已经在同目录下)
+    if ($IoMode -eq "native") {
+        $syncBackCmd = "wsl"
+        $syncBackArgs = "-d $script:WslDistro bash -c 'mkdir -p ""$WSLProjectRoot/$BuildDir"" && cp ""$WSLBuildDir""/*.bin ""$WSLProjectRoot/$BuildDir/"" && cp ""$WSLBuildDir""/*.elf ""$WSLProjectRoot/$BuildDir/""'"
+        $syncBackStart = Get-Date
+        if (-not (Run-WithAnimation -Command $syncBackCmd -Arguments $syncBackArgs -TaskName "Syncing Artifacts to Windows")) { exit 1 }
+        $syncBackTime = ((Get-Date) - $syncBackStart).TotalSeconds
+    }
 
     # 4. Get actual bin filename from build output
-    $actualBinFile = wsl -d DKC bash -c "ls ""$WSLBuildDir""/*.bin 2>/dev/null | head -1 | xargs -r basename"
+    $actualBinFile = Invoke-WslCommand -Command "ls ""$WSLBuildDir""/*.bin 2>/dev/null | head -1 | xargs -r basename"
     if ([string]::IsNullOrWhiteSpace($actualBinFile)) {
         Write-Error "No .bin file found in build output: $WSLBuildDir"
         exit 1
     }
-    $BinPath = "$ProjectRoot\$BuildDir\$actualBinFile"
+    $BinPath = Join-Path $ProjectRoot $BuildDir $actualBinFile
 
     # Output Performance Report
     Write-Host "`n=== Performance Report ===" -ForegroundColor Yellow
-    Write-Host "Sync to WSL:   $("{0:N2}" -f $syncTime)s"
+    if ($IoMode -eq "native") {
+        Write-Host "Sync to WSL:   $("{0:N2}" -f $syncTime)s"
+    }
     Write-Host "Compilation:   $("{0:N2}" -f $compileTime)s"
-    Write-Host "Sync back:     $("{0:N2}" -f $syncBackTime)s"
+    if ($IoMode -eq "native") {
+        Write-Host "Sync back:     $("{0:N2}" -f $syncBackTime)s"
+    }
     $totalTime = $syncTime + $compileTime + $syncBackTime
     Write-Host "Total Build:   $("{0:N2}" -f $totalTime)s"
     Write-Host "========================`n" -ForegroundColor Yellow
 }
 
+# --------------------------
+# 6. 上传 / 串口监视
+# --------------------------
 # 仅上传场景需要固件文件；串口监视(-s)不应依赖 .bin
 if ($Upload -and (-not $BinPath -or -not (Test-Path $BinPath))) {
-    $actualBinFile = wsl -d DKC bash -c "ls ""$WSLBuildDir""/*.bin 2>/dev/null | head -1 | xargs -r basename"
+    $actualBinFile = Invoke-WslCommand -Command "ls ""$WSLBuildDir""/*.bin 2>/dev/null | head -1 | xargs -r basename"
     if ([string]::IsNullOrWhiteSpace($actualBinFile)) {
         Write-Error "No .bin file found in build output: $WSLBuildDir"
         exit 1
     }
-    $BinPath = "$ProjectRoot\$BuildDir\$actualBinFile"
+    $BinPath = Join-Path $ProjectRoot $BuildDir $actualBinFile
 }
 
 if ($Upload -or $Serial) {
@@ -367,14 +863,13 @@ if ($Upload -or $Serial) {
     if ($Serial) {
         $pyArgs += "-s"
     }
-    
-    # 传递 Sketch 路径给 python 脚本以保持一致性
+
     if ($Sketch) {
         $pyArgs += "--sketch"
         $pyArgs += "`"$Sketch`""
     }
-    
-    python "$ProjectRoot\arduino-cli.py" $pyArgs
+
+    python (Join-Path $ProjectRoot "arduino-cli.py") $pyArgs
 }
 
 Write-Host ">>> All Done!" -ForegroundColor Green

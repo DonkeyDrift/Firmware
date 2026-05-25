@@ -93,18 +93,18 @@ class Spinner:
         """更新后缀显示文本（如进度条）"""
         with self._screen_lock:
             self.suffix = text
-            if self.enable_progress and self.busy:
-                # 立即刷新一次，让进度更新更及时
-                self._render()
+            # 不再立即渲染，由后台线程统一刷新，避免双重渲染导致的闪烁
 
     def _render(self):
         """渲染当前状态到终端（使用 \r 整行覆盖）"""
         if not self.enable_progress:
             return
-        spinner_char = next(self.spinner)
-        line = f"\r{spinner_char} {self.message}"
+        # 有进度条时不显示旋转字符，避免动画字符跳动造成视觉闪烁
         if self.suffix:
-            line += f" {self.suffix}"
+            line = f"\r  {self.message} {self.suffix}"
+        else:
+            spinner_char = next(self.spinner)
+            line = f"\r{spinner_char} {self.message}"
         # 清除行尾残留字符
         line += "\033[K"
         sys.stdout.write(line)
@@ -146,19 +146,22 @@ def parse_progress_line(line: str) -> Optional[str]:
     解析上传过程中的固件写入进度行，返回格式化后的进度字符串
     无法识别或非写入阶段则返回 None
 
-    只匹配固件写入阶段，过滤擦除、校验等其他阶段的进度，避免闪烁
-    支持的格式：
-    1. Writing at 0x00010000... (5 %)
-    2. [=====     ] 50%  （esptool 标准写入进度格式，含等号字符）
+    只匹配固件写入阶段，严格过滤擦除、校验、压缩等其他阶段的进度，避免闪烁
+    白名单：仅保留标准方括号+等号进度条格式 `[========  ] xx%`
+    黑名单：包含 Erase/Verify/Hash/Compress/Check 等关键字的行一律过滤
     """
     if not line:
         return None
 
-    # 过滤非写入阶段：只保留包含 Writing 关键字或标准方括号+等号进度条的行
-    # 跳过擦除、编译链接、压缩、校验等其他阶段的百分比输出，防止进度条跳变闪烁
-    is_writing_stage = ("Writing" in line) or re.search(r'\[=+\s*\]', line)
-    if not is_writing_stage:
+    # 白名单：必须是方括号+等号的标准进度条格式，其他格式一律忽略
+    if not re.search(r'\[=+\s*\]', line):
         return None
+
+    # 黑名单：过滤所有非写入阶段的关键字
+    exclude_keywords = ("Eras", "Verif", "Hash", "Compress", "Check", "CRC", "Leaving", "Reset", "Wrote ")
+    for kw in exclude_keywords:
+        if kw in line:
+            return None
 
     percent = None
 

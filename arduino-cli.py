@@ -79,7 +79,10 @@ class Spinner:
         self.busy = False
         self.message = message
         self.suffix = ""
-        self.enable_progress = enable_progress and sys.stdout.isatty()
+        # 不严格要求 isatty()，兼容 PowerShell 等环境
+        self.enable_progress = enable_progress
+        if not sys.stdout.isatty() and os.environ.get("TERM") == "dumb":
+            self.enable_progress = False
         self._screen_lock = threading.Lock()
         if not self.enable_progress:
             # 非交互环境或关闭进度时，直接打印消息
@@ -146,28 +149,39 @@ def parse_progress_line(line: str) -> Optional[str]:
     支持的格式：
     1. Writing at 0x00010000... (5 %)
     2. [=====     ] 50%
-    3. 其他包含百分比的进度格式
+    3. [===>      ] 15.2% （esptool 格式）
+    4. 其他包含百分比的进度格式
     """
     if not line:
         return None
 
-    # 匹配模式1: (X %) 或 (X%) 格式，如 "(50 %)"、"(50%)"
-    match = re.search(r'\((\d+)\s*%\)', line)
+    percent = None
+
+    # 匹配模式1: 带小数点的百分比格式，如 " 15.2%"（esptool 格式）
+    match = re.search(r'(\d+\.\d+)\s*%', line)
     if match:
         try:
-            percent = int(match.group(1))
-            percent = max(0, min(100, percent))
-            bar_length = 20
-            filled = int(percent / 100 * bar_length)
-            bar = "[" + "=" * filled + " " * (bar_length - filled) + "]"
-            return f"{bar} {percent}%"
+            percent = float(match.group(1))
+            percent = max(0.0, min(100.0, percent))
         except (ValueError, IndexError):
             pass
 
-    # 匹配模式2: 已经是 [=====] XXX% 格式，直接提取美化
-    match = re.search(r'\[[=\s]+\]\s*\d+\s*%', line)
-    if match:
-        return match.group(0).strip()
+    # 匹配模式2: 整数百分比，如 "(5 %)"、"50%"
+    if percent is None:
+        match = re.search(r'(\d+)\s*%', line)
+        if match:
+            try:
+                percent = float(match.group(1))
+                percent = max(0.0, min(100.0, percent))
+            except (ValueError, IndexError):
+                pass
+
+    if percent is not None:
+        # 统一生成标准格式的进度条
+        bar_length = 20
+        filled = int(percent / 100 * bar_length)
+        bar = "[" + "=" * filled + " " * (bar_length - filled) + "]"
+        return f"{bar} {percent:.1f}%"
 
     return None
 
@@ -623,11 +637,14 @@ class ArduinoAutomation:
         self.logger.debug(f"执行命令: {' '.join(cmd)}")
         start_time = time.time()
 
-        # 判断是否启用进度条：非verbose + 是TTY + 启用进度 + 没传--no-progress
+        # 判断是否启用进度条：非verbose + 启用进度 + 没传--no-progress
+        # 注意：不严格要求 isatty()，因为 PowerShell 等环境下 isatty() 会返回 False 但实际支持 ANSI
         use_progress = enable_progress
         use_progress = use_progress and self.logger.getEffectiveLevel() >= logging.INFO
-        use_progress = use_progress and sys.stdout.isatty()
         use_progress = use_progress and not (hasattr(self.args, 'no_progress') and self.args.no_progress)
+        # 如果显式传了 --no-progress 或 stdout 明显是文件/管道，再关闭
+        if not sys.stdout.isatty() and os.environ.get("TERM") == "dumb":
+            use_progress = False
 
         try:
             spinner = None
@@ -636,6 +653,7 @@ class ArduinoAutomation:
                 spinner.__enter__()
 
             # 使用 Popen 逐行读取输出，以便实时解析进度
+            # esptool/arduino-cli 会把进度输出到 stderr，所以必须捕获 stderr
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -643,7 +661,8 @@ class ArduinoAutomation:
                 text=True,
                 encoding='utf-8',
                 errors='replace',
-                bufsize=1
+                bufsize=1,
+                universal_newlines=True
             )
 
             stdout_lines = []

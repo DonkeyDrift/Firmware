@@ -74,7 +74,7 @@ def setup_logging(log_file, level_name):
 class Spinner:
     """命令行加载动画，支持动态更新后缀文本（用于进度条等）"""
     def __init__(self, message="Processing... ", delay=0.15, enable_progress=True):
-        self.spinner = itertools.cycle(['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'])
+        self.spinner = itertools.cycle(['|', '/', '-', '\\'])
         self.delay = delay
         self.busy = False
         self.message = message

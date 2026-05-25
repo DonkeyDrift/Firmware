@@ -187,11 +187,30 @@ function Invoke-WslCommand {
     # 使用 -lc 而非 -c，加载登录配置文件，确保 PATH 包含 ~/bin 等用户自定义路径
     $wslArgs += @("bash", "-lc", $Command)
 
-    $output = & wsl @wslArgs 2>&1
-    if (-not $IgnoreExitCode -and $LASTEXITCODE -ne 0) {
-        Write-Error "WSL command failed: $Command`n$output"
+    # WSL 会将非致命提示（如代理配置警告）输出到 stderr，
+    # PowerShell 的 2>&1 会将其包装为 ErrorRecord，
+    # 临时切换为 Continue 避免 Stop 模式将其误判为终止错误
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $rawOutput = & wsl @wslArgs 2>&1
+    } finally {
+        $ErrorActionPreference = $prevEAP
     }
-    return $output
+
+    # 将所有输出统一为字符串，并过滤 WSL 非致命提示行
+    # WSL 代理警告特征：行首以 "wsl:" 或 "wsl.exe" 开头，或含 localhost/代理/NAT/回退 等关键字
+    $wslInfoPattern = '(?i)^wsl[:.]\s|localhost|proxy|代理|回退.*NAT|NAT.*回退|请检查|检测到'
+    $result = @($rawOutput | ForEach-Object {
+        if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" }
+    } | Where-Object {
+        [string]::IsNullOrWhiteSpace($_) -or $_ -notmatch $wslInfoPattern
+    })
+
+    if (-not $IgnoreExitCode -and $LASTEXITCODE -ne 0) {
+        Write-Error "WSL command failed: $Command`n$result"
+    }
+    return $result
 }
 
 <#
@@ -232,7 +251,14 @@ function Run-WithAnimation {
     $errorBuffer = New-Object System.Text.StringBuilder
 
     $outEvent = { if (-not [string]::IsNullOrEmpty($EventArgs.Data)) { $null = $Event.MessageData.outputBuffer.AppendLine($EventArgs.Data) } }
-    $errEvent = { if (-not [string]::IsNullOrEmpty($EventArgs.Data)) { $null = $Event.MessageData.errorBuffer.AppendLine($EventArgs.Data) } }
+    # 过滤 WSL 非致命提示（代理/NAT/网络警告），仅保留真正的命令错误
+    $wslWarnPattern = '(?i)^wsl[:.]\s|localhost|proxy|代理|回退.*NAT|NAT.*回退|请检查|检测到'
+    $errEvent = {
+        if (-not [string]::IsNullOrEmpty($EventArgs.Data)) {
+            if ($EventArgs.Data -match $wslWarnPattern) { return }
+            $null = $Event.MessageData.errorBuffer.AppendLine($EventArgs.Data)
+        }
+    }
     $eventData = @{ outputBuffer = $outputBuffer; errorBuffer = $errorBuffer }
 
     $sub1 = Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -Action $outEvent -MessageData $eventData
@@ -404,9 +430,11 @@ function Get-ProjectFQBN {
 function Get-WslArduinoCliPath {
     # 1. 用 command -v 探测（最可靠）
     $output = Invoke-WslCommand -Command "command -v arduino-cli 2>/dev/null || echo ''" -IgnoreExitCode
+    # 只提取路径行（以 / 或 ~ 开头），防御 WSL 警告文本混入
     $cleanOutput = ($output | Out-String).Trim() -replace '[^\x20-\x7E/]', ''
-    if (-not [string]::IsNullOrWhiteSpace($cleanOutput)) {
-        return $cleanOutput
+    $pathLine = ($cleanOutput -split "`n" | Where-Object { $_ -match '^[~/]' }) | Select-Object -First 1
+    if (-not [string]::IsNullOrWhiteSpace($pathLine)) {
+        return $pathLine.Trim()
     }
 
     # 2. 回退到常见路径
@@ -688,8 +716,9 @@ function Sync-ArduinoLibraries {
 # 主流程
 # ==============================================================================
 
-# 配置输出编码为UTF8
+# 配置输出编码为UTF8，启用 WSL UTF-8 模式避免中文乱码
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$env:WSL_UTF8 = "1"
 
 # --------------------------
 # 1. 加载配置文件

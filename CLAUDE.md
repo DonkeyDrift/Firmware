@@ -60,8 +60,22 @@ python arduino-cli.py -cu --no-progress
 
 ### Python 侧测试
 ```bash
+# 运行全部测试
 pytest tests/
+
+# 运行单个测试文件
+pytest tests/test_progress_parser.py
+
+# 运行单个测试用例
+pytest tests/test_progress_parser.py -k "test_percentage_with_decimal"
+
+# 查看详细输出
+pytest tests/ -v
 ```
+
+测试目录结构：
+- `tests/unit/` - 单元测试（进度解析、串口匹配等纯函数）
+- `tests/integration/` - 集成测试（编译、上传流程）
 
 ## Configuration
 
@@ -176,6 +190,23 @@ struct struct_message {
 - `STRESS` - 压力测试
 - `REGRESS` - 回归测试
 - `ANSI` / `NOANSI` - 切换 ANSI 转义序列显示
+
+## Git Conventions
+
+### 分支命名
+- `master` - 主分支，稳定版本
+- `v{版本号}-{特性}` - 特性分支，例如 `v1.2-WSL-Build`
+
+### 提交规范
+遵循约定式提交（Conventional Commits），并用中文书写：
+- `feat:` - 新功能
+- `fix:` - 修复 Bug
+- `refactor:` - 重构
+- `test:` - 测试相关
+- `chore:` - 构建工具/辅助工具变动
+- `docs:` - 文档更新
+
+示例：`fix(arduino-cli): 修复串口上传进度回退闪烁的问题`
 
 ## Documentation
 

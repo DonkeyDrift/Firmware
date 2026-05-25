@@ -25,6 +25,8 @@ import itertools
 import serial
 import shlex
 import select
+import re
+from typing import Optional
 from serial.tools import list_ports
 
 # 配置日志
@@ -70,38 +72,105 @@ def setup_logging(log_file, level_name):
     return logging.getLogger("ArduinoCLI")
 
 class Spinner:
-    """命令行加载动画"""
-    def __init__(self, message="Processing... ", delay=0.15):
+    """命令行加载动画，支持动态更新后缀文本（用于进度条等）"""
+    def __init__(self, message="Processing... ", delay=0.15, enable_progress=True):
         self.spinner = itertools.cycle(['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'])
         self.delay = delay
         self.busy = False
+        self.message = message
+        self.suffix = ""
+        self.enable_progress = enable_progress and sys.stdout.isatty()
         self._screen_lock = threading.Lock()
-        sys.stdout.write(message)
+        if not self.enable_progress:
+            # 非交互环境或关闭进度时，直接打印消息
+            sys.stdout.write(message + "\n")
+            sys.stdout.flush()
+
+    def update_suffix(self, text):
+        """更新后缀显示文本（如进度条）"""
+        with self._screen_lock:
+            self.suffix = text
+            if self.enable_progress and self.busy:
+                # 立即刷新一次，让进度更新更及时
+                self._render()
+
+    def _render(self):
+        """渲染当前状态到终端（使用 \r 整行覆盖）"""
+        if not self.enable_progress:
+            return
+        spinner_char = next(self.spinner)
+        line = f"\r{spinner_char} {self.message}"
+        if self.suffix:
+            line += f" {self.suffix}"
+        # 清除行尾残留字符
+        line += "\033[K"
+        sys.stdout.write(line)
         sys.stdout.flush()
 
     def spinner_task(self):
         while self.busy:
             with self._screen_lock:
-                sys.stdout.write(next(self.spinner))
-                sys.stdout.flush()
+                self._render()
             time.sleep(self.delay)
-            with self._screen_lock:
-                sys.stdout.write('\b')
-                sys.stdout.flush()
 
     def __enter__(self):
         self.busy = True
-        threading.Thread(target=self.spinner_task).start()
+        if self.enable_progress:
+            threading.Thread(target=self.spinner_task, daemon=True).start()
+        return self
 
     def __exit__(self, exception, value, tb):
         self.busy = False
         time.sleep(self.delay)
         with self._screen_lock:
-            if exception:
-                sys.stdout.write('FAILED\n')
+            if self.enable_progress:
+                # 清除进度行，显示最终结果
+                line = f"\r✅ {self.message}"
+                if exception:
+                    line = f"\r❌ {self.message}"
+                line += "\033[K\n"
+                sys.stdout.write(line)
             else:
-                sys.stdout.write('DONE\n')
+                if exception:
+                    sys.stdout.write('FAILED\n')
+                else:
+                    sys.stdout.write('DONE\n')
             sys.stdout.flush()
+
+
+def parse_progress_line(line: str) -> Optional[str]:
+    """
+    解析上传过程中的进度行，返回格式化后的进度字符串
+    无法识别则返回 None
+
+    支持的格式：
+    1. Writing at 0x00010000... (5 %)
+    2. [=====     ] 50%
+    3. 其他包含百分比的进度格式
+    """
+    if not line:
+        return None
+
+    # 匹配模式1: (X %) 或 (X%) 格式，如 "(50 %)"、"(50%)"
+    match = re.search(r'\((\d+)\s*%\)', line)
+    if match:
+        try:
+            percent = int(match.group(1))
+            percent = max(0, min(100, percent))
+            bar_length = 20
+            filled = int(percent / 100 * bar_length)
+            bar = "[" + "=" * filled + " " * (bar_length - filled) + "]"
+            return f"{bar} {percent}%"
+        except (ValueError, IndexError):
+            pass
+
+    # 匹配模式2: 已经是 [=====] XXX% 格式，直接提取美化
+    match = re.search(r'\[[=\s]+\]\s*\d+\s*%', line)
+    if match:
+        return match.group(0).strip()
+
+    return None
+
 
 class ArduinoAutomation:
     DEFAULT_DESCRIPTION_KEYWORDS = [
@@ -550,64 +619,99 @@ class ArduinoAutomation:
             if handler not in root_logger.handlers:
                 root_logger.addHandler(handler)
 
-    def run_command(self, cmd, timeout=None, message="Processing... "):
+    def run_command(self, cmd, timeout=None, message="Processing... ", enable_progress=True):
         self.logger.debug(f"执行命令: {' '.join(cmd)}")
         start_time = time.time()
-        
-        # Determine if we should use spinner (only if not verbose debugging)
-        use_spinner = self.logger.getEffectiveLevel() >= logging.INFO
-        
+
+        # 判断是否启用进度条：非verbose + 是TTY + 启用进度 + 没传--no-progress
+        use_progress = enable_progress
+        use_progress = use_progress and self.logger.getEffectiveLevel() >= logging.INFO
+        use_progress = use_progress and sys.stdout.isatty()
+        use_progress = use_progress and not (hasattr(self.args, 'no_progress') and self.args.no_progress)
+
         try:
-            if use_spinner:
-                spinner = Spinner(message, delay=0.15)
-                spinner.busy = True
-                t = threading.Thread(target=spinner.spinner_task)
-                t.start()
-                
-            result = subprocess.run(
-                cmd, 
-                check=True, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE, 
+            spinner = None
+            if self.logger.getEffectiveLevel() >= logging.INFO:
+                spinner = Spinner(message, delay=0.15, enable_progress=use_progress)
+                spinner.__enter__()
+
+            # 使用 Popen 逐行读取输出，以便实时解析进度
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # 合并 stdout 和 stderr，保证输出顺序
                 text=True,
                 encoding='utf-8',
                 errors='replace',
-                timeout=timeout
+                bufsize=1
             )
-            
-            if use_spinner:
-                spinner.busy = False
-                t.join()
-                sys.stdout.write(' Done\n')
-                sys.stdout.flush()
+
+            stdout_lines = []
+            last_was_progress = False
+
+            for line in process.stdout:
+                line = line.rstrip('\n')
+                stdout_lines.append(line)
+
+                if not line:
+                    continue
+
+                # 尝试解析为进度行
+                progress_text = None
+                if use_progress:
+                    progress_text = parse_progress_line(line)
+
+                if progress_text and spinner:
+                    # 是进度行，更新 spinner 后缀
+                    spinner.update_suffix(progress_text)
+                    last_was_progress = True
+                else:
+                    # 普通输出行
+                    if last_was_progress and use_progress:
+                        # 上一行是进度，先换行清空当前行
+                        sys.stdout.write("\r\033[K")
+                        last_was_progress = False
+                    # 打印普通输出（debug 模式下才打印，info 模式静默除了重要错误）
+                    if self.logger.getEffectiveLevel() <= logging.DEBUG:
+                        sys.stdout.write(line + "\n")
+                    elif "error" in line.lower() or "fail" in line.lower() or "warning" in line.lower():
+                        # 重要信息即使 info 模式也打印
+                        sys.stdout.write("\r\033[K" + line + "\n")
+                        if spinner:
+                            # 重新触发 spinner 渲染
+                            spinner._render()
+                    sys.stdout.flush()
+
+            # 等待进程结束
+            returncode = process.wait(timeout=timeout)
+            stdout_full = "\n".join(stdout_lines)
+
+            if returncode != 0:
+                raise subprocess.CalledProcessError(returncode, cmd, output=stdout_full, stderr="")
+
+            if spinner:
+                spinner.__exit__(None, None, None)
 
             duration = time.time() - start_time
             self.logger.info(f"命令执行成功 (耗时 {duration:.2f}s)")
-            self.logger.debug(f"输出:\n{result.stdout}")
-            return True, result.stdout
+            self.logger.debug(f"输出:\n{stdout_full}")
+            return True, stdout_full
+
         except subprocess.CalledProcessError as e:
-            if use_spinner:
-                spinner.busy = False
-                t.join()
-                sys.stdout.write(' Failed\n')
-                sys.stdout.flush()
+            if spinner:
+                spinner.__exit__(type(e), e, None)
             self.logger.error(f"命令执行失败 (退出码 {e.returncode})")
-            self.logger.error(f"错误输出:\n{e.stderr}")
-            return False, e.stderr
+            self.logger.error(f"错误输出:\n{e.stdout}")
+            return False, e.stdout
         except subprocess.TimeoutExpired:
-            if use_spinner:
-                spinner.busy = False
-                t.join()
-                sys.stdout.write(' Timeout\n')
-                sys.stdout.flush()
+            process.kill()
+            if spinner:
+                spinner.__exit__(type(e), e, None)
             self.logger.error(f"命令执行超时 ({timeout}s)")
             return False, "Timeout"
         except Exception as e:
-            if use_spinner:
-                spinner.busy = False
-                t.join()
-                sys.stdout.write(' Error\n')
-                sys.stdout.flush()
+            if spinner:
+                spinner.__exit__(type(e), e, None)
             self.logger.error(f"未知错误: {e}")
             return False, str(e)
 
@@ -924,7 +1028,25 @@ class ArduinoAutomation:
             self.reset_enabled = False
             self.logger.warning("自动复位达标失败，已回退到手动模式")
 
+def setup_signal_handlers():
+    """设置信号处理器，确保中断时恢复终端状态"""
+    def handle_sigint(signum, frame):
+        # 恢复光标和终端状态
+        sys.stdout.write("\033[?25h\n")
+        sys.stdout.flush()
+        sys.exit(1)
+
+    try:
+        import signal
+        signal.signal(signal.SIGINT, handle_sigint)
+        signal.signal(signal.SIGTERM, handle_sigint)
+    except (ValueError, ImportError):
+        # Windows 下部分信号不支持，忽略
+        pass
+
+
 def main():
+    setup_signal_handlers()
     parser = argparse.ArgumentParser(description="Arduino 项目自动化构建脚本")
     
     # 操作标志
@@ -951,6 +1073,7 @@ def main():
     parser.add_argument('--input-file', '-i', dest='input_file', help='指定预编译的固件文件(.bin)路径，用于WSL交叉编译场景')
     parser.add_argument('--build-path', dest='build_path', help='指定构建输出目录(用于编译时指定输出位置)')
     parser.add_argument('--list-ports', dest='list_ports', action='store_true', help='列出当前检测到的串口设备')
+    parser.add_argument('--no-progress', dest='no_progress', action='store_true', help='关闭单行进度条刷新，逐行输出所有日志')
     parser.set_defaults(auto_reset=None)
     
     args = parser.parse_args()

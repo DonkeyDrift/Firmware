@@ -64,10 +64,10 @@ python arduino-cli.py -cu --no-progress
 pytest tests/
 
 # 运行单个测试文件
-pytest tests/test_progress_parser.py
+pytest tests/test_arduino_cli.py
 
 # 运行单个测试用例
-pytest tests/test_progress_parser.py -k "test_percentage_with_decimal"
+pytest tests/test_arduino_cli.py -k "test_prefers_explicit_port_when_available"
 
 # 查看详细输出
 pytest tests/ -v
@@ -117,7 +117,7 @@ pytest tests/ -v
 
 ### 关键编译宏
 - `ENABLE_GAMEPAD_MODE` - 启用蓝牙游戏手柄模式，将 RC 通道映射为 BLE 游戏手柄轴
-- 默认关闭，修改后需重新编译
+- 当前在 `mus4.ino` 中默认启用，修改后需重新编译
 
 ### 主入口文件
 `./mus4.ino` - 主 Arduino sketch，包含:
@@ -180,7 +180,7 @@ struct struct_message {
 - CH1（转向）→ 右摇杆 X 轴
 - CH2（油门）→ 左摇杆 Y 轴
 
-设备名称: "Gamepad MU03"
+设备名称: "Gamepad MU02"
 
 ## Runtime Test Commands (串口交互)
 
@@ -213,5 +213,5 @@ struct struct_message {
 详细文档位于 `Doc/` 目录:
 - `Arch/architecture.md` - 系统架构（含图示）
 - `Hardware/pin_definitions.md` - 完整引脚定义
-- `README/ArduinoCLI.md` - 构建脚本使用说明
+- `Tools/ArduinoCLI.md` - 构建脚本使用说明
 - `README/DevNote.md` - 开发笔记

@@ -79,6 +79,7 @@ class Spinner:
         self.busy = False
         self.message = message
         self.suffix = ""
+        self._last_percent = -1.0  # 进度只进不退，避免 esptool 多段写入导致进度回退闪烁
         # 不严格要求 isatty()，兼容 PowerShell 等环境
         self.enable_progress = enable_progress
         if not sys.stdout.isatty() and os.environ.get("TERM") == "dumb":
@@ -90,16 +91,28 @@ class Spinner:
             sys.stdout.flush()
 
     def update_suffix(self, text):
-        """更新后缀显示文本（如进度条）"""
+        """更新后缀显示文本（如进度条），进度只进不退，避免多段写入时回退闪烁"""
         with self._screen_lock:
+            # 提取进度百分比，新值小于等于上次记录的则忽略，防止回退
+            match = re.search(r'(\d+(?:\.\d+)?)\s*%', text)
+            if match:
+                try:
+                    current = float(match.group(1))
+                    if current < self._last_percent:
+                        return  # 进度回退，直接忽略，不更新也不渲染
+                    self._last_percent = current
+                except (ValueError, IndexError):
+                    pass
             self.suffix = text
-            # 不再立即渲染，由后台线程统一刷新，避免双重渲染导致的闪烁
+            if self.enable_progress and self.busy:
+                # 有进度条时立即渲染，避免卡顿；有进度条时后台线程会停止定时刷新，避免双重渲染
+                self._render()
 
     def _render(self):
         """渲染当前状态到终端（使用 \r 整行覆盖）"""
         if not self.enable_progress:
             return
-        # 有进度条时不显示旋转字符，避免动画字符跳动造成视觉闪烁
+        # 有进度条时完全禁用旋转字符，仅保留进度条的推进作为动效，避免闪烁
         if self.suffix:
             line = f"\r  {self.message} {self.suffix}"
         else:
@@ -113,7 +126,9 @@ class Spinner:
     def spinner_task(self):
         while self.busy:
             with self._screen_lock:
-                self._render()
+                # 有进度条时跳过定时重绘，完全由 update_suffix 驱动刷新，避免双重渲染导致的闪烁
+                if not self.suffix:
+                    self._render()
             time.sleep(self.delay)
 
     def __enter__(self):
@@ -146,19 +161,14 @@ def parse_progress_line(line: str) -> Optional[str]:
     解析上传过程中的固件写入进度行，返回格式化后的进度字符串
     无法识别或非写入阶段则返回 None
 
-    只匹配固件写入阶段，严格过滤擦除、校验、压缩等其他阶段的进度，避免闪烁
-    白名单：仅保留标准方括号+等号进度条格式 `[========  ] xx%`
-    黑名单：包含 Erase/Verify/Hash/Compress/Check 等关键字的行一律过滤
+    核心识别信号：包含百分比数字（兼容方括号进度条、Writing at 原始格式）
+    黑名单：仅过滤擦除、校验、压缩等其他阶段的进度，避免闪烁
     """
     if not line:
         return None
 
-    # 白名单：必须是方括号+等号的标准进度条格式，其他格式一律忽略
-    if not re.search(r'\[=+\s*\]', line):
-        return None
-
-    # 黑名单：过滤所有非写入阶段的关键字
-    exclude_keywords = ("Eras", "Verif", "Hash", "Compress", "Check", "CRC", "Leaving", "Reset", "Wrote ")
+    # 黑名单：仅过滤真正的非写入阶段关键字（写入相关的 Writing / Wrote 等不过滤）
+    exclude_keywords = ("Eras", "Verif", "Hash", "Compress", "Check", "CRC", "Leaving", "Reset")
     for kw in exclude_keywords:
         if kw in line:
             return None
@@ -674,7 +684,6 @@ class ArduinoAutomation:
             )
 
             stdout_lines = []
-            last_was_progress = False
 
             for line in process.stdout:
                 line = line.rstrip('\n')
@@ -689,23 +698,21 @@ class ArduinoAutomation:
                     progress_text = parse_progress_line(line)
 
                 if progress_text and spinner:
-                    # 是进度行，更新 spinner 后缀
+                    # 是进度行，更新 spinner 后缀，spinner 自己负责渲染，不清行
                     spinner.update_suffix(progress_text)
-                    last_was_progress = True
                 else:
-                    # 普通输出行
-                    if last_was_progress and use_progress:
-                        # 上一行是进度，先换行清空当前行
-                        sys.stdout.write("\r\033[K")
-                        last_was_progress = False
-                    # 打印普通输出（debug 模式下才打印，info 模式静默除了重要错误）
+                    # 普通输出行：不再触发清行，避免进度条"闪没"
+                    # 普通中间行（Writing at 0x... 等）静默吞掉，不干扰进度条显示
+                    is_important = "error" in line.lower() or "fail" in line.lower() or "warning" in line.lower()
                     if self.logger.getEffectiveLevel() <= logging.DEBUG:
-                        sys.stdout.write(line + "\n")
-                    elif "error" in line.lower() or "fail" in line.lower() or "warning" in line.lower():
-                        # 重要信息即使 info 模式也打印
+                        # debug 模式打印全部输出
                         sys.stdout.write("\r\033[K" + line + "\n")
                         if spinner:
-                            # 重新触发 spinner 渲染
+                            spinner._render()
+                    elif is_important:
+                        # 重要信息：清行打印，打印后立即重绘进度条，避免进度条消失
+                        sys.stdout.write("\r\033[K" + line + "\n")
+                        if spinner:
                             spinner._render()
                     sys.stdout.flush()
 

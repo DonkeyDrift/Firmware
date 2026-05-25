@@ -244,6 +244,8 @@ function Run-WithAnimation {
     $startTime = Get-Date
     $frameIdx = 0
     $frames = @('|', '/', '-', '\')
+    # ANSI 转义序列：\r 回行首 + \e[K 清行尾
+    $esc = [char]0x1b
 
     try { [Console]::CursorVisible = $false } catch {}
 
@@ -272,29 +274,30 @@ function Run-WithAnimation {
         $timeStr = "{0:mm}:{0:ss}" -f $elapsed
         $frame = $frames[$frameIdx % $frames.Length]
         $frameIdx++
-        $status = "$frame $TaskName... ($timeStr)"
-        Write-Host -NoNewline "`r$status   "
+        # 用 [Console]::Write 直接写控制台，\r 回行首 + ESC[K 清行尾，彻底避免残留字符
+        [Console]::Write("`r$frame $TaskName... ($timeStr)$esc[K")
         Start-Sleep -Milliseconds 150
     }
 
     $p.WaitForExit()
     try { [Console]::CursorVisible = $true } catch {}
-    Write-Host ""
 
     Unregister-Event -SourceIdentifier $sub1.Name -ErrorAction SilentlyContinue
     Unregister-Event -SourceIdentifier $sub2.Name -ErrorAction SilentlyContinue
     $sub1 | Remove-Job -ErrorAction SilentlyContinue
     $sub2 | Remove-Job -ErrorAction SilentlyContinue
 
+    # 用 \r + ESC[K 清除动画行，在同一行打印最终结果
+    # 统一使用 [Console]::Write 避免与 Write-Host 的光标位置不同步导致后续输出错位
     if ($p.ExitCode -ne 0) {
-        Write-Host "Failed!" -ForegroundColor Red
+        [Console]::Write("`r$esc[K$esc[31mX $TaskName - Failed!$esc[0m`n")
         Write-Host "Error Code: $($p.ExitCode)" -ForegroundColor Red
         Write-Host "---------------- Error Output ----------------" -ForegroundColor Yellow
         Write-Host $errorBuffer.ToString() -ForegroundColor Yellow
         Write-Host "----------------------------------------------" -ForegroundColor Yellow
         return $false
     } else {
-        Write-Host "Done!" -ForegroundColor Green
+        [Console]::Write("`r$esc[K$esc[32m  $TaskName - Done!$esc[0m`n")
         return $true
     }
 }

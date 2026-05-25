@@ -19,7 +19,7 @@ serial_detection:
   preferred_vid_pid: []
 
 logging:
-  file: "mus4/ArduinoCLI.log"
+  file: "ArduinoCLI.log"
   level: "INFO"  # DEBUG, INFO, WARN, ERROR
 
 reset:

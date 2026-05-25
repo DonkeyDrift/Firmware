@@ -1121,7 +1121,7 @@ def main():
     
     # 初始化日志 (先加载配置以获取日志路径)
     # 这里为了简化，先读取一次配置或使用默认
-    log_file = os.path.join(script_dir, "mus4/ArduinoCLI.log")
+    log_file = os.path.join(script_dir, "ArduinoCLI.log")
     try:
         with open(config_path, 'r') as f:
             cfg = yaml.safe_load(f)

@@ -143,16 +143,21 @@ class Spinner:
 
 def parse_progress_line(line: str) -> Optional[str]:
     """
-    解析上传过程中的进度行，返回格式化后的进度字符串
-    无法识别则返回 None
+    解析上传过程中的固件写入进度行，返回格式化后的进度字符串
+    无法识别或非写入阶段则返回 None
 
+    只匹配固件写入阶段，过滤擦除、校验等其他阶段的进度，避免闪烁
     支持的格式：
     1. Writing at 0x00010000... (5 %)
-    2. [=====     ] 50%
-    3. [===>      ] 15.2% （esptool 格式）
-    4. 其他包含百分比的进度格式
+    2. [=====     ] 50%  （esptool 标准写入进度格式，含等号字符）
     """
     if not line:
+        return None
+
+    # 过滤非写入阶段：只保留包含 Writing 关键字或标准方括号+等号进度条的行
+    # 跳过擦除、编译链接、压缩、校验等其他阶段的百分比输出，防止进度条跳变闪烁
+    is_writing_stage = ("Writing" in line) or re.search(r'\[=+\s*\]', line)
+    if not is_writing_stage:
         return None
 
     percent = None

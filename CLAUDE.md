@@ -34,13 +34,29 @@ python arduino-cli.py -cus
 
 # 使用预编译固件
 python arduino-cli.py -u -i build/mus4.ino.bin
+
+# 列出所有匹配的串口
+python arduino-cli.py --list-ports
+
+# 关闭单行进度条（逐行输出，适合日志重定向）
+python arduino-cli.py -cu --no-progress
 ```
 
 ### WSL 交叉编译（Windows + WSL 环境）
 ```powershell
-# 在 WSL 中编译，通过 Windows 端串口上传
+# 完整流程：WSL 中编译 -> Windows 端串口上传
 .\arduino-cli-wsl.ps1
+
+# 常用参数
+.\arduino-cli-wsl.ps1 -Verbose        # 显示详细日志
+.\arduino-cli-wsl.ps1 -SkipCompile    # 跳过 WSL 编译，直接上传已有固件
+.\arduino-cli-wsl.ps1 -SkipUpload     # 仅编译，不上传
+.\arduino-cli-wsl.ps1 -Port COM9      # 指定串口
 ```
+
+**构建脚本分工**：
+- `arduino-cli.py` - 跨平台主脚本，负责编译、上传、串口监控、串口自动匹配等核心逻辑
+- `arduino-cli-wsl.ps1` - Windows 端包装脚本，负责调用 WSL 编译后再通过 Windows 串口烧录
 
 ### Python 侧测试
 ```bash
@@ -62,6 +78,32 @@ pytest tests/
 - 默认波特率: 115200
 
 ## Architecture
+
+### 代码层次划分
+```
+┌──────────────────────────────────────────┐
+│  构建工具层（Python / PowerShell）        │
+│  arduino-cli.py + arduino-cli-wsl.ps1     │
+│  负责：编译编排、串口自动匹配、进度解析    │
+└──────────────────────────────────────────┘
+                      ↓ 产物为 .bin 固件
+┌──────────────────────────────────────────┐
+│  嵌入式应用层（Arduino/C++，根目录）       │
+│  mus4.ino → 主状态机、中断、串口协议       │
+│  SharedTypes.h → 跨模块数据结构契约        │
+│  TUI.h/cpp → 终端仪表盘渲染               │
+│  Buzzer.h/cpp → 蜂鸣器状态机              │
+└──────────────────────────────────────────┘
+                      ↓ I2C / PWM / UART
+┌──────────────────────────────────────────┐
+│  硬件层（MUS4-v2.3 PCB）                  │
+│  ESP32、RC 接收机、舵机/电调、IMU、INA219  │
+└──────────────────────────────────────────┘
+```
+
+### 关键编译宏
+- `ENABLE_GAMEPAD_MODE` - 启用蓝牙游戏手柄模式，将 RC 通道映射为 BLE 游戏手柄轴
+- 默认关闭，修改后需重新编译
 
 ### 主入口文件
 `./mus4.ino` - 主 Arduino sketch，包含:

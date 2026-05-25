@@ -79,7 +79,6 @@ class Spinner:
         self.busy = False
         self.message = message
         self.suffix = ""
-        self._last_percent = -1.0  # 进度只进不退，避免 esptool 多段写入导致进度回退闪烁
         # 不严格要求 isatty()，兼容 PowerShell 等环境
         self.enable_progress = enable_progress
         if not sys.stdout.isatty() and os.environ.get("TERM") == "dumb":
@@ -91,18 +90,8 @@ class Spinner:
             sys.stdout.flush()
 
     def update_suffix(self, text):
-        """更新后缀显示文本（如进度条），进度只进不退，避免多段写入时回退闪烁"""
+        """更新后缀显示文本（如进度条）"""
         with self._screen_lock:
-            # 提取进度百分比，新值小于等于上次记录的则忽略，防止回退
-            match = re.search(r'(\d+(?:\.\d+)?)\s*%', text)
-            if match:
-                try:
-                    current = float(match.group(1))
-                    if current < self._last_percent:
-                        return  # 进度回退，直接忽略，不更新也不渲染
-                    self._last_percent = current
-                except (ValueError, IndexError):
-                    pass
             self.suffix = text
             if self.enable_progress and self.busy:
                 # 有进度条时立即渲染，避免卡顿；有进度条时后台线程会停止定时刷新，避免双重渲染
@@ -684,6 +673,10 @@ class ArduinoAutomation:
             )
 
             stdout_lines = []
+            # 只显示最后一个（最大的）固件写入阶段的进度，前面的 bootloader/分区表等小阶段静默
+            # ESP32 app 固件起始地址为 0x10000，是最后且最大的写入段
+            show_progress = False
+            LAST_STAGE_ADDR = 0x10000  # ESP32 app 固件起始地址
 
             for line in process.stdout:
                 line = line.rstrip('\n')
@@ -692,9 +685,19 @@ class ArduinoAutomation:
                 if not line:
                     continue
 
+                # 阶段识别：检测到 Writing at 0x... 行时判断是否是最后一个大段
+                if use_progress and "Writing at 0x" in line:
+                    match = re.search(r'Writing at 0x([0-9a-fA-F]+)', line)
+                    if match:
+                        try:
+                            addr = int(match.group(1), 16)
+                            show_progress = addr >= LAST_STAGE_ADDR
+                        except ValueError:
+                            pass
+
                 # 尝试解析为进度行
                 progress_text = None
-                if use_progress:
+                if use_progress and show_progress:
                     progress_text = parse_progress_line(line)
 
                 if progress_text and spinner:

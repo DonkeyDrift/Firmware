@@ -152,7 +152,7 @@ void TUI::render() {
 void TUI::drawHeader() {
     cursorTo(ROW_HEADER, 1);
     if (_ansiEnabled) _out.print(ANSI_CYAN);
-    _out.println("DonkeyCar Control System - v1.0");
+    _out.println("DonkeyCar Control System - v1.1");
     _out.println("===================================");
     if (_ansiEnabled) _out.print(ANSI_RESET);
 }
@@ -161,21 +161,21 @@ void TUI::drawMode() {
     if (!_forceRedraw && _state.output.mode == _lastState.output.mode) return;
     
     cursorTo(ROW_MODE, 1);
-    _out.print("Mode: ");
-    
+    _out.print("MODE: ");
+
     if (_ansiEnabled) {
         switch(_state.output.mode) {
-            case CAR_MODE_MANUAL: 
-                _out.print(ANSI_GREEN "Manual   " ANSI_RESET); 
+            case CAR_MODE_MANUAL:
+                _out.print(ANSI_GREEN "MANUAL   " ANSI_RESET);
                 break;
-            case CAR_MODE_SEMI_AUTO: 
-                _out.print(ANSI_YELLOW "Semi-Auto" ANSI_RESET); 
+            case CAR_MODE_SEMI_AUTO:
+                _out.print(ANSI_YELLOW "SEMI-AUTO" ANSI_RESET);
                 break;
-            case CAR_MODE_FULL_AUTO: 
-                _out.print(ANSI_MAGENTA "Full-Auto" ANSI_RESET); 
+            case CAR_MODE_FULL_AUTO:
+                _out.print(ANSI_MAGENTA "FULL-AUTO" ANSI_RESET);
                 break;
             default:
-                _out.print("Unknown  ");
+                _out.print("UNKNOWN  ");
         }
     } else {
         _out.print(_state.output.mode);
@@ -183,16 +183,35 @@ void TUI::drawMode() {
 }
 
 void TUI::drawPark() {
-    if (!_forceRedraw && _state.output.park == _lastState.output.park) return;
-    
+    extern bool drift_assist_enabled;
+    extern bool drift_assist_active;
+    extern float drift_compensation;
+    extern float gyro_z_filtered;
+
     cursorTo(ROW_PARK, 1);
-    _out.print("Park: ");
+    _out.print("PARK: ");
     if (_ansiEnabled) {
         if (_state.output.park) _out.print(ANSI_RED "LOCKED  " ANSI_RESET);
         else _out.print(ANSI_GREEN "UNLOCKED" ANSI_RESET);
     } else {
-        _out.print(_state.output.park ? "LOCKED" : "UNLOCKED");
+        _out.print(_state.output.park ? "LOCKED  " : "UNLOCKED");
     }
+
+    cursorTo(ROW_PARK, 18);
+    if (drift_assist_enabled) {
+        if (_ansiEnabled) _out.print(ANSI_GREEN);
+        _out.print("DRIFT: ON");
+        if (drift_assist_active) {
+            if (_ansiEnabled) _out.print(ANSI_YELLOW);
+            _out.printf(" ACTIVE  GyroZ: %+5.2f  Comp: %+4.0f", gyro_z_filtered, drift_compensation);
+        } else {
+            _out.printf(" STANDBY GyroZ: %+5.2f", gyro_z_filtered);
+        }
+    } else {
+        if (_ansiEnabled) _out.print(ANSI_WHITE);
+        _out.print("DRIFT: OFF");
+    }
+    if (_ansiEnabled) _out.print(ANSI_RESET "\033[K");
 }
 
 void TUI::drawRC() {
@@ -370,30 +389,6 @@ void TUI::drawSensors() {
         if (_ansiEnabled) _out.print("\033[K");
     }
 
-    // Clear rest of line
-    if (_ansiEnabled) _out.print("\033[K");
-
-    // 漂移辅助状态显示
-    extern bool drift_assist_enabled;
-    extern bool drift_assist_active;
-    extern float drift_compensation;
-    extern float gyro_z_filtered;
-
-    cursorTo(row + 2, 1);
-    if (drift_assist_enabled) {
-        if (_ansiEnabled) _out.print(ANSI_GREEN);
-        _out.print("DRIFT: ON");
-        if (drift_assist_active) {
-            if (_ansiEnabled) _out.print(ANSI_YELLOW);
-            _out.printf(" ACTIVE  GyroZ: %+5.2f  Comp: %+4.0f", gyro_z_filtered, drift_compensation);
-        } else {
-            _out.printf(" STANDBY GyroZ: %+5.2f", gyro_z_filtered);
-        }
-    } else {
-        if (_ansiEnabled) _out.print(ANSI_WHITE);
-        _out.print("DRIFT: OFF");
-    }
-    if (_ansiEnabled) _out.print(ANSI_RESET);
     // Clear rest of line
     if (_ansiEnabled) _out.print("\033[K");
 }

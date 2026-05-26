@@ -777,9 +777,25 @@ class ArduinoAutomation:
             sys.exit(10)
         return True
 
+    def normalize_precompiled_input_file(self, input_file):
+        lower = os.path.basename(input_file).lower()
+        suffixes = (".bootloader.bin", ".partitions.bin", ".merged.bin")
+        if not lower.endswith(suffixes):
+            return input_file
+
+        directory = os.path.dirname(input_file) or "."
+        stem = os.path.basename(input_file)
+        for suffix in (".bootloader.bin", ".partitions.bin", ".merged.bin"):
+            if stem.lower().endswith(suffix):
+                candidate = os.path.join(directory, stem[:-len(suffix)] + ".bin")
+                if os.path.exists(candidate):
+                    self.logger.warning(f"指定文件是烧录分片，自动改用主固件: {candidate}")
+                    return candidate
+        return input_file
+
     def build_upload_command(self, port):
         if self.args and getattr(self.args, 'input_file', None):
-            input_file = self.args.input_file
+            input_file = self.normalize_precompiled_input_file(self.args.input_file)
             if not os.path.exists(input_file):
                 self.logger.error(f"指定的固件文件不存在: {input_file}")
                 sys.exit(14)

@@ -58,6 +58,27 @@ def make_automation(port="auto", serial_detection_cfg=None):
     return automation
 
 
+class TestPrecompiledFirmwareSelection(unittest.TestCase):
+    def test_replaces_bootloader_fragment_with_main_firmware_when_available(self):
+        automation = make_automation()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            main_firmware = root / "mus4.ino.bin"
+            bootloader = root / "mus4.ino.bootloader.bin"
+            main_firmware.write_bytes(b"app")
+            bootloader.write_bytes(b"bootloader")
+
+            selected = automation.normalize_precompiled_input_file(str(bootloader))
+
+        self.assertEqual(selected, str(main_firmware))
+
+    def test_keeps_main_firmware_input_file(self):
+        automation = make_automation()
+        selected = automation.normalize_precompiled_input_file("build_wsl/mus4.ino.bin")
+
+        self.assertEqual(selected, "build_wsl/mus4.ino.bin")
+
+
 class TestSerialPortSelection(unittest.TestCase):
     def test_prefers_explicit_port_when_available(self):
         automation = make_automation(port="COM9")

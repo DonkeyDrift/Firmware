@@ -911,7 +911,7 @@ if ($Compile) {
     }
 
     # 4. Get actual bin filename from build output
-    $actualBinFile = Invoke-WslCommand -Command "ls ""$WSLBuildDir""/*.bin 2>/dev/null | head -1 | xargs -r basename"
+    $actualBinFile = Invoke-WslCommand -Command "find ""$WSLBuildDir"" -maxdepth 1 -type f -name '*.bin' ! -name '*.bootloader.bin' ! -name '*.partitions.bin' ! -name '*.merged.bin' | sort | head -1 | xargs -r basename"
     if ([string]::IsNullOrWhiteSpace($actualBinFile)) {
         Write-Error "No .bin file found in build output: $WSLBuildDir"
         exit 1
@@ -937,12 +937,21 @@ if ($Compile) {
 # --------------------------
 # 仅上传场景需要固件文件；串口监视(-s)不应依赖 .bin
 if ($Upload -and (-not $BinPath -or -not (Test-Path $BinPath))) {
-    $actualBinFile = Invoke-WslCommand -Command "ls ""$WSLBuildDir""/*.bin 2>/dev/null | head -1 | xargs -r basename"
-    if ([string]::IsNullOrWhiteSpace($actualBinFile)) {
-        Write-Error "No .bin file found in build output: $WSLBuildDir"
-        exit 1
+    $localBuildDir = Join-Path $ProjectRoot $BuildDir
+    $localBin = Get-ChildItem -Path $localBuildDir -Filter "*.bin" -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notmatch '\.(bootloader|partitions|merged)\.bin$' } |
+        Sort-Object Name |
+        Select-Object -First 1
+    if ($localBin) {
+        $BinPath = $localBin.FullName
+    } else {
+        $actualBinFile = Invoke-WslCommand -Command "find ""$WSLBuildDir"" -maxdepth 1 -type f -name '*.bin' ! -name '*.bootloader.bin' ! -name '*.partitions.bin' ! -name '*.merged.bin' | sort | head -1 | xargs -r basename"
+        if ([string]::IsNullOrWhiteSpace($actualBinFile)) {
+            Write-Error "No app .bin file found in build output: $localBuildDir or $WSLBuildDir"
+            exit 1
+        }
+        $BinPath = Join-Path $localBuildDir $actualBinFile
     }
-    $BinPath = Join-Path (Join-Path $ProjectRoot $BuildDir) $actualBinFile
 }
 
 if ($Upload -or $Serial) {
@@ -968,6 +977,9 @@ if ($Upload -or $Serial) {
     if ($Sketch) {
         $pyArgs += "--sketch"
         $pyArgs += "`"$Sketch`""
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExtraArgs)) {
+        $pyArgs += $ExtraArgs.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
     }
 
     python (Join-Path $ProjectRoot "arduino-cli.py") $pyArgs

@@ -16,7 +16,7 @@
       }
     },
     "port": {
-      "address": "COM24",
+      "address": "COM18",
       "auto": true,
       "lastSuccessfulAddress": "COM24"
     },
@@ -24,7 +24,7 @@
       "outputDir": "",
       "recentOutputDirs": [],
       "sketchPath": "c:\\Dev\\FFE\\Baoshan\\mus4\\mus4.ino",
-      "compileBeforeUpload": true,
+      "compileBeforeUpload": false,
       "uploadThenMonitor": true
     },
     "monitor": {
@@ -33,7 +33,22 @@
       "dataBits": 8,
       "stopBits": 1,
       "parity": "none",
-      "newline": "CRLF"
+      "newline": "CRLF",
+      "resetOnConnect": true
+    },
+    "wsl": {
+      "enabled": false,
+      "distro": "",
+      "workspaceRoot": "",
+      "arduinoCliPath": "arduino-cli",
+      "syncProject": {
+        "excludes": [
+          ".git",
+          "node_modules",
+          ".vscode",
+          ".trae"
+        ]
+      }
     }
   },
   "profiles": {

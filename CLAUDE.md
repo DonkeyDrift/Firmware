@@ -97,9 +97,14 @@ pytest tests/
 
 # 运行单个测试文件
 pytest tests/test_arduino_cli.py
+pytest tests/test_wireless_console_policy.py
 
 # 运行单个测试用例
 pytest tests/test_arduino_cli.py -k "test_prefers_explicit_port_when_available"
+pytest tests/test_wireless_console_policy.py -k "test_requires_authentication_and_park_locked_for_ota_open"
+
+# 配网代理测试
+python provisioning_system/tests/test_agent.py -v
 
 # 详细输出
 pytest tests/ -v
@@ -157,9 +162,10 @@ Python 测试集中在 `tests/test_arduino_cli.py`，主要覆盖串口选择、
 - `SharedTypes.h`：跨模块共享的数据结构与状态枚举，例如 `SensorData`、`ControlData`。
 - `TUI.h` / `TUI.cpp`：ANSI 终端仪表盘渲染，支持降级模式和增量刷新。
 - `Buzzer.h` / `Buzzer.cpp`：蜂鸣器状态机，硬件支持时使用。
+- `wireless_console_policy.py`：Wi-Fi/TCP/Web Console 权限策略的 Python 镜像，用于在桌面测试中覆盖认证、Park 锁定、OTA 窗口和行缓冲行为。
 - `examples/`：I2C、传感器等独立示例 sketch。
 - `multi_agent_framework/`：独立 Python 多智能体框架代码，不属于 ESP32 固件主链路。
-- `provisioning_system/`：ESP32 Wi-Fi provisioning 与 Linux agent 相关工具，独立于 MUS4 主固件构建流程。
+- `provisioning_system/`：ESP32 Wi-Fi provisioning 与 Linux agent 相关工具，独立于 MUS4 主固件构建流程；ESP32 AP/Web Server 通过 UART 把 Wi-Fi 凭据发给 Linux agent，agent 使用 NetworkManager/nmcli 连接目标网络并回传结果。
 
 ## Firmware Behavior Reference
 
@@ -206,9 +212,15 @@ Python 测试集中在 `tests/test_arduino_cli.py`，主要覆盖串口选择、
 
 README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin_definitions.md` 和本文件为准。
 
+### Wi-Fi Console、Web Console 与 OTA
+
+`mus4.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`。启用后 ESP32 以 AP+STA 模式启动：AP SSID 为 `MUS4-DEBUG`，TCP 控制台端口为 `2323`，Web Console 端口为 `80`，OTA 默认主机名为 `mus4-ota`、端口 `3232`。
+
+无线命令权限分层：`PING`、`STATUS`、`AUTH` 可未认证访问；控制指令和 `ANSI`/`NOANSI`/`FILTER_DEBUG` 需要认证；`TEST`、`BENCH`、`REGRESS` 等诊断命令还要求 Park 锁定；`ENABLE_OTA` 要求认证且 Park 锁定，`OTA_STATUS` 与 `DISABLE_OTA` 要求认证。修改这部分逻辑时，同步更新 `wireless_console_policy.py` 与 `tests/test_wireless_console_policy.py`。
+
 ### BLE Gamepad Mode
 
-`mus4.ino` 当前定义了 `ENABLE_GAMEPAD_MODE`。启用时将 RC 通道映射为 BLE Gamepad：
+`ENABLE_GAMEPAD_MODE` 位于 `#ifndef ENABLE_WIFI_CONSOLE` 分支中；当前 Wi-Fi Console 开启时 BLE Gamepad 不会启用。启用 BLE Gamepad 时将 RC 通道映射为：
 - CH1 转向 → 右摇杆 X 轴。
 - CH2 油门 → 左摇杆 Y 轴。
 
@@ -226,6 +238,7 @@ README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin
 - `Doc/Tools/ArduinoCLI.md`：`arduino-cli.py` 使用说明。
 - `Doc/Tools/arduino-cli-wsl_manual.md`：WSL 构建脚本背景与排障。
 - `Doc/README/OPERATIONS.md`：串口运行时操作命令与数据帧。
+- `provisioning_system/docs/deployment_and_testing.md`：独立配网系统的 ESP32 固件、Linux agent 和测试部署说明。
 - `Doc/Plan/`：历史实施方案，使用前需对照当前代码验证。
 
 ## Git Conventions

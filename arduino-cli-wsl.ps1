@@ -793,6 +793,7 @@ if ($IoMode -eq "native" -and $projectConfig["io_mode"]) {
 Write-Verbose "Using I/O mode: $IoMode"
 
 # 库同步相关配置
+$pythonExtraArgs = if ($PSBoundParameters.ContainsKey("ExtraArgs")) { $ExtraArgs } else { "" }
 if ($projectConfig["sync_libs"] -and $projectConfig["sync_libs"] -match "^(true|1|yes)$") {
     $SyncLibs = $true
 }
@@ -800,7 +801,7 @@ if ($projectConfig["lib_exclude"] -and $ExcludeLibs.Count -eq 2 -and $ExcludeLib
     # 用户没有显式传入 ExcludeLibs 参数，使用配置文件中的
     $ExcludeLibs = $projectConfig["lib_exclude"]
 }
-if ($projectConfig["extra_sync_args"]) {
+if ($projectConfig["extra_sync_args"] -and -not $PSBoundParameters.ContainsKey("ExtraArgs")) {
     $ExtraArgs = $projectConfig["extra_sync_args"]
 }
 
@@ -978,8 +979,8 @@ if ($Upload -or $Serial) {
         $pyArgs += "--sketch"
         $pyArgs += "`"$Sketch`""
     }
-    if (-not [string]::IsNullOrWhiteSpace($ExtraArgs)) {
-        $pyArgs += $ExtraArgs.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+    if (-not [string]::IsNullOrWhiteSpace($pythonExtraArgs)) {
+        $pyArgs += $pythonExtraArgs.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
     }
 
     python (Join-Path $ProjectRoot "arduino-cli.py") $pyArgs

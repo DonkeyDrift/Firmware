@@ -39,6 +39,30 @@ def is_wireless_command_allowed(line, authenticated, park_locked):
     return is_control_command(line)
 
 
+def is_web_command_allowed(line, authenticated, park_locked):
+    return is_wireless_command_allowed(line, authenticated, park_locked)
+
+
+def describe_wifi_mode(ap_enabled, sta_configured, sta_connected):
+    if not ap_enabled:
+        return "off"
+    if sta_configured and sta_connected:
+        return "ap_sta_connected"
+    if sta_configured:
+        return "ap_sta_pending"
+    return "ap"
+
+
+def format_network_status(ap_ip, web_port, sta_configured, sta_connected, sta_ip):
+    normalized_sta_ip = sta_ip if sta_connected and sta_ip else "0.0.0.0"
+    return (
+        f"web_port={web_port} ap_ip={ap_ip} "
+        f"sta_configured={1 if sta_configured else 0} "
+        f"sta_connected={1 if sta_connected else 0} "
+        f"sta_ip={normalized_sta_ip}"
+    )
+
+
 def is_ota_window_active(now_ms, deadline_ms):
     return deadline_ms > 0 and now_ms < deadline_ms
 

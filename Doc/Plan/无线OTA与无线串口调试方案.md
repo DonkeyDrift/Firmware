@@ -661,6 +661,18 @@ web_port=80 ap_ip=192.168.4.1 sta_connected=0 sta_ip=0.0.0.0
 
 当前不做登录 Cookie 或 Session。Web Console 仍通过命令层 `AUTH:mus4-debug` 解锁控制命令。
 
+### 当前实现状态
+
+```text
+1. 固件已引入 WebServer.h，并在 80 端口提供 Web Console
+2. GET / 返回内嵌 HTML 调试页
+3. GET /api/status 返回与 STATUS 命令一致的文本状态
+4. POST /api/cmd 复用无线命令处理链路，返回纯文本响应
+5. Wi-Fi 启动模式改为 WIFI_AP_STA，AP 始终保持可用
+6. STA 凭据仍为编译期常量 WIFI_STA_SSID / WIFI_STA_PASSWORD，默认为空
+7. TCP Console 与 Web Console 当前共用 wifiConsoleAuthenticated 认证状态
+```
+
 ### AP 户外验证
 
 ```text

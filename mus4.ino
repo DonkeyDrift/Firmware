@@ -27,6 +27,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_INA219.h>
 #include <WiFi.h>
+#include <WebServer.h>
 #include <ArduinoOTA.h>
 #include "BuildInfo.h"
 #include "SharedTypes.h"
@@ -113,6 +114,8 @@ bool filterDebugEnabled = false;          // 调试输出开关
 
 const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
 
+bool parseAndValidateCommand(String cmd, int* throttle, int* steering);
+
 CRGB leds[NUM_LEDS]; // Define the array of leds
 
 // 终端控制宏
@@ -177,23 +180,32 @@ SerialBuf serial1Buf = {{0},0,0,0,false};
 #ifdef ENABLE_WIFI_CONSOLE
 const char* WIFI_CONSOLE_AP_SSID = "MUS4-DEBUG";
 const char* WIFI_CONSOLE_AP_PASSWORD = "mus4-debug";
+const char* WIFI_STA_SSID = "";
+const char* WIFI_STA_PASSWORD = "";
 const uint16_t WIFI_CONSOLE_PORT = 2323;
+const uint16_t WIFI_WEB_CONSOLE_PORT = 80;
 const uint8_t WIFI_CONSOLE_CHANNEL = 6;
 const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;
 const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;
+const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;
 const char* WIFI_OTA_HOSTNAME = "mus4-ota";
 const char* WIFI_OTA_PASSWORD = "mus4-debug";
 const uint16_t WIFI_OTA_PORT = 3232;
 const unsigned long WIFI_OTA_WINDOW_MS = 120000UL;
 WiFiServer wifiConsoleServer(WIFI_CONSOLE_PORT);
 WiFiClient wifiConsoleClient;
+WebServer wifiWebServer(WIFI_WEB_CONSOLE_PORT);
 SerialBuf wifiConsoleBuf = {{0},0,0,0,false};
 bool wifiConsoleStarted = false;
 bool wifiConsoleAuthenticated = false;
+bool wifiStaConfigured = false;
+bool wifiStaConnected = false;
+bool wifiStaTimedOut = false;
 bool wifiOtaStarted = false;
 bool wifiOtaWindowOpen = false;
 bool wifiOtaInProgress = false;
 unsigned long lastWifiConsoleStartAttemptMs = 0;
+unsigned long wifiStaConnectStartMs = 0;
 unsigned long wifiOtaDeadlineMs = 0;
 uint8_t wifiOtaLastProgressPct = 0;
 #endif
@@ -701,7 +713,12 @@ static unsigned long wifiOtaTtlMs()
     return wifiOtaDeadlineMs - now;
 }
 
-static void printWifiOtaStatus(WiFiClient& out)
+static String wifiStaIpText()
+{
+    return wifiStaConnected ? WiFi.localIP().toString() : String("0.0.0.0");
+}
+
+static void printWifiOtaStatus(Print& out)
 {
     out.printf("OTA_STATUS started=%d window=%d in_progress=%d ttl_ms=%lu progress=%u park=%d\n",
         wifiOtaStarted ? 1 : 0,
@@ -712,9 +729,9 @@ static void printWifiOtaStatus(WiFiClient& out)
         car_output.park ? 1 : 0);
 }
 
-static void printWirelessStatus(WiFiClient& out)
+static void printWirelessStatus(Print& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu version=%s build=\"%s %s\"\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu version=%s build=\"%s %s\" web_port=%u ap_ip=%s sta_configured=%d sta_connected=%d sta_ip=%s\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -726,7 +743,12 @@ static void printWirelessStatus(WiFiClient& out)
         wifiOtaTtlMs(),
         MUS4_FIRMWARE_VERSION,
         MUS4_BUILD_DATE,
-        MUS4_BUILD_TIME);
+        MUS4_BUILD_TIME,
+        WIFI_WEB_CONSOLE_PORT,
+        WiFi.softAPIP().toString().c_str(),
+        wifiStaConfigured ? 1 : 0,
+        wifiStaConnected ? 1 : 0,
+        wifiStaIpText().c_str());
 }
 
 static void closeWifiOtaWindow(const char* reason)
@@ -777,7 +799,7 @@ static void ensureWifiOtaStarted()
     wifiOtaStarted = true;
 }
 
-static void openWifiOtaWindow(WiFiClient& out)
+static void openWifiOtaWindow(Print& out)
 {
     if (!wifiConsoleAuthenticated) {
         out.println("NACK:AUTH_REQUIRED");
@@ -811,7 +833,7 @@ static void updateWifiOta()
     ArduinoOTA.handle();
 }
 
-static void processWirelessConsoleLine(const String& line, WiFiClient& out)
+static void processWirelessConsoleLine(const String& line, Print& out)
 {
     if (line.equalsIgnoreCase("PING")) {
         out.println("PONG");
@@ -847,13 +869,77 @@ static void processWirelessConsoleLine(const String& line, WiFiClient& out)
     PROCESS_COMMAND_LINE(line, out, wifiConsoleBuf);
 }
 
+class StringPrint : public Print {
+public:
+    explicit StringPrint(String& target) : _target(target) {}
+    size_t write(uint8_t value) override
+    {
+        _target += (char)value;
+        return 1;
+    }
+    size_t write(const uint8_t* buffer, size_t size) override
+    {
+        for (size_t i = 0; i < size; i++) _target += (char)buffer[i];
+        return size;
+    }
+private:
+    String& _target;
+};
+
+static const char WIFI_WEB_CONSOLE_HTML[] PROGMEM = R"rawliteral(
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MUS4 Web Console</title><style>body{font-family:system-ui,sans-serif;margin:16px;background:#111;color:#eee}button,input{font-size:16px;margin:4px;padding:8px}input{width:min(520px,90vw)}pre{background:#000;padding:12px;min-height:260px;white-space:pre-wrap;border:1px solid #333}</style></head><body><h1>MUS4 Web Console</h1><div id="status">loading...</div><div><input id="cmd" placeholder="PING / STATUS / AUTH:mus4-debug"><button onclick="sendCmd()">Send</button></div><div><button onclick="quick('PING')">PING</button><button onclick="quick('STATUS')">STATUS</button><button onclick="quick('AUTH:mus4-debug')">AUTH</button><button onclick="quick('ENABLE_OTA')">ENABLE_OTA</button><button onclick="quick('OTA_STATUS')">OTA_STATUS</button></div><pre id="log"></pre><script>const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status');function append(t){log.textContent+=t+'\n';log.scrollTop=log.scrollHeight}async function refresh(){const r=await fetch('/api/status');statusBox.textContent=await r.text()}async function quick(v){cmd.value=v;await sendCmd()}async function sendCmd(){const v=cmd.value.trim();if(!v)return;append('> '+v);const r=await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});append(await r.text());cmd.value='';refresh()}cmd.addEventListener('keydown',e=>{if(e.key==='Enter')sendCmd()});refresh();setInterval(refresh,5000);</script></body></html>
+)rawliteral";
+
+static void handleWifiWebRoot()
+{
+    wifiWebServer.send_P(200, "text/html", WIFI_WEB_CONSOLE_HTML);
+}
+
+static void handleWifiWebStatus()
+{
+    String response;
+    StringPrint out(response);
+    printWirelessStatus(out);
+    wifiWebServer.send(200, "text/plain", response);
+}
+
+static void handleWifiWebCommand()
+{
+    String line = wifiWebServer.arg("plain");
+    line.trim();
+    if (line.length() == 0) {
+        wifiWebServer.send(400, "text/plain", "NACK:EMPTY\n");
+        return;
+    }
+    String response;
+    StringPrint out(response);
+    processWirelessConsoleLine(line, out);
+    wifiWebServer.send(200, "text/plain", response);
+}
+
+static void setupWifiWebConsole()
+{
+    wifiWebServer.on("/", HTTP_GET, handleWifiWebRoot);
+    wifiWebServer.on("/api/status", HTTP_GET, handleWifiWebStatus);
+    wifiWebServer.on("/api/cmd", HTTP_POST, handleWifiWebCommand);
+    wifiWebServer.begin();
+}
+
+static void updateWifiWebConsole()
+{
+    if (wifiConsoleStarted) wifiWebServer.handleClient();
+}
+
 static void setupWifiConsole()
 {
     lastWifiConsoleStartAttemptMs = millis();
+    wifiStaConfigured = strlen(WIFI_STA_SSID) > 0;
+    wifiStaConnected = false;
+    wifiStaTimedOut = false;
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
     delay(100);
-    WiFi.mode(WIFI_AP);
+    WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);
     bool started = WiFi.softAP(
         WIFI_CONSOLE_AP_SSID,
@@ -867,10 +953,38 @@ static void setupWifiConsole()
         Serial.println("WiFi Console AP start failed");
         return;
     }
+    if (wifiStaConfigured) {
+        wifiStaConnectStartMs = millis();
+        WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASSWORD);
+        Serial.printf("WiFi STA connecting: %s\n", WIFI_STA_SSID);
+    }
     wifiConsoleServer.begin();
     wifiConsoleServer.setNoDelay(true);
+    setupWifiWebConsole();
     wifiConsoleStarted = true;
-    Serial.printf("WiFi Console AP: %s IP: %s Port: %u\n", WIFI_CONSOLE_AP_SSID, WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT);
+    Serial.printf("WiFi Console AP: %s IP: %s Port: %u Web: %u\n", WIFI_CONSOLE_AP_SSID, WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT);
+}
+
+static void updateWifiSta()
+{
+    if (!wifiStaConfigured) return;
+    wl_status_t status = WiFi.status();
+    if (status == WL_CONNECTED) {
+        if (!wifiStaConnected) {
+            wifiStaConnected = true;
+            wifiStaTimedOut = false;
+            Serial.printf("WiFi STA connected IP: %s\n", WiFi.localIP().toString().c_str());
+        }
+        return;
+    }
+    if (wifiStaConnected) {
+        wifiStaConnected = false;
+        Serial.println("WiFi STA disconnected");
+    }
+    if (!wifiStaTimedOut && millis() - wifiStaConnectStartMs >= WIFI_STA_CONNECT_TIMEOUT_MS) {
+        wifiStaTimedOut = true;
+        Serial.println("WiFi STA connect timeout, AP remains available");
+    }
 }
 
 static void updateWifiConsole()
@@ -2046,6 +2160,8 @@ void loop()
     readSerialBuf(Serial1, serial1Buf);
     #ifdef ENABLE_WIFI_CONSOLE
       updateWifiConsole();
+      updateWifiWebConsole();
+      updateWifiSta();
       updateWifiOta();
     #endif
 

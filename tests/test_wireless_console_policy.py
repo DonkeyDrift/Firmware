@@ -56,6 +56,69 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertEqual(buffer.feed("123456789\n"), ["12345678"])
         self.assertTrue(buffer.overflowed)
 
+    def test_describes_wifi_dual_mode_with_ap_always_available(self):
+        self.assertEqual(
+            POLICY.describe_wifi_mode(ap_enabled=True, sta_configured=False, sta_connected=False),
+            "ap",
+        )
+        self.assertEqual(
+            POLICY.describe_wifi_mode(ap_enabled=True, sta_configured=True, sta_connected=False),
+            "ap_sta_pending",
+        )
+        self.assertEqual(
+            POLICY.describe_wifi_mode(ap_enabled=True, sta_configured=True, sta_connected=True),
+            "ap_sta_connected",
+        )
+
+    def test_formats_network_status_with_unconfigured_sta(self):
+        status = POLICY.format_network_status(
+            ap_ip="192.168.4.1",
+            web_port=80,
+            sta_configured=False,
+            sta_connected=False,
+            sta_ip="",
+        )
+
+        self.assertEqual(
+            status,
+            "web_port=80 ap_ip=192.168.4.1 sta_configured=0 sta_connected=0 sta_ip=0.0.0.0",
+        )
+
+    def test_formats_network_status_with_connected_sta(self):
+        status = POLICY.format_network_status(
+            ap_ip="192.168.4.1",
+            web_port=80,
+            sta_configured=True,
+            sta_connected=True,
+            sta_ip="192.168.31.88",
+        )
+
+        self.assertEqual(
+            status,
+            "web_port=80 ap_ip=192.168.4.1 sta_configured=1 sta_connected=1 sta_ip=192.168.31.88",
+        )
+
+    def test_web_command_permissions_match_wireless_console(self):
+        scenarios = [
+            ("PING", False, False),
+            ("STATUS", False, False),
+            ("AUTH:mus4-debug", False, False),
+            ("10:20", True, False),
+            ("ENABLE_OTA", True, True),
+            ("OTA_STATUS", True, False),
+            ("TEST", True, True),
+        ]
+        for line, authenticated, park_locked in scenarios:
+            with self.subTest(line=line):
+                self.assertEqual(
+                    POLICY.is_web_command_allowed(line, authenticated, park_locked),
+                    POLICY.is_wireless_command_allowed(line, authenticated, park_locked),
+                )
+
+    def test_web_command_blocks_unauthenticated_control_and_unlocked_ota(self):
+        self.assertFalse(POLICY.is_web_command_allowed("10:20", authenticated=False, park_locked=True))
+        self.assertFalse(POLICY.is_web_command_allowed("ENABLE_OTA", authenticated=True, park_locked=False))
+
 
 if __name__ == "__main__":
     unittest.main()

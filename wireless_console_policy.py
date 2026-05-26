@@ -1,6 +1,9 @@
 PUBLIC_COMMANDS = {"PING", "STATUS", "AUTH"}
 PARK_LOCKED_COMMANDS = {"TEST", "TEST_TUI", "BENCH", "STRESS", "REGRESS", "FILTER_TEST"}
 GENERAL_AUTHENTICATED_COMMANDS = {"ANSI", "NOANSI", "FILTER_DEBUG"}
+OTA_OPEN_COMMANDS = {"ENABLE_OTA"}
+OTA_STATUS_COMMANDS = {"OTA_STATUS"}
+OTA_CLOSE_COMMANDS = {"DISABLE_OTA"}
 
 
 def normalize_wireless_command(line):
@@ -23,6 +26,10 @@ def is_wireless_command_allowed(line, authenticated, park_locked):
     command = normalize_wireless_command(line)
     if command in PUBLIC_COMMANDS:
         return True
+    if command in OTA_OPEN_COMMANDS:
+        return authenticated and park_locked
+    if command in OTA_STATUS_COMMANDS or command in OTA_CLOSE_COMMANDS:
+        return authenticated
     if not authenticated:
         return False
     if command in PARK_LOCKED_COMMANDS:
@@ -30,6 +37,10 @@ def is_wireless_command_allowed(line, authenticated, park_locked):
     if command in GENERAL_AUTHENTICATED_COMMANDS:
         return True
     return is_control_command(line)
+
+
+def is_ota_window_active(now_ms, deadline_ms):
+    return deadline_ms > 0 and now_ms < deadline_ms
 
 
 def authenticate_wireless_command(line, password):

@@ -27,6 +27,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_INA219.h>
 #include <WiFi.h>
+#include <ArduinoOTA.h>
 #include "SharedTypes.h"
 #include "TUI.h"
 
@@ -179,12 +180,21 @@ const uint16_t WIFI_CONSOLE_PORT = 2323;
 const uint8_t WIFI_CONSOLE_CHANNEL = 6;
 const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;
 const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;
+const char* WIFI_OTA_HOSTNAME = "mus4-ota";
+const char* WIFI_OTA_PASSWORD = "mus4-debug";
+const uint16_t WIFI_OTA_PORT = 3232;
+const unsigned long WIFI_OTA_WINDOW_MS = 120000UL;
 WiFiServer wifiConsoleServer(WIFI_CONSOLE_PORT);
 WiFiClient wifiConsoleClient;
 SerialBuf wifiConsoleBuf = {{0},0,0,0,false};
 bool wifiConsoleStarted = false;
 bool wifiConsoleAuthenticated = false;
+bool wifiOtaStarted = false;
+bool wifiOtaWindowOpen = false;
+bool wifiOtaInProgress = false;
 unsigned long lastWifiConsoleStartAttemptMs = 0;
+unsigned long wifiOtaDeadlineMs = 0;
+uint8_t wifiOtaLastProgressPct = 0;
 #endif
 static void cursorDownN(int n){ if(ansiEnabled) Serial.printf("\033[%dB", n); }
 static void cursorUpN(int n){ if(ansiEnabled) Serial.printf("\033[%dA", n); }
@@ -653,10 +663,27 @@ static bool isWirelessControlCommand(const String& line)
     return true;
 }
 
+static bool isWirelessOtaOpenCommand(const String& line)
+{
+    return line.equalsIgnoreCase("ENABLE_OTA");
+}
+
+static bool isWirelessOtaStatusCommand(const String& line)
+{
+    return line.equalsIgnoreCase("OTA_STATUS");
+}
+
+static bool isWirelessOtaCloseCommand(const String& line)
+{
+    return line.equalsIgnoreCase("DISABLE_OTA");
+}
+
 static bool isWirelessCommandAllowed(const String& line)
 {
     if (line.equalsIgnoreCase("PING") || line.equalsIgnoreCase("STATUS")) return true;
     if (line.startsWith("AUTH:")) return true;
+    if (isWirelessOtaOpenCommand(line)) return wifiConsoleAuthenticated && car_output.park == PARK_LOCKED;
+    if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return wifiConsoleAuthenticated;
     if (!wifiConsoleAuthenticated) return false;
     if (line.equalsIgnoreCase("TEST") || line.equalsIgnoreCase("TEST_TUI") || line.equalsIgnoreCase("BENCH") || line.equalsIgnoreCase("STRESS") || line.equalsIgnoreCase("REGRESS") || line.equalsIgnoreCase("FILTER_TEST")) {
         return car_output.park == PARK_LOCKED;
@@ -665,15 +692,119 @@ static bool isWirelessCommandAllowed(const String& line)
     return isWirelessControlCommand(line);
 }
 
+static unsigned long wifiOtaTtlMs()
+{
+    if (!wifiOtaWindowOpen) return 0;
+    unsigned long now = millis();
+    if ((long)(wifiOtaDeadlineMs - now) <= 0) return 0;
+    return wifiOtaDeadlineMs - now;
+}
+
+static void printWifiOtaStatus(WiFiClient& out)
+{
+    out.printf("OTA_STATUS started=%d window=%d in_progress=%d ttl_ms=%lu progress=%u park=%d\n",
+        wifiOtaStarted ? 1 : 0,
+        wifiOtaWindowOpen ? 1 : 0,
+        wifiOtaInProgress ? 1 : 0,
+        wifiOtaTtlMs(),
+        wifiOtaLastProgressPct,
+        car_output.park ? 1 : 0);
+}
+
 static void printWirelessStatus(WiFiClient& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
         car_output.steering,
         wifiConsoleBuf.frames,
-        wifiConsoleBuf.errors);
+        wifiConsoleBuf.errors,
+        wifiOtaWindowOpen ? 1 : 0,
+        wifiOtaLastProgressPct,
+        wifiOtaTtlMs());
+}
+
+static void closeWifiOtaWindow(const char* reason)
+{
+    wifiOtaWindowOpen = false;
+    wifiOtaDeadlineMs = 0;
+    wifiOtaInProgress = false;
+    wifiOtaLastProgressPct = 0;
+    if (wifiOtaStarted) {
+        ArduinoOTA.end();
+        wifiOtaStarted = false;
+    }
+    Serial.printf("WiFi OTA closed: %s\n", reason);
+}
+
+static void setupWifiOtaCallbacks()
+{
+    ArduinoOTA.setHostname(WIFI_OTA_HOSTNAME);
+    ArduinoOTA.setPassword(WIFI_OTA_PASSWORD);
+    ArduinoOTA.setPort(WIFI_OTA_PORT);
+    ArduinoOTA.onStart([]() {
+        wifiOtaInProgress = true;
+        wifiOtaLastProgressPct = 0;
+        Serial.println("WiFi OTA start");
+    });
+    ArduinoOTA.onEnd([]() {
+        wifiOtaInProgress = false;
+        wifiOtaWindowOpen = false;
+        wifiOtaDeadlineMs = 0;
+        Serial.println("WiFi OTA end");
+    });
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        if (total > 0) wifiOtaLastProgressPct = (uint8_t)((progress * 100U) / total);
+    });
+    ArduinoOTA.onError([](ota_error_t error) {
+        wifiOtaInProgress = false;
+        wifiOtaWindowOpen = false;
+        wifiOtaDeadlineMs = 0;
+        Serial.printf("WiFi OTA error: %u\n", error);
+    });
+}
+
+static void ensureWifiOtaStarted()
+{
+    if (wifiOtaStarted) return;
+    setupWifiOtaCallbacks();
+    ArduinoOTA.begin();
+    wifiOtaStarted = true;
+}
+
+static void openWifiOtaWindow(WiFiClient& out)
+{
+    if (!wifiConsoleAuthenticated) {
+        out.println("NACK:AUTH_REQUIRED");
+        wifiConsoleBuf.errors++;
+        return;
+    }
+    if (car_output.park != PARK_LOCKED) {
+        out.println("NACK:PARK_REQUIRED");
+        wifiConsoleBuf.errors++;
+        return;
+    }
+    ensureWifiOtaStarted();
+    wifiOtaWindowOpen = true;
+    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
+    wifiOtaLastProgressPct = 0;
+    out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.softAPIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
+}
+
+static void updateWifiOta()
+{
+    if (!wifiOtaWindowOpen) return;
+    if (car_output.park != PARK_LOCKED) {
+        closeWifiOtaWindow("PARK_UNLOCKED");
+        return;
+    }
+    unsigned long now = millis();
+    if (!wifiOtaInProgress && (long)(now - wifiOtaDeadlineMs) >= 0) {
+        closeWifiOtaWindow("TIMEOUT");
+        return;
+    }
+    ArduinoOTA.handle();
 }
 
 static void processWirelessConsoleLine(const String& line, WiFiClient& out)
@@ -694,6 +825,19 @@ static void processWirelessConsoleLine(const String& line, WiFiClient& out)
     if (!isWirelessCommandAllowed(line)) {
         out.println("NACK:UNAUTHORIZED");
         wifiConsoleBuf.errors++;
+        return;
+    }
+    if (isWirelessOtaOpenCommand(line)) {
+        openWifiOtaWindow(out);
+        return;
+    }
+    if (isWirelessOtaStatusCommand(line)) {
+        printWifiOtaStatus(out);
+        return;
+    }
+    if (isWirelessOtaCloseCommand(line)) {
+        closeWifiOtaWindow("USER");
+        out.println("OTA_CLOSED");
         return;
     }
     PROCESS_COMMAND_LINE(line, out, wifiConsoleBuf);
@@ -751,7 +895,9 @@ static void updateWifiConsole()
         if (c == '\r') continue;
         if (c == '\n') {
             wifiConsoleBuf.buf[wifiConsoleBuf.len] = 0;
-            processWirelessConsoleLine(String(wifiConsoleBuf.buf), wifiConsoleClient);
+            String line = String(wifiConsoleBuf.buf);
+            line.trim();
+            processWirelessConsoleLine(line, wifiConsoleClient);
             wifiConsoleBuf.len = 0;
             wifiConsoleBuf.overflow = false;
         } else {
@@ -1891,6 +2037,7 @@ void loop()
     readSerialBuf(Serial1, serial1Buf);
     #ifdef ENABLE_WIFI_CONSOLE
       updateWifiConsole();
+      updateWifiOta();
     #endif
 
     // RC信号读取：检查超时和有效性，应用滑动平均滤波（带更新间隔控制）

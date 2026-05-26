@@ -39,3 +39,4 @@ provisioning_system/playwright_tests/
 .arduino_cli_state.json
 
 .tmp_serial_state_test.json
+tests/__pycache__/

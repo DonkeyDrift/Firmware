@@ -270,5 +270,97 @@ class TestSerialPortState(unittest.TestCase):
         self.assertEqual(loaded, "COM27")
 
 
+class TestOtaUploadTooling(unittest.TestCase):
+    def test_prefers_explicit_espota_tool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            explicit = root / "custom_espota.py"
+            env_tool = root / "env_espota.py"
+            explicit.write_text("", encoding="utf-8")
+            env_tool.write_text("", encoding="utf-8")
+
+            selected = ARDUINO_CLI.find_espota_tool(
+                explicit_path=str(explicit),
+                env={"ESPOTA_PY": str(env_tool)},
+            )
+
+        self.assertEqual(selected, str(explicit))
+
+    def test_uses_espota_tool_from_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_tool = pathlib.Path(tmp) / "espota.py"
+            env_tool.write_text("", encoding="utf-8")
+
+            selected = ARDUINO_CLI.find_espota_tool(env={"ESPOTA_PY": str(env_tool)})
+
+        self.assertEqual(selected, str(env_tool))
+
+    def test_discovers_newest_arduino15_espota_tool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            local_appdata = pathlib.Path(tmp)
+            old_tool = local_appdata / "Arduino15" / "packages" / "esp32" / "hardware" / "esp32" / "3.2.0" / "tools" / "espota.py"
+            new_tool = local_appdata / "Arduino15" / "packages" / "esp32" / "hardware" / "esp32" / "3.3.8-cn" / "tools" / "espota.py"
+            old_tool.parent.mkdir(parents=True)
+            new_tool.parent.mkdir(parents=True)
+            old_tool.write_text("", encoding="utf-8")
+            new_tool.write_text("", encoding="utf-8")
+
+            selected = ARDUINO_CLI.find_espota_tool(
+                env={},
+                local_appdata=str(local_appdata),
+                home=str(local_appdata / "home"),
+            )
+
+        self.assertEqual(selected, str(new_tool))
+
+    def test_builds_espota_command(self):
+        command = ARDUINO_CLI.build_espota_command(
+            python_exe="python",
+            espota_tool="C:/tools/espota.py",
+            host="192.168.4.1",
+            port=3232,
+            password="mus4-debug",
+            bin_path="C:/build/mus4.ino.bin",
+        )
+
+        self.assertEqual(command, [
+            "python",
+            "C:/tools/espota.py",
+            "-i", "192.168.4.1",
+            "-p", "3232",
+            "-a", "mus4-debug",
+            "-f", "C:/build/mus4.ino.bin",
+        ])
+
+    def test_ota_upload_does_not_resolve_serial_ports(self):
+        automation = make_automation(port="auto")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            firmware = root / "mus4.ino.bin"
+            espota_tool = root / "espota.py"
+            firmware.write_bytes(b"app")
+            espota_tool.write_text("", encoding="utf-8")
+            automation.args = SimpleNamespace(
+                port=None,
+                input_file=str(firmware),
+                build_path=None,
+                config="config.yaml",
+                ota_host="192.168.4.1",
+                ota_port=3232,
+                ota_password="mus4-debug",
+                espota_tool=str(espota_tool),
+            )
+            automation.build_upload_port_attempts = MagicMock()
+            automation.run_command = MagicMock(return_value=(True, "ok"))
+
+            result = automation.ota_upload()
+
+        self.assertTrue(result)
+        automation.build_upload_port_attempts.assert_not_called()
+        command = automation.run_command.call_args.args[0]
+        self.assertIn(str(espota_tool), command)
+        self.assertIn(str(firmware), command)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

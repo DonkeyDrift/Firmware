@@ -78,6 +78,21 @@ param(
     [Alias("u")]
     [switch]$Upload,
 
+    [Parameter(HelpMessage="Use ArduinoOTA for upload")]
+    [switch]$Ota,
+
+    [Parameter(HelpMessage="ArduinoOTA target host or IP")]
+    [string]$OtaHost,
+
+    [Parameter(HelpMessage="ArduinoOTA target port")]
+    [int]$OtaPort = 3232,
+
+    [Parameter(HelpMessage="ArduinoOTA password")]
+    [string]$OtaPassword,
+
+    [Parameter(HelpMessage="Path to espota.py")]
+    [string]$EspotaTool,
+
     [Parameter(HelpMessage="Arduino Sketch file path (default: auto-detect)")]
     [Alias("i")]
     [string]$Sketch,
@@ -977,6 +992,25 @@ if ($Upload -or $Serial) {
         $pyArgs += "-u"
         $pyArgs += "-i"
         $pyArgs += "`"$BinPath`""
+        if ($Ota) {
+            $pyArgs += "--ota"
+            if (-not [string]::IsNullOrWhiteSpace($OtaHost)) {
+                $pyArgs += "--ota-host"
+                $pyArgs += $OtaHost
+            }
+            if ($OtaPort -gt 0) {
+                $pyArgs += "--ota-port"
+                $pyArgs += $OtaPort.ToString()
+            }
+            if (-not [string]::IsNullOrWhiteSpace($OtaPassword)) {
+                $pyArgs += "--ota-password"
+                $pyArgs += $OtaPassword
+            }
+            if (-not [string]::IsNullOrWhiteSpace($EspotaTool)) {
+                $pyArgs += "--espota-tool"
+                $pyArgs += "`"$EspotaTool`""
+            }
+        }
     }
     if ($Serial) {
         $pyArgs += "-s"

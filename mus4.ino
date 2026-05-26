@@ -28,6 +28,7 @@
 #include <Adafruit_INA219.h>
 #include <WiFi.h>
 #include <ArduinoOTA.h>
+#include "BuildInfo.h"
 #include "SharedTypes.h"
 #include "TUI.h"
 
@@ -713,7 +714,7 @@ static void printWifiOtaStatus(WiFiClient& out)
 
 static void printWirelessStatus(WiFiClient& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu version=%s build=\"%s %s\"\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -722,7 +723,10 @@ static void printWirelessStatus(WiFiClient& out)
         wifiConsoleBuf.errors,
         wifiOtaWindowOpen ? 1 : 0,
         wifiOtaLastProgressPct,
-        wifiOtaTtlMs());
+        wifiOtaTtlMs(),
+        MUS4_FIRMWARE_VERSION,
+        MUS4_BUILD_DATE,
+        MUS4_BUILD_TIME);
 }
 
 static void closeWifiOtaWindow(const char* reason)
@@ -1971,6 +1975,11 @@ void setup()
 
     Serial.begin(BAUD_RATE_0);                                  // TypeC
     Serial1.begin(BAUD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
+    Serial.printf("BOOT firmware=%s version=%s build=\"%s %s\"\n",
+        MUS4_FIRMWARE_NAME,
+        MUS4_FIRMWARE_VERSION,
+        MUS4_BUILD_DATE,
+        MUS4_BUILD_TIME);
     Serial.println("ESP32 Receiver Serial Ready!");
     Serial1.println("ESP32 Receiver Serial1 Ready!");
 

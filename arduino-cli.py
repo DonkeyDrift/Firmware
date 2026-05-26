@@ -22,6 +22,7 @@ import yaml
 import shutil
 import threading
 import itertools
+import glob
 import serial
 import shlex
 import select
@@ -143,6 +144,58 @@ class Spinner:
                 else:
                     sys.stdout.write('DONE\n')
             sys.stdout.flush()
+
+
+def _espota_version_key(path):
+    version = os.path.basename(os.path.dirname(os.path.dirname(path)))
+    parts = re.findall(r'\d+|[A-Za-z]+', version)
+    key = []
+    for part in parts:
+        if part.isdigit():
+            key.append((1, int(part)))
+        else:
+            key.append((0, part.lower()))
+    return key
+
+
+def find_espota_tool(explicit_path=None, env=None, home=None, local_appdata=None):
+    env = env if env is not None else os.environ
+    candidates = []
+
+    if explicit_path:
+        return explicit_path if os.path.exists(explicit_path) else None
+
+    env_path = env.get("ESPOTA_PY", "") if env else ""
+    if env_path:
+        return env_path if os.path.exists(env_path) else None
+
+    if local_appdata is None:
+        local_appdata = env.get("LOCALAPPDATA", "") if env else ""
+    if local_appdata:
+        pattern = os.path.join(local_appdata, "Arduino15", "packages", "esp32", "hardware", "esp32", "*", "tools", "espota.py")
+        candidates.extend(glob.glob(pattern))
+
+    if home is None:
+        home = os.path.expanduser("~")
+    if home:
+        pattern = os.path.join(home, ".arduino15", "packages", "esp32", "hardware", "esp32", "*", "tools", "espota.py")
+        candidates.extend(glob.glob(pattern))
+
+    candidates = [path for path in candidates if os.path.exists(path)]
+    if not candidates:
+        return None
+    return sorted(candidates, key=_espota_version_key, reverse=True)[0]
+
+
+def build_espota_command(python_exe, espota_tool, host, port, password, bin_path):
+    return [
+        python_exe,
+        espota_tool,
+        "-i", host,
+        "-p", str(port),
+        "-a", password,
+        "-f", bin_path,
+    ]
 
 
 def parse_progress_line(line: str) -> Optional[str]:
@@ -820,6 +873,37 @@ class ArduinoAutomation:
         cmd.append(self.sketch)
         return cmd
 
+    def ota_upload(self):
+        if not self.args or not getattr(self.args, 'input_file', None):
+            self.logger.error("OTA 上传需要通过 --input-file 指定固件 .bin 文件")
+            sys.exit(15)
+
+        input_file = self.normalize_precompiled_input_file(self.args.input_file)
+        if not os.path.exists(input_file):
+            self.logger.error(f"指定的固件文件不存在: {input_file}")
+            sys.exit(14)
+
+        host = getattr(self.args, 'ota_host', None)
+        if not host:
+            self.logger.error("OTA 上传需要指定 --ota-host")
+            sys.exit(15)
+
+        port = getattr(self.args, 'ota_port', None) or 3232
+        password = getattr(self.args, 'ota_password', None) or ""
+        espota_tool = find_espota_tool(getattr(self.args, 'espota_tool', None))
+        if not espota_tool:
+            self.logger.error("找不到 espota.py，请使用 --espota-tool 指定路径或设置 ESPOTA_PY")
+            sys.exit(15)
+
+        cmd = build_espota_command(sys.executable, espota_tool, host, port, password, input_file)
+        success, output = self.run_command(cmd, message="正在 OTA 上传... ")
+        if success:
+            return True
+
+        if output:
+            self.logger.error(f"OTA 上传失败:\n{output}")
+        sys.exit(12)
+
     def upload(self):
         port_attempts, error = self.build_upload_port_attempts()
         if not port_attempts:
@@ -1040,8 +1124,11 @@ class ArduinoAutomation:
 
         # 2. 上传 (如果只指定上传，也会执行；如果指定了编译+上传，编译失败会终止)
         if self.args.upload:
-            self.upload()
-            self.auto_reset()
+            if self.args.ota:
+                self.ota_upload()
+            else:
+                self.upload()
+                self.auto_reset()
 
         # 3. 监控
         if self.args.serial:
@@ -1123,6 +1210,11 @@ def main():
     parser.add_argument('--regress-count', dest='regress_count', type=int, default=10, help='回归测试次数')
     parser.add_argument('--input-file', '-i', dest='input_file', help='指定预编译的固件文件(.bin)路径，用于WSL交叉编译场景')
     parser.add_argument('--build-path', dest='build_path', help='指定构建输出目录(用于编译时指定输出位置)')
+    parser.add_argument('--ota', dest='ota', action='store_true', help='使用 ArduinoOTA 通过网络上传固件')
+    parser.add_argument('--ota-host', dest='ota_host', help='ArduinoOTA 目标主机或 IP')
+    parser.add_argument('--ota-port', dest='ota_port', type=int, default=3232, help='ArduinoOTA 目标端口')
+    parser.add_argument('--ota-password', dest='ota_password', default='mus4-debug', help='ArduinoOTA 密码')
+    parser.add_argument('--espota-tool', dest='espota_tool', help='espota.py 工具路径')
     parser.add_argument('--list-ports', dest='list_ports', action='store_true', help='列出当前检测到的串口设备')
     parser.add_argument('--no-progress', dest='no_progress', action='store_true', help='关闭单行进度条刷新，逐行输出所有日志')
     parser.set_defaults(auto_reset=None)

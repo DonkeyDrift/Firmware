@@ -622,3 +622,35 @@ WirelessOta.h/.cpp
 3. TCP Console 是否允许发送控制命令，还是首版只允许 STATUS/TEST
 4. 是否先禁用 BLE Gamepad，避免无线调试阶段资源冲突
 ```
+
+## OTA 增强最小实施
+
+当前阶段继续采用 ArduinoOTA，不引入 HTTP Web OTA，也不改变 Park 锁定、`AUTH` 和短时间窗口的 OTA 安全门控。
+
+本轮增强目标：
+
+```text
+1. 固件启动日志输出 firmware、version 和 build 时间
+2. Wi-Fi Console 的 STATUS 在原有字段末尾追加 version 和 build
+3. TUI 标题使用统一固件版本号
+4. WSL 构建脚本支持通过 -Ota 调用 espota.py 上传
+```
+
+运行时可观测输出示例：
+
+```text
+BOOT firmware=MUS4 version=v1.4-ota-enhanced build="May 26 2026 21:30:00"
+STATUS mode=0 park=1 throttle=0 steering=0 wifi_frames=1 wifi_errors=0 ota_window=0 ota_progress=0 ota_ttl_ms=0 version=v1.4-ota-enhanced build="May 26 2026 21:30:00"
+```
+
+工具化 OTA 上传推荐命令：
+
+```powershell
+.\arduino-cli-wsl.ps1 -c -u -Ota -OtaHost 192.168.4.1
+```
+
+如自动查找不到 `espota.py`，显式指定：
+
+```powershell
+.\arduino-cli-wsl.ps1 -u -Ota -OtaHost 192.168.4.1 -EspotaTool "C:\Users\cross\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.3.8-cn\tools\espota.py"
+```

@@ -1,4 +1,5 @@
 #include "TUI.h"
+#include "BuildInfo.h"
 
 // ANSI Colors
 #define ANSI_RESET "\033[0m"
@@ -152,7 +153,8 @@ void TUI::render() {
 void TUI::drawHeader() {
     cursorTo(ROW_HEADER, 1);
     if (_ansiEnabled) _out.print(ANSI_CYAN);
-    _out.println("DonkeyCar Control System - v1.1");
+    _out.print("DonkeyCar Control System - ");
+    _out.println(MUS4_FIRMWARE_VERSION);
     _out.println("===================================");
     if (_ansiEnabled) _out.print(ANSI_RESET);
 }

@@ -180,8 +180,8 @@ SerialBuf serial1Buf = {{0},0,0,0,false};
 #ifdef ENABLE_WIFI_CONSOLE
 const char* WIFI_CONSOLE_AP_SSID = "MUS4-DEBUG";
 const char* WIFI_CONSOLE_AP_PASSWORD = "mus4-debug";
-const char* WIFI_STA_SSID = "";
-const char* WIFI_STA_PASSWORD = "";
+const char* WIFI_STA_SSID = "newhome_iot";
+const char* WIFI_STA_PASSWORD = "wxl922922";
 const uint16_t WIFI_CONSOLE_PORT = 2323;
 const uint16_t WIFI_WEB_CONSOLE_PORT = 80;
 const uint8_t WIFI_CONSOLE_CHANNEL = 6;

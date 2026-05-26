@@ -938,20 +938,27 @@ if ($Compile) {
 # --------------------------
 # 仅上传场景需要固件文件；串口监视(-s)不应依赖 .bin
 if ($Upload -and (-not $BinPath -or -not (Test-Path $BinPath))) {
-    $localBuildDir = Join-Path $ProjectRoot $BuildDir
-    $localBin = Get-ChildItem -Path $localBuildDir -Filter "*.bin" -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -notmatch '\.(bootloader|partitions|merged)\.bin$' } |
-        Sort-Object Name |
+    $candidateBuildDirs = @(
+        (Join-Path $ProjectRoot $BuildDir),
+        (Join-Path $ProjectRoot "build")
+    )
+    $localBin = $candidateBuildDirs |
+        Where-Object { Test-Path $_ } |
+        ForEach-Object {
+            Get-ChildItem -Path $_ -Filter "*.bin" -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -notmatch '\.(bootloader|partitions|merged)\.bin$' }
+        } |
+        Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
     if ($localBin) {
         $BinPath = $localBin.FullName
     } else {
         $actualBinFile = Invoke-WslCommand -Command "find ""$WSLBuildDir"" -maxdepth 1 -type f -name '*.bin' ! -name '*.bootloader.bin' ! -name '*.partitions.bin' ! -name '*.merged.bin' | sort | head -1 | xargs -r basename"
         if ([string]::IsNullOrWhiteSpace($actualBinFile)) {
-            Write-Error "No app .bin file found in build output: $localBuildDir or $WSLBuildDir"
+            Write-Error "No app .bin file found in build output: $($candidateBuildDirs -join ', ') or $WSLBuildDir"
             exit 1
         }
-        $BinPath = Join-Path $localBuildDir $actualBinFile
+        $BinPath = Join-Path (Join-Path $ProjectRoot $BuildDir) $actualBinFile
     }
 }
 

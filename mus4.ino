@@ -26,6 +26,7 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_INA219.h>
+#include <WiFi.h>
 #include "SharedTypes.h"
 #include "TUI.h"
 
@@ -40,7 +41,10 @@ Buzzer buzzer(BUZZER_PIN);
 int lastCarMode = -1;
 bool lastParkState = false;
 
+#define ENABLE_WIFI_CONSOLE
+#ifndef ENABLE_WIFI_CONSOLE
 #define ENABLE_GAMEPAD_MODE
+#endif
 #ifdef ENABLE_GAMEPAD_MODE
   #include <BleGamepad.h>
   BleGamepad bleGamepad("Gamepad MU02", "Espressif", 100);
@@ -168,6 +172,16 @@ unsigned long outputTTL = 100;
 struct SerialBuf { char buf[256]; uint16_t len; uint32_t frames; uint32_t errors; bool overflow; };
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
+#ifdef ENABLE_WIFI_CONSOLE
+const char* WIFI_CONSOLE_AP_SSID = "MUS4-DEBUG";
+const char* WIFI_CONSOLE_AP_PASSWORD = "mus4-debug";
+const uint16_t WIFI_CONSOLE_PORT = 2323;
+WiFiServer wifiConsoleServer(WIFI_CONSOLE_PORT);
+WiFiClient wifiConsoleClient;
+SerialBuf wifiConsoleBuf = {{0},0,0,0,false};
+bool wifiConsoleStarted = false;
+bool wifiConsoleAuthenticated = false;
+#endif
 static void cursorDownN(int n){ if(ansiEnabled) Serial.printf("\033[%dB", n); }
 static void cursorUpN(int n){ if(ansiEnabled) Serial.printf("\033[%dA", n); }
 static void cursorRightN(int n){ if(ansiEnabled) Serial.printf("\033[%dC", n); }
@@ -547,7 +561,40 @@ static bool processLine(const String& line, int* throttle, int* steering, int* s
     return parseAndValidateCommand(line, throttle, steering);
 }
 
-static void readSerialBuf(HardwareSerial& ser, SerialBuf& sb, bool isRS232)
+#define PROCESS_COMMAND_LINE(line, out, sb) do { \
+    if ((line).equalsIgnoreCase("TEST")) { \
+        bool ok = runUnitTests(); \
+        (out).printf("TEST: total=%d passed=%d ok=%d\n", testsTotal, testsPassed, ok ? 1 : 0); \
+    } else if ((line).equalsIgnoreCase("TEST_TUI")) { \
+        (out).println("Skipped TEST_TUI"); \
+    } else if ((line).equalsIgnoreCase("BENCH")) { \
+        bool ok = runBenchmarks(); \
+        (out).printf("BENCH_OK=%d\n", ok ? 1 : 0); \
+    } else if ((line).equalsIgnoreCase("STRESS")) { \
+        bool ok = runStress(); \
+        (out).printf("STRESS_OK=%d\n", ok ? 1 : 0); \
+    } else if ((line).equalsIgnoreCase("REGRESS")) { \
+        bool ok = runRegression(); \
+        (out).printf("REGRESS_OK=%d\n", ok ? 1 : 0); \
+    } else { \
+        int t, s, seq; \
+        bool ok = processLine((line), &t, &s, &seq); \
+        if (ok) { \
+            pilot_data.throttle = t; \
+            pilot_data.steering = s; \
+            lastSeq = seq; \
+            if (seq >= 0) (out).printf("ACK:%d\n", seq); \
+            else (out).println("ACK"); \
+            (sb).frames++; \
+        } else { \
+            if (seq >= 0) (out).printf("NACK:%d\n", seq); \
+            else (out).println("NACK"); \
+            (sb).errors++; \
+        } \
+    } \
+} while (false)
+
+static void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)
 {
     while (ser.available())
     {
@@ -557,66 +604,7 @@ static void readSerialBuf(HardwareSerial& ser, SerialBuf& sb, bool isRS232)
         if (c == '\n')
         {
             sb.buf[sb.len] = 0;
-            String line = String(sb.buf);
-            if (line.equalsIgnoreCase("TEST"))
-            {
-                bool ok = runUnitTests();
-                Serial.printf("TEST: total=%d passed=%d ok=%d\n", testsTotal, testsPassed, ok?1:0);
-                sb.len = 0; sb.overflow = false; continue;
-            }
-            if (line.equalsIgnoreCase("TEST_TUI"))
-            {
-                // TestRegistry::runAll();
-                Serial.println("Skipped TEST_TUI");
-                sb.len = 0; sb.overflow = false; continue;
-            }
-            if (line.equalsIgnoreCase("BENCH"))
-            {
-                bool ok = runBenchmarks();
-                Serial.printf("BENCH_OK=%d\n", ok?1:0);
-                sb.len = 0; sb.overflow = false; continue;
-            }
-            if (line.equalsIgnoreCase("STRESS"))
-            {
-                bool ok = runStress();
-                Serial.printf("STRESS_OK=%d\n", ok?1:0);
-                sb.len = 0; sb.overflow = false; continue;
-            }
-            if (line.equalsIgnoreCase("REGRESS"))
-            {
-                bool ok = runRegression();
-                Serial.printf("REGRESS_OK=%d\n", ok?1:0);
-                sb.len = 0; sb.overflow = false; continue;
-            }
-            int t, s, seq;
-            bool ok = processLine(line, &t, &s, &seq);
-            if (ok)
-            {
-                pilot_data.throttle = t;
-                pilot_data.steering = s;
-                lastSeq = seq;
-                if (isRS232) {
-                    if (seq >= 0) ser.printf("ACK:%d\n", seq);
-                    else ser.println("ACK");
-                }
-                else {
-                    if (seq >= 0) Serial.printf("ACK:%d\n", seq);
-                    else Serial.println("ACK");
-                }
-                sb.frames++;
-            }
-            else
-            {
-                if (isRS232) {
-                     if (seq >= 0) ser.printf("NACK:%d\n", seq);
-                     else ser.println("NACK");
-                }
-                else {
-                     if (seq >= 0) Serial.printf("NACK:%d\n", seq);
-                     else Serial.println("NACK");
-                }
-                sb.errors++;
-            }
+            PROCESS_COMMAND_LINE(String(sb.buf), ser, sb);
             sb.len = 0;
             sb.overflow = false;
         }
@@ -634,6 +622,126 @@ static void readSerialBuf(HardwareSerial& ser, SerialBuf& sb, bool isRS232)
         }
     }
 }
+
+#ifdef ENABLE_WIFI_CONSOLE
+static bool isWirelessControlCommand(const String& line)
+{
+    int firstColon = line.indexOf(':');
+    if (firstColon <= 0) return false;
+    String throttleText = line.substring(0, firstColon);
+    int secondColon = line.indexOf(':', firstColon + 1);
+    int star = line.indexOf('*', firstColon + 1);
+    int end = line.length();
+    if (secondColon > firstColon) end = secondColon;
+    if (star > firstColon && star < end) end = star;
+    String steeringText = line.substring(firstColon + 1, end);
+    throttleText.trim();
+    steeringText.trim();
+    if (throttleText.length() == 0 || steeringText.length() == 0) return false;
+    for (uint16_t i = 0; i < throttleText.length(); i++) {
+        char c = throttleText.charAt(i);
+        if (!(isDigit(c) || (i == 0 && c == '-'))) return false;
+    }
+    for (uint16_t i = 0; i < steeringText.length(); i++) {
+        char c = steeringText.charAt(i);
+        if (!(isDigit(c) || (i == 0 && c == '-'))) return false;
+    }
+    return true;
+}
+
+static bool isWirelessCommandAllowed(const String& line)
+{
+    if (line.equalsIgnoreCase("PING") || line.equalsIgnoreCase("STATUS")) return true;
+    if (line.startsWith("AUTH:")) return true;
+    if (!wifiConsoleAuthenticated) return false;
+    if (line.equalsIgnoreCase("TEST") || line.equalsIgnoreCase("TEST_TUI") || line.equalsIgnoreCase("BENCH") || line.equalsIgnoreCase("STRESS") || line.equalsIgnoreCase("REGRESS") || line.equalsIgnoreCase("FILTER_TEST")) {
+        return car_output.park == PARK_LOCKED;
+    }
+    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG")) return true;
+    return isWirelessControlCommand(line);
+}
+
+static void printWirelessStatus(WiFiClient& out)
+{
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu\n",
+        car_output.mode,
+        car_output.park ? 1 : 0,
+        car_output.throttle,
+        car_output.steering,
+        wifiConsoleBuf.frames,
+        wifiConsoleBuf.errors);
+}
+
+static void processWirelessConsoleLine(const String& line, WiFiClient& out)
+{
+    if (line.equalsIgnoreCase("PING")) {
+        out.println("PONG");
+        return;
+    }
+    if (line.equalsIgnoreCase("STATUS")) {
+        printWirelessStatus(out);
+        return;
+    }
+    if (line.startsWith("AUTH:")) {
+        wifiConsoleAuthenticated = line.substring(5).equals(WIFI_CONSOLE_AP_PASSWORD);
+        out.println(wifiConsoleAuthenticated ? "AUTH_OK" : "AUTH_FAIL");
+        return;
+    }
+    if (!isWirelessCommandAllowed(line)) {
+        out.println("NACK:UNAUTHORIZED");
+        wifiConsoleBuf.errors++;
+        return;
+    }
+    PROCESS_COMMAND_LINE(line, out, wifiConsoleBuf);
+}
+
+static void setupWifiConsole()
+{
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(WIFI_CONSOLE_AP_SSID, WIFI_CONSOLE_AP_PASSWORD);
+    wifiConsoleServer.begin();
+    wifiConsoleServer.setNoDelay(true);
+    wifiConsoleStarted = true;
+    Serial.printf("WiFi Console AP: %s IP: %s Port: %u\n", WIFI_CONSOLE_AP_SSID, WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT);
+}
+
+static void updateWifiConsole()
+{
+    if (!wifiConsoleStarted) return;
+    if (!wifiConsoleClient || !wifiConsoleClient.connected()) {
+        WiFiClient nextClient = wifiConsoleServer.available();
+        if (nextClient) {
+            if (wifiConsoleClient) wifiConsoleClient.stop();
+            wifiConsoleClient = nextClient;
+            wifiConsoleClient.setNoDelay(true);
+            wifiConsoleAuthenticated = false;
+            wifiConsoleClient.println("MUS4 WiFi Console Ready");
+            wifiConsoleClient.println("Use AUTH:<password> to unlock control commands");
+        }
+        return;
+    }
+    while (wifiConsoleClient.available()) {
+        int c = wifiConsoleClient.read();
+        if (c < 0) break;
+        if (c == '\r') continue;
+        if (c == '\n') {
+            wifiConsoleBuf.buf[wifiConsoleBuf.len] = 0;
+            processWirelessConsoleLine(String(wifiConsoleBuf.buf), wifiConsoleClient);
+            wifiConsoleBuf.len = 0;
+            wifiConsoleBuf.overflow = false;
+        } else {
+            if (wifiConsoleBuf.len < sizeof(wifiConsoleBuf.buf) - 1) {
+                wifiConsoleBuf.buf[wifiConsoleBuf.len++] = (char)c;
+            } else {
+                wifiConsoleBuf.len = 0;
+                wifiConsoleBuf.overflow = true;
+                wifiConsoleBuf.errors++;
+                wifiConsoleClient.println("NACK:OVERFLOW");
+            }
+        }
+    }
+}
+#endif
 
 
 void IRAM_ATTR handle_interrupt(int channel)
@@ -1700,6 +1808,9 @@ void setup()
     #ifdef ENABLE_GAMEPAD_MODE
       bleGamepad.begin();
     #endif
+    #ifdef ENABLE_WIFI_CONSOLE
+      setupWifiConsole();
+    #endif
 
     g_i2cWorkingSpeed = I2C_SPEED;
     Wire.begin(SDA_PIN, SCL_PIN, g_i2cWorkingSpeed); // SDA = 21, SCL = 22
@@ -1751,8 +1862,11 @@ void loop()
         lastSensorUpdate = millis();
     }
 
-    readSerialBuf(Serial, serial0Buf, false);
-    readSerialBuf(Serial1, serial1Buf, true);
+    readSerialBuf(Serial, serial0Buf);
+    readSerialBuf(Serial1, serial1Buf);
+    #ifdef ENABLE_WIFI_CONSOLE
+      updateWifiConsole();
+    #endif
 
     // RC信号读取：检查超时和有效性，应用滑动平均滤波（带更新间隔控制）
     unsigned long nowUs = micros();

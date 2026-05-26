@@ -17,16 +17,16 @@ MUS4 当前主固件已经具备 USB `Serial`、RS232 `Serial1` 和 BLE Gamepad 
 推荐采用：
 
 - **Wi-Fi 作为 OTA 主通道**。
-- **Wi-Fi TCP Console 作为主要无线串口调试通道**。
-- **BLE UART 作为配网、现场低速调试和 OTA 开启辅助通道**。
-- **BLE Gamepad 与 BLE UART 初期采用编译期开关二选一**，稳定后再评估共存。
+- **Wi-Fi TCP Console 作为低延迟命令行调试通道**。
+- **Wi-Fi Web Console 作为下一阶段主要图形化调试入口**。
+- **AP + STA 双模式同时支持户外直连和室内局域网调试**。
 
 核心原则：
 
 ```text
 无线只扩展通道，不改变车辆控制安全逻辑。
 OTA 只在 Park 锁定、人工授权、短时间窗口内启用。
-BLE 优先用于配网和低速调试，Wi-Fi 负责 OTA 和主要无线串口。
+Wi-Fi 同时负责 OTA、TCP Console 和 Web Console，AP 作为保底入口。
 ```
 
 ## 推荐架构
@@ -45,8 +45,8 @@ BLE 优先用于配网和低速调试，Wi-Fi 负责 OTA 和主要无线串口�
        └───────────────────┘   └──────┬───────────┘
                                       │
                          ┌────────────▼────────────┐
-                         │ Wi-Fi TCP / WebSocket    │
-                         │ BLE UART                 │
+                         │ Wi-Fi TCP Console        │
+                         │ Wi-Fi Web Console        │
                          └────────────┬────────────┘
                                       │
                          ┌────────────▼────────────┐
@@ -58,9 +58,9 @@ BLE 优先用于配网和低速调试，Wi-Fi 负责 OTA 和主要无线串口�
 建议新增模块：
 
 ```text
-WirelessConfig.h/.cpp      # Wi-Fi/BLE 开关、SSID、密码、鉴权配置
+WirelessConfig.h/.cpp      # Wi-Fi AP/STA 开关、SSID、密码、鉴权配置
 WirelessOta.h/.cpp         # OTA 初始化、OTA 状态机、安全门控
-WirelessConsole.h/.cpp     # 无线串口：TCP/WebSocket/BLE UART 命令桥接
+WirelessConsole.h/.cpp     # TCP Console / Web Console 命令桥接
 ```
 
 主循环只保留轻量调用：
@@ -223,26 +223,39 @@ Txx:Sxx
 状态日志
 ```
 
-### 次选：WebSocket Console
+### 下一阶段主线：Wi-Fi Web Console
 
-适合后续图形化调试面板：
+这里的 Web Console 不是浏览器 USB Web Serial API，而是运行在 ESP32 Wi-Fi 上的 Web Serial 风格调试页：
 
 ```text
 浏览器 Web UI
-        ↓ WebSocket
-ESP32
+        ↓ HTTP
+ESP32 Web Console
+        ↓
+复用现有 Wireless Console 命令处理
 ```
 
-优点：
+访问方式：
 
-- 适合实时显示油门、转向、Park、模式、IMU、电流等状态。
-- 可以扩展成完整调试网页。
+```text
+AP 户外模式：http://192.168.4.1/
+STA 室内模式：http://<sta_ip>/
+```
 
-限制：
+最小功能：
 
-- 需要 WebServer / WebSocket 依赖。
-- 代码和内存占用更高。
-- 初期不建议优先实现。
+- 网页输入 `PING`、`STATUS`、`AUTH`、`ENABLE_OTA`、`OTA_STATUS` 等命令。
+- 文本区域显示响应日志。
+- 提供常用命令快捷按钮。
+- 复用现有无线命令权限、安全门控和 OTA 开窗逻辑。
+
+首版推荐使用 HTTP 轮询式 Web Console：
+
+- `GET /` 返回单页 HTML。
+- `GET /api/status` 返回当前状态。
+- `POST /api/cmd` 提交一行命令并返回响应。
+
+暂不做 WebSocket，避免额外依赖、状态管理和固件体积风险；如果后续需要实时日志流，再升级为 WebSocket。
 
 ## 命令路由设计
 
@@ -280,90 +293,15 @@ wirelessConsole.update();
 无线通道只是输入输出通道，不允许绕过 Park、安全状态机、模式融合逻辑。
 ```
 
-## BLE 无线串口调试方案
+## 远期可选 BLE 能力
 
-### 推荐用途
+当前阶段不推进 BLE UART。主要原因：
 
-BLE 适合：
+- Wi-Fi 已能覆盖 OTA、TCP Console 和下一阶段 Web Console。
+- BLE UART 与现有 BLE Gamepad、Wi-Fi/OTA 共存存在体积和兼容性风险。
+- Web Console 更适合室内和户外统一调试入口。
 
-```text
-1. 手机现场查看状态
-2. 发送简单调试命令
-3. 配置 Wi-Fi SSID / 密码
-4. 开启 OTA 窗口
-5. 低频遥测
-```
-
-不建议 BLE 承担主 OTA。
-
-### BLE UART 服务
-
-可实现类似 Nordic UART Service：
-
-```text
-RX Characteristic：手机 → ESP32
-TX Characteristic：ESP32 → 手机
-```
-
-命令示例：
-
-```text
-STATUS
-ENABLE_OTA:123456
-WIFI:ssid,password
-TEST
-NOANSI
-```
-
-响应示例：
-
-```json
-{"mode":1,"park":1,"throttle":0,"steering":1500}
-```
-
-### 与 BLE Gamepad 的关系
-
-当前项目已经启用 BLE Gamepad。BLE UART 有两个选择：
-
-#### 选择 A：保留 BLE Gamepad，新增 BLE UART
-
-优点：
-
-- 同时拥有手柄和调试能力。
-
-风险：
-
-- BLE 服务复杂度增加。
-- HID + UART 组合需要验证兼容性。
-- 手机和电脑端连接行为可能更复杂。
-
-#### 选择 B：编译期二选一
-
-推荐初期采用：
-
-```cpp
-#define ENABLE_GAMEPAD_MODE
-// #define ENABLE_BLE_CONSOLE
-```
-
-或：
-
-```cpp
-// #define ENABLE_GAMEPAD_MODE
-#define ENABLE_BLE_CONSOLE
-```
-
-优点：
-
-- 稳定。
-- 内存压力小。
-- 调试问题少。
-
-限制：
-
-- 同一固件不能同时做 BLE 手柄和 BLE 串口。
-
-建议先实现编译期二选一，稳定后再评估 BLE HID + UART 共存。
+BLE Gamepad 仍作为已有能力保留。若后续确有手机低功耗调试或离线配网需求，再单独立项评估 BLE UART，不纳入当前 Web Console 路线。
 
 ## Wi-Fi 工作模式
 
@@ -408,13 +346,26 @@ ESP32 自己开热点：
 
 ### 推荐模式
 
-采用双模式：
+采用 AP + STA 双模式：
 
 ```text
-1. 启动时尝试 STA 连接已保存 Wi-Fi
-2. 连接失败则开启 AP
-3. AP 下提供配网页面、TCP Console、OTA 开启入口
+1. 启动 WIFI_AP_STA
+2. 始终开启 MUS4-DEBUG SoftAP，作为户外调试和救援入口
+3. 若配置了 STA SSID/PASSWORD，则同时尝试连接室内路由器
+4. STA 成功后可通过局域网访问 Web Console、TCP Console 和 OTA
+5. STA 失败不影响 AP、TCP Console、Web Console 或 OTA
 ```
+
+状态输出应包含：
+
+```text
+ap_ip=192.168.4.1
+sta_connected=0/1
+sta_ip=...
+web_port=80
+```
+
+本阶段 STA 凭据可先使用编译期常量，NVS 持久化和网页配网留到后续阶段。
 
 ## 权限与安全策略
 
@@ -540,25 +491,37 @@ WirelessOta.h/.cpp
 4. OTA 中断后设备仍可启动旧固件
 ```
 
-### 第 3 阶段：BLE UART 调试 / 配网
+### 第 3 阶段：Wi-Fi Web Console + AP/STA 双模式
 
 能力：
 
 ```text
-1. 手机 BLE 连接
-2. 发送 STATUS / ENABLE_OTA
-3. 配置 Wi-Fi SSID / 密码
-4. 可选替代 BLE Gamepad
+1. AP 模式下通过 http://192.168.4.1/ 打开 Web Console
+2. STA 模式下通过 http://<sta_ip>/ 在室内局域网调试
+3. 网页发送 PING / STATUS / AUTH / ENABLE_OTA / OTA_STATUS / 控制命令
+4. 复用现有无线命令权限、Park 门控和 OTA 窗口
+5. STATUS 输出 AP/STA 网络状态
 ```
 
-建议先做：
+最小实现：
 
-```cpp
-#define ENABLE_BLE_CONSOLE
-// #define ENABLE_GAMEPAD_MODE
+```text
+GET  /api/status
+POST /api/cmd
 ```
 
-稳定后再评估 BLE HID + UART 共存。
+### 第 4 阶段：可选 Web 配网 / NVS 持久化
+
+能力：
+
+```text
+1. Web 页面配置 STA SSID / PASSWORD
+2. NVS 保存 STA 凭据
+3. STA 连接失败时保持 AP 可用
+4. 提供清除 Wi-Fi 配置入口
+```
+
+远期如确有低功耗手机调试需求，再单独评估 BLE UART。
 
 ## 测试策略
 
@@ -569,9 +532,9 @@ WirelessOta.h/.cpp
 ```text
 1. 命令权限判断
 2. OTA 开启条件判断
-3. Wi-Fi 模式状态机
+3. AP/STA Wi-Fi 模式状态机
 4. AUTH / STATUS / ENABLE_OTA 命令解析
-5. 不同 CommandSource 的权限差异
+5. Web Console 与 TCP Console 的权限一致性
 ```
 
 ### 集成测试
@@ -581,10 +544,10 @@ WirelessOta.h/.cpp
 ```text
 1. Wi-Fi AP 启动
 2. TCP Console 连接和断开
-3. 多客户端连接限制
-4. OTA 成功升级
-5. OTA 中断恢复
-6. BLE Console 与 BLE Gamepad 编译期二选一
+3. Web Console AP 访问
+4. STA 连接成功后局域网访问
+5. OTA 成功升级
+6. OTA 中断恢复
 ```
 
 ### 回归测试
@@ -596,7 +559,7 @@ WirelessOta.h/.cpp
 2. Park 锁定语义不改变
 3. Serial1 Pilot 控制不受影响
 4. TUI 刷新不被无线日志刷爆
-5. BLE Gamepad 原有功能不回退
+5. TCP Console 与 OTA 原有功能不回退
 ```
 
 ## 风险与缓解
@@ -604,23 +567,23 @@ WirelessOta.h/.cpp
 | 风险 | 影响 | 缓解 |
 | --- | --- | --- |
 | OTA 在车辆可运动状态触发 | 高 | Park 锁定、油门安全、人工授权、短窗口 |
-| Wi-Fi/BLE 占用主循环时间 | 中高 | 全部使用非阻塞 update，发送限频 |
-| BLE Gamepad 与 BLE UART 冲突 | 中 | 初期编译期二选一 |
+| Wi-Fi/Web 服务占用主循环时间 | 中高 | 使用非阻塞 handleClient，发送限频 |
+| Web Console 增加固件体积 | 中 | 首版使用内置 WebServer 和 HTTP 轮询，暂不引入 WebSocket |
 | 无线通道绕过安全逻辑 | 高 | 统一 Command Router，不复制控制路径 |
 | OTA 分区不匹配 | 中 | 先确认 FQBN 和 PartitionScheme |
 | 未认证用户发送控制命令 | 高 | AUTH 门控和命令权限表 |
 
 ## 推荐下一步
 
-先实施第 1 阶段：Wi-Fi TCP 无线串口。
+先实施第 3 阶段：Wi-Fi Web Console + AP/STA 双模式。
 
-开始编码前需要确认：
+开发前置约束：
 
 ```text
-1. 是否允许固件默认启动 AP
-2. AP 名称和默认密码
-3. TCP Console 是否允许发送控制命令，还是首版只允许 STATUS/TEST
-4. 是否先禁用 BLE Gamepad，避免无线调试阶段资源冲突
+1. AP 保持默认开启，作为户外调试和救援入口
+2. STA 作为可选室内调试入口，失败不能影响 AP
+3. Web Console 复用现有 AUTH、Park 门控和 OTA 窗口
+4. 首版使用 HTTP 轮询，不引入 WebSocket
 ```
 
 ## OTA 增强最小实施
@@ -653,4 +616,79 @@ STATUS mode=0 park=1 throttle=0 steering=0 wifi_frames=1 wifi_errors=0 ota_windo
 
 ```powershell
 .\arduino-cli-wsl.ps1 -u -Ota -OtaHost 192.168.4.1 -EspotaTool "C:\Users\cross\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.3.8-cn\tools\espota.py"
+```
+
+## Wi-Fi Web Console 与 AP/STA 双模式最小实施
+
+本阶段目标是提供浏览器可用的 Web Serial 风格调试页，同时支持户外 AP 直连和室内 STA 局域网访问。
+
+### 开发范围
+
+```text
+1. 引入 WebServer.h
+2. 新增 GET / 返回内嵌 HTML 调试页
+3. 新增 GET /api/status 返回状态文本
+4. 新增 POST /api/cmd 提交单行命令并返回响应
+5. 将 TCP Console 与 Web Console 复用同一套命令权限和处理逻辑
+6. STATUS 追加 AP/STA 网络状态
+```
+
+### AP/STA 行为
+
+```text
+1. AP 永远开启：MUS4-DEBUG / 192.168.4.1
+2. STA 可选开启：配置 SSID/PASSWORD 后尝试连接室内路由器
+3. STA 成功：可通过 http://<sta_ip>/ 访问 Web Console
+4. STA 失败：AP 仍保持可用，不影响 TCP Console 和 OTA
+```
+
+建议启动日志和 `STATUS` 输出：
+
+```text
+web_port=80 ap_ip=192.168.4.1 sta_connected=0 sta_ip=0.0.0.0
+```
+
+### Web Console 页面
+
+首版页面保持极简：
+
+```text
+- 命令输入框
+- 响应日志区域
+- PING / STATUS / AUTH / ENABLE_OTA / OTA_STATUS 快捷按钮
+- 当前 AP IP、STA IP、固件版本显示
+```
+
+当前不做登录 Cookie 或 Session。Web Console 仍通过命令层 `AUTH:mus4-debug` 解锁控制命令。
+
+### AP 户外验证
+
+```text
+1. 连接 MUS4-DEBUG
+2. 打开 http://192.168.4.1/
+3. 执行 PING，预期 PONG
+4. 执行 STATUS，预期包含 version/build/ap_ip/sta_connected/web_port
+5. 执行 AUTH:mus4-debug，预期 AUTH_OK
+6. Park 锁定后执行 ENABLE_OTA，预期 OTA_READY
+7. 同时确认 TCP Console 2323 仍可连接
+```
+
+### STA 室内验证
+
+```text
+1. 配置 STA SSID/PASSWORD
+2. 编译上传固件
+3. 从串口、TCP Console 或 AP Web Console 查看 sta_ip
+4. 在同一局域网打开 http://<sta_ip>/
+5. 重复 PING / STATUS / AUTH / ENABLE_OTA 测试
+6. 断开路由器或填错密码，确认 http://192.168.4.1/ 仍可访问
+```
+
+### 后续扩展
+
+```text
+1. Web 配网页面
+2. NVS 持久化 STA 凭据
+3. WebSocket 实时日志流
+4. 多客户端访问限制和会话管理
 ```

@@ -176,11 +176,15 @@ SerialBuf serial1Buf = {{0},0,0,0,false};
 const char* WIFI_CONSOLE_AP_SSID = "MUS4-DEBUG";
 const char* WIFI_CONSOLE_AP_PASSWORD = "mus4-debug";
 const uint16_t WIFI_CONSOLE_PORT = 2323;
+const uint8_t WIFI_CONSOLE_CHANNEL = 6;
+const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;
+const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;
 WiFiServer wifiConsoleServer(WIFI_CONSOLE_PORT);
 WiFiClient wifiConsoleClient;
 SerialBuf wifiConsoleBuf = {{0},0,0,0,false};
 bool wifiConsoleStarted = false;
 bool wifiConsoleAuthenticated = false;
+unsigned long lastWifiConsoleStartAttemptMs = 0;
 #endif
 static void cursorDownN(int n){ if(ansiEnabled) Serial.printf("\033[%dB", n); }
 static void cursorUpN(int n){ if(ansiEnabled) Serial.printf("\033[%dA", n); }
@@ -697,8 +701,24 @@ static void processWirelessConsoleLine(const String& line, WiFiClient& out)
 
 static void setupWifiConsole()
 {
+    lastWifiConsoleStartAttemptMs = millis();
+    WiFi.disconnect(true, true);
+    WiFi.mode(WIFI_OFF);
+    delay(100);
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(WIFI_CONSOLE_AP_SSID, WIFI_CONSOLE_AP_PASSWORD);
+    WiFi.setSleep(false);
+    bool started = WiFi.softAP(
+        WIFI_CONSOLE_AP_SSID,
+        WIFI_CONSOLE_AP_PASSWORD,
+        WIFI_CONSOLE_CHANNEL,
+        false,
+        WIFI_CONSOLE_MAX_CLIENTS
+    );
+    if (!started) {
+        wifiConsoleStarted = false;
+        Serial.println("WiFi Console AP start failed");
+        return;
+    }
     wifiConsoleServer.begin();
     wifiConsoleServer.setNoDelay(true);
     wifiConsoleStarted = true;
@@ -707,7 +727,12 @@ static void setupWifiConsole()
 
 static void updateWifiConsole()
 {
-    if (!wifiConsoleStarted) return;
+    if (!wifiConsoleStarted) {
+        if (millis() - lastWifiConsoleStartAttemptMs >= WIFI_CONSOLE_RETRY_INTERVAL_MS) {
+            setupWifiConsole();
+        }
+        return;
+    }
     if (!wifiConsoleClient || !wifiConsoleClient.connected()) {
         WiFiClient nextClient = wifiConsoleServer.available();
         if (nextClient) {

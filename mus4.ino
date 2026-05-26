@@ -178,10 +178,17 @@ struct SerialBuf { char buf[256]; uint16_t len; uint32_t frames; uint32_t errors
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
 #ifdef ENABLE_WIFI_CONSOLE
+#if __has_include("WirelessSecrets.h")
+#include "WirelessSecrets.h"
+#endif
+#ifndef WIFI_STA_SSID
+#define WIFI_STA_SSID ""
+#endif
+#ifndef WIFI_STA_PASSWORD
+#define WIFI_STA_PASSWORD ""
+#endif
 const char* WIFI_CONSOLE_AP_SSID = "MUS4-DEBUG";
 const char* WIFI_CONSOLE_AP_PASSWORD = "mus4-debug";
-const char* WIFI_STA_SSID = "newhome_iot";
-const char* WIFI_STA_PASSWORD = "wxl922922";
 const uint16_t WIFI_CONSOLE_PORT = 2323;
 const uint16_t WIFI_WEB_CONSOLE_PORT = 80;
 const uint8_t WIFI_CONSOLE_CHANNEL = 6;

@@ -41,3 +41,4 @@ provisioning_system/playwright_tests/
 .tmp_serial_state_test.json
 tests/__pycache__/
 __pycache__/
+WirelessSecrets.h

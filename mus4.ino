@@ -239,6 +239,7 @@ struct WebDataPoint {
     bool park;
     int rcThrottle;
     int rcSteering;
+    int rcChannels[RC_CHANNEL_COUNT];
     int pilotThrottle;
     int pilotSteering;
     float currentMa;
@@ -866,6 +867,9 @@ static void sampleWifiWebData()
     point.park = car_output.park;
     point.rcThrottle = rc_data.throttle;
     point.rcSteering = rc_data.steering;
+    for (uint8_t i = 0; i < RC_CHANNEL_COUNT; i++) {
+        point.rcChannels[i] = pwm_filtered[i];
+    }
     point.pilotThrottle = pilot_data.throttle;
     point.pilotSteering = pilot_data.steering;
     point.currentMa = ina219Data.current_mA;
@@ -1061,7 +1065,7 @@ static const char WIFI_WEB_CONSOLE_HTML[] PROGMEM = R"rawliteral(
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MUS4 Web Console</title>
 <style>
-body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8edf2}h1{margin:0 0 10px;font-size:22px}.grid{display:grid;grid-template-columns:1fr;gap:10px}.panel{background:#171c24;border:1px solid #2b3441;border-radius:8px;padding:10px}#status{white-space:pre-wrap;color:#b7c6d8;font-size:13px;margin-top:10px}.stateGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px;background:linear-gradient(135deg,#1c2430,#121821);box-shadow:0 0 0 rgba(0,0,0,0);transition:.25s}.stateHead{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em}.stateValue{font-size:24px;font-weight:800;margin-top:4px}.stateSub{color:#b7c6d8;font-size:12px;margin-top:3px}.stateDot{position:absolute;right:12px;top:12px;width:10px;height:10px;border-radius:50%;background:#667}.mode0{border-color:#39d98a}.mode1{border-color:#ffcc66}.mode2{border-color:#5cc8ff}.mode0 .stateDot{background:#39d98a}.mode1 .stateDot{background:#ffcc66}.mode2 .stateDot{background:#5cc8ff}.parkLocked{border-color:#ff6b6b;animation:pulse 1.2s infinite}.parkUnlocked{border-color:#39d98a}.parkLocked .stateDot{background:#ff6b6b}.parkUnlocked .stateDot{background:#39d98a}.driftOff{border-color:#475569}.driftArmed{border-color:#ffcc66}.driftActive{border-color:#d96bff;animation:pulse 1s infinite}.driftBar{height:6px;background:#273142;border-radius:999px;margin-top:10px;position:relative}.driftBar i{position:absolute;top:-3px;width:4px;height:12px;background:#d96bff;border-radius:2px;left:50%;transition:left .2s}.driftActive:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(217,107,255,.16),transparent);animation:scan 1.4s infinite}.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}button,input{font-size:15px;border-radius:6px;border:1px solid #3b4655;background:#222b36;color:#eef;padding:8px}button{cursor:pointer}button:hover{background:#2d3948}input{flex:1;min-width:220px}.log{height:280px;overflow:auto;background:#05070a;color:#d7ffe0;font:13px/1.35 Consolas,monospace;padding:8px;border-radius:6px;white-space:pre-wrap}.muted{color:#8fa1b5;font-size:12px}canvas{width:100%;height:260px;background:#070a0f;border-radius:6px;border:1px solid #2b3441}.legend span{display:inline-block;margin-right:12px;font-size:12px}.c1{color:#39d98a}.c2{color:#5cc8ff}.c3{color:#ffcc66}.c4{color:#ff6b6b}@keyframes pulse{50%{box-shadow:0 0 18px rgba(255,107,107,.35);transform:translateY(-1px)}}@keyframes scan{from{transform:translateX(-100%)}to{transform:translateX(100%)}}@media(min-width:900px){.grid{grid-template-columns:1.1fr .9fr}.wide{grid-column:1/-1}}
+body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8edf2}h1{margin:0 0 10px;font-size:22px}.grid{display:grid;grid-template-columns:1fr;gap:10px}.panel{background:#171c24;border:1px solid #2b3441;border-radius:8px;padding:10px}#status{white-space:pre-wrap;color:#b7c6d8;font-size:13px;margin-top:10px}.stateGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px;background:linear-gradient(135deg,#1c2430,#121821);box-shadow:0 0 0 rgba(0,0,0,0);transition:.25s}.stateHead{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em}.stateValue{font-size:24px;font-weight:800;margin-top:4px}.stateSub{color:#b7c6d8;font-size:12px;margin-top:3px}.stateDot{position:absolute;right:12px;top:12px;width:10px;height:10px;border-radius:50%;background:#667}.mode0{border-color:#39d98a}.mode1{border-color:#ffcc66}.mode2{border-color:#5cc8ff}.mode0 .stateDot{background:#39d98a}.mode1 .stateDot{background:#ffcc66}.mode2 .stateDot{background:#5cc8ff}.parkLocked{border-color:#ff6b6b;animation:pulse 1.2s infinite}.parkUnlocked{border-color:#39d98a}.parkLocked .stateDot{background:#ff6b6b}.parkUnlocked .stateDot{background:#39d98a}.driftOff{border-color:#475569}.driftArmed{border-color:#ffcc66}.driftActive{border-color:#d96bff;animation:pulse 1s infinite}.driftBar{height:6px;background:#273142;border-radius:999px;margin-top:10px;position:relative}.driftBar i{position:absolute;top:-3px;width:4px;height:12px;background:#d96bff;border-radius:2px;left:50%;transition:left .2s}.driftActive:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(217,107,255,.16),transparent);animation:scan 1.4s infinite}.rcGrid{display:grid;grid-template-columns:repeat(6,minmax(72px,1fr));gap:6px;margin-top:10px}.rcCell{background:#0d1219;border:1px solid #2b3441;border-radius:8px;padding:8px;text-align:center}.rcCell b{display:block;color:#8fa1b5;font-size:11px}.rcCell span{font:700 18px Consolas,monospace}.rcCell.modeCh{border-color:#ffcc66}.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}button,input{font-size:15px;border-radius:6px;border:1px solid #3b4655;background:#222b36;color:#eef;padding:8px}button{cursor:pointer}button:hover{background:#2d3948}input{flex:1;min-width:220px}.log{height:280px;overflow:auto;background:#05070a;color:#d7ffe0;font:13px/1.35 Consolas,monospace;padding:8px;border-radius:6px;white-space:pre-wrap}.muted{color:#8fa1b5;font-size:12px}canvas{width:100%;height:260px;background:#070a0f;border-radius:6px;border:1px solid #2b3441}.legend span{display:inline-block;margin-right:12px;font-size:12px}.c1{color:#39d98a}.c2{color:#5cc8ff}.c3{color:#ffcc66}.c4{color:#ff6b6b}@keyframes pulse{50%{box-shadow:0 0 18px rgba(255,107,107,.35);transform:translateY(-1px)}}@keyframes scan{from{transform:translateX(-100%)}to{transform:translateX(100%)}}@media(min-width:900px){.grid{grid-template-columns:1.1fr .9fr}.wide{grid-column:1/-1}}
 </style>
 </head>
 <body>
@@ -1073,6 +1077,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <div id="parkCard" class="stateCard"><div class="stateHead">Park</div><div class="stateValue" id="parkValue">--</div><div class="stateSub" id="parkSub">waiting</div><span class="stateDot"></span></div>
 <div id="driftCard" class="stateCard"><div class="stateHead">Drift</div><div class="stateValue" id="driftValue">--</div><div class="stateSub" id="driftSub">waiting</div><div class="driftBar"><i id="driftNeedle"></i></div><span class="stateDot"></span></div>
 </div>
+<div class="rcGrid"><div class="rcCell"><b>CH1 Steering</b><span id="ch1Value">----</span></div><div class="rcCell"><b>CH2 Throttle</b><span id="ch2Value">----</span></div><div class="rcCell"><b>CH3 Park</b><span id="ch3Value">----</span></div><div class="rcCell modeCh"><b>CH4 Mode</b><span id="ch4Value">----</span></div><div class="rcCell"><b>CH5 Drift</b><span id="ch5Value">----</span></div><div class="rcCell"><b>CH6 Scale</b><span id="ch6Value">----</span></div></div>
 <div id="status">loading...</div>
 </section>
 <section class="panel">
@@ -1088,7 +1093,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 </section>
 </div>
 <script>
-const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),logMeta=document.getElementById('logMeta'),dataMeta=document.getElementById('dataMeta'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle');
+const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),logMeta=document.getElementById('logMeta'),dataMeta=document.getElementById('dataMeta'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
 let lastLogSeq=0,lastDataSeq=0,logPaused=false,chartPaused=false,points=[];
 function line(t){if(logPaused)return;log.textContent+=t+'\n';if(log.textContent.length>16000)log.textContent=log.textContent.slice(-12000);log.scrollTop=log.scrollHeight}
 function clearLog(){log.textContent=''}
@@ -1097,8 +1102,8 @@ function toggleChart(){chartPaused=!chartPaused;document.getElementById('chartBt
 function clearChart(){points=[];draw()}
 async function refreshStatus(){try{const r=await fetch('/api/status');statusBox.textContent=await r.text()}catch(e){statusBox.textContent='status error: '+e}}
 async function pollLog(){try{const r=await fetch('/api/log?since='+lastLogSeq);const j=await r.json();for(const e of j.entries){lastLogSeq=Math.max(lastLogSeq,e.seq);line('['+e.t+']['+e.src+'] '+e.line)}logMeta.textContent='seq='+lastLogSeq+' dropped='+j.dropped}catch(e){logMeta.textContent='log error: '+e}}
-function updateState(p){const modes={0:['RC','Manual input'],1:['ASSIST','Pilot steering'],2:['AUTO','Pilot control']},m=modes[p.mode]||['MODE '+p.mode,'unknown'];modeCard.className='stateCard mode'+p.mode;modeValue.textContent=m[0];modeSub.textContent=m[1];parkCard.className='stateCard '+(p.park?'parkLocked':'parkUnlocked');parkValue.textContent=p.park?'LOCKED':'UNLOCKED';parkSub.textContent=p.park?'output guarded':'drive enabled';const de=!!p.de,da=!!p.da,dc=Number(p.dc||0),gzf=Number(p.gzf||0);driftCard.className='stateCard '+(!de?'driftOff':da?'driftActive':'driftArmed');driftValue.textContent=!de?'OFF':da?'ACTIVE':'ARMED';driftSub.textContent='comp='+dc.toFixed(1)+' gzf='+gzf.toFixed(2);driftNeedle.style.left=Math.max(0,Math.min(100,(Math.max(-70,Math.min(70,dc))+70)*100/140))+'%'}
-async function pollData(){try{const r=await fetch('/api/data?since='+lastDataSeq);const arr=await r.json();let latest=null;for(const p of arr){lastDataSeq=Math.max(lastDataSeq,p.seq);latest=p;if(!chartPaused)points.push(p)}if(latest)updateState(latest);if(points.length>240)points=points.slice(-240);if(arr.length&&!chartPaused)draw();const p=latest||points[points.length-1];dataMeta.textContent=p?'seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' cur='+p.cur+' gz='+p.gz:'waiting data'}catch(e){dataMeta.textContent='data error: '+e}}
+function updateState(p){const modes={0:['RC','Manual input'],1:['ASSIST','Pilot steering'],2:['AUTO','Pilot control']},m=modes[p.mode]||['MODE '+p.mode,'unknown'];modeCard.className='stateCard mode'+p.mode;modeValue.textContent=m[0];modeSub.textContent=m[1];parkCard.className='stateCard '+(p.park?'parkLocked':'parkUnlocked');parkValue.textContent=p.park?'LOCKED':'UNLOCKED';parkSub.textContent=p.park?'output guarded':'drive enabled';const de=!!p.de,da=!!p.da,dc=Number(p.dc||0),gzf=Number(p.gzf||0);driftCard.className='stateCard '+(!de?'driftOff':da?'driftActive':'driftArmed');driftValue.textContent=!de?'OFF':da?'ACTIVE':'ARMED';driftSub.textContent='comp='+dc.toFixed(1)+' gzf='+gzf.toFixed(2);driftNeedle.style.left=Math.max(0,Math.min(100,(Math.max(-70,Math.min(70,dc))+70)*100/140))+'%';[p.ch1,p.ch2,p.ch3,p.ch4,p.ch5,p.ch6].forEach((v,i)=>chValues[i].textContent=v??'----')}
+async function pollData(){try{const r=await fetch('/api/data?since='+lastDataSeq);const arr=await r.json();let latest=null;for(const p of arr){lastDataSeq=Math.max(lastDataSeq,p.seq);latest=p;if(!chartPaused)points.push(p)}if(latest)updateState(latest);if(points.length>240)points=points.slice(-240);if(arr.length&&!chartPaused)draw();const p=latest||points[points.length-1];dataMeta.textContent=p?'seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' ch4='+p.ch4+' cur='+p.cur+' gz='+p.gz:'waiting data'}catch(e){dataMeta.textContent='data error: '+e}}
 async function sendCmd(){const v=cmd.value.trim();if(!v)return;await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});cmd.value='';refreshStatus()}
 async function quick(v){cmd.value=v;await sendCmd()}
 cmd.addEventListener('keydown',e=>{if(e.key==='Enter')sendCmd()});
@@ -1200,6 +1205,18 @@ static void handleWifiWebData()
         response += point.rcThrottle;
         response += ",\"rcs\":";
         response += point.rcSteering;
+        response += ",\"ch1\":";
+        response += point.rcChannels[CH_STEERING];
+        response += ",\"ch2\":";
+        response += point.rcChannels[CH_THROTTLE];
+        response += ",\"ch3\":";
+        response += point.rcChannels[CH_PARK];
+        response += ",\"ch4\":";
+        response += point.rcChannels[CH_MODE];
+        response += ",\"ch5\":";
+        response += point.rcChannels[CH_DRIFT];
+        response += ",\"ch6\":";
+        response += point.rcChannels[CH_DRIFT_SCALE];
         response += ",\"pt\":";
         response += point.pilotThrottle;
         response += ",\"ps\":";

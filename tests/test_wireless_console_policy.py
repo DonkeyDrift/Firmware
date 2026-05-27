@@ -140,7 +140,7 @@ class TestWirelessConsolePolicy(unittest.TestCase):
             seq=7,
             now_ms=1234,
             control={"throttle": 10, "steering": -20, "mode": 1, "park": False},
-            rc={"throttle": 1510, "steering": 1490},
+            rc={"throttle": 1510, "steering": 1490, "ch1": 1490, "ch2": 1510, "ch3": 1000, "ch4": 1500, "ch5": 2000, "ch6": 1600},
             pilot={"throttle": 8, "steering": -18},
             sensor={"current_mA": 123.4, "voltage": 7.6, "gyroZ": -0.12},
             drift={"enabled": True, "active": True, "compensation": -12.5, "gyroZFiltered": 0.34},
@@ -157,6 +157,12 @@ class TestWirelessConsolePolicy(unittest.TestCase):
                 "park": 0,
                 "rct": 1510,
                 "rcs": 1490,
+                "ch1": 1490,
+                "ch2": 1510,
+                "ch3": 1000,
+                "ch4": 1500,
+                "ch5": 2000,
+                "ch6": 1600,
                 "pt": 8,
                 "ps": -18,
                 "cur": 123.4,
@@ -179,6 +185,12 @@ class TestWirelessConsolePolicy(unittest.TestCase):
             sensor={"current_mA": 123.4, "voltage": 7.6, "gyroZ": -0.12},
         )
 
+        self.assertEqual(point["ch1"], 1490)
+        self.assertEqual(point["ch2"], 1510)
+        self.assertEqual(point["ch3"], 1500)
+        self.assertEqual(point["ch4"], 1500)
+        self.assertEqual(point["ch5"], 1000)
+        self.assertEqual(point["ch6"], 1500)
         self.assertEqual(point["de"], 0)
         self.assertEqual(point["da"], 0)
         self.assertEqual(point["dc"], 0.0)

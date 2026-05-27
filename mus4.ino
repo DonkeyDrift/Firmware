@@ -133,7 +133,12 @@ volatile unsigned long last_valid_time[RC_CHANNEL_COUNT] = {0};
 #define PWM_FILTER_SIZE 5  // 滑动窗口中值滤波器大小 (5-7)
 uint16_t pwm_filter_buf[RC_CHANNEL_COUNT][PWM_FILTER_SIZE] = {{0}};
 uint8_t pwm_filter_idx[RC_CHANNEL_COUNT] = {0};
+bool pwm_filter_initialized[RC_CHANNEL_COUNT] = {false};
 uint16_t pwm_filtered[RC_CHANNEL_COUNT] = {0};
+uint16_t aux_stable_pwm[RC_CHANNEL_COUNT] = {0};
+uint16_t aux_candidate_pwm[RC_CHANNEL_COUNT] = {0};
+uint8_t aux_candidate_count[RC_CHANNEL_COUNT] = {0};
+bool aux_stable_initialized[RC_CHANNEL_COUNT] = {false};
 bool filterDebugEnabled = false;          // 调试输出开关
 
 const int Channels[RC_CHANNEL_COUNT] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN, CH5_PIN, CH6_PIN};
@@ -312,6 +317,47 @@ static uint16_t medianFilter(uint16_t* buf, int size) {
     
     // 返回中值
     return temp[size / 2];
+}
+
+static bool isAuxiliaryRcChannel(int ch)
+{
+    return ch == CH_MODE || ch == CH_DRIFT || ch == CH_DRIFT_SCALE;
+}
+
+static uint16_t stabilizeAuxiliaryPWM(int ch, uint16_t value, bool valid)
+{
+    if (!isAuxiliaryRcChannel(ch)) return value;
+    if (!valid) return aux_stable_initialized[ch] ? aux_stable_pwm[ch] : value;
+    if (!aux_stable_initialized[ch]) {
+        aux_stable_pwm[ch] = value;
+        aux_candidate_pwm[ch] = value;
+        aux_candidate_count[ch] = 0;
+        aux_stable_initialized[ch] = true;
+        return value;
+    }
+
+    int diff = abs((int)value - (int)aux_stable_pwm[ch]);
+    if (diff <= 80) {
+        aux_stable_pwm[ch] = value;
+        aux_candidate_pwm[ch] = value;
+        aux_candidate_count[ch] = 0;
+        return value;
+    }
+
+    if (abs((int)value - (int)aux_candidate_pwm[ch]) <= 80) {
+        if (aux_candidate_count[ch] < 255) aux_candidate_count[ch]++;
+    } else {
+        aux_candidate_pwm[ch] = value;
+        aux_candidate_count[ch] = 1;
+    }
+
+    if (aux_candidate_count[ch] >= 3) {
+        aux_stable_pwm[ch] = value;
+        aux_candidate_count[ch] = 0;
+        return value;
+    }
+
+    return aux_stable_pwm[ch];
 }
 
 static bool runFilterTests()
@@ -2585,27 +2631,36 @@ void loop()
     if (millis() - lastRCFilterUpdate >= RC_FILTER_UPDATE_INTERVAL) {
         // 改进的滤波：滑动窗口中值滤波 (Size=5)
         auto filterPWM = [&](int ch, uint16_t raw, bool valid) -> uint16_t {
-            if (!valid) return 1500;
-            
+            if (!valid) {
+                return isAuxiliaryRcChannel(ch) ? stabilizeAuxiliaryPWM(ch, pwm_filtered[ch], false) : 1500;
+            }
+
             // 边界保护：检查是否在合理 PWM 范围内 (800-2200us)
             // 如果超出范围，视为噪声丢弃（不更新缓冲区，直接返回上一次滤波值）
             if (raw < RC_PWM_MIN || raw > RC_PWM_MAX) {
-                return pwm_filtered[ch];
+                return isAuxiliaryRcChannel(ch) ? stabilizeAuxiliaryPWM(ch, pwm_filtered[ch], false) : pwm_filtered[ch];
+            }
+
+            if (!pwm_filter_initialized[ch]) {
+                for (int i = 0; i < PWM_FILTER_SIZE; i++) pwm_filter_buf[ch][i] = raw;
+                pwm_filter_idx[ch] = 0;
+                pwm_filter_initialized[ch] = true;
             }
 
             uint8_t idx = pwm_filter_idx[ch];
             pwm_filter_buf[ch][idx] = raw;
             pwm_filter_idx[ch] = (idx + 1) % PWM_FILTER_SIZE;
-            
+
             // 纯中值滤波：确保输出为窗口内排序后的中间值
             uint16_t median = medianFilter(pwm_filter_buf[ch], PWM_FILTER_SIZE);
-            
+            uint16_t stable = stabilizeAuxiliaryPWM(ch, median, true);
+
             // 调试输出
             if (filterDebugEnabled && ch == CH_THROTTLE) {
                  mus4Logf("filter", "F_DBG: ch=%d, raw=%d, med=%d", ch, raw, median);
             }
 
-            return median;
+            return stable;
         };
 
         // 对所有通道应用滤波
@@ -2630,8 +2685,8 @@ void loop()
 
     // Park、Mode、Drift通道也做类似处理
     pwm_filtered[CH_PARK] = parkValid ? pwm_filtered[CH_PARK] : 1500;
-    pwm_filtered[CH_DRIFT] = driftValid ? pwm_filtered[CH_DRIFT] : 1000;
-    pwm_filtered[CH_DRIFT_SCALE] = driftScaleValid ? pwm_filtered[CH_DRIFT_SCALE] : 1500;
+    if (!driftValid && !aux_stable_initialized[CH_DRIFT]) pwm_filtered[CH_DRIFT] = 1000;
+    if (!driftScaleValid && !aux_stable_initialized[CH_DRIFT_SCALE]) pwm_filtered[CH_DRIFT_SCALE] = 1500;
 
     park_change();
     mode_change(modeValid);

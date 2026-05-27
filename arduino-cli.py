@@ -262,6 +262,12 @@ def parse_espota_progress_line(line: str) -> Optional[str]:
         return None
 
 
+def split_progress_chunks(text: str):
+    for chunk in re.split(r'[\r\n]+', text):
+        if chunk:
+            yield chunk
+
+
 class ArduinoAutomation:
     DEFAULT_DESCRIPTION_KEYWORDS = [
         "esp32",
@@ -747,13 +753,14 @@ class ArduinoAutomation:
             # ESP32 app 固件起始地址为 0x10000，是最后且最大的写入段
             show_progress = False
             LAST_STAGE_ADDR = 0x10000  # ESP32 app 固件起始地址
+            pending_output = ""
 
-            for line in process.stdout:
-                line = line.rstrip('\n')
+            def handle_output_chunk(line):
+                nonlocal show_progress
                 stdout_lines.append(line)
 
                 if not line:
-                    continue
+                    return
 
                 # 阶段识别：检测到 Writing at 0x... 行时判断是否是最后一个大段
                 if use_progress and "Writing at 0x" in line:
@@ -788,6 +795,22 @@ class ArduinoAutomation:
                         if spinner:
                             spinner._render()
                     sys.stdout.flush()
+
+            while True:
+                char = process.stdout.read(1)
+                if char == "" and process.poll() is not None:
+                    break
+                if char == "":
+                    continue
+                if char in "\r\n":
+                    for line in split_progress_chunks(pending_output):
+                        handle_output_chunk(line)
+                    pending_output = ""
+                else:
+                    pending_output += char
+
+            for line in split_progress_chunks(pending_output):
+                handle_output_chunk(line)
 
             # 等待进程结束
             returncode = process.wait(timeout=timeout)

@@ -337,6 +337,14 @@ class TestOtaUploadTooling(unittest.TestCase):
 
         self.assertEqual(progress, "[==========          ] 50.0%")
 
+    def test_splits_progress_chunks_on_carriage_return(self):
+        chunks = list(ARDUINO_CLI.split_progress_chunks("Uploading: [=                   ] 5%\rUploading: [==========          ] 50%\r"))
+
+        self.assertEqual(chunks, [
+            "Uploading: [=                   ] 5%",
+            "Uploading: [==========          ] 50%",
+        ])
+
     def test_ota_upload_uses_espota_progress_parser(self):
         automation = make_automation(port="auto")
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,6 +1,6 @@
 PUBLIC_COMMANDS = {"PING", "STATUS", "AUTH"}
 PARK_LOCKED_COMMANDS = {"TEST", "TEST_TUI", "BENCH", "STRESS", "REGRESS", "FILTER_TEST"}
-GENERAL_AUTHENTICATED_COMMANDS = {"ANSI", "NOANSI", "FILTER_DEBUG"}
+GENERAL_AUTHENTICATED_COMMANDS = {"ANSI", "NOANSI", "FILTER_DEBUG", "LOG_WEB", "LOG_SERIAL"}
 OTA_OPEN_COMMANDS = {"ENABLE_OTA"}
 OTA_STATUS_COMMANDS = {"OTA_STATUS"}
 OTA_CLOSE_COMMANDS = {"DISABLE_OTA"}
@@ -41,6 +41,16 @@ def is_wireless_command_allowed(line, authenticated, park_locked):
 
 def is_web_command_allowed(line, authenticated, park_locked):
     return is_wireless_command_allowed(line, authenticated, park_locked)
+
+
+def select_log_target(configured, wifi_console_enabled):
+    if configured == "serial":
+        return "serial"
+    if configured == "web" and wifi_console_enabled:
+        return "web"
+    if configured is None and wifi_console_enabled:
+        return "web"
+    return "serial"
 
 
 def describe_wifi_mode(ap_enabled, sta_configured, sta_connected):

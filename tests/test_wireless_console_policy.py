@@ -164,6 +164,22 @@ class TestWirelessConsolePolicy(unittest.TestCase):
             },
         )
 
+    def test_log_target_commands_require_authentication(self):
+        self.assertFalse(POLICY.is_wireless_command_allowed("LOG_WEB", authenticated=False, park_locked=True))
+        self.assertFalse(POLICY.is_wireless_command_allowed("LOG_SERIAL", authenticated=False, park_locked=True))
+        self.assertTrue(POLICY.is_wireless_command_allowed("LOG_WEB", authenticated=True, park_locked=False))
+        self.assertTrue(POLICY.is_wireless_command_allowed("LOG_SERIAL", authenticated=True, park_locked=False))
+
+    def test_select_log_target_defaults_to_web_when_wifi_enabled(self):
+        self.assertEqual(POLICY.select_log_target(None, wifi_console_enabled=True), "web")
+
+    def test_select_log_target_falls_back_to_serial_when_wifi_disabled(self):
+        self.assertEqual(POLICY.select_log_target("web", wifi_console_enabled=False), "serial")
+        self.assertEqual(POLICY.select_log_target(None, wifi_console_enabled=False), "serial")
+
+    def test_select_log_target_serial_when_configured(self):
+        self.assertEqual(POLICY.select_log_target("serial", wifi_console_enabled=True), "serial")
+
 
 if __name__ == "__main__":
     unittest.main()

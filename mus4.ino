@@ -48,6 +48,17 @@ bool lastParkState = false;
 #ifndef ENABLE_WIFI_CONSOLE
 #define ENABLE_GAMEPAD_MODE
 #endif
+
+#define MUS4_LOG_TARGET_SERIAL 0
+#define MUS4_LOG_TARGET_WEB 1
+#ifndef MUS4_LOG_TARGET
+#ifdef ENABLE_WIFI_CONSOLE
+#define MUS4_LOG_TARGET MUS4_LOG_TARGET_WEB
+#else
+#define MUS4_LOG_TARGET MUS4_LOG_TARGET_SERIAL
+#endif
+#endif
+uint8_t mus4LogTarget = MUS4_LOG_TARGET;
 #ifdef ENABLE_GAMEPAD_MODE
   #include <BleGamepad.h>
   BleGamepad bleGamepad("Gamepad MU02", "Espressif", 100);
@@ -115,6 +126,9 @@ bool filterDebugEnabled = false;          // 调试输出开关
 const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
 
 bool parseAndValidateCommand(String cmd, int* throttle, int* steering);
+static void mus4LogLine(const char* source, const String& line);
+static void mus4Logf(const char* source, const char* fmt, ...);
+static void setMus4LogTargetWeb();
 
 CRGB leds[NUM_LEDS]; // Define the array of leds
 
@@ -199,14 +213,14 @@ const char* WIFI_OTA_HOSTNAME = "mus4-ota";
 const char* WIFI_OTA_PASSWORD = "mus4-debug";
 const uint16_t WIFI_OTA_PORT = 3232;
 const unsigned long WIFI_OTA_WINDOW_MS = 120000UL;
-const uint8_t WIFI_WEB_LOG_CAPACITY = 48;
+const uint8_t WIFI_WEB_LOG_CAPACITY = 64;
 const uint8_t WIFI_WEB_DATA_CAPACITY = 120;
 const unsigned long WIFI_WEB_DATA_INTERVAL_MS = 50;
 WiFiServer wifiConsoleServer(WIFI_CONSOLE_PORT);
 WiFiClient wifiConsoleClient;
 WebServer wifiWebServer(WIFI_WEB_CONSOLE_PORT);
 SerialBuf wifiConsoleBuf = {{0},0,0,0,false};
-struct WebLogEntry { uint32_t seq; unsigned long t; char source[8]; char line[96]; };
+struct WebLogEntry { uint32_t seq; unsigned long t; char source[8]; char line[160]; };
 struct WebDataPoint {
     uint32_t seq;
     unsigned long t;
@@ -284,7 +298,7 @@ static uint16_t medianFilter(uint16_t* buf, int size) {
 
 static bool runFilterTests()
 {
-    Serial.println("Running Filter Tests...");
+    mus4LogLine("test", "Running Filter Tests...");
     bool passed = true;
     
     // 模拟缓冲区
@@ -293,28 +307,28 @@ static bool runFilterTests()
     
     // Test 1: 稳态测试
     uint16_t out = medianFilter(testBuf, PWM_FILTER_SIZE);
-    if (out != 1500) { Serial.printf("Filter Test 1 Failed: Expected 1500, got %d\n", out); passed = false; }
+    if (out != 1500) { mus4Logf("test", "Filter Test 1 Failed: Expected 1500, got %d", out); passed = false; }
     
     // Test 2: 单点尖峰抑制 (2000us 突变)
     testBuf[2] = 2000; // 中间突变
     out = medianFilter(testBuf, PWM_FILTER_SIZE);
-    if (out != 1500) { Serial.printf("Filter Test 2 Failed: Spike not suppressed, got %d\n", out); passed = false; }
+    if (out != 1500) { mus4Logf("test", "Filter Test 2 Failed: Spike not suppressed, got %d", out); passed = false; }
     testBuf[2] = 1500; // 恢复
     
     // Test 3: 双点尖峰 (连续两个异常值，对于5点窗口仍应被抑制)
     testBuf[1] = 2000;
     testBuf[2] = 2000;
     out = medianFilter(testBuf, PWM_FILTER_SIZE);
-    if (out != 1500) { Serial.printf("Filter Test 3 Failed: Double spike not suppressed, got %d\n", out); passed = false; }
+    if (out != 1500) { mus4Logf("test", "Filter Test 3 Failed: Double spike not suppressed, got %d", out); passed = false; }
     
     // Test 4: 阶跃响应 (多数变为新值)
     testBuf[0] = 1600;
     testBuf[1] = 1600;
     testBuf[2] = 1600; // 3/5 变为 1600
     out = medianFilter(testBuf, PWM_FILTER_SIZE);
-    if (out != 1600) { Serial.printf("Filter Test 4 Failed: Step response failed, got %d\n", out); passed = false; }
+    if (out != 1600) { mus4Logf("test", "Filter Test 4 Failed: Step response failed, got %d", out); passed = false; }
 
-    if (passed) Serial.println("Filter Tests Passed!");
+    if (passed) mus4LogLine("test", "Filter Tests Passed!");
     return passed;
 }
 
@@ -355,7 +369,7 @@ static bool runBenchmarks()
     }
     unsigned long t1 = millis() - ts;
     unsigned long score = loops;
-    Serial.printf("BENCH: loops=%lu duration=%lums\n", score, t1);
+    mus4Logf("bench", "BENCH: loops=%lu duration=%lums", score, t1);
     return score > 1;
 }
 struct struct_message
@@ -394,7 +408,7 @@ static bool runStress()
         int tt,ss,seq;
         processLine(String("999:999"), &tt,&ss,&seq);
     }
-    Serial.printf("STRESS: errors_delta=%lu\n", serial0Buf.errors-errs0);
+    mus4Logf("stress", "STRESS: errors_delta=%lu", serial0Buf.errors-errs0);
     return true;
 }
 
@@ -403,7 +417,7 @@ static bool runRegression()
     int v = map(-100, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
     int v2 = map(100, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
     bool ok = (v <= v2);
-    Serial.printf("REGRESS: ok=%d\n", ok?1:0);
+    mus4Logf("regress", "REGRESS: ok=%d", ok?1:0);
     return ok;
 }
 
@@ -525,16 +539,7 @@ void scanLEDToggle()
 
 static void notifyDegrade()
 {
-    if (ansiEnabled)
-    {
-        Serial.print(COLOR_RED);
-        Serial.println("DEGRADED MODE ACTIVE");
-        Serial.print(COLOR_RESET);
-    }
-    else
-    {
-        Serial.println("DEGRADED MODE ACTIVE");
-    }
+    mus4LogLine("system", "DEGRADED MODE ACTIVE");
 }
 
 static void evalDegrade()
@@ -572,12 +577,12 @@ static bool processLine(const String& line, int* throttle, int* steering, int* s
     // 如果是命令
     if (line.equalsIgnoreCase("NOANSI")) { ansiEnabled = false; tui.setAnsiEnabled(false); tui.forceRedraw(); return false; }
     if (line.equalsIgnoreCase("ANSI")) { ansiEnabled = true; tui.setAnsiEnabled(true); tui.forceRedraw(); return false; }
-    if (line.equalsIgnoreCase("FILTER_DEBUG")) { 
-        filterDebugEnabled = !filterDebugEnabled; 
-        Serial.printf("Filter Debug: %s\n", filterDebugEnabled ? "ON" : "OFF"); 
-        return false; 
+    if (line.equalsIgnoreCase("FILTER_DEBUG")) {
+        filterDebugEnabled = !filterDebugEnabled;
+        mus4Logf("filter", "Filter Debug: %s", filterDebugEnabled ? "ON" : "OFF");
+        return false;
     }
-    if (line.equalsIgnoreCase("FILTER_TEST")) { 
+    if (line.equalsIgnoreCase("FILTER_TEST")) {
         runFilterTests(); 
         return false; 
     }
@@ -630,6 +635,14 @@ static bool processLine(const String& line, int* throttle, int* steering, int* s
         (out).printf("TEST: total=%d passed=%d ok=%d\n", testsTotal, testsPassed, ok ? 1 : 0); \
     } else if ((line).equalsIgnoreCase("TEST_TUI")) { \
         (out).println("Skipped TEST_TUI"); \
+    } else if ((line).equalsIgnoreCase("LOG_WEB")) { \
+        setMus4LogTargetWeb(); \
+        mus4LogLine("log", mus4LogTarget == MUS4_LOG_TARGET_WEB ? "target=web" : "target=serial wifi_disabled"); \
+        (out).println("ACK:LOG_WEB"); \
+    } else if ((line).equalsIgnoreCase("LOG_SERIAL")) { \
+        mus4LogTarget = MUS4_LOG_TARGET_SERIAL; \
+        mus4LogLine("log", "target=serial"); \
+        (out).println("ACK:LOG_SERIAL"); \
     } else if ((line).equalsIgnoreCase("BENCH")) { \
         bool ok = runBenchmarks(); \
         (out).printf("BENCH_OK=%d\n", ok ? 1 : 0); \
@@ -737,7 +750,7 @@ static bool isWirelessCommandAllowed(const String& line)
     if (line.equalsIgnoreCase("TEST") || line.equalsIgnoreCase("TEST_TUI") || line.equalsIgnoreCase("BENCH") || line.equalsIgnoreCase("STRESS") || line.equalsIgnoreCase("REGRESS") || line.equalsIgnoreCase("FILTER_TEST")) {
         return car_output.park == PARK_LOCKED;
     }
-    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG")) return true;
+    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL")) return true;
     return isWirelessControlCommand(line);
 }
 
@@ -795,7 +808,39 @@ static void appendWifiWebLogLines(const char* source, const String& text)
         start = end + 1;
     }
 }
+#endif
 
+static void setMus4LogTargetWeb()
+{
+#if defined(ENABLE_WIFI_CONSOLE)
+    mus4LogTarget = MUS4_LOG_TARGET_WEB;
+#else
+    mus4LogTarget = MUS4_LOG_TARGET_SERIAL;
+#endif
+}
+
+static void mus4LogLine(const char* source, const String& line)
+{
+#if defined(ENABLE_WIFI_CONSOLE)
+    if (mus4LogTarget == MUS4_LOG_TARGET_WEB) {
+        appendWifiWebLog(source, line);
+        return;
+    }
+#endif
+    Serial.println("[" + String(source) + "] " + line);
+}
+
+static void mus4Logf(const char* source, const char* fmt, ...)
+{
+    char buf[192];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    mus4LogLine(source, String(buf));
+}
+
+#ifdef ENABLE_WIFI_CONSOLE
 static void sampleWifiWebData()
 {
     unsigned long now = millis();
@@ -867,8 +912,7 @@ static void closeWifiOtaWindow(const char* reason)
         ArduinoOTA.end();
         wifiOtaStarted = false;
     }
-    Serial.printf("WiFi OTA closed: %s\n", reason);
-    appendWifiWebLog("ota", String("closed: ") + reason);
+    mus4LogLine("ota", String("closed: ") + reason);
 }
 
 static void setupWifiOtaCallbacks()
@@ -879,15 +923,13 @@ static void setupWifiOtaCallbacks()
     ArduinoOTA.onStart([]() {
         wifiOtaInProgress = true;
         wifiOtaLastProgressPct = 0;
-        Serial.println("WiFi OTA start");
-        appendWifiWebLog("ota", "start");
+        mus4LogLine("ota", "start");
     });
     ArduinoOTA.onEnd([]() {
         wifiOtaInProgress = false;
         wifiOtaWindowOpen = false;
         wifiOtaDeadlineMs = 0;
-        Serial.println("WiFi OTA end");
-        appendWifiWebLog("ota", "end");
+        mus4LogLine("ota", "end");
     });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         if (total > 0) wifiOtaLastProgressPct = (uint8_t)((progress * 100U) / total);
@@ -896,8 +938,7 @@ static void setupWifiOtaCallbacks()
         wifiOtaInProgress = false;
         wifiOtaWindowOpen = false;
         wifiOtaDeadlineMs = 0;
-        Serial.printf("WiFi OTA error: %u\n", error);
-        appendWifiWebLog("ota", String("error: ") + error);
+        mus4Logf("ota", "error: %u", error);
     });
 }
 
@@ -926,7 +967,7 @@ static void openWifiOtaWindow(Print& out)
     wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
     wifiOtaLastProgressPct = 0;
     out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.softAPIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
-    appendWifiWebLog("ota", "ready");
+    mus4LogLine("ota", "ready");
 }
 
 static void updateWifiOta()
@@ -1189,21 +1230,19 @@ static void setupWifiConsole()
     );
     if (!started) {
         wifiConsoleStarted = false;
-        Serial.println("WiFi Console AP start failed");
-        appendWifiWebLog("wifi", "AP start failed");
+        mus4LogLine("wifi", "AP start failed");
         return;
     }
     if (wifiStaConfigured) {
         wifiStaConnectStartMs = millis();
         WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASSWORD);
-        Serial.printf("WiFi STA connecting: %s\n", WIFI_STA_SSID);
+        mus4Logf("wifi", "STA connecting: %s", WIFI_STA_SSID);
     }
     wifiConsoleServer.begin();
     wifiConsoleServer.setNoDelay(true);
     setupWifiWebConsole();
     wifiConsoleStarted = true;
-    Serial.printf("WiFi Console AP: %s IP: %s Port: %u Web: %u\n", WIFI_CONSOLE_AP_SSID, WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT);
-    appendWifiWebLog("wifi", String("AP ") + WiFi.softAPIP().toString() + ":" + WIFI_WEB_CONSOLE_PORT);
+    mus4Logf("wifi", "AP %s IP: %s Port: %u Web: %u", WIFI_CONSOLE_AP_SSID, WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT);
 }
 
 static void updateWifiSta()
@@ -1214,20 +1253,17 @@ static void updateWifiSta()
         if (!wifiStaConnected) {
             wifiStaConnected = true;
             wifiStaTimedOut = false;
-            Serial.printf("WiFi STA connected IP: %s\n", WiFi.localIP().toString().c_str());
-            appendWifiWebLog("wifi", String("STA ") + WiFi.localIP().toString());
+            mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
         }
         return;
     }
     if (wifiStaConnected) {
         wifiStaConnected = false;
-        Serial.println("WiFi STA disconnected");
-        appendWifiWebLog("wifi", "STA disconnected");
+        mus4LogLine("wifi", "STA disconnected");
     }
     if (!wifiStaTimedOut && millis() - wifiStaConnectStartMs >= WIFI_STA_CONNECT_TIMEOUT_MS) {
         wifiStaTimedOut = true;
-        Serial.println("WiFi STA connect timeout, AP remains available");
-        appendWifiWebLog("wifi", "STA timeout, AP remains available");
+        mus4LogLine("wifi", "STA timeout, AP remains available");
     }
 }
 
@@ -1370,7 +1406,7 @@ void emergencyStop()
     if (car_output.park == 0 && emergencyStopState == EST_DONE)
     {
         emergencyStopState = EST_IDLE;
-        tui.log("Emergency Stop FSM reset: Park unlocked");
+        mus4LogLine("tui", "Emergency Stop FSM reset: Park unlocked");
         return;
     }
 
@@ -1380,7 +1416,7 @@ void emergencyStop()
     case EST_IDLE:
         if (car_output.throttle > 0)
         {
-            tui.log("Start Emergency stop");
+            mus4LogLine("tui", "Start Emergency stop");
             car_output.throttle = 15;
             emergencyStopState = EST_READY;
             emergencyStopStartTime = millis();
@@ -1398,7 +1434,7 @@ void emergencyStop()
             car_output.throttle = -100;
             emergencyStopState = EST_BRAKING;
             emergencyStopStartTime = millis();
-            tui.log("Emergency STOP ready");
+            mus4LogLine("tui", "Emergency STOP ready");
         }
         break;
 
@@ -1406,7 +1442,7 @@ void emergencyStop()
         if (millis() - emergencyStopStartTime >= EMERGENCY_STOP_BRAKE_DURATION)
         {
             emergencyStopState = EST_DONE;
-            tui.log("Emergency STOP done");
+            mus4LogLine("tui", "Emergency STOP done");
         }
         break;
 
@@ -1461,7 +1497,7 @@ void park_change()
                         rc_data.park = false; // Unlock
                         emergencyStopState = EST_IDLE; // Reset Emergency Stop FSM
                         parkActionTaken = true;
-                        tui.log("System Unlocked: Park Mode Exited");
+                        mus4LogLine("tui", "System Unlocked: Park Mode Exited");
                         buzzer.playParkUnlockSound();
                     }
                 }
@@ -1472,7 +1508,7 @@ void park_change()
                     {
                         rc_data.park = true; // Lock
                         parkActionTaken = true;
-                        tui.log("System Locked: Park Mode Entered");
+                        mus4LogLine("tui", "System Locked: Park Mode Entered");
                         buzzer.playParkLockSound();
                     }
                 }
@@ -1677,17 +1713,17 @@ bool probeMPU6050AtAddress(uint8_t address, uint8_t *whoAmI)
 
 void printLastI2CScanSummary()
 {
-    Serial.println("[I2C SCAN] Last scan summary:");
+    mus4LogLine("i2c", "Last scan summary:");
     if (g_i2cScanCount == 0)
     {
-        Serial.println("[I2C SCAN]   No devices recorded in last scan");
+        mus4LogLine("i2c", "No devices recorded in last scan");
         return;
     }
 
     for (uint8_t i = 0; i < g_i2cScanCount; i++)
     {
         uint8_t addr = g_i2cScanAddresses[i];
-        Serial.printf("[I2C SCAN]   0x%02X - %s\n", addr, identifyI2CDeviceByAddress(addr));
+        mus4Logf("i2c", "0x%02X - %s", addr, identifyI2CDeviceByAddress(addr));
     }
 }
 
@@ -1720,32 +1756,29 @@ void read_ina219()
 
 void setup_ina219()
 {
-    Serial.println("[INA219] Initializing INA219 sensor...");
-    
+    mus4LogLine("ina219", "Initializing INA219 sensor...");
+
     if (!ina219.begin())
     {
-        Serial.println("[INA219 ERROR] Failed to find INA219 chip");
-        Serial.println("[INA219 ERROR] Please check I2C connection (SDA: GPIO 21, SCL: GPIO 22)");
-        Serial.println("[INA219 ERROR] Possible causes:");
-        Serial.println("  1. I2C address mismatch (default is 0x40)");
-        Serial.println("  2. Wiring issues (SDA/SCL swapped or loose)");
-        Serial.println("  3. Power supply issue");
+        mus4LogLine("ina219", "ERROR Failed to find INA219 chip");
+        mus4LogLine("ina219", "ERROR Please check I2C connection (SDA: GPIO 21, SCL: GPIO 22)");
+        mus4LogLine("ina219", "ERROR Possible causes: address mismatch, wiring issue, power supply issue");
         while (1)
         {
             delay(1000);
-            Serial.println("[INA219 ERROR] Sensor not detected, waiting...");
+            mus4LogLine("ina219", "ERROR Sensor not detected, waiting...");
         }
     }
-    
-    Serial.println("[INA219] Sensor initialized successfully!");
-    
+
+    mus4LogLine("ina219", "Sensor initialized successfully!");
+
     // 使用默认校准（32V, 2A范围）
     // 如需更高精度，可以取消注释以下任一行：
     // ina219.setCalibration_32V_1A();  // 32V, 1A范围（更高精度）
     // ina219.setCalibration_16V_400mA(); // 16V, 400mA范围（最高精度）
-    
-    Serial.println("[INA219] Calibration: 32V, 2A range (default)");
-    Serial.println("[INA219] Setup complete, ready for data acquisition");
+
+    mus4LogLine("ina219", "Calibration: 32V, 2A range (default)");
+    mus4LogLine("ina219", "Setup complete, ready for data acquisition");
 }
 
 void read_mpu6050()
@@ -1774,25 +1807,21 @@ void read_mpu6050()
 
 void scanI2CBus()
 {
-    Serial.println("[I2C SCAN] Scanning I2C bus...");
+    mus4LogLine("i2c", "Scanning I2C bus...");
     byte error, address;
     int nDevices = 0;
     g_mpuCandidateAddress = 0;
     g_mpuWhoAmIValue = 0;
     g_i2cScanCount = 0;
-    
+
     for(address = 1; address < 127; address++)
     {
         Wire.beginTransmission(address);
         error = Wire.endTransmission();
-        
+
         if (error == 0)
         {
-            Serial.print("[I2C SCAN] Found device at 0x");
-            if (address < 16) Serial.print("0");
-            Serial.print(address, HEX);
-            Serial.print(" - ");
-            Serial.println(identifyI2CDeviceByAddress(address));
+            mus4Logf("i2c", "Found device at 0x%02X - %s", address, identifyI2CDeviceByAddress(address));
             if (g_i2cScanCount < sizeof(g_i2cScanAddresses))
             {
                 g_i2cScanAddresses[g_i2cScanCount++] = address;
@@ -1805,48 +1834,32 @@ void scanI2CBus()
                 {
                     g_mpuCandidateAddress = address;
                     g_mpuWhoAmIValue = whoAmI;
-                    Serial.print("[I2C SCAN] MPU probe OK at 0x");
-                    if (address < 16) Serial.print("0");
-                    Serial.print(address, HEX);
-                    Serial.print(" (WHO_AM_I=0x");
-                    if (whoAmI < 16) Serial.print("0");
-                    Serial.print(whoAmI, HEX);
-                    Serial.println(")");
+                    mus4Logf("i2c", "MPU probe OK at 0x%02X (WHO_AM_I=0x%02X)", address, whoAmI);
                 }
                 else if (I2CReadRegister8(address, 0x75, &whoAmI))
                 {
-                    Serial.print("[I2C SCAN] MPU-family device at 0x");
-                    if (address < 16) Serial.print("0");
-                    Serial.print(address, HEX);
-                    Serial.print(" but WHO_AM_I=0x");
-                    if (whoAmI < 16) Serial.print("0");
-                    Serial.print(whoAmI, HEX);
-                    Serial.println(" (not MPU6050)");
+                    mus4Logf("i2c", "MPU-family device at 0x%02X but WHO_AM_I=0x%02X (not MPU6050)", address, whoAmI);
                 }
                 else
                 {
-                    Serial.print("[I2C SCAN] Could not read WHO_AM_I at 0x");
-                    if (address < 16) Serial.print("0");
-                    Serial.println(address, HEX);
+                    mus4Logf("i2c", "Could not read WHO_AM_I at 0x%02X", address);
                 }
             }
             nDevices++;
         }
         else if (error == 4)
         {
-            Serial.print("[I2C SCAN] Unknown error at 0x");
-            if (address < 16) Serial.print("0");
-            Serial.println(address, HEX);
+            mus4Logf("i2c", "Unknown error at 0x%02X", address);
         }
     }
-    
+
     if (nDevices == 0)
     {
-        Serial.println("[I2C SCAN] No I2C devices found!");
+        mus4LogLine("i2c", "No I2C devices found!");
     }
     else
     {
-        Serial.printf("[I2C SCAN] Found %d device(s)\n", nDevices);
+        mus4Logf("i2c", "Found %d device(s)", nDevices);
     }
 }
 
@@ -1864,7 +1877,7 @@ bool tryInitMPU6050OnCurrentBus(uint8_t *activeAddress, int maxRetriesPerAddress
         for (int retryCount = 1; retryCount <= maxRetriesPerAddress; retryCount++)
         {
             uint8_t addr = tryAddress[i];
-            Serial.printf("[MPU6050] Try addr 0x%02X (attempt %d/%d)\n", addr, retryCount, maxRetriesPerAddress);
+            mus4Logf("mpu6050", "Try addr 0x%02X (attempt %d/%d)", addr, retryCount, maxRetriesPerAddress);
 
             if (mpu.begin(addr, &Wire))
             {
@@ -1872,7 +1885,7 @@ bool tryInitMPU6050OnCurrentBus(uint8_t *activeAddress, int maxRetriesPerAddress
                 return true;
             }
 
-            Serial.printf("[MPU6050] Init failed at 0x%02X\n", addr);
+            mus4Logf("mpu6050", "Init failed at 0x%02X", addr);
             delay(300);
         }
     }
@@ -1882,14 +1895,14 @@ bool tryInitMPU6050OnCurrentBus(uint8_t *activeAddress, int maxRetriesPerAddress
 
 void setup_mpu6050()
 {
-    Serial.println("[MPU6050] Initializing MPU6050 sensor...");
+    mus4LogLine("mpu6050", "Initializing MPU6050 sensor...");
     uint8_t activeAddress = 0;
     const int maxRetriesPerAddress = 2;
     bool initOk = tryInitMPU6050OnCurrentBus(&activeAddress, maxRetriesPerAddress);
 
     if (!initOk)
     {
-        Serial.println("[MPU6050] Retry with lower I2C speed: 100kHz");
+        mus4LogLine("mpu6050", "Retry with lower I2C speed: 100kHz");
         Wire.begin(SDA_PIN, SCL_PIN, 100000L);
         g_i2cWorkingSpeed = 100000L;
         delay(50);
@@ -1899,7 +1912,7 @@ void setup_mpu6050()
 
     if (!initOk)
     {
-        Serial.println("[MPU6050] Retry with lower I2C speed: 50kHz");
+        mus4LogLine("mpu6050", "Retry with lower I2C speed: 50kHz");
         Wire.begin(SDA_PIN, SCL_PIN, 50000L);
         g_i2cWorkingSpeed = 50000L;
         delay(50);
@@ -1909,18 +1922,18 @@ void setup_mpu6050()
 
     if (!initOk)
     {
-        Serial.println("[MPU6050 ERROR] Failed to find MPU6050 chip");
-        Serial.println("[MPU6050 ERROR] Please check I2C connection (SDA: GPIO 21, SCL: GPIO 22)");
-        Serial.println("[MPU6050 ERROR] Possible causes:");
-        Serial.println("  1. I2C address mismatch (try 0x68 or 0x69)");
-        Serial.println("  2. Wiring issues (SDA/SCL swapped or loose)");
-        Serial.println("  3. Power supply issue");
-        Serial.println("  4. I2C bus speed too high");
+        mus4LogLine("mpu6050", "ERROR Failed to find MPU6050 chip");
+        mus4LogLine("mpu6050", "ERROR Please check I2C connection (SDA: GPIO 21, SCL: GPIO 22)");
+        mus4LogLine("mpu6050", "ERROR Possible causes:");
+        mus4LogLine("mpu6050", "1. I2C address mismatch (try 0x68 or 0x69)");
+        mus4LogLine("mpu6050", "2. Wiring issues (SDA/SCL swapped or loose)");
+        mus4LogLine("mpu6050", "3. Power supply issue");
+        mus4LogLine("mpu6050", "4. I2C bus speed too high");
         printLastI2CScanSummary();
 
         if (g_mpuCandidateAddress != 0)
         {
-            Serial.printf("[MPU6050 ERROR] Probe saw candidate at 0x%02X, WHO_AM_I=0x%02X\n",
+            mus4Logf("mpu6050", "ERROR Probe saw candidate at 0x%02X, WHO_AM_I=0x%02X",
                           g_mpuCandidateAddress, g_mpuWhoAmIValue);
         }
 
@@ -1933,13 +1946,13 @@ void setup_mpu6050()
             if (now - lastWaitLogMs >= 1000UL)
             {
                 lastWaitLogMs = now;
-                Serial.println("[MPU6050 ERROR] Sensor not detected, waiting...");
+                mus4LogLine("mpu6050", "ERROR Sensor not detected, waiting...");
             }
 
             if (now - lastRescanMs >= 5000UL)
             {
                 lastRescanMs = now;
-                Serial.println("[MPU6050 ERROR] Auto re-scan I2C bus (5s interval)...");
+                mus4LogLine("mpu6050", "ERROR Auto re-scan I2C bus (5s interval)...");
                 scanI2CBus();
                 printLastI2CScanSummary();
             }
@@ -1948,99 +1961,95 @@ void setup_mpu6050()
         }
     }
 
-    Serial.println("[MPU6050] Sensor initialized successfully!");
-    Serial.printf("[MPU6050] Active I2C address: 0x%02X\n", activeAddress);
-    Serial.printf("[MPU6050] Active I2C speed: %lu Hz\n", g_i2cWorkingSpeed);
+    mus4LogLine("mpu6050", "Sensor initialized successfully!");
+    mus4Logf("mpu6050", "Active I2C address: 0x%02X", activeAddress);
+    mus4Logf("mpu6050", "Active I2C speed: %lu Hz", g_i2cWorkingSpeed);
     if (g_mpuWhoAmIValue != 0)
     {
-        Serial.printf("[MPU6050] WHO_AM_I = 0x%02X\n", g_mpuWhoAmIValue);
+        mus4Logf("mpu6050", "WHO_AM_I = 0x%02X", g_mpuWhoAmIValue);
     }
 
     // 对已初始化地址做一次WHO_AM_I确认，避免总线干扰导致误识别
     uint8_t whoAmI = 0;
     if (I2CReadRegister8(activeAddress, 0x75, &whoAmI))
     {
-        Serial.printf("[MPU6050] WHO_AM_I readback: 0x%02X\n", whoAmI);
+        mus4Logf("mpu6050", "WHO_AM_I readback: 0x%02X", whoAmI);
         if (whoAmI != 0x68 && whoAmI != 0x69)
         {
-            Serial.println("[MPU6050 WARNING] WHO_AM_I mismatch, device may not be MPU6050");
+            mus4LogLine("mpu6050", "WARNING WHO_AM_I mismatch, device may not be MPU6050");
         }
     }
     else
     {
-        Serial.println("[MPU6050 WARNING] WHO_AM_I readback failed after init");
+        mus4LogLine("mpu6050", "WARNING WHO_AM_I readback failed after init");
     }
 
-    // set accelerometer Range
     mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    Serial.print("[MPU6050] Accelerometer range set to: ");
-
+    const char* accelRangeText = "Unknown";
     switch (mpu.getAccelerometerRange())
     {
     case MPU6050_RANGE_2_G:
-        Serial.println("+-2G");
+        accelRangeText = "+-2G";
         break;
     case MPU6050_RANGE_4_G:
-        Serial.println("+-4G");
+        accelRangeText = "+-4G";
         break;
     case MPU6050_RANGE_8_G:
-        Serial.println("+-8G");
+        accelRangeText = "+-8G";
         break;
     case MPU6050_RANGE_16_G:
-        Serial.println("+-16G");
+        accelRangeText = "+-16G";
         break;
     }
+    mus4Logf("mpu6050", "Accelerometer range set to: %s", accelRangeText);
 
-    // set Gyro Range
     mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-    Serial.print("[MPU6050] Gyro range set to: ");
+    const char* gyroRangeText = "Unknown";
     switch (mpu.getGyroRange())
     {
     case MPU6050_RANGE_250_DEG:
-        Serial.println("+- 250 deg/s");
+        gyroRangeText = "+- 250 deg/s";
         break;
     case MPU6050_RANGE_500_DEG:
-        Serial.println("+- 500 deg/s");
+        gyroRangeText = "+- 500 deg/s";
         break;
     case MPU6050_RANGE_1000_DEG:
-        Serial.println("+- 1000 deg/s");
+        gyroRangeText = "+- 1000 deg/s";
         break;
     case MPU6050_RANGE_2000_DEG:
-        Serial.println("+- 2000 deg/s");
+        gyroRangeText = "+- 2000 deg/s";
         break;
     }
+    mus4Logf("mpu6050", "Gyro range set to: %s", gyroRangeText);
 
-    // Set filter bandwidth to 94Hz for approximately 100Hz sampling rate
     mpu.setFilterBandwidth(MPU6050_BAND_94_HZ);
-    Serial.print("[MPU6050] Filter bandwidth set to: ");
+    const char* bandwidthText = "Unknown";
     switch (mpu.getFilterBandwidth())
     {
     case MPU6050_BAND_260_HZ:
-        Serial.println("260 Hz");
+        bandwidthText = "260 Hz";
         break;
     case MPU6050_BAND_184_HZ:
-        Serial.println("184 Hz");
+        bandwidthText = "184 Hz";
         break;
     case MPU6050_BAND_94_HZ:
-        Serial.println("94 Hz (Sampling rate: ~100Hz)");
+        bandwidthText = "94 Hz (Sampling rate: ~100Hz)";
         break;
     case MPU6050_BAND_44_HZ:
-        Serial.println("44 Hz");
+        bandwidthText = "44 Hz";
         break;
     case MPU6050_BAND_21_HZ:
-        Serial.println("21 Hz");
+        bandwidthText = "21 Hz";
         break;
     case MPU6050_BAND_10_HZ:
-        Serial.println("10 Hz");
+        bandwidthText = "10 Hz";
         break;
     case MPU6050_BAND_5_HZ:
-        Serial.println("5 Hz");
-        break;
-    default:
-        Serial.println("Unknown");
+        bandwidthText = "5 Hz";
         break;
     }
-    Serial.println("[MPU6050] Setup complete, ready for data acquisition");
+    mus4Logf("mpu6050", "Filter bandwidth set to: %s", bandwidthText);
+    mus4LogLine("mpu6050", "Setup complete, ready for data acquisition");
 }
 
 // End of MPU6050 functions
@@ -2160,7 +2169,7 @@ int process_steering_signal(int raw_pwm) {
         if (steering_error_count >= MAX_ERROR_COUNT) {
             if (!safe_mode_active) {
                 safe_mode_active = true;
-                Serial.println("ALARM: Steering Sensor Fault! Safe Mode Activated.");
+                mus4LogLine("steering", "ALARM: Steering Sensor Fault! Safe Mode Activated.");
             }
         }
     } else {
@@ -2173,7 +2182,7 @@ int process_steering_signal(int raw_pwm) {
             if (valid_signal_count > 50) { // Approx 1 second @ 50Hz (assuming loop speed)
                 safe_mode_active = false;
                 valid_signal_count = 0;
-                Serial.println("INFO: Steering Signal Recovered. Exiting Safe Mode.");
+                mus4LogLine("steering", "INFO: Steering Signal Recovered. Exiting Safe Mode.");
                 
                 // Soft reset PID output to current target to avoid jump
                 pid_state.current_smooth_output = target_steering;
@@ -2261,7 +2270,7 @@ int apply_drift_assist(int driver_steering) {
 }
 
 void run_steering_tests() {
-    Serial.println("--- Starting Steering Signal Processing Unit Tests (PID Enabled) ---");
+    mus4LogLine("test", "--- Starting Steering Signal Processing Unit Tests (PID Enabled) ---");
     
     // Test 1: Normal Value (PID Convergence)
     reset_steering_filter();
@@ -2270,7 +2279,7 @@ void run_steering_tests() {
     for(int i=0; i<20; i++) {
         res = process_steering_signal(1488);
     }
-    Serial.printf("Test 1 (Normal 1488 -> 0): Output=%d, Pass=%d\n", res, res == 0);
+    mus4Logf("test", "Test 1 (Normal 1488 -> 0): Output=%d, Pass=%d", res, res == 0);
 
     // Test 2: Boundary Values
     reset_steering_filter();
@@ -2278,12 +2287,12 @@ void run_steering_tests() {
     for(int i=0; i<10; i++) process_steering_signal(872); 
     // Run PID loop to converge
     for(int i=0; i<20; i++) res = process_steering_signal(872);
-    Serial.printf("Test 2A (Min 872 -> -100): Output=%d, Pass=%d\n", res, res == -100);
+    mus4Logf("test", "Test 2A (Min 872 -> -100): Output=%d, Pass=%d", res, res == -100);
 
     reset_steering_filter();
     for(int i=0; i<10; i++) process_steering_signal(2113);
     for(int i=0; i<20; i++) res = process_steering_signal(2113);
-    Serial.printf("Test 2B (Max 2113 -> 100): Output=%d, Pass=%d\n", res, res == 100);
+    mus4Logf("test", "Test 2B (Max 2113 -> 100): Output=%d, Pass=%d", res, res == 100);
 
     // Test 3: Noise Injection (Should be ignored or dampened)
     reset_steering_filter();
@@ -2292,13 +2301,13 @@ void run_steering_tests() {
     
     // Inject single frame noise (0 is invalid PWM, so it uses last valid 1488)
     int noise_res = process_steering_signal(0); 
-    Serial.printf("Test 3 (Invalid Input 0 -> Hold Last): Output=%d, Pass=%d\n", noise_res, noise_res == 0);
+    mus4Logf("test", "Test 3 (Invalid Input 0 -> Hold Last): Output=%d, Pass=%d", noise_res, noise_res == 0);
 
     // Test 4: Hard Clamping
     reset_steering_filter();
     // Inject value that maps to > 100 but is valid PWM (e.g. 2200)
     for(int i=0; i<30; i++) res = process_steering_signal(2200);
-    Serial.printf("Test 4 (Clamp 2200 -> 100): Output=%d, Pass=%d\n", res, res == 100);
+    mus4Logf("test", "Test 4 (Clamp 2200 -> 100): Output=%d, Pass=%d", res, res == 100);
 
     // Test 5: Safety Mode Activation
     reset_steering_filter();
@@ -2309,7 +2318,7 @@ void run_steering_tests() {
     for(int i=0; i<15; i++) {
         process_steering_signal(2300);
     }
-    Serial.printf("Test 5 (Safety Mode Activation): Active=%d, Pass=%d\n", safe_mode_active, safe_mode_active == true);
+    mus4Logf("test", "Test 5 (Safety Mode Activation): Active=%d, Pass=%d", safe_mode_active, safe_mode_active == true);
 
     // Test 6: Safety Mode Recovery
     // Continue from Test 5, safe_mode_active is true.
@@ -2324,10 +2333,10 @@ void run_steering_tests() {
     process_steering_signal(1488);
     bool recovered = !safe_mode_active;
     
-    Serial.printf("Test 6 (Safety Mode Recovery): Still Active at 50=%d, Recovered at 51=%d, Pass=%d\n", 
+    mus4Logf("test", "Test 6 (Safety Mode Recovery): Still Active at 50=%d, Recovered at 51=%d, Pass=%d",
                   still_active, recovered, still_active && recovered);
 
-    Serial.println("--- End Tests ---");
+    mus4LogLine("test", "--- End Tests ---");
     reset_steering_filter(); // Reset for actual operation
 }
 
@@ -2339,12 +2348,12 @@ void setup()
 
     Serial.begin(BAUD_RATE_0);                                  // TypeC
     Serial1.begin(BAUD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
-    Serial.printf("BOOT firmware=%s version=%s build=\"%s %s\"\n",
+    mus4Logf("boot", "firmware=%s version=%s build=\"%s %s\"",
         MUS4_FIRMWARE_NAME,
         MUS4_FIRMWARE_VERSION,
         MUS4_BUILD_DATE,
         MUS4_BUILD_TIME);
-    Serial.println("ESP32 Receiver Serial Ready!");
+    mus4LogLine("boot", "ESP32 Receiver Serial Ready!");
     Serial1.println("ESP32 Receiver Serial1 Ready!");
 
     run_steering_tests(); // Run unit tests for steering signal processing
@@ -2390,7 +2399,7 @@ void setup()
     rc_data.park = PARK_LOCKED; 
     car_output.park = PARK_LOCKED;
     emergencyStopState = EST_IDLE;
-    tui.log("System Locked: Park Mode Active");
+    mus4LogLine("tui", "System Locked: Park Mode Active");
 
     delay(1000);
     uiInitialized = false;
@@ -2442,7 +2451,7 @@ void loop()
             
             // 调试输出
             if (filterDebugEnabled && ch == CH_THROTTLE) {
-                 Serial.printf("F_DBG: ch=%d, raw=%d, med=%d\n", ch, raw, median);
+                 mus4Logf("filter", "F_DBG: ch=%d, raw=%d, med=%d", ch, raw, median);
             }
 
             return median;
@@ -2548,30 +2557,30 @@ void loop()
         car_output.steering = apply_drift_assist(car_output.steering);
     }
 
-    // Update TUI
-    tui.setRC(pwm_filtered[0], pwm_filtered[1], pwm_filtered[2], pwm_filtered[3]);
-    tui.setOutput(car_output.throttle, car_output.steering, car_output.mode, car_output.park);
-    
-    // Merge Sensor Data
-    SensorData combined = ina219Data;
-    if (mpu6050Data.valid) {
-        combined.accelX = mpu6050Data.accelX;
-        combined.accelY = mpu6050Data.accelY;
-        combined.accelZ = mpu6050Data.accelZ;
-        combined.gyroX = mpu6050Data.gyroX;
-        combined.gyroY = mpu6050Data.gyroY;
-        combined.gyroZ = mpu6050Data.gyroZ;
-        combined.temperature = mpu6050Data.temperature;
+    if (mus4LogTarget == MUS4_LOG_TARGET_SERIAL) {
+        tui.setRC(pwm_filtered[0], pwm_filtered[1], pwm_filtered[2], pwm_filtered[3]);
+        tui.setOutput(car_output.throttle, car_output.steering, car_output.mode, car_output.park);
+
+        SensorData combined = ina219Data;
+        if (mpu6050Data.valid) {
+            combined.accelX = mpu6050Data.accelX;
+            combined.accelY = mpu6050Data.accelY;
+            combined.accelZ = mpu6050Data.accelZ;
+            combined.gyroX = mpu6050Data.gyroX;
+            combined.gyroY = mpu6050Data.gyroY;
+            combined.gyroZ = mpu6050Data.gyroZ;
+            combined.temperature = mpu6050Data.temperature;
+        }
+        tui.setSensors(combined);
+
+        tui.setRefreshRate(uiIntervalCurrent);
+        tui.setAnsiEnabled(ansiEnabled);
+        tui.setWaveformEnabled(false);
+        tui.update(millis());
+        lastUICycleDuration = tui.getLastRenderDuration();
+    } else {
+        lastUICycleDuration = 0;
     }
-    tui.setSensors(combined);
-    
-    // Set refresh rate dynamically based on load (from old logic)
-    tui.setRefreshRate(uiIntervalCurrent);
-    tui.setAnsiEnabled(ansiEnabled);
-    tui.setWaveformEnabled(false); // 禁用波形显示，因为滤波会引入延迟
-    
-    tui.update(millis());
-    lastUICycleDuration = tui.getLastRenderDuration();
 
     if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
     {

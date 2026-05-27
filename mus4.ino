@@ -199,10 +199,31 @@ const char* WIFI_OTA_HOSTNAME = "mus4-ota";
 const char* WIFI_OTA_PASSWORD = "mus4-debug";
 const uint16_t WIFI_OTA_PORT = 3232;
 const unsigned long WIFI_OTA_WINDOW_MS = 120000UL;
+const uint8_t WIFI_WEB_LOG_CAPACITY = 48;
+const uint8_t WIFI_WEB_DATA_CAPACITY = 120;
+const unsigned long WIFI_WEB_DATA_INTERVAL_MS = 50;
 WiFiServer wifiConsoleServer(WIFI_CONSOLE_PORT);
 WiFiClient wifiConsoleClient;
 WebServer wifiWebServer(WIFI_WEB_CONSOLE_PORT);
 SerialBuf wifiConsoleBuf = {{0},0,0,0,false};
+struct WebLogEntry { uint32_t seq; unsigned long t; char source[8]; char line[96]; };
+struct WebDataPoint {
+    uint32_t seq;
+    unsigned long t;
+    int throttle;
+    int steering;
+    int mode;
+    bool park;
+    int rcThrottle;
+    int rcSteering;
+    int pilotThrottle;
+    int pilotSteering;
+    float currentMa;
+    float voltage;
+    float gyroZ;
+};
+WebLogEntry wifiWebLogs[WIFI_WEB_LOG_CAPACITY];
+WebDataPoint wifiWebData[WIFI_WEB_DATA_CAPACITY];
 bool wifiConsoleStarted = false;
 bool wifiConsoleAuthenticated = false;
 bool wifiStaConfigured = false;
@@ -214,6 +235,14 @@ bool wifiOtaInProgress = false;
 unsigned long lastWifiConsoleStartAttemptMs = 0;
 unsigned long wifiStaConnectStartMs = 0;
 unsigned long wifiOtaDeadlineMs = 0;
+unsigned long lastWifiWebDataSampleMs = 0;
+uint32_t wifiWebLogSeq = 0;
+uint32_t wifiWebLogDropped = 0;
+uint8_t wifiWebLogHead = 0;
+uint8_t wifiWebLogCount = 0;
+uint32_t wifiWebDataSeq = 0;
+uint8_t wifiWebDataHead = 0;
+uint8_t wifiWebDataCount = 0;
 uint8_t wifiOtaLastProgressPct = 0;
 #endif
 static void cursorDownN(int n){ if(ansiEnabled) Serial.printf("\033[%dB", n); }
@@ -720,6 +749,76 @@ static unsigned long wifiOtaTtlMs()
     return wifiOtaDeadlineMs - now;
 }
 
+static void appendJsonString(String& out, const char* text)
+{
+    out += '"';
+    while (*text) {
+        char c = *text++;
+        if (c == '\\' || c == '"') {
+            out += '\\';
+            out += c;
+        } else if (c == '\n') {
+            out += "\\n";
+        } else if (c == '\r') {
+            out += "\\r";
+        } else if ((uint8_t)c >= 32) {
+            out += c;
+        }
+    }
+    out += '"';
+}
+
+static void appendWifiWebLog(const char* source, const String& line)
+{
+    WebLogEntry& entry = wifiWebLogs[wifiWebLogHead];
+    entry.seq = ++wifiWebLogSeq;
+    entry.t = millis();
+    snprintf(entry.source, sizeof(entry.source), "%s", source);
+    snprintf(entry.line, sizeof(entry.line), "%s", line.c_str());
+    wifiWebLogHead = (wifiWebLogHead + 1) % WIFI_WEB_LOG_CAPACITY;
+    if (wifiWebLogCount < WIFI_WEB_LOG_CAPACITY) {
+        wifiWebLogCount++;
+    } else {
+        wifiWebLogDropped++;
+    }
+}
+
+static void appendWifiWebLogLines(const char* source, const String& text)
+{
+    int start = 0;
+    while (start < text.length()) {
+        int end = text.indexOf('\n', start);
+        if (end < 0) end = text.length();
+        String line = text.substring(start, end);
+        line.trim();
+        if (line.length() > 0) appendWifiWebLog(source, line);
+        start = end + 1;
+    }
+}
+
+static void sampleWifiWebData()
+{
+    unsigned long now = millis();
+    if (now - lastWifiWebDataSampleMs < WIFI_WEB_DATA_INTERVAL_MS) return;
+    lastWifiWebDataSampleMs = now;
+    WebDataPoint& point = wifiWebData[wifiWebDataHead];
+    point.seq = ++wifiWebDataSeq;
+    point.t = now;
+    point.throttle = car_output.throttle;
+    point.steering = car_output.steering;
+    point.mode = car_output.mode;
+    point.park = car_output.park;
+    point.rcThrottle = rc_data.throttle;
+    point.rcSteering = rc_data.steering;
+    point.pilotThrottle = pilot_data.throttle;
+    point.pilotSteering = pilot_data.steering;
+    point.currentMa = ina219Data.current_mA;
+    point.voltage = ina219Data.loadVoltage;
+    point.gyroZ = mpu6050Data.gyroZ;
+    wifiWebDataHead = (wifiWebDataHead + 1) % WIFI_WEB_DATA_CAPACITY;
+    if (wifiWebDataCount < WIFI_WEB_DATA_CAPACITY) wifiWebDataCount++;
+}
+
 static String wifiStaIpText()
 {
     return wifiStaConnected ? WiFi.localIP().toString() : String("0.0.0.0");
@@ -769,6 +868,7 @@ static void closeWifiOtaWindow(const char* reason)
         wifiOtaStarted = false;
     }
     Serial.printf("WiFi OTA closed: %s\n", reason);
+    appendWifiWebLog("ota", String("closed: ") + reason);
 }
 
 static void setupWifiOtaCallbacks()
@@ -780,12 +880,14 @@ static void setupWifiOtaCallbacks()
         wifiOtaInProgress = true;
         wifiOtaLastProgressPct = 0;
         Serial.println("WiFi OTA start");
+        appendWifiWebLog("ota", "start");
     });
     ArduinoOTA.onEnd([]() {
         wifiOtaInProgress = false;
         wifiOtaWindowOpen = false;
         wifiOtaDeadlineMs = 0;
         Serial.println("WiFi OTA end");
+        appendWifiWebLog("ota", "end");
     });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         if (total > 0) wifiOtaLastProgressPct = (uint8_t)((progress * 100U) / total);
@@ -795,6 +897,7 @@ static void setupWifiOtaCallbacks()
         wifiOtaWindowOpen = false;
         wifiOtaDeadlineMs = 0;
         Serial.printf("WiFi OTA error: %u\n", error);
+        appendWifiWebLog("ota", String("error: ") + error);
     });
 }
 
@@ -823,6 +926,7 @@ static void openWifiOtaWindow(Print& out)
     wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
     wifiOtaLastProgressPct = 0;
     out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.softAPIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
+    appendWifiWebLog("ota", "ready");
 }
 
 static void updateWifiOta()
@@ -894,7 +998,53 @@ private:
 };
 
 static const char WIFI_WEB_CONSOLE_HTML[] PROGMEM = R"rawliteral(
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MUS4 Web Console</title><style>body{font-family:system-ui,sans-serif;margin:16px;background:#111;color:#eee}button,input{font-size:16px;margin:4px;padding:8px}input{width:min(520px,90vw)}pre{background:#000;padding:12px;min-height:260px;white-space:pre-wrap;border:1px solid #333}</style></head><body><h1>MUS4 Web Console</h1><div id="status">loading...</div><div><input id="cmd" placeholder="PING / STATUS / AUTH:mus4-debug"><button onclick="sendCmd()">Send</button></div><div><button onclick="quick('PING')">PING</button><button onclick="quick('STATUS')">STATUS</button><button onclick="quick('AUTH:mus4-debug')">AUTH</button><button onclick="quick('ENABLE_OTA')">ENABLE_OTA</button><button onclick="quick('OTA_STATUS')">OTA_STATUS</button></div><pre id="log"></pre><script>const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status');function append(t){log.textContent+=t+'\n';log.scrollTop=log.scrollHeight}async function refresh(){const r=await fetch('/api/status');statusBox.textContent=await r.text()}async function quick(v){cmd.value=v;await sendCmd()}async function sendCmd(){const v=cmd.value.trim();if(!v)return;append('> '+v);const r=await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});append(await r.text());cmd.value='';refresh()}cmd.addEventListener('keydown',e=>{if(e.key==='Enter')sendCmd()});refresh();setInterval(refresh,5000);</script></body></html>
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MUS4 Web Console</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8edf2}h1{margin:0 0 10px;font-size:22px}.grid{display:grid;grid-template-columns:1fr;gap:10px}.panel{background:#171c24;border:1px solid #2b3441;border-radius:8px;padding:10px}#status{white-space:pre-wrap;color:#b7c6d8;font-size:13px}.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}button,input{font-size:15px;border-radius:6px;border:1px solid #3b4655;background:#222b36;color:#eef;padding:8px}button{cursor:pointer}button:hover{background:#2d3948}input{flex:1;min-width:220px}.log{height:280px;overflow:auto;background:#05070a;color:#d7ffe0;font:13px/1.35 Consolas,monospace;padding:8px;border-radius:6px;white-space:pre-wrap}.muted{color:#8fa1b5;font-size:12px}canvas{width:100%;height:260px;background:#070a0f;border-radius:6px;border:1px solid #2b3441}.legend span{display:inline-block;margin-right:12px;font-size:12px}.c1{color:#39d98a}.c2{color:#5cc8ff}.c3{color:#ffcc66}.c4{color:#ff6b6b}@media(min-width:900px){.grid{grid-template-columns:1.1fr .9fr}.wide{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<h1>MUS4 Web Console</h1>
+<div class="grid">
+<section class="panel wide"><div id="status">loading...</div></section>
+<section class="panel">
+<div class="row"><input id="cmd" placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停日志</button></div>
+<div class="row" style="margin:8px 0"><button onclick="quick('PING')">PING</button><button onclick="quick('STATUS')">STATUS</button><button onclick="quick('AUTH:mus4-debug')">AUTH</button><button onclick="quick('ENABLE_OTA')">ENABLE_OTA</button><button onclick="quick('OTA_STATUS')">OTA_STATUS</button></div>
+<div id="log" class="log"></div><div class="muted" id="logMeta">log ready</div>
+</section>
+<section class="panel">
+<canvas id="chart" width="760" height="260"></canvas>
+<div class="legend"><span class="c1">Throttle</span><span class="c2">Steering</span><span class="c3">Current</span><span class="c4">GyroZ</span></div>
+<div class="row" style="margin-top:8px"><button onclick="toggleChart()" id="chartBtn">暂停曲线</button><button onclick="clearChart()">清空曲线</button></div>
+<div class="muted" id="dataMeta">data ready</div>
+</section>
+</div>
+<script>
+const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),logMeta=document.getElementById('logMeta'),dataMeta=document.getElementById('dataMeta'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d');
+let lastLogSeq=0,lastDataSeq=0,logPaused=false,chartPaused=false,points=[];
+function line(t){if(logPaused)return;log.textContent+=t+'\n';if(log.textContent.length>16000)log.textContent=log.textContent.slice(-12000);log.scrollTop=log.scrollHeight}
+function clearLog(){log.textContent=''}
+function togglePause(){logPaused=!logPaused;document.getElementById('pauseBtn').textContent=logPaused?'继续日志':'暂停日志'}
+function toggleChart(){chartPaused=!chartPaused;document.getElementById('chartBtn').textContent=chartPaused?'继续曲线':'暂停曲线'}
+function clearChart(){points=[];draw()}
+async function refreshStatus(){try{const r=await fetch('/api/status');statusBox.textContent=await r.text()}catch(e){statusBox.textContent='status error: '+e}}
+async function pollLog(){try{const r=await fetch('/api/log?since='+lastLogSeq);const j=await r.json();for(const e of j.entries){lastLogSeq=Math.max(lastLogSeq,e.seq);line('['+e.t+']['+e.src+'] '+e.line)}logMeta.textContent='seq='+lastLogSeq+' dropped='+j.dropped}catch(e){logMeta.textContent='log error: '+e}}
+async function pollData(){if(chartPaused)return;try{const r=await fetch('/api/data?since='+lastDataSeq);const arr=await r.json();for(const p of arr){lastDataSeq=Math.max(lastDataSeq,p.seq);points.push(p)}if(points.length>240)points=points.slice(-240);if(arr.length)draw();const p=points[points.length-1];dataMeta.textContent=p?'seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' cur='+p.cur+' gz='+p.gz:'waiting data'}catch(e){dataMeta.textContent='data error: '+e}}
+async function sendCmd(){const v=cmd.value.trim();if(!v)return;await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});cmd.value='';refreshStatus()}
+async function quick(v){cmd.value=v;await sendCmd()}
+cmd.addEventListener('keydown',e=>{if(e.key==='Enter')sendCmd()});
+function map(v,min,max,h){if(max===min)return h/2;return h-(v-min)*(h/(max-min))}
+function drawSeries(vals,color,min,max){const w=canvas.width,h=canvas.height,pad=24;ctx.strokeStyle=color;ctx.beginPath();vals.forEach((v,i)=>{const x=pad+i*(w-pad*2)/Math.max(1,vals.length-1),y=pad+map(v,min,max,h-pad*2);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)});ctx.stroke()}
+function draw(){const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#233041';ctx.lineWidth=1;for(let i=0;i<5;i++){const y=20+i*(h-40)/4;ctx.beginPath();ctx.moveTo(24,y);ctx.lineTo(w-16,y);ctx.stroke()}ctx.lineWidth=2;drawSeries(points.map(p=>p.thr),'#39d98a',-100,100);drawSeries(points.map(p=>p.str),'#5cc8ff',-100,100);drawSeries(points.map(p=>p.cur),'#ffcc66',-1000,3000);drawSeries(points.map(p=>p.gz),'#ff6b6b',-5,5)}
+refreshStatus();setInterval(refreshStatus,3000);setInterval(pollLog,200);setInterval(pollData,200);draw();
+</script>
+</body>
+</html>
 )rawliteral";
 
 static void handleWifiWebRoot()
@@ -916,12 +1066,90 @@ static void handleWifiWebCommand()
     line.trim();
     if (line.length() == 0) {
         wifiWebServer.send(400, "text/plain", "NACK:EMPTY\n");
+        appendWifiWebLog("web", "> <empty>");
+        appendWifiWebLog("cmd", "NACK:EMPTY");
         return;
     }
     String response;
     StringPrint out(response);
+    appendWifiWebLog("web", String("> ") + line);
     processWirelessConsoleLine(line, out);
+    appendWifiWebLogLines("cmd", response);
     wifiWebServer.send(200, "text/plain", response);
+}
+
+static void handleWifiWebLog()
+{
+    uint32_t since = wifiWebServer.hasArg("since") ? (uint32_t)wifiWebServer.arg("since").toInt() : 0;
+    String response;
+    response.reserve(512);
+    response += "{\"dropped\":";
+    response += wifiWebLogDropped;
+    response += ",\"entries\":[";
+    bool first = true;
+    for (uint8_t i = 0; i < wifiWebLogCount; i++) {
+        uint8_t index = (wifiWebLogHead + WIFI_WEB_LOG_CAPACITY - wifiWebLogCount + i) % WIFI_WEB_LOG_CAPACITY;
+        WebLogEntry& entry = wifiWebLogs[index];
+        if (entry.seq <= since) continue;
+        if (!first) response += ',';
+        first = false;
+        response += "{\"seq\":";
+        response += entry.seq;
+        response += ",\"t\":";
+        response += entry.t;
+        response += ",\"src\":";
+        appendJsonString(response, entry.source);
+        response += ",\"line\":";
+        appendJsonString(response, entry.line);
+        response += '}';
+    }
+    response += "]}";
+    wifiWebServer.send(200, "application/json", response);
+}
+
+static void handleWifiWebData()
+{
+    uint32_t since = wifiWebServer.hasArg("since") ? (uint32_t)wifiWebServer.arg("since").toInt() : 0;
+    String response;
+    response.reserve(1024);
+    response += "[";
+    bool first = true;
+    for (uint8_t i = 0; i < wifiWebDataCount; i++) {
+        uint8_t index = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - wifiWebDataCount + i) % WIFI_WEB_DATA_CAPACITY;
+        WebDataPoint& point = wifiWebData[index];
+        if (point.seq <= since) continue;
+        if (!first) response += ',';
+        first = false;
+        response += "{\"seq\":";
+        response += point.seq;
+        response += ",\"t\":";
+        response += point.t;
+        response += ",\"thr\":";
+        response += point.throttle;
+        response += ",\"str\":";
+        response += point.steering;
+        response += ",\"mode\":";
+        response += point.mode;
+        response += ",\"park\":";
+        response += point.park ? 1 : 0;
+        response += ",\"rct\":";
+        response += point.rcThrottle;
+        response += ",\"rcs\":";
+        response += point.rcSteering;
+        response += ",\"pt\":";
+        response += point.pilotThrottle;
+        response += ",\"ps\":";
+        response += point.pilotSteering;
+        response += ",\"cur\":";
+        response += String(point.currentMa, 2);
+        response += ",\"vol\":";
+        response += String(point.voltage, 2);
+        response += ",\"gz\":";
+        response += String(point.gyroZ, 3);
+        response += '}';
+    }
+    response += "]";
+    wifiWebServer.send(200, "application/json", response);
 }
 
 static void setupWifiWebConsole()
@@ -929,12 +1157,16 @@ static void setupWifiWebConsole()
     wifiWebServer.on("/", HTTP_GET, handleWifiWebRoot);
     wifiWebServer.on("/api/status", HTTP_GET, handleWifiWebStatus);
     wifiWebServer.on("/api/cmd", HTTP_POST, handleWifiWebCommand);
+    wifiWebServer.on("/api/log", HTTP_GET, handleWifiWebLog);
+    wifiWebServer.on("/api/data", HTTP_GET, handleWifiWebData);
     wifiWebServer.begin();
 }
 
 static void updateWifiWebConsole()
 {
-    if (wifiConsoleStarted) wifiWebServer.handleClient();
+    if (!wifiConsoleStarted) return;
+    sampleWifiWebData();
+    wifiWebServer.handleClient();
 }
 
 static void setupWifiConsole()
@@ -958,6 +1190,7 @@ static void setupWifiConsole()
     if (!started) {
         wifiConsoleStarted = false;
         Serial.println("WiFi Console AP start failed");
+        appendWifiWebLog("wifi", "AP start failed");
         return;
     }
     if (wifiStaConfigured) {
@@ -970,6 +1203,7 @@ static void setupWifiConsole()
     setupWifiWebConsole();
     wifiConsoleStarted = true;
     Serial.printf("WiFi Console AP: %s IP: %s Port: %u Web: %u\n", WIFI_CONSOLE_AP_SSID, WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT);
+    appendWifiWebLog("wifi", String("AP ") + WiFi.softAPIP().toString() + ":" + WIFI_WEB_CONSOLE_PORT);
 }
 
 static void updateWifiSta()
@@ -981,16 +1215,19 @@ static void updateWifiSta()
             wifiStaConnected = true;
             wifiStaTimedOut = false;
             Serial.printf("WiFi STA connected IP: %s\n", WiFi.localIP().toString().c_str());
+            appendWifiWebLog("wifi", String("STA ") + WiFi.localIP().toString());
         }
         return;
     }
     if (wifiStaConnected) {
         wifiStaConnected = false;
         Serial.println("WiFi STA disconnected");
+        appendWifiWebLog("wifi", "STA disconnected");
     }
     if (!wifiStaTimedOut && millis() - wifiStaConnectStartMs >= WIFI_STA_CONNECT_TIMEOUT_MS) {
         wifiStaTimedOut = true;
         Serial.println("WiFi STA connect timeout, AP remains available");
+        appendWifiWebLog("wifi", "STA timeout, AP remains available");
     }
 }
 
@@ -1011,6 +1248,7 @@ static void updateWifiConsole()
             wifiConsoleAuthenticated = false;
             wifiConsoleClient.println("MUS4 WiFi Console Ready");
             wifiConsoleClient.println("Use AUTH:<password> to unlock control commands");
+            appendWifiWebLog("tcp", "client connected");
         }
         return;
     }
@@ -1022,7 +1260,12 @@ static void updateWifiConsole()
             wifiConsoleBuf.buf[wifiConsoleBuf.len] = 0;
             String line = String(wifiConsoleBuf.buf);
             line.trim();
-            processWirelessConsoleLine(line, wifiConsoleClient);
+            String response;
+            StringPrint out(response);
+            appendWifiWebLog("tcp", String("> ") + line);
+            processWirelessConsoleLine(line, out);
+            wifiConsoleClient.print(response);
+            appendWifiWebLogLines("cmd", response);
             wifiConsoleBuf.len = 0;
             wifiConsoleBuf.overflow = false;
         } else {

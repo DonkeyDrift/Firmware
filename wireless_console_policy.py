@@ -92,3 +92,41 @@ class WirelessLineBuffer:
             else:
                 self.overflowed = True
         return lines
+
+
+class WebLogBuffer:
+    def __init__(self, capacity=64):
+        self.capacity = capacity
+        self._entries = []
+        self._next_seq = 1
+        self.dropped = 0
+
+    def append(self, now_ms, source, line):
+        entry = {"seq": self._next_seq, "t": now_ms, "src": source, "line": line}
+        self._next_seq += 1
+        if len(self._entries) >= self.capacity:
+            self._entries.pop(0)
+            self.dropped += 1
+        self._entries.append(entry)
+        return entry["seq"]
+
+    def since(self, seq):
+        return [entry for entry in self._entries if entry["seq"] > seq]
+
+
+def format_web_data_point(seq, now_ms, control, rc, pilot, sensor):
+    return {
+        "seq": seq,
+        "t": now_ms,
+        "thr": control["throttle"],
+        "str": control["steering"],
+        "mode": control["mode"],
+        "park": 1 if control["park"] else 0,
+        "rct": rc["throttle"],
+        "rcs": rc["steering"],
+        "pt": pilot["throttle"],
+        "ps": pilot["steering"],
+        "cur": sensor["current_mA"],
+        "vol": sensor["voltage"],
+        "gz": sensor["gyroZ"],
+    }

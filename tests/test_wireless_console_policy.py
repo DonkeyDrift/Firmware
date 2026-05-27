@@ -119,6 +119,51 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertFalse(POLICY.is_web_command_allowed("10:20", authenticated=False, park_locked=True))
         self.assertFalse(POLICY.is_web_command_allowed("ENABLE_OTA", authenticated=True, park_locked=False))
 
+    def test_web_log_buffer_returns_incremental_entries_and_tracks_drops(self):
+        buffer = POLICY.WebLogBuffer(capacity=2)
+
+        first_seq = buffer.append(now_ms=100, source="web", line="> PING")
+        second_seq = buffer.append(now_ms=120, source="cmd", line="PONG")
+
+        self.assertEqual(first_seq, 1)
+        self.assertEqual(second_seq, 2)
+        self.assertEqual([entry["line"] for entry in buffer.since(0)], ["> PING", "PONG"])
+        self.assertEqual([entry["line"] for entry in buffer.since(1)], ["PONG"])
+
+        buffer.append(now_ms=140, source="web", line="> STATUS")
+
+        self.assertEqual(buffer.dropped, 1)
+        self.assertEqual([entry["seq"] for entry in buffer.since(0)], [2, 3])
+
+    def test_formats_web_data_point_with_short_keys(self):
+        point = POLICY.format_web_data_point(
+            seq=7,
+            now_ms=1234,
+            control={"throttle": 10, "steering": -20, "mode": 1, "park": False},
+            rc={"throttle": 1510, "steering": 1490},
+            pilot={"throttle": 8, "steering": -18},
+            sensor={"current_mA": 123.4, "voltage": 7.6, "gyroZ": -0.12},
+        )
+
+        self.assertEqual(
+            point,
+            {
+                "seq": 7,
+                "t": 1234,
+                "thr": 10,
+                "str": -20,
+                "mode": 1,
+                "park": 0,
+                "rct": 1510,
+                "rcs": 1490,
+                "pt": 8,
+                "ps": -18,
+                "cur": 123.4,
+                "vol": 7.6,
+                "gz": -0.12,
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

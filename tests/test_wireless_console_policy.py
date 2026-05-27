@@ -143,6 +143,7 @@ class TestWirelessConsolePolicy(unittest.TestCase):
             rc={"throttle": 1510, "steering": 1490},
             pilot={"throttle": 8, "steering": -18},
             sensor={"current_mA": 123.4, "voltage": 7.6, "gyroZ": -0.12},
+            drift={"enabled": True, "active": True, "compensation": -12.5, "gyroZFiltered": 0.34},
         )
 
         self.assertEqual(
@@ -161,8 +162,27 @@ class TestWirelessConsolePolicy(unittest.TestCase):
                 "cur": 123.4,
                 "vol": 7.6,
                 "gz": -0.12,
+                "de": 1,
+                "da": 1,
+                "dc": -12.5,
+                "gzf": 0.34,
             },
         )
+
+    def test_formats_web_data_point_defaults_drift_off(self):
+        point = POLICY.format_web_data_point(
+            seq=7,
+            now_ms=1234,
+            control={"throttle": 10, "steering": -20, "mode": 1, "park": False},
+            rc={"throttle": 1510, "steering": 1490},
+            pilot={"throttle": 8, "steering": -18},
+            sensor={"current_mA": 123.4, "voltage": 7.6, "gyroZ": -0.12},
+        )
+
+        self.assertEqual(point["de"], 0)
+        self.assertEqual(point["da"], 0)
+        self.assertEqual(point["dc"], 0.0)
+        self.assertEqual(point["gzf"], 0.0)
 
     def test_log_target_commands_require_authentication(self):
         self.assertFalse(POLICY.is_wireless_command_allowed("LOG_WEB", authenticated=False, park_locked=True))

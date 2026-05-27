@@ -124,7 +124,8 @@ class WebLogBuffer:
         return [entry for entry in self._entries if entry["seq"] > seq]
 
 
-def format_web_data_point(seq, now_ms, control, rc, pilot, sensor):
+def format_web_data_point(seq, now_ms, control, rc, pilot, sensor, drift=None):
+    drift = drift or {}
     return {
         "seq": seq,
         "t": now_ms,
@@ -139,4 +140,8 @@ def format_web_data_point(seq, now_ms, control, rc, pilot, sensor):
         "cur": sensor["current_mA"],
         "vol": sensor["voltage"],
         "gz": sensor["gyroZ"],
+        "de": 1 if drift.get("enabled", False) else 0,
+        "da": 1 if drift.get("active", False) else 0,
+        "dc": drift.get("compensation", 0.0),
+        "gzf": drift.get("gyroZFiltered", 0.0),
     }

@@ -321,7 +321,7 @@ static uint16_t medianFilter(uint16_t* buf, int size) {
 
 static bool isAuxiliaryRcChannel(int ch)
 {
-    return ch == CH_MODE || ch == CH_DRIFT || ch == CH_DRIFT_SCALE;
+    return ch == CH_PARK || ch == CH_MODE || ch == CH_DRIFT || ch == CH_DRIFT_SCALE;
 }
 
 static uint16_t stabilizeAuxiliaryPWM(int ch, uint16_t value, bool valid)
@@ -2684,7 +2684,7 @@ void loop()
     }
 
     // Park、Mode、Drift通道也做类似处理
-    pwm_filtered[CH_PARK] = parkValid ? pwm_filtered[CH_PARK] : 1500;
+    if (!parkValid && !aux_stable_initialized[CH_PARK]) pwm_filtered[CH_PARK] = 1500;
     if (!driftValid && !aux_stable_initialized[CH_DRIFT]) pwm_filtered[CH_DRIFT] = 1000;
     if (!driftScaleValid && !aux_stable_initialized[CH_DRIFT_SCALE]) pwm_filtered[CH_DRIFT_SCALE] = 1500;
 

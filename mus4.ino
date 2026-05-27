@@ -126,7 +126,7 @@ volatile unsigned long last_valid_time[RC_CHANNEL_COUNT] = {0};
 #define RC_SIGNAL_TIMEOUT 1000000UL  // RC信号超时时间 (µs)
 #define RC_PWM_MIN 800   // 最小有效PWM (µs)
 #define RC_PWM_MAX 2200  // 最大有效PWM (µs)
-#define ENABLE_RC_MCPWM_CAPTURE 1
+#define ENABLE_RC_MCPWM_CAPTURE 0
 #define RC_MCPWM_CAPTURE_RESOLUTION_HZ 1000000
 #define RC_MCPWM_CAPTURE_GROUP_ID 0
 

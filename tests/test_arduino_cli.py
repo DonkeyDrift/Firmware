@@ -330,6 +330,7 @@ class TestOtaUploadTooling(unittest.TestCase):
             "-p", "3232",
             "-a", "mus4-debug",
             "-f", "C:/build/mus4.ino.bin",
+            "--progress",
         ])
 
     def test_parses_espota_upload_progress(self):

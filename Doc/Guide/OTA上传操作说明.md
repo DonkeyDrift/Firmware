@@ -64,7 +64,7 @@ python arduino-cli.py --ota --ota-host <设备STA_IP> --ota-password mus4-debug 
 python arduino-cli.py --ota --ota-host 192.168.4.1 --ota-password mus4-debug -i build_wsl\mus4.ino.bin --espota-tool "C:\Users\<用户名>\AppData\Local\Arduino15\packages\esp32\hardware\esp32\<版本>\tools\espota.py"
 ```
 
-上传时终端会显示 OTA 上传进度，例如：
+上传时脚本会自动给 `espota.py` 传入 `--progress`，终端会显示 OTA 上传进度，例如：
 
 ```text
 正在 OTA 上传... [==========          ] 50.0%

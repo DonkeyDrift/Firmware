@@ -195,6 +195,7 @@ def build_espota_command(python_exe, espota_tool, host, port, password, bin_path
         "-p", str(port),
         "-a", password,
         "-f", bin_path,
+        "--progress",
     ]
 
 

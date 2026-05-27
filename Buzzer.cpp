@@ -38,8 +38,13 @@ Buzzer::Buzzer(int pin) {
     _pin = pin;
     _channel = _channelCounter++;
     _volume = BUZZER_VOLUME;
+#if BUZZER_SOUND_ENABLED
     ledcAttachChannel(_pin, 2000, 8, _channel);
     setVolume(_volume);
+#else
+    pinMode(_pin, OUTPUT);
+    digitalWrite(_pin, LOW);
+#endif
 }
 
 void Buzzer::setVolume(int volume) {
@@ -47,6 +52,7 @@ void Buzzer::setVolume(int volume) {
 }
 
 void Buzzer::playNoteWithVolume(int pitch, int durationMs) {
+#if BUZZER_SOUND_ENABLED
     if (pitch == 0) {
         ledcWriteChannel(_channel, 0);
     } else {
@@ -56,9 +62,13 @@ void Buzzer::playNoteWithVolume(int pitch, int durationMs) {
         delay(durationMs);
         ledcWriteChannel(_channel, 0);
     }
+#else
+    digitalWrite(_pin, LOW);
+#endif
 }
 
 void Buzzer::playMelody(const BuzzerNote* melody, int length) {
+#if BUZZER_SOUND_ENABLED
     _playing = true;
     int beatMs = 60000 / 120;
     for (int i = 0; i < length; i++) {
@@ -67,6 +77,10 @@ void Buzzer::playMelody(const BuzzerNote* melody, int length) {
         delay(durMs * 0.3);
     }
     _playing = false;
+#else
+    _playing = false;
+    digitalWrite(_pin, LOW);
+#endif
 }
 
 void Buzzer::playModeSound(int mode) {

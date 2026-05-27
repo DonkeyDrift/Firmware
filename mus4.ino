@@ -223,8 +223,8 @@ const char* WIFI_OTA_PASSWORD = "mus4-debug";
 const uint16_t WIFI_OTA_PORT = 3232;
 const unsigned long WIFI_OTA_WINDOW_MS = 120000UL;
 const uint8_t WIFI_WEB_LOG_CAPACITY = 64;
-const uint8_t WIFI_WEB_DATA_CAPACITY = 120;
-const unsigned long WIFI_WEB_DATA_INTERVAL_MS = 50;
+const uint16_t WIFI_WEB_DATA_CAPACITY = 256;
+const unsigned long WIFI_WEB_DATA_INTERVAL_MS = 16;
 WiFiServer wifiConsoleServer(WIFI_CONSOLE_PORT);
 WiFiClient wifiConsoleClient;
 WebServer wifiWebServer(WIFI_WEB_CONSOLE_PORT);
@@ -269,8 +269,8 @@ uint32_t wifiWebLogDropped = 0;
 uint8_t wifiWebLogHead = 0;
 uint8_t wifiWebLogCount = 0;
 uint32_t wifiWebDataSeq = 0;
-uint8_t wifiWebDataHead = 0;
-uint8_t wifiWebDataCount = 0;
+uint16_t wifiWebDataHead = 0;
+uint16_t wifiWebDataCount = 0;
 uint8_t wifiOtaLastProgressPct = 0;
 #endif
 static void cursorDownN(int n){ if(ansiEnabled) Serial.printf("\033[%dB", n); }
@@ -1103,14 +1103,14 @@ function clearChart(){points=[];draw()}
 async function refreshStatus(){try{const r=await fetch('/api/status');statusBox.textContent=await r.text()}catch(e){statusBox.textContent='status error: '+e}}
 async function pollLog(){try{const r=await fetch('/api/log?since='+lastLogSeq);const j=await r.json();for(const e of j.entries){lastLogSeq=Math.max(lastLogSeq,e.seq);line('['+e.t+']['+e.src+'] '+e.line)}logMeta.textContent='seq='+lastLogSeq+' dropped='+j.dropped}catch(e){logMeta.textContent='log error: '+e}}
 function updateState(p){const modes={0:['RC','Manual input'],1:['ASSIST','Pilot steering'],2:['AUTO','Pilot control']},m=modes[p.mode]||['MODE '+p.mode,'unknown'];modeCard.className='stateCard mode'+p.mode;modeValue.textContent=m[0];modeSub.textContent=m[1];parkCard.className='stateCard '+(p.park?'parkLocked':'parkUnlocked');parkValue.textContent=p.park?'LOCKED':'UNLOCKED';parkSub.textContent=p.park?'output guarded':'drive enabled';const de=!!p.de,da=!!p.da,dc=Number(p.dc||0),gzf=Number(p.gzf||0);driftCard.className='stateCard '+(!de?'driftOff':da?'driftActive':'driftArmed');driftValue.textContent=!de?'OFF':da?'ACTIVE':'ARMED';driftSub.textContent='comp='+dc.toFixed(1)+' gzf='+gzf.toFixed(2);driftNeedle.style.left=Math.max(0,Math.min(100,(Math.max(-70,Math.min(70,dc))+70)*100/140))+'%';[p.ch1,p.ch2,p.ch3,p.ch4,p.ch5,p.ch6].forEach((v,i)=>chValues[i].textContent=v??'----')}
-async function pollData(){try{const r=await fetch('/api/data?since='+lastDataSeq);const arr=await r.json();let latest=null;for(const p of arr){lastDataSeq=Math.max(lastDataSeq,p.seq);latest=p;if(!chartPaused)points.push(p)}if(latest)updateState(latest);if(points.length>240)points=points.slice(-240);if(arr.length&&!chartPaused)draw();const p=latest||points[points.length-1];dataMeta.textContent=p?'seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' ch4='+p.ch4+' cur='+p.cur+' gz='+p.gz:'waiting data'}catch(e){dataMeta.textContent='data error: '+e}}
+async function pollData(){try{const r=await fetch('/api/data?since='+lastDataSeq);const arr=await r.json();let latest=null;for(const p of arr){lastDataSeq=Math.max(lastDataSeq,p.seq);latest=p;if(!chartPaused)points.push(p)}if(latest)updateState(latest);if(points.length>256)points=points.slice(-256);if(arr.length&&!chartPaused)draw();const p=latest||points[points.length-1];dataMeta.textContent=p?'seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' ch4='+p.ch4+' cur='+p.cur+' gz='+p.gz:'waiting data'}catch(e){dataMeta.textContent='data error: '+e}}
 async function sendCmd(){const v=cmd.value.trim();if(!v)return;await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});cmd.value='';refreshStatus()}
 async function quick(v){cmd.value=v;await sendCmd()}
 cmd.addEventListener('keydown',e=>{if(e.key==='Enter')sendCmd()});
 function map(v,min,max,h){if(max===min)return h/2;return h-(v-min)*(h/(max-min))}
 function drawSeries(vals,color,min,max){const w=canvas.width,h=canvas.height,pad=24;ctx.strokeStyle=color;ctx.beginPath();vals.forEach((v,i)=>{const x=pad+i*(w-pad*2)/Math.max(1,vals.length-1),y=pad+map(v,min,max,h-pad*2);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)});ctx.stroke()}
 function draw(){const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#233041';ctx.lineWidth=1;for(let i=0;i<5;i++){const y=20+i*(h-40)/4;ctx.beginPath();ctx.moveTo(24,y);ctx.lineTo(w-16,y);ctx.stroke()}ctx.lineWidth=2;drawSeries(points.map(p=>p.thr),'#39d98a',-100,100);drawSeries(points.map(p=>p.str),'#5cc8ff',-100,100);drawSeries(points.map(p=>p.cur),'#ffcc66',-1000,3000);drawSeries(points.map(p=>p.gz),'#ff6b6b',-5,5);drawSeries(points.map(p=>p.ch3),'#d96bff',900,2100);drawSeries(points.map(p=>p.ch4),'#f472b6',900,2100);drawSeries(points.map(p=>p.ch5),'#a3e635',900,2100);drawSeries(points.map(p=>p.ch6),'#fb923c',900,2100)}
-refreshStatus();setInterval(refreshStatus,3000);setInterval(pollLog,200);setInterval(pollData,200);draw();
+refreshStatus();setInterval(refreshStatus,3000);setInterval(pollLog,200);setInterval(pollData,16);draw();
 </script>
 </body>
 </html>
@@ -1183,8 +1183,8 @@ static void handleWifiWebData()
     response.reserve(1024);
     response += "[";
     bool first = true;
-    for (uint8_t i = 0; i < wifiWebDataCount; i++) {
-        uint8_t index = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - wifiWebDataCount + i) % WIFI_WEB_DATA_CAPACITY;
+    for (uint16_t i = 0; i < wifiWebDataCount; i++) {
+        uint16_t index = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - wifiWebDataCount + i) % WIFI_WEB_DATA_CAPACITY;
         WebDataPoint& point = wifiWebData[index];
         if (point.seq <= since) continue;
         if (!first) response += ',';

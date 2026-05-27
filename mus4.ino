@@ -1111,7 +1111,7 @@ function map(v,min,max,h){if(max===min)return h/2;return h-(v-min)*(h/(max-min))
 function drawSeries(vals,color,min,max){const w=canvas.width,h=canvas.height,pad=24;ctx.strokeStyle=color;ctx.beginPath();vals.forEach((v,i)=>{const x=pad+i*(w-pad*2)/Math.max(1,vals.length-1),y=pad+map(v,min,max,h-pad*2);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)});ctx.stroke()}
 function scheduleDraw(){if(drawPending)return;drawPending=true;requestAnimationFrame(()=>{drawPending=false;draw()})}
 function draw(){const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#233041';ctx.lineWidth=1;for(let i=0;i<5;i++){const y=20+i*(h-40)/4;ctx.beginPath();ctx.moveTo(24,y);ctx.lineTo(w-16,y);ctx.stroke()}ctx.lineWidth=2;drawSeries(points.map(p=>p.thr),'#39d98a',-100,100);drawSeries(points.map(p=>p.str),'#5cc8ff',-100,100);drawSeries(points.map(p=>p.cur),'#ffcc66',-1000,3000);drawSeries(points.map(p=>p.gz),'#ff6b6b',-5,5);drawSeries(points.map(p=>p.ch3),'#d96bff',900,2100);drawSeries(points.map(p=>p.ch4),'#f472b6',900,2100);drawSeries(points.map(p=>p.ch5),'#a3e635',900,2100);drawSeries(points.map(p=>p.ch6),'#fb923c',900,2100)}
-refreshStatus();setInterval(refreshStatus,3000);setInterval(pollLog,200);pollData();draw();
+refreshStatus();setInterval(refreshStatus,3000);setInterval(pollLog,200);setTimeout(pollData,1000);draw();
 </script>
 </body>
 </html>

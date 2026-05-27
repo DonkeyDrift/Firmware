@@ -10,7 +10,7 @@ MUS4（LP-MU-S4）是基于 ESP32 的遥控车辆/机器人底层控制系统，
 - Arduino/C++ 固件：主 sketch 在根目录 `mus4.ino`，公共类型与外设辅助模块也在根目录。
 - 构建与烧录工具：`arduino-cli.py` 与 `arduino-cli-wsl.ps1` 负责编译、上传、串口检测、OTA 上传、WSL 加速构建。
 
-固件目标是 ESP32 + Arduino framework，主要依赖 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。
+固件目标是 ESP32 + Arduino framework，主要依赖 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050、WebServer、ArduinoOTA，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。
 
 ## Commands
 
@@ -125,13 +125,16 @@ pytest tests/ -v
 - `STRESS`：运行串口压力统计。
 - `REGRESS`：运行固件回归校验。
 - `FILTER_TEST`：运行 RC 滤波测试入口。
+- `FILTER_DEBUG`：切换 RC 滤波调试输出。
+- `LOG_WEB` / `LOG_SERIAL`：切换 MUS4 日志输出目标。
 - `ANSI` / `NOANSI`：切换 TUI ANSI 转义序列显示。
 
 ## Configuration
 
 - `config.yaml`：`arduino-cli.py` 的主配置，包含 `arduino_cli`、`fqbn`、`port`、`baudrate`、`sketch_path`、`build_path`、串口自动检测与日志配置。
 - `sketch.yaml`：Arduino CLI 项目级默认配置，当前默认 FQBN 为 `esp32:esp32:dfrobot_firebeetle2_esp32e`，默认端口为 `/dev/ttyS4`。
-- `wslbuild.yaml`（若存在）：`arduino-cli-wsl.ps1` 会读取其中的 `distro`、`sketch`、`fqbn`、`work_dir` 等覆盖项。
+- `wslbuild.yaml`（若存在）：`arduino-cli-wsl.ps1` 会读取其中的 `distro`、`sketch`、`fqbn`、`work_dir`、`io_mode` 等覆盖项。
+- `WirelessSecrets.example.h`：Wi-Fi STA 凭据模板；本地 `WirelessSecrets.h` 可被 `mus4.ino` 自动包含，但可能含真实凭据，提交前必须检查是否应排除。
 
 当前 `config.yaml` 默认：
 - FQBN：`esp32:esp32:esp32`
@@ -156,12 +159,12 @@ Python 测试集中在 `tests/test_arduino_cli.py`，主要覆盖串口选择、
 ### 固件应用层
 
 `mus4.ino` 是主状态机，关键数据流是：
-1. RC 接收机通过 CH1-CH4 PWM 输入触发中断，计算脉宽并滤波。
-2. USB `Serial` 与 `Serial1` 接收 Pilot 指令，解析 `Throttle:Steering`、序列号与校验和格式。
-3. 控制逻辑按模式融合 RC 与 Pilot 数据，更新 `car_output`。
+1. RC 接收机通过 CH1-CH6 PWM 输入触发中断，计算脉宽并滤波；CH5/CH6 当前用于 Drift Assist 开关与强度比例。
+2. USB `Serial`、`Serial1`、TCP Console 与 Web Console 接收命令，解析 `Throttle:Steering`、序列号与校验和格式。
+3. 控制逻辑按模式融合 RC 与 Pilot 数据，更新 `car_output`，Drift Assist 可在条件满足时叠加转向补偿。
 4. Park/紧急制动状态机可覆盖油门输出并控制 LED 闪烁。
 5. 输出层通过 ESP32 `ledc` 产生 PWM，驱动转向舵机与油门电调，并通过 Serial1 回传 `Txx:Sxx`。
-6. TUI、I2C 传感器和 BLE Gamepad 作为旁路功能读取状态并输出显示/手柄轴数据。
+6. TUI、I2C 传感器、Web 数据曲线/日志缓冲和 BLE Gamepad 作为旁路功能读取状态并输出显示或手柄轴数据。
 
 ### 核心模块
 

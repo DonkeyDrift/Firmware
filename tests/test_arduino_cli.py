@@ -332,6 +332,36 @@ class TestOtaUploadTooling(unittest.TestCase):
             "-f", "C:/build/mus4.ino.bin",
         ])
 
+    def test_parses_espota_upload_progress(self):
+        progress = ARDUINO_CLI.parse_espota_progress_line("Uploading: [==========          ] 50%")
+
+        self.assertEqual(progress, "[==========          ] 50.0%")
+
+    def test_ota_upload_uses_espota_progress_parser(self):
+        automation = make_automation(port="auto")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            firmware = root / "mus4.ino.bin"
+            espota_tool = root / "espota.py"
+            firmware.write_bytes(b"app")
+            espota_tool.write_text("", encoding="utf-8")
+            automation.args = SimpleNamespace(
+                port=None,
+                input_file=str(firmware),
+                build_path=None,
+                config="config.yaml",
+                ota_host="192.168.4.1",
+                ota_port=3232,
+                ota_password="mus4-debug",
+                espota_tool=str(espota_tool),
+            )
+            automation.run_command = MagicMock(return_value=(True, "ok"))
+
+            result = automation.ota_upload()
+
+        self.assertTrue(result)
+        self.assertIs(automation.run_command.call_args.kwargs["progress_parser"], ARDUINO_CLI.parse_espota_progress_line)
+
     def test_ota_upload_does_not_resolve_serial_ports(self):
         automation = make_automation(port="auto")
         with tempfile.TemporaryDirectory() as tmp:

@@ -198,6 +198,14 @@ def build_espota_command(python_exe, espota_tool, host, port, password, bin_path
     ]
 
 
+def format_progress_bar(percent: float) -> str:
+    percent = max(0.0, min(100.0, percent))
+    bar_length = 20
+    filled = int(percent / 100 * bar_length)
+    bar = "[" + "=" * filled + " " * (bar_length - filled) + "]"
+    return f"{bar} {percent:.1f}%"
+
+
 def parse_progress_line(line: str) -> Optional[str]:
     """
     解析上传过程中的固件写入进度行，返回格式化后的进度字符串
@@ -222,7 +230,6 @@ def parse_progress_line(line: str) -> Optional[str]:
     if match:
         try:
             percent = float(match.group(1))
-            percent = max(0.0, min(100.0, percent))
         except (ValueError, IndexError):
             pass
 
@@ -232,18 +239,27 @@ def parse_progress_line(line: str) -> Optional[str]:
         if match:
             try:
                 percent = float(match.group(1))
-                percent = max(0.0, min(100.0, percent))
             except (ValueError, IndexError):
                 pass
 
     if percent is not None:
-        # 统一生成标准格式的进度条
-        bar_length = 20
-        filled = int(percent / 100 * bar_length)
-        bar = "[" + "=" * filled + " " * (bar_length - filled) + "]"
-        return f"{bar} {percent:.1f}%"
+        return format_progress_bar(percent)
 
     return None
+
+
+def parse_espota_progress_line(line: str) -> Optional[str]:
+    if not line or "upload" not in line.lower():
+        return None
+
+    match = re.search(r'(\d+(?:\.\d+)?)\s*%', line)
+    if not match:
+        return None
+
+    try:
+        return format_progress_bar(float(match.group(1)))
+    except ValueError:
+        return None
 
 
 class ArduinoAutomation:
@@ -691,7 +707,7 @@ class ArduinoAutomation:
             if handler not in root_logger.handlers:
                 root_logger.addHandler(handler)
 
-    def run_command(self, cmd, timeout=None, message="Processing... ", enable_progress=True):
+    def run_command(self, cmd, timeout=None, message="Processing... ", enable_progress=True, progress_parser=None):
         self.logger.debug(f"执行命令: {' '.join(cmd)}")
         start_time = time.time()
 
@@ -709,6 +725,9 @@ class ArduinoAutomation:
             if self.logger.getEffectiveLevel() >= logging.INFO:
                 spinner = Spinner(message, delay=0.15, enable_progress=use_progress)
                 spinner.__enter__()
+
+            if progress_parser is None:
+                progress_parser = parse_progress_line
 
             # 使用 Popen 逐行读取输出，以便实时解析进度
             # esptool/arduino-cli 会把进度输出到 stderr，所以必须捕获 stderr
@@ -748,8 +767,8 @@ class ArduinoAutomation:
 
                 # 尝试解析为进度行
                 progress_text = None
-                if use_progress and show_progress:
-                    progress_text = parse_progress_line(line)
+                if use_progress and (show_progress or progress_parser is not parse_progress_line):
+                    progress_text = progress_parser(line)
 
                 if progress_text and spinner:
                     # 是进度行，更新 spinner 后缀，spinner 自己负责渲染，不清行
@@ -896,7 +915,11 @@ class ArduinoAutomation:
             sys.exit(15)
 
         cmd = build_espota_command(sys.executable, espota_tool, host, port, password, input_file)
-        success, output = self.run_command(cmd, message="正在 OTA 上传... ")
+        success, output = self.run_command(
+            cmd,
+            message="正在 OTA 上传... ",
+            progress_parser=parse_espota_progress_line,
+        )
         if success:
             return True
 

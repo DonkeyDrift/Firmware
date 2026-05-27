@@ -361,6 +361,29 @@ class TestOtaUploadTooling(unittest.TestCase):
         self.assertIn(str(espota_tool), command)
         self.assertIn(str(firmware), command)
 
+    def test_run_treats_ota_as_upload_action(self):
+        automation = make_automation(port="auto")
+        automation.args = SimpleNamespace(
+            list_ports=False,
+            compile=False,
+            upload=False,
+            serial=False,
+            regress_reset=False,
+            regress_count=10,
+            ota=True,
+        )
+        automation.ota_upload = MagicMock(return_value=True)
+        automation.upload = MagicMock()
+        automation.auto_reset = MagicMock()
+        automation.monitor = MagicMock()
+
+        automation.run()
+
+        automation.ota_upload.assert_called_once_with()
+        automation.upload.assert_not_called()
+        automation.auto_reset.assert_not_called()
+        automation.monitor.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

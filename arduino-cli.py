@@ -1110,12 +1110,12 @@ class ArduinoAutomation:
 
         if self.args.list_ports:
             self.list_available_ports()
-            if not (self.args.compile or self.args.upload or self.args.serial or self.args.regress_reset):
+            if not (self.args.compile or self.args.upload or self.args.serial or self.args.regress_reset or self.args.ota):
                 return
-        
+
         # 如果没有指定任何操作，默认显示帮助
-        if not (self.args.compile or self.args.upload or self.args.serial or self.args.regress_reset):
-            self.logger.warning("未指定任何操作。请使用 -c, -u, -s 参数。")
+        if not (self.args.compile or self.args.upload or self.args.serial or self.args.regress_reset or self.args.ota):
+            self.logger.warning("未指定任何操作。请使用 -c, -u, -s, --ota 参数。")
             return
 
         # 1. 编译
@@ -1123,7 +1123,7 @@ class ArduinoAutomation:
             self.compile()
 
         # 2. 上传 (如果只指定上传，也会执行；如果指定了编译+上传，编译失败会终止)
-        if self.args.upload:
+        if self.args.upload or self.args.ota:
             if self.args.ota:
                 self.ota_upload()
             else:

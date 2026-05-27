@@ -31,6 +31,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ArduinoOTA.h>
+#include "driver/mcpwm_cap.h"
 #include "BuildInfo.h"
 #include "SharedTypes.h"
 #include "TUI.h"
@@ -125,6 +126,9 @@ volatile unsigned long last_valid_time[RC_CHANNEL_COUNT] = {0};
 #define RC_SIGNAL_TIMEOUT 1000000UL  // RC信号超时时间 (µs)
 #define RC_PWM_MIN 800   // 最小有效PWM (µs)
 #define RC_PWM_MAX 2200  // 最大有效PWM (µs)
+#define ENABLE_RC_MCPWM_CAPTURE 1
+#define RC_MCPWM_CAPTURE_RESOLUTION_HZ 1000000
+#define RC_MCPWM_CAPTURE_GROUP_ID 0
 
 #define PWM_FILTER_SIZE 5  // 滑动窗口中值滤波器大小 (5-7)
 uint16_t pwm_filter_buf[RC_CHANNEL_COUNT][PWM_FILTER_SIZE] = {{0}};
@@ -1371,14 +1375,49 @@ static void updateWifiConsole()
 #endif
 
 
+static void IRAM_ATTR acceptRcPulse(int channel, uint32_t width, unsigned long now)
+{
+    static uint16_t candidate_pwm[RC_CHANNEL_COUNT] = {0};
+    static uint16_t large_change_count[RC_CHANNEL_COUNT] = {0};
+    static uint16_t last_large_pwm[RC_CHANNEL_COUNT] = {0};
+
+    if (width < RC_PWM_MIN || width > RC_PWM_MAX) return;
+
+    uint16_t pulse = (uint16_t)width;
+    uint16_t prev = pwm_value[channel];
+    int diff = abs((int)pulse - (int)prev);
+
+    if (diff <= 120) {
+        pwm_value[channel] = pulse;
+        last_valid_time[channel] = now;
+    } else if (diff <= 200) {
+        if (abs((int)pulse - (int)candidate_pwm[channel]) < 80) {
+            pwm_value[channel] = pulse;
+            last_valid_time[channel] = now;
+        }
+        candidate_pwm[channel] = pulse;
+    } else {
+        if (abs((int)pulse - (int)last_large_pwm[channel]) < 100) {
+            large_change_count[channel]++;
+            if (large_change_count[channel] >= 2) {
+                pwm_value[channel] = pulse;
+                last_valid_time[channel] = now;
+                large_change_count[channel] = 0;
+            }
+        } else {
+            large_change_count[channel] = 0;
+        }
+        last_large_pwm[channel] = pulse;
+    }
+}
+
 void IRAM_ATTR handle_interrupt(int channel)
-{ // interrupt handler
+{
     static int pin_state[RC_CHANNEL_COUNT] = {0};
     static unsigned long last_edge_time[RC_CHANNEL_COUNT] = {0};
     static unsigned long last_rise_time[RC_CHANNEL_COUNT] = {0};
 
     unsigned long now = micros();
-    // 防抖：两个边沿之间至少间隔100µs（更灵敏）
     if (now - last_edge_time[channel] < 100) return;
     last_edge_time[channel] = now;
 
@@ -1389,43 +1428,7 @@ void IRAM_ATTR handle_interrupt(int channel)
     }
     else
     {
-        uint16_t width = now - last_rise_time[channel];
-        // 范围检查，只接受有效PWM值
-        if (width >= RC_PWM_MIN && width <= RC_PWM_MAX) {
-            uint16_t prev = pwm_value[channel];
-            int diff = abs((int)width - (int)prev);
-            
-            // 小变化直接接受
-            if (diff <= 120) {
-                pwm_value[channel] = width;
-                last_valid_time[channel] = now;
-            }
-            // 中等变化需要一次确认
-            else if (diff <= 200) {
-                static uint16_t candidate_pwm[RC_CHANNEL_COUNT] = {0};
-                if (abs((int)width - (int)candidate_pwm[channel]) < 80) {
-                    pwm_value[channel] = width;
-                    last_valid_time[channel] = now;
-                }
-                candidate_pwm[channel] = width;
-            }
-            // 大变化需要两次确认（防止误触发）
-            else {
-                static uint16_t large_change_count[RC_CHANNEL_COUNT] = {0};
-                static uint16_t last_large_pwm[RC_CHANNEL_COUNT] = {0};
-                if (abs((int)width - (int)last_large_pwm[channel]) < 100) {
-                    large_change_count[channel]++;
-                    if (large_change_count[channel] >= 2) {
-                        pwm_value[channel] = width;
-                        last_valid_time[channel] = now;
-                        large_change_count[channel] = 0;
-                    }
-                } else {
-                    large_change_count[channel] = 0;
-                }
-                last_large_pwm[channel] = width;
-            }
-        }
+        acceptRcPulse(channel, now - last_rise_time[channel], now);
     }
 }
 
@@ -1437,6 +1440,82 @@ void IRAM_ATTR CH5_interrupt() { handle_interrupt(CH_DRIFT); }
 void IRAM_ATTR CH6_interrupt() { handle_interrupt(CH_DRIFT_SCALE); }
 
 void (*isr_functions[RC_CHANNEL_COUNT])() = {CH1_interrupt, CH2_interrupt, CH3_interrupt, CH4_interrupt, CH5_interrupt, CH6_interrupt}; // array of function pointers
+
+#if ENABLE_RC_MCPWM_CAPTURE
+static mcpwm_cap_timer_handle_t rcMcpwmCaptureTimer = nullptr;
+static mcpwm_cap_channel_handle_t rcModeCaptureChannel = nullptr;
+static volatile uint32_t rcModeLastRiseTick = 0;
+static volatile bool rcModeHasRiseTick = false;
+static bool rcMcpwmCaptureActive = false;
+
+static bool IRAM_ATTR onRcModeCapture(mcpwm_cap_channel_handle_t channel, const mcpwm_capture_event_data_t *edata, void *user_data)
+{
+    if (edata->cap_edge == MCPWM_CAP_EDGE_POS) {
+        rcModeLastRiseTick = edata->cap_value;
+        rcModeHasRiseTick = true;
+    } else if (edata->cap_edge == MCPWM_CAP_EDGE_NEG && rcModeHasRiseTick) {
+        uint32_t width = edata->cap_value - rcModeLastRiseTick;
+        acceptRcPulse(CH_MODE, width, micros());
+    }
+    return false;
+}
+
+static bool setupRcMcpwmCapture()
+{
+    mcpwm_capture_timer_config_t timerConfig = {};
+    timerConfig.group_id = RC_MCPWM_CAPTURE_GROUP_ID;
+    timerConfig.clk_src = MCPWM_CAPTURE_CLK_SRC_DEFAULT;
+    timerConfig.resolution_hz = RC_MCPWM_CAPTURE_RESOLUTION_HZ;
+
+    esp_err_t err = mcpwm_new_capture_timer(&timerConfig, &rcMcpwmCaptureTimer);
+    if (err != ESP_OK) {
+        mus4Logf("rc", "MCPWM timer init failed: %d", err);
+        return false;
+    }
+
+    mcpwm_capture_channel_config_t channelConfig = {};
+    channelConfig.gpio_num = CH4_PIN;
+    channelConfig.prescale = 1;
+    channelConfig.flags.pos_edge = true;
+    channelConfig.flags.neg_edge = true;
+    channelConfig.flags.pull_down = true;
+
+    err = mcpwm_new_capture_channel(rcMcpwmCaptureTimer, &channelConfig, &rcModeCaptureChannel);
+    if (err != ESP_OK) {
+        mus4Logf("rc", "MCPWM CH4 channel init failed: %d", err);
+        return false;
+    }
+
+    mcpwm_capture_event_callbacks_t callbacks = {};
+    callbacks.on_cap = onRcModeCapture;
+    err = mcpwm_capture_channel_register_event_callbacks(rcModeCaptureChannel, &callbacks, nullptr);
+    if (err != ESP_OK) {
+        mus4Logf("rc", "MCPWM CH4 callback init failed: %d", err);
+        return false;
+    }
+
+    err = mcpwm_capture_channel_enable(rcModeCaptureChannel);
+    if (err != ESP_OK) {
+        mus4Logf("rc", "MCPWM CH4 channel enable failed: %d", err);
+        return false;
+    }
+
+    err = mcpwm_capture_timer_enable(rcMcpwmCaptureTimer);
+    if (err != ESP_OK) {
+        mus4Logf("rc", "MCPWM timer enable failed: %d", err);
+        return false;
+    }
+
+    err = mcpwm_capture_timer_start(rcMcpwmCaptureTimer);
+    if (err != ESP_OK) {
+        mus4Logf("rc", "MCPWM timer start failed: %d", err);
+        return false;
+    }
+
+    mus4LogLine("rc", "MCPWM capture enabled for CH4");
+    return true;
+}
+#endif
 
 int User_throttle = 0;  // RC遥控器发来的用户油门值
 int User_steering = 0;  // RC遥控器发来的用户转向值
@@ -2429,9 +2508,15 @@ void setup()
     setup_mpu6050();
     delay(100);
 
+#if ENABLE_RC_MCPWM_CAPTURE
+    rcMcpwmCaptureActive = setupRcMcpwmCapture();
+#endif
     // Set the RC receiver pins as inputs and attach the interrupts
     for (int i = 0; i < RC_CHANNEL_COUNT; i++)
     {
+#if ENABLE_RC_MCPWM_CAPTURE
+        if (i == CH_MODE && rcMcpwmCaptureActive) continue;
+#endif
         if (Channels[i] == 26) {
             // GPIO 26 支持内部下拉电阻
             pinMode(Channels[i], INPUT_PULLDOWN);
@@ -2482,12 +2567,20 @@ void loop()
 
     // RC信号读取：检查超时和有效性，应用滑动平均滤波（带更新间隔控制）
     unsigned long nowUs = micros();
-    bool steeringValid = (nowUs - last_valid_time[CH_STEERING]) < RC_SIGNAL_TIMEOUT;
-    bool throttleValid = (nowUs - last_valid_time[CH_THROTTLE]) < RC_SIGNAL_TIMEOUT;
-    bool parkValid = (nowUs - last_valid_time[CH_PARK]) < RC_SIGNAL_TIMEOUT;
-    bool modeValid = (nowUs - last_valid_time[CH_MODE]) < RC_SIGNAL_TIMEOUT;
-    bool driftValid = (nowUs - last_valid_time[CH_DRIFT]) < RC_SIGNAL_TIMEOUT;
-    bool driftScaleValid = (nowUs - last_valid_time[CH_DRIFT_SCALE]) < RC_SIGNAL_TIMEOUT;
+    uint16_t pwmSnapshot[RC_CHANNEL_COUNT];
+    unsigned long lastValidSnapshot[RC_CHANNEL_COUNT];
+    noInterrupts();
+    for (int i = 0; i < RC_CHANNEL_COUNT; i++) {
+        pwmSnapshot[i] = pwm_value[i];
+        lastValidSnapshot[i] = last_valid_time[i];
+    }
+    interrupts();
+    bool steeringValid = (nowUs - lastValidSnapshot[CH_STEERING]) < RC_SIGNAL_TIMEOUT;
+    bool throttleValid = (nowUs - lastValidSnapshot[CH_THROTTLE]) < RC_SIGNAL_TIMEOUT;
+    bool parkValid = (nowUs - lastValidSnapshot[CH_PARK]) < RC_SIGNAL_TIMEOUT;
+    bool modeValid = (nowUs - lastValidSnapshot[CH_MODE]) < RC_SIGNAL_TIMEOUT;
+    bool driftValid = (nowUs - lastValidSnapshot[CH_DRIFT]) < RC_SIGNAL_TIMEOUT;
+    bool driftScaleValid = (nowUs - lastValidSnapshot[CH_DRIFT_SCALE]) < RC_SIGNAL_TIMEOUT;
 
     if (millis() - lastRCFilterUpdate >= RC_FILTER_UPDATE_INTERVAL) {
         // 改进的滤波：滑动窗口中值滤波 (Size=5)
@@ -2517,8 +2610,8 @@ void loop()
 
         // 对所有通道应用滤波
         for (int i = 0; i < RC_CHANNEL_COUNT; i++) {
-            bool valid = (nowUs - last_valid_time[i]) < RC_SIGNAL_TIMEOUT;
-            pwm_filtered[i] = filterPWM(i, pwm_value[i], valid);
+            bool valid = (nowUs - lastValidSnapshot[i]) < RC_SIGNAL_TIMEOUT;
+            pwm_filtered[i] = filterPWM(i, pwmSnapshot[i], valid);
         }
         lastRCFilterUpdate = millis();
     }

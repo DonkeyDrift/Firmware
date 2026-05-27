@@ -56,11 +56,13 @@ void TUI::setRefreshRate(unsigned long ms) {
     _refreshRate = ms;
 }
 
-void TUI::setRC(int ch1, int ch2, int ch3, int ch4) {
+void TUI::setRC(int ch1, int ch2, int ch3, int ch4, int ch5, int ch6) {
     _state.ch1 = ch1;
     _state.ch2 = ch2;
     _state.ch3 = ch3;
     _state.ch4 = ch4;
+    _state.ch5 = ch5;
+    _state.ch6 = ch6;
 }
 
 void TUI::setOutput(int throttle, int steering, int mode, bool park) {
@@ -189,6 +191,7 @@ void TUI::drawPark() {
     extern bool drift_assist_active;
     extern float drift_compensation;
     extern float gyro_z_filtered;
+    extern float drift_assist_scale;
 
     cursorTo(ROW_PARK, 1);
     _out.print("PARK: ");
@@ -205,9 +208,9 @@ void TUI::drawPark() {
         _out.print("DRIFT: ON");
         if (drift_assist_active) {
             if (_ansiEnabled) _out.print(ANSI_YELLOW);
-            _out.printf(" ACTIVE  GyroZ: %+5.2f  Comp: %+4.0f", gyro_z_filtered, drift_compensation);
+            _out.printf(" ACTIVE  GyroZ: %+5.2f  Comp: %+4.0f  Scale: %.1f", gyro_z_filtered, drift_compensation, drift_assist_scale);
         } else {
-            _out.printf(" STANDBY GyroZ: %+5.2f", gyro_z_filtered);
+            _out.printf(" STANDBY GyroZ: %+5.2f  Scale: %.1f", gyro_z_filtered, drift_assist_scale);
         }
     } else {
         if (_ansiEnabled) _out.print(ANSI_WHITE);
@@ -217,18 +220,19 @@ void TUI::drawPark() {
 }
 
 void TUI::drawRC() {
-    bool changed = _forceRedraw || 
-                   _state.ch1 != _lastState.ch1 || 
+    bool changed = _forceRedraw ||
+                   _state.ch1 != _lastState.ch1 ||
                    _state.ch2 != _lastState.ch2 ||
                    _state.ch3 != _lastState.ch3 ||
-                   _state.ch4 != _lastState.ch4;
+                   _state.ch4 != _lastState.ch4 ||
+                   _state.ch5 != _lastState.ch5 ||
+                   _state.ch6 != _lastState.ch6;
                    
     if (!changed) return;
     
     cursorTo(ROW_RC, 1);
-    // Format: RC: [CH1: 1500] [CH2: 1500] [CH3: 1500] [CH4: 1500]
-    _out.printf("RC: [CH1:%4d] [CH2:%4d] [CH3:%4d] [CH4:%4d]", 
-        _state.ch1, _state.ch2, _state.ch3, _state.ch4);
+    _out.printf("RC: [CH1:%4d] [CH2:%4d] [CH3:%4d] [CH4:%4d] [CH5:%4d] [CH6:%4d]",
+        _state.ch1, _state.ch2, _state.ch3, _state.ch4, _state.ch5, _state.ch6);
 }
 
 void TUI::drawOutput() {

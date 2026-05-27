@@ -1,11 +1,13 @@
 //=============================================================
 /* 
 [Note]
-1. 针对MUS4-v2.3 PCB 调整了部分引脚定义
+1. 针对MUS4-v2.4.2 PCB 调整了部分引脚定义
     - CH1_PIN 36 // 接收机pwm输入CH1通道
     - CH2_PIN 39 // 接收机pwm输入CH2通道
     - CH3_PIN 34 // 接收机pwm输入CH3通道
     - CH4_PIN 26 // 接收机pwm输入CH4通道
+    - CH5_PIN 27 // 接收机pwm输入CH5通道
+    - CH6_PIN 35 // 接收机pwm输入CH6通道
     - CH1_ST 23 // CH1转向舵机
     - CH2_TH 25 // CH2油门电调
     - PWM_1 32 // PWM输出1号通道
@@ -72,7 +74,9 @@ Adafruit_INA219 ina219;
 #define CH1_PIN 36 // 接收机pwm输入CH1通道
 #define CH2_PIN 39 // 接收机pwm输入CH2通道
 #define CH3_PIN 34 // 接收机pwm输入CH3通道
-#define CH4_PIN 26// 接收机pwm输入CH4通道
+#define CH4_PIN 26 // 接收机pwm输入CH4通道
+#define CH5_PIN 27 // 接收机pwm输入CH5通道
+#define CH6_PIN 35 // 接收机pwm输入CH6通道
 
 #define STEERING_PIN 23 // CH1转向舵机
 #define THROTTLE_PIN 25 // CH2油门电调
@@ -98,10 +102,13 @@ Adafruit_INA219 ina219;
 #define SCL_PIN 22
 #define I2C_SPEED 400000L
 
-#define CH_STEERING 0 // index of pwm_value[]
-#define CH_THROTTLE 1 // index of pwm_value[]
-#define CH_PARK 2     // index of pwm_value[]
-#define CH_MODE 3     // index of pwm_value[]
+#define RC_CHANNEL_COUNT 6
+#define CH_STEERING 0    // index of pwm_value[]
+#define CH_THROTTLE 1    // index of pwm_value[]
+#define CH_PARK 2        // index of pwm_value[]
+#define CH_MODE 3        // index of pwm_value[]
+#define CH_DRIFT 4       // index of pwm_value[]
+#define CH_DRIFT_SCALE 5 // index of pwm_value[]
 
 #define CAR_MODE_MANUAL 0    // 0为遥控模式
 #define CAR_MODE_SEMI_AUTO 1 // 1为自动方向和手动油门模式
@@ -110,20 +117,20 @@ Adafruit_INA219 ina219;
 #define PARK_LOCKED true     // 锁定状态
 #define PARK_UNLOCKED false  // 解锁状态
 
-volatile uint16_t pwm_value[4] = {0, 0, 0, 0};           // value of CH1, CH2, CH3, CH4 (uint16_t for atomic access)
-volatile unsigned long rise_time[4] = {0, 0, 0, 0}; // time of rising edge of CH1, CH2, CH3, CH4
-volatile unsigned long last_valid_time[4] = {0, 0, 0, 0}; // last valid signal time for each channel
+volatile uint16_t pwm_value[RC_CHANNEL_COUNT] = {0};
+volatile unsigned long rise_time[RC_CHANNEL_COUNT] = {0};
+volatile unsigned long last_valid_time[RC_CHANNEL_COUNT] = {0};
 #define RC_SIGNAL_TIMEOUT 1000000UL  // RC信号超时时间 (µs)
 #define RC_PWM_MIN 800   // 最小有效PWM (µs)
 #define RC_PWM_MAX 2200  // 最大有效PWM (µs)
 
 #define PWM_FILTER_SIZE 5  // 滑动窗口中值滤波器大小 (5-7)
-uint16_t pwm_filter_buf[4][PWM_FILTER_SIZE] = {{0}};  // 滤波缓冲区
-uint8_t pwm_filter_idx[4] = {0};
-uint16_t pwm_filtered[4] = {0, 0, 0, 0};  // 滤波后的PWM值
+uint16_t pwm_filter_buf[RC_CHANNEL_COUNT][PWM_FILTER_SIZE] = {{0}};
+uint8_t pwm_filter_idx[RC_CHANNEL_COUNT] = {0};
+uint16_t pwm_filtered[RC_CHANNEL_COUNT] = {0};
 bool filterDebugEnabled = false;          // 调试输出开关
 
-const int Channels[4] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN};
+const int Channels[RC_CHANNEL_COUNT] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN, CH5_PIN, CH6_PIN};
 
 bool parseAndValidateCommand(String cmd, int* throttle, int* steering);
 static void mus4LogLine(const char* source, const String& line);
@@ -496,13 +503,11 @@ bool is_history_initialized = false;
 #define DRIFT_ASSIST_SMOOTH      0.25f    // 补偿量一阶平滑系数，避免输出抖动
 #define DRIFT_ASSIST_DECAY       0.85f    // 未触发时补偿量衰减系数
 
-const int DRIFT_CH3_LOW_THRESHOLD  = 1400;  // CH3 低位: 锁车
-const int DRIFT_CH3_MID_THRESHOLD  = 1600;  // CH3 中位: 解锁+辅助关闭，高位: 解锁+辅助开启
-
-bool drift_assist_enabled = false;   // 用户是否开启辅助（通过CH3控制）
+bool drift_assist_enabled = false;   // 用户是否开启辅助
 bool drift_assist_active = false;    // 当前辅助是否正在介入
 float drift_compensation = 0.0f;     // 当前补偿量（平滑后的最终值）
 float gyro_z_filtered = 0.0f;        // 经过滤波的 gyroZ 值
+float drift_assist_scale = 1.0f;     // CH6 漂移辅助强度比例
 // ------------------------------------------------------
 
 // 修改setLEDColor函数
@@ -1345,9 +1350,9 @@ static void updateWifiConsole()
 
 void IRAM_ATTR handle_interrupt(int channel)
 { // interrupt handler
-    static int pin_state[4] = {0, 0, 0, 0};
-    static unsigned long last_edge_time[4] = {0, 0, 0, 0};
-    static unsigned long last_rise_time[4] = {0, 0, 0, 0};
+    static int pin_state[RC_CHANNEL_COUNT] = {0};
+    static unsigned long last_edge_time[RC_CHANNEL_COUNT] = {0};
+    static unsigned long last_rise_time[RC_CHANNEL_COUNT] = {0};
 
     unsigned long now = micros();
     // 防抖：两个边沿之间至少间隔100µs（更灵敏）
@@ -1374,7 +1379,7 @@ void IRAM_ATTR handle_interrupt(int channel)
             }
             // 中等变化需要一次确认
             else if (diff <= 200) {
-                static uint16_t candidate_pwm[4] = {0};
+                static uint16_t candidate_pwm[RC_CHANNEL_COUNT] = {0};
                 if (abs((int)width - (int)candidate_pwm[channel]) < 80) {
                     pwm_value[channel] = width;
                     last_valid_time[channel] = now;
@@ -1383,8 +1388,8 @@ void IRAM_ATTR handle_interrupt(int channel)
             }
             // 大变化需要两次确认（防止误触发）
             else {
-                static uint16_t large_change_count[4] = {0};
-                static uint16_t last_large_pwm[4] = {0};
+                static uint16_t large_change_count[RC_CHANNEL_COUNT] = {0};
+                static uint16_t last_large_pwm[RC_CHANNEL_COUNT] = {0};
                 if (abs((int)width - (int)last_large_pwm[channel]) < 100) {
                     large_change_count[channel]++;
                     if (large_change_count[channel] >= 2) {
@@ -1401,12 +1406,14 @@ void IRAM_ATTR handle_interrupt(int channel)
     }
 }
 
-void IRAM_ATTR CH1_interrupt() { handle_interrupt(0); } // interrupt handler
-void IRAM_ATTR CH2_interrupt() { handle_interrupt(1); }
-void IRAM_ATTR CH3_interrupt() { handle_interrupt(2); }
-void IRAM_ATTR CH4_interrupt() { handle_interrupt(3); }
+void IRAM_ATTR CH1_interrupt() { handle_interrupt(CH_STEERING); } // interrupt handler
+void IRAM_ATTR CH2_interrupt() { handle_interrupt(CH_THROTTLE); }
+void IRAM_ATTR CH3_interrupt() { handle_interrupt(CH_PARK); }
+void IRAM_ATTR CH4_interrupt() { handle_interrupt(CH_MODE); }
+void IRAM_ATTR CH5_interrupt() { handle_interrupt(CH_DRIFT); }
+void IRAM_ATTR CH6_interrupt() { handle_interrupt(CH_DRIFT_SCALE); }
 
-void (*isr_functions[4])() = {CH1_interrupt, CH2_interrupt, CH3_interrupt, CH4_interrupt}; // array of function pointers
+void (*isr_functions[RC_CHANNEL_COUNT])() = {CH1_interrupt, CH2_interrupt, CH3_interrupt, CH4_interrupt, CH5_interrupt, CH6_interrupt}; // array of function pointers
 
 int User_throttle = 0;  // RC遥控器发来的用户油门值
 int User_steering = 0;  // RC遥控器发来的用户转向值
@@ -1495,7 +1502,7 @@ void park_change()
 {
     // PWM > 1500 considered Pressed (Button value 2000)
     // PWM < 1500 considered Released (Button value 1000)
-    bool isPressed = (pwm_value[CH_PARK] > 1500);
+    bool isPressed = (pwm_filtered[CH_PARK] > 1500);
 
     if (isPressed)
     {
@@ -1546,27 +1553,6 @@ void park_change()
         parkActionTaken = false;
     }
 
-    // --- Drift Assist 三态开关（根据 CH3 脉宽位置） ---
-    uint16_t ch3_pwm = pwm_value[CH_PARK];
-    if (ch3_pwm <= DRIFT_CH3_LOW_THRESHOLD) {
-        // CH3 低位：保持原有锁车逻辑，关闭漂移辅助
-        drift_assist_enabled = false;
-    } else if (ch3_pwm <= DRIFT_CH3_MID_THRESHOLD) {
-        // CH3 中位：解锁 + 漂移辅助关闭
-        drift_assist_enabled = false;
-        if (rc_data.park) {
-            rc_data.park = false;
-            emergencyStopState = EST_IDLE;
-        }
-    } else {
-        // CH3 高位：解锁 + 漂移辅助开启
-        drift_assist_enabled = true;
-        if (rc_data.park) {
-            rc_data.park = false;
-            emergencyStopState = EST_IDLE;
-        }
-    }
-
     car_output.park = rc_data.park;
 }
 
@@ -1602,7 +1588,7 @@ bool parseAndValidateCommand(String cmd, int* throttle, int* steering)
 
 void mode_change() // 根据遥控器的mode值，切换驾驶模式
 {
-    rc_data.mode = pwm_value[CH_MODE];
+    rc_data.mode = pwm_filtered[CH_MODE];
     if (rc_data.mode <= 1400)
     {
         car_output.mode = CAR_MODE_MANUAL; // 0为遥控模式
@@ -1621,6 +1607,24 @@ void mode_change() // 根据遥控器的mode值，切换驾驶模式
         buzzer.playModeSound(car_output.mode);
         lastCarMode = car_output.mode;
     }
+}
+
+void update_drift_assist_control(bool driftValid, bool driftScaleValid)
+{
+    if (driftScaleValid) {
+        uint16_t scalePwm = constrain(pwm_filtered[CH_DRIFT_SCALE], 1000, 2000);
+        drift_assist_scale = (scalePwm - 1000) / 500.0f;
+    } else {
+        drift_assist_scale = 1.0f;
+    }
+
+    bool enabled = driftValid && pwm_filtered[CH_DRIFT] > 1500;
+    if (!enabled) {
+        drift_assist_active = false;
+        drift_compensation = 0.0f;
+        gyro_z_filtered = 0.0f;
+    }
+    drift_assist_enabled = enabled;
 }
 
 
@@ -2260,10 +2264,11 @@ int apply_drift_assist(int driver_steering) {
         // 此时 gyroZ 为负 -> 补偿量应该也是负
         // 所以 compensation = gyroZ * GAIN
         // 让我先按照这个逻辑实现，实车调试时再调整符号
-        float raw_comp = gyro_z_filtered * DRIFT_ASSIST_GAIN;
+        float raw_comp = gyro_z_filtered * DRIFT_ASSIST_GAIN * drift_assist_scale;
 
         // 4. 补偿量限幅
-        raw_comp = constrain(raw_comp, -DRIFT_ASSIST_MAX_COMP, DRIFT_ASSIST_MAX_COMP);
+        float effectiveMaxComp = min(DRIFT_ASSIST_MAX_COMP * drift_assist_scale, 100.0f);
+        raw_comp = constrain(raw_comp, -effectiveMaxComp, effectiveMaxComp);
 
         // 5. 对补偿量做平滑输出
         drift_compensation = drift_compensation * (1.0f - DRIFT_ASSIST_SMOOTH) +
@@ -2398,13 +2403,13 @@ void setup()
     delay(100);
 
     // Set the RC receiver pins as inputs and attach the interrupts
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < RC_CHANNEL_COUNT; i++)
     {
         if (Channels[i] == 26) {
             // GPIO 26 支持内部下拉电阻
             pinMode(Channels[i], INPUT_PULLDOWN);
         } else {
-            // GPIO 36, 39, 34 是仅输入引脚，不支持内部上拉/下拉
+            // GPIO27保持普通输入；GPIO34/35/36/39为仅输入且无内部上下拉
             pinMode(Channels[i], INPUT);
         }
         attachInterrupt(digitalPinToInterrupt(Channels[i]), isr_functions[i], CHANGE);
@@ -2454,6 +2459,8 @@ void loop()
     bool throttleValid = (nowUs - last_valid_time[CH_THROTTLE]) < RC_SIGNAL_TIMEOUT;
     bool parkValid = (nowUs - last_valid_time[CH_PARK]) < RC_SIGNAL_TIMEOUT;
     bool modeValid = (nowUs - last_valid_time[CH_MODE]) < RC_SIGNAL_TIMEOUT;
+    bool driftValid = (nowUs - last_valid_time[CH_DRIFT]) < RC_SIGNAL_TIMEOUT;
+    bool driftScaleValid = (nowUs - last_valid_time[CH_DRIFT_SCALE]) < RC_SIGNAL_TIMEOUT;
 
     if (millis() - lastRCFilterUpdate >= RC_FILTER_UPDATE_INTERVAL) {
         // 改进的滤波：滑动窗口中值滤波 (Size=5)
@@ -2482,7 +2489,7 @@ void loop()
         };
 
         // 对所有通道应用滤波
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < RC_CHANNEL_COUNT; i++) {
             bool valid = (nowUs - last_valid_time[i]) < RC_SIGNAL_TIMEOUT;
             pwm_filtered[i] = filterPWM(i, pwm_value[i], valid);
         }
@@ -2501,12 +2508,15 @@ void loop()
         rc_data.throttle = RC_THROTTLE_MID; // 超时后使用中值
     }
 
-    // Park和Mode通道也做类似处理
+    // Park、Mode、Drift通道也做类似处理
     pwm_filtered[CH_PARK] = parkValid ? pwm_filtered[CH_PARK] : 1500;
     pwm_filtered[CH_MODE] = modeValid ? pwm_filtered[CH_MODE] : 1500;
+    pwm_filtered[CH_DRIFT] = driftValid ? pwm_filtered[CH_DRIFT] : 1000;
+    pwm_filtered[CH_DRIFT_SCALE] = driftScaleValid ? pwm_filtered[CH_DRIFT_SCALE] : 1500;
 
     park_change();
     mode_change();
+    update_drift_assist_control(driftValid, driftScaleValid);
 
     if (car_output.mode == CAR_MODE_FULL_AUTO)
     {
@@ -2582,7 +2592,7 @@ void loop()
     }
 
     if (mus4LogTarget == MUS4_LOG_TARGET_SERIAL) {
-        tui.setRC(pwm_filtered[0], pwm_filtered[1], pwm_filtered[2], pwm_filtered[3]);
+        tui.setRC(pwm_filtered[CH_STEERING], pwm_filtered[CH_THROTTLE], pwm_filtered[CH_PARK], pwm_filtered[CH_MODE], pwm_filtered[CH_DRIFT], pwm_filtered[CH_DRIFT_SCALE]);
         tui.setOutput(car_output.throttle, car_output.steering, car_output.mode, car_output.park);
 
         SensorData combined = ina219Data;
@@ -2614,7 +2624,7 @@ void loop()
 
 #ifdef DEBUG // Print the values for debugging
     // Read the RC receiver values
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < RC_CHANNEL_COUNT; i++)
     {
         Serial.print(" CH");
         Serial.print(i + 1);

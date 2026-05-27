@@ -113,6 +113,8 @@ Adafruit_INA219 ina219;
 #define CAR_MODE_MANUAL 0    // 0为遥控模式
 #define CAR_MODE_SEMI_AUTO 1 // 1为自动方向和手动油门模式
 #define CAR_MODE_FULL_AUTO 2 // 2为自动驾驶模式
+#define MODE_PWM_MANUAL_MAX 1250
+#define MODE_PWM_FULL_AUTO_MIN 1750
 
 #define PARK_LOCKED true     // 锁定状态
 #define PARK_UNLOCKED false  // 解锁状态
@@ -1586,20 +1588,24 @@ bool parseAndValidateCommand(String cmd, int* throttle, int* steering)
     return true;
 }
 
-void mode_change() // 根据遥控器的mode值，切换驾驶模式
+void mode_change(bool modeValid) // 根据遥控器的mode值，切换驾驶模式
 {
+    if (!modeValid) {
+        return;
+    }
+
     rc_data.mode = pwm_filtered[CH_MODE];
-    if (rc_data.mode <= 1400)
+    if (rc_data.mode <= MODE_PWM_MANUAL_MAX)
     {
         car_output.mode = CAR_MODE_MANUAL; // 0为遥控模式
     }
-    else if (rc_data.mode > 1400 && rc_data.mode < 1600)
+    else if (rc_data.mode >= MODE_PWM_FULL_AUTO_MIN)
     {
-        car_output.mode = CAR_MODE_SEMI_AUTO; // 1为自动方向和手动油门模式
+        car_output.mode = CAR_MODE_FULL_AUTO; // 2为自动驾驶模式
     }
     else
     {
-        car_output.mode = CAR_MODE_FULL_AUTO; // 2为自动驾驶模式
+        car_output.mode = CAR_MODE_SEMI_AUTO; // 1为自动方向和手动油门模式
     }
 
     if (car_output.mode != lastCarMode)
@@ -2510,12 +2516,11 @@ void loop()
 
     // Park、Mode、Drift通道也做类似处理
     pwm_filtered[CH_PARK] = parkValid ? pwm_filtered[CH_PARK] : 1500;
-    pwm_filtered[CH_MODE] = modeValid ? pwm_filtered[CH_MODE] : 1500;
     pwm_filtered[CH_DRIFT] = driftValid ? pwm_filtered[CH_DRIFT] : 1000;
     pwm_filtered[CH_DRIFT_SCALE] = driftScaleValid ? pwm_filtered[CH_DRIFT_SCALE] : 1500;
 
     park_change();
-    mode_change();
+    mode_change(modeValid);
     update_drift_assist_control(driftValid, driftScaleValid);
 
     if (car_output.mode == CAR_MODE_FULL_AUTO)

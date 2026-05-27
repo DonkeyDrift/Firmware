@@ -8,7 +8,9 @@ MUS4（LP-MU-S4）是基于 ESP32 的遥控车辆/机器人底层控制系统，
 
 根目录同时包含两类代码：
 - Arduino/C++ 固件：主 sketch 在根目录 `mus4.ino`，公共类型与外设辅助模块也在根目录。
-- 构建与烧录工具：`arduino-cli.py` 与 `arduino-cli-wsl.ps1` 负责编译、上传、串口检测、WSL 加速构建。
+- 构建与烧录工具：`arduino-cli.py` 与 `arduino-cli-wsl.ps1` 负责编译、上传、串口检测、OTA 上传、WSL 加速构建。
+
+固件目标是 ESP32 + Arduino framework，主要依赖 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。
 
 ## Commands
 
@@ -49,6 +51,9 @@ python arduino-cli.py --list-ports
 
 # 逐行输出日志，适合重定向或 CI 日志
 python arduino-cli.py -cu --no-progress
+
+# OTA 上传，默认端口 3232，密码默认 mus4-debug
+python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 ```
 
 常用参数：
@@ -58,6 +63,7 @@ python arduino-cli.py -cu --no-progress
 - `--baud 115200`：覆盖串口波特率。
 - `--auto-reset` / `--no-auto-reset`：控制串口监视前复位。
 - `--regress-reset --regress-count 10`：运行复位回归测试。
+- `--ota-host` / `--ota-port` / `--ota-password` / `--espota-tool`：覆盖 OTA 上传目标与工具路径。
 
 ### Windows + WSL 加速构建
 
@@ -163,6 +169,7 @@ Python 测试集中在 `tests/test_arduino_cli.py`，主要覆盖串口选择、
 - `TUI.h` / `TUI.cpp`：ANSI 终端仪表盘渲染，支持降级模式和增量刷新。
 - `Buzzer.h` / `Buzzer.cpp`：蜂鸣器状态机，硬件支持时使用。
 - `wireless_console_policy.py`：Wi-Fi/TCP/Web Console 权限策略的 Python 镜像，用于在桌面测试中覆盖认证、Park 锁定、OTA 窗口和行缓冲行为。
+- `tests/test_wireless_console_policy.py`：无线控制台权限策略测试；改动认证、诊断命令、OTA 窗口或行缓冲规则时必须同步更新。
 - `examples/`：I2C、传感器等独立示例 sketch。
 - `multi_agent_framework/`：独立 Python 多智能体框架代码，不属于 ESP32 固件主链路。
 - `provisioning_system/`：ESP32 Wi-Fi provisioning 与 Linux agent 相关工具，独立于 MUS4 主固件构建流程；ESP32 AP/Web Server 通过 UART 把 Wi-Fi 凭据发给 Linux agent，agent 使用 NetworkManager/nmcli 连接目标网络并回传结果。
@@ -199,8 +206,8 @@ Python 测试集中在 `tests/test_arduino_cli.py`，主要覆盖串口选择、
 | RC CH2 油门 | 39 | 仅输入 |
 | RC CH3 Park | 34 | 仅输入 |
 | RC CH4 模式 | 26 | PWM 输入 |
-| 转向舵机 | 23 | `ledc` PWM，当前 300Hz/14bit |
-| 油门电调 | 25 | `ledc` PWM，当前 300Hz/14bit |
+| 转向舵机 | 23 | `ledc` PWM，当前 300Hz/14bit，1000-2000µs 映射 |
+| 油门电调 | 25 | `ledc` PWM，当前 300Hz/14bit，1000-2000µs 映射 |
 | 备用 PWM_1 | 32 | 预留输出 |
 | 备用 PWM_2 | 33 | 预留输出 |
 | WS2812B LED | 5 | 模式与紧急停车指示 |
@@ -229,6 +236,12 @@ README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin
 ### Drift Assist
 
 `mus4.ino` 当前包含漂移辅助编译开关与参数：`DRIFT_ASSIST_ENABLED`、增益、阈值、最大补偿和平滑/衰减系数。相关逻辑依赖 IMU 角速度与 CH3 档位状态，修改时同时检查 Park/解锁语义，避免与安全状态机冲突。
+
+## Safety-Critical Editing Notes
+
+- 该固件会直接控制舵机与电调；修改输出映射、Park、紧急制动、模式融合或无线控制入口时，必须保留 PWM 限幅和失效安全路径。
+- 中断处理函数必须保留 `IRAM_ATTR`，与中断共享的数据继续使用 `volatile` 或等价保护。
+- 串口、Web Console、TCP Console 输入都视为不可信边界；控制命令必须经过认证/权限和范围校验后才能影响输出。
 
 ## Documentation Map
 

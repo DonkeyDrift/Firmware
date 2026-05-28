@@ -241,8 +241,8 @@ const uint16_t WIFI_CONSOLE_PORT = 2323;
 const uint16_t WIFI_WEB_CONSOLE_PORT = 80;
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 const uint16_t WIFI_WEB_SOCKET_PORT = 81;
-const unsigned long WIFI_WEB_SOCKET_PUSH_INTERVAL_MS = 32;
-const uint8_t WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME = 8;
+const unsigned long WIFI_WEB_SOCKET_PUSH_INTERVAL_MS = 50;
+const uint8_t WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME = 4;
 const uint32_t WIFI_WEB_SOCKET_MIN_FREE_HEAP = 20000;
 #endif
 const uint8_t WIFI_CONSOLE_CHANNEL = 6;
@@ -1576,8 +1576,8 @@ function updateState(p){const modes={0:['RC','Manual input'],1:['ASSIST','Pilot 
 function handleDataPayload(j,transport,elapsed){const arr=j.points||[];let latest=j.latest||null;for(const p of arr){p.req=transport==='ws'?0:elapsed;lastDataSeq=Math.max(lastDataSeq,p.seq);if(!chartPaused){addPoint(p);latestBackendTime=Math.max(latestBackendTime,p.t)}}if(latest){lastDataSeq=Math.max(lastDataSeq,latest.seq||0);updateState(latest)}const p=latest||latestPoint();dataTransport=transport;if(p)dataMeta.textContent=transport+' seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' gz='+p.gz;else dataMeta.textContent=transport+' waiting data'}
 function decodeBinaryDataPayload(buffer){const v=new DataView(buffer);let o=0;const u8=()=>v.getUint8(o++),u16=()=>{const x=v.getUint16(o,true);o+=2;return x},u32=()=>{const x=v.getUint32(o,true);o+=4;return x},i16=()=>{const x=v.getInt16(o,true);o+=2;return x},f32=()=>{const x=v.getFloat32(o,true);o+=4;return x};if(u8()!==77||u8()!==52)throw new Error('bad magic');const version=u8();u8();if(version!==1)throw new Error('bad version');const dropped=u32(),seq=u32(),t=u32(),dt=u16(),thr=i16(),str=i16(),gz=f32(),mode=u8(),park=u8();const ch=[u16(),u16(),u16(),u16(),u16(),u16()];const latest={seq,t,dt,thr,str,gz,mode,park,ch1:ch[0],ch2:ch[1],ch3:ch[2],ch4:ch[3],ch5:ch[4],ch6:ch[5],rct:i16(),rcs:i16(),pt:i16(),ps:i16(),gzf:f32(),dc:f32(),de:u8(),da:u8()};const count=u8(),points=[];for(let i=0;i<count;i++)points.push({seq:u32(),t:u32(),dt:u16(),thr:i16(),str:i16(),gz:f32()});return{type:'data',dropped,latest,points}}
 function dataWsUrl(){return (location.protocol==='https:'?'wss:':'ws:')+'//'+location.hostname+':81/'}
-function scheduleDataWsReconnect(){if(dataWsReconnectTimer)return;dataWsReconnectTimer=setTimeout(()=>{dataWsReconnectTimer=0;connectDataSocket();dataWsReconnectDelay=Math.min(5000,dataWsReconnectDelay*2)},dataWsReconnectDelay)}
-function connectDataSocket(){try{if(dataWs&&(dataWs.readyState===WebSocket.OPEN||dataWs.readyState===WebSocket.CONNECTING))return;dataWs=new WebSocket(dataWsUrl());dataWs.binaryType='arraybuffer';dataWs.onopen=()=>{dataWsConnected=true;dataWsReconnectDelay=500;dataTransport='ws';dataWs.send('since:'+lastDataSeq)};dataWs.onmessage=e=>{try{if(e.data instanceof ArrayBuffer){handleDataPayload(decodeBinaryDataPayload(e.data),'ws',0);return}if(e.data instanceof Blob){e.data.arrayBuffer().then(b=>handleDataPayload(decodeBinaryDataPayload(b),'ws',0)).catch(err=>dataMeta.textContent='ws parse error: '+err);return}const j=JSON.parse(e.data);if(j.type==='hello')dataMeta.textContent='ws connected seq='+j.seq}catch(err){dataMeta.textContent='ws parse error: '+err}};dataWs.onclose=()=>{dataWsConnected=false;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,100)};dataWs.onerror=()=>{dataWsConnected=false;try{dataWs.close()}catch(e){}}}catch(e){dataWsConnected=false;dataMeta.textContent='ws error: '+e;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,100)}}
+function scheduleDataWsReconnect(){if(dataWsReconnectTimer)return;dataWsReconnectTimer=setTimeout(()=>{dataWsReconnectTimer=0;connectDataSocket();dataWsReconnectDelay=Math.min(8000,dataWsReconnectDelay*2)},dataWsReconnectDelay)}
+function connectDataSocket(){try{if(dataWs&&(dataWs.readyState===WebSocket.OPEN||dataWs.readyState===WebSocket.CONNECTING))return;if(dataWs){dataWs.onclose=null;dataWs.onerror=null;try{dataWs.close()}catch(e){}}const ws=new WebSocket(dataWsUrl());dataWs=ws;ws.binaryType='arraybuffer';ws.onopen=()=>{if(dataWs!==ws){ws.close();return}dataWsConnected=true;dataWsReconnectDelay=1000;dataTransport='ws';ws.send('since:'+lastDataSeq)};ws.onmessage=e=>{if(dataWs!==ws)return;try{if(e.data instanceof ArrayBuffer){handleDataPayload(decodeBinaryDataPayload(e.data),'ws',0);return}if(e.data instanceof Blob){e.data.arrayBuffer().then(b=>{if(dataWs===ws)handleDataPayload(decodeBinaryDataPayload(b),'ws',0)}).catch(err=>dataMeta.textContent='ws parse error: '+err);return}const j=JSON.parse(e.data);if(j.type==='hello')dataMeta.textContent='ws connected seq='+j.seq}catch(err){dataMeta.textContent='ws parse error: '+err}};ws.onclose=()=>{if(dataWs!==ws)return;dataWsConnected=false;dataWs=null;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,250)};ws.onerror=()=>{if(dataWs!==ws)return;dataWsConnected=false;try{ws.close()}catch(e){}}}catch(e){dataWsConnected=false;dataWs=null;dataMeta.textContent='ws error: '+e;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,250)}}
 async function pollData(){if(dataWsConnected)return;if(dataPolling)return;dataPolling=true;let delay=60;const start=performance.now();try{const r=await fetch('/api/data?since='+lastDataSeq);const j=await r.json();const elapsed=performance.now()-start;handleDataPayload(j,'poll',elapsed);delay=(j.points||[]).length?Math.max(30,Math.min(80,Math.round(elapsed*1.2))):100}catch(e){delay=160;dataMeta.textContent='data error: '+e}finally{dataPolling=false;if(!dataWsConnected)setTimeout(pollData,delay)}}
 async function sendCmd(){const v=cmd.value.trim();if(!v)return;await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});cmd.value='';refreshStatus()}
 function renderDevMode(v){devModeCard.className='stateCard '+(v?'mode2':'driftOff');devModeValue.textContent=v?'ON':'OFF';devModeSub.textContent=v?'OTA listening':'tap to enable'}
@@ -1904,8 +1904,9 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
 {
     (void)server;
     if (type == WS_EVT_CONNECT) {
-        if (wifiWebSocketClientConnected && wifiWebSocketClient && wifiWebSocketClientId != client->id()) {
-            wifiWebSocketClient->close();
+        if (wifiWebSocketClientConnected && wifiWebSocketClientId != client->id()) {
+            client->close();
+            return;
         }
         wifiWebSocketClientConnected = true;
         wifiWebSocketClientId = client->id();
@@ -1920,6 +1921,7 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
             wifiWebSocketClientConnected = false;
             wifiWebSocketClient = nullptr;
             wifiWebSocketClientLastSeq = wifiWebDataSeq;
+            lastWifiWebSocketPushMs = millis();
             mus4LogLine("web", "ws disconnected");
         }
         return;
@@ -1935,6 +1937,8 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
 static void pushWifiWebSocketData()
 {
     if (!wifiWebSocketClientConnected) return;
+    if (!wifiWebSocketClient || !wifiWebSocketClient->canSend() || wifiWebSocketClient->queueIsFull()) return;
+    if (!wifiWebSocket.availableForWrite(wifiWebSocketClientId)) return;
     if (wifiOtaInProgress) return;
     if (ESP.getFreeHeap() < WIFI_WEB_SOCKET_MIN_FREE_HEAP) return;
     unsigned long now = millis();

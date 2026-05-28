@@ -82,6 +82,12 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 # 检查 WSL、rsync、arduino-cli 等依赖
 .\arduino-cli-wsl.ps1 -Check
 
+# 编译后通过 OTA 上传；上传前需先在设备 Web/TCP Console 中打开 OTA 窗口
+.\arduino-cli-wsl.ps1 -Compile -Upload -Ota -OtaHost <设备IP或主机名>
+
+# 使用已有 build_wsl 产物通过 OTA 上传
+.\arduino-cli-wsl.ps1 -Upload -Ota -OtaHost <设备IP或主机名>
+
 # 仅当用户明确要求串口上传时使用已有 build_wsl 产物
 .\arduino-cli-wsl.ps1 -Upload
 
@@ -92,7 +98,7 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 .\arduino-cli-wsl.ps1 -Upload -ExtraArgs "--port COM9"
 ```
 
-WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。需要上传时优先走 OTA：先打开设备 OTA 窗口，再执行 `python arduino-cli.py --ota -i build_wsl/mus4.ino.bin --ota-host <设备IP或主机名>`。
+WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。需要上传时优先走 OTA：先打开设备 OTA 窗口，再执行 `python arduino-cli.py --ota -i build_wsl/mus4.ino.bin --ota-host <设备IP或主机名>`，或使用 `arduino-cli-wsl.ps1 -Upload -Ota -OtaHost <设备IP或主机名>` 复用 WSL 产物上传。
 
 ### Python 测试
 
@@ -132,7 +138,7 @@ pytest tests/ -v
 
 - `config.yaml`：`arduino-cli.py` 的主配置，包含 `arduino_cli`、`fqbn`、`port`、`baudrate`、`sketch_path`、`build_path`、串口自动检测与日志配置。
 - `sketch.yaml`：Arduino CLI 项目级默认配置，当前默认 FQBN 为 `esp32:esp32:dfrobot_firebeetle2_esp32e`，默认端口为 `/dev/ttyS4`。
-- `wslbuild.yaml`（若存在）：`arduino-cli-wsl.ps1` 会读取其中的 `distro`、`sketch`、`fqbn`、`work_dir`、`io_mode` 等覆盖项。
+- `wslbuild.yaml`（若存在）：`arduino-cli-wsl.ps1` 会读取其中的 `distro`、`sketch`、`fqbn`、`work_dir`、`io_mode`、`sync_libs`、`extra_sync_args` 等覆盖项；命令行参数优先级最高。
 - `WirelessSecrets.example.h`：Wi-Fi STA 凭据模板；本地 `WirelessSecrets.h` 可被 `mus4.ino` 自动包含，但可能含真实凭据，提交前必须检查且通常不应纳入提交。
 
 当前 `config.yaml` 默认：

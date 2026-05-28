@@ -210,6 +210,7 @@ struct SerialBuf { char buf[256]; uint16_t len; uint32_t frames; uint32_t errors
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
 static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb);
+static bool shouldEmitSerial1Telemetry();
 #ifdef ENABLE_WIFI_CONSOLE
 #if __has_include("WirelessSecrets.h")
 #include "WirelessSecrets.h"
@@ -829,6 +830,11 @@ static unsigned long wifiOtaTtlMs()
     unsigned long now = millis();
     if ((long)(wifiOtaDeadlineMs - now) <= 0) return 0;
     return wifiOtaDeadlineMs - now;
+}
+
+static bool shouldEmitSerial1Telemetry()
+{
+    return !wifiOtaWindowOpen && !wifiOtaInProgress;
 }
 
 static void appendJsonString(String& out, const char* text)
@@ -1467,6 +1473,11 @@ static void updateWifiConsole()
 static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
 {
     return false;
+}
+
+static bool shouldEmitSerial1Telemetry()
+{
+    return true;
 }
 #endif
 
@@ -2842,7 +2853,9 @@ void loop()
 
     if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
     {
-        Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
+        if (shouldEmitSerial1Telemetry()) {
+            Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
+        }
         lastRCDataUpdate = millis();
     }
 

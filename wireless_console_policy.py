@@ -90,6 +90,10 @@ def is_ota_window_active(now_ms, deadline_ms):
     return deadline_ms > 0 and now_ms < deadline_ms
 
 
+def should_emit_serial1_telemetry(ota_window_open, ota_in_progress):
+    return not (ota_window_open or ota_in_progress)
+
+
 def authenticate_wireless_command(line, password):
     prefix = "AUTH:"
     return line.startswith(prefix) and line[len(prefix):] == password

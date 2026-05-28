@@ -58,6 +58,12 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertFalse(POLICY.is_ota_window_active(now_ms=2000, deadline_ms=2000))
         self.assertFalse(POLICY.is_ota_window_active(now_ms=2500, deadline_ms=2000))
 
+    def test_serial1_telemetry_pauses_during_ota_window_or_transfer(self):
+        self.assertTrue(POLICY.should_emit_serial1_telemetry(ota_window_open=False, ota_in_progress=False))
+        self.assertFalse(POLICY.should_emit_serial1_telemetry(ota_window_open=True, ota_in_progress=False))
+        self.assertFalse(POLICY.should_emit_serial1_telemetry(ota_window_open=False, ota_in_progress=True))
+        self.assertFalse(POLICY.should_emit_serial1_telemetry(ota_window_open=True, ota_in_progress=True))
+
     def test_line_buffer_emits_complete_lines_and_tracks_overflow(self):
         buffer = POLICY.WirelessLineBuffer(max_length=8)
 

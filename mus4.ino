@@ -328,6 +328,10 @@ uint32_t wifiWebUpdateMaxDtMs = 0;
 uint32_t wifiWebSampleMaxDtMs = 0;
 uint32_t wifiWebHttpMaxDtMs = 0;
 uint32_t wifiWebSocketMaxDtMs = 0;
+uint32_t wifiWebStatusRequests = 0;
+uint32_t wifiWebLogRequests = 0;
+uint32_t wifiWebDataRequests = 0;
+uint32_t wifiWebCommandRequests = 0;
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 bool wifiWebSocketClientConnected = false;
 uint32_t wifiWebSocketClientId = 0;
@@ -1308,7 +1312,7 @@ static void printWifiOtaStatus(Print& out)
 
 static void printWirelessStatus(Print& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ip=%s\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ip=%s\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -1351,6 +1355,10 @@ static void printWirelessStatus(Print& out)
         wifiWebSampleMaxDtMs,
         wifiWebHttpMaxDtMs,
         wifiWebSocketMaxDtMs,
+        wifiWebStatusRequests,
+        wifiWebLogRequests,
+        wifiWebDataRequests,
+        wifiWebCommandRequests,
         WiFi.softAPIP().toString().c_str(),
         WiFi.softAPgetStationNum(),
         wifiStaConfigured ? 1 : 0,
@@ -1633,7 +1641,7 @@ function ensureGrid(){const w=canvas.width,h=canvas.height;if(gridReady&&gridCan
 function drawSeries(key,color,min,max){const w=canvas.width,h=canvas.height,timeWindow=4000,minTime=renderTime-timeWindow,plotX=24,plotW=w-40,plotH=h-40,buckets=[];for(let i=0;i<pointCount;i++){const p=pointAt(i);if(!p)continue;const x=plotX+(p.t-minTime)*plotW/timeWindow;if(x<plotX||x>w-16)continue;const xi=Math.round(x);const y=20+map(p[key]||0,min,max,plotH);let b=buckets[xi];if(!b)buckets[xi]=[y,y];else{if(y<b[0])b[0]=y;if(y>b[1])b[1]=y}}ctx.strokeStyle=color;ctx.beginPath();let drawn=false;for(let x=plotX;x<=w-16;x++){const b=buckets[x];if(!b)continue;if(!drawn){ctx.moveTo(x,(b[0]+b[1])/2);drawn=true}else ctx.lineTo(x,(b[0]+b[1])/2);if(b[1]-b[0]>1){ctx.moveTo(x,b[0]);ctx.lineTo(x,b[1]);ctx.moveTo(x,(b[0]+b[1])/2)}}if(drawn)ctx.stroke()}
 function draw(){const w=canvas.width,h=canvas.height;ensureGrid();ctx.clearRect(24,0,w-40,h);ctx.drawImage(gridCanvas,24,0,w-40,h,24,0,w-40,h);ctx.save();ctx.beginPath();ctx.rect(24,0,w-40,h);ctx.clip();ctx.lineWidth=2;drawSeries('thr','#39d98a',-100,100);drawSeries('str','#5cc8ff',-100,100);drawSeries('gz','#ff6b6b',-5,5);ctx.restore()}
 function renderLoop(now){requestAnimationFrame(renderLoop);let dt=Math.min(100,now-lastFrameTime);lastFrameTime=now;if(document.hidden||chartPaused)return;if(renderTime===0&&latestBackendTime>0)renderTime=latestBackendTime-chartLatencyMs;else if(latestBackendTime>0){const target=latestBackendTime-chartLatencyMs,diff=target-renderTime;if(Math.abs(diff)>1000)renderTime=target;else if(diff>0)renderTime=Math.min(target,renderTime+dt*Math.max(0.7,Math.min(1.8,1+diff/500)));else renderTime=target}if(now-lastDrawTime>=33){lastDrawTime=now;draw()}}
-refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,3000);setInterval(refreshWifiSta,5000);setInterval(pollLog,200);connectDataSocket();setTimeout(()=>{if(!dataWsConnected)pollData()},1200);draw();requestAnimationFrame(renderLoop);
+refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,5000);setInterval(refreshWifiSta,5000);setInterval(pollLog,500);connectDataSocket();setTimeout(()=>{if(!dataWsConnected)pollData()},1200);draw();requestAnimationFrame(renderLoop);
 </script>
 </body>
 </html>
@@ -1646,6 +1654,7 @@ static void handleWifiWebRoot()
 
 static void handleWifiWebStatus()
 {
+    wifiWebStatusRequests++;
     String response;
     StringPrint out(response);
     printWirelessStatus(out);
@@ -1654,6 +1663,7 @@ static void handleWifiWebStatus()
 
 static void handleWifiWebCommand()
 {
+    wifiWebCommandRequests++;
     String line = wifiWebServer.arg("plain");
     line.trim();
     if (line.length() == 0) {
@@ -1766,6 +1776,7 @@ static void handleWifiWebStaClear()
 
 static void handleWifiWebLog()
 {
+    wifiWebLogRequests++;
     uint32_t since = wifiWebServer.hasArg("since") ? (uint32_t)wifiWebServer.arg("since").toInt() : 0;
     String response;
     response.reserve(512);
@@ -1865,6 +1876,7 @@ static void appendWifiWebStateJson(String& response, WebDataPoint& point)
 
 static void handleWifiWebData()
 {
+    wifiWebDataRequests++;
     uint32_t since = wifiWebServer.hasArg("since") ? (uint32_t)wifiWebServer.arg("since").toInt() : 0;
     String response;
     response.reserve(768);

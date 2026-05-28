@@ -109,11 +109,15 @@ class TestWirelessConsolePolicy(unittest.TestCase):
             web_sample_dt_max=4,
             web_http_dt_max=51,
             web_ws_dt_max=32,
+            http_status_count=9,
+            http_log_count=25,
+            http_data_count=0,
+            http_cmd_count=1,
         )
 
         self.assertEqual(
             status,
-            "web_port=80 free_heap=145000 min_free_heap=60000 ws_queue_full_skip=3 ws_max_backlog=12 ws_connects=2 ws_disconnects=1 web_update_dt_max=87 web_sample_dt_max=4 web_http_dt_max=51 web_ws_dt_max=32 ap_ip=192.168.4.1 sta_configured=0 sta_connected=0 sta_ip=0.0.0.0",
+            "web_port=80 free_heap=145000 min_free_heap=60000 ws_queue_full_skip=3 ws_max_backlog=12 ws_connects=2 ws_disconnects=1 web_update_dt_max=87 web_sample_dt_max=4 web_http_dt_max=51 web_ws_dt_max=32 http_status_count=9 http_log_count=25 http_data_count=0 http_cmd_count=1 ap_ip=192.168.4.1 sta_configured=0 sta_connected=0 sta_ip=0.0.0.0",
         )
 
     def test_formats_network_status_with_connected_sta(self):
@@ -127,7 +131,7 @@ class TestWirelessConsolePolicy(unittest.TestCase):
 
         self.assertEqual(
             status,
-            "web_port=80 free_heap=0 min_free_heap=0 ws_queue_full_skip=0 ws_max_backlog=0 ws_connects=0 ws_disconnects=0 web_update_dt_max=0 web_sample_dt_max=0 web_http_dt_max=0 web_ws_dt_max=0 ap_ip=192.168.4.1 sta_configured=1 sta_connected=1 sta_ip=192.168.31.88",
+            "web_port=80 free_heap=0 min_free_heap=0 ws_queue_full_skip=0 ws_max_backlog=0 ws_connects=0 ws_disconnects=0 web_update_dt_max=0 web_sample_dt_max=0 web_http_dt_max=0 web_ws_dt_max=0 http_status_count=0 http_log_count=0 http_data_count=0 http_cmd_count=0 ap_ip=192.168.4.1 sta_configured=1 sta_connected=1 sta_ip=192.168.31.88",
         )
 
     def test_web_command_permissions_match_wireless_console(self):

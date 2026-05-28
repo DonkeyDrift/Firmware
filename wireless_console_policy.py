@@ -104,6 +104,10 @@ def format_network_status(
     web_sample_dt_max=0,
     web_http_dt_max=0,
     web_ws_dt_max=0,
+    http_status_count=0,
+    http_log_count=0,
+    http_data_count=0,
+    http_cmd_count=0,
 ):
     normalized_sta_ip = sta_ip if sta_connected and sta_ip else "0.0.0.0"
     return (
@@ -111,7 +115,9 @@ def format_network_status(
         f"ws_queue_full_skip={ws_queue_full_skip} ws_max_backlog={ws_max_backlog} "
         f"ws_connects={ws_connects} ws_disconnects={ws_disconnects} "
         f"web_update_dt_max={web_update_dt_max} web_sample_dt_max={web_sample_dt_max} "
-        f"web_http_dt_max={web_http_dt_max} web_ws_dt_max={web_ws_dt_max} ap_ip={ap_ip} "
+        f"web_http_dt_max={web_http_dt_max} web_ws_dt_max={web_ws_dt_max} "
+        f"http_status_count={http_status_count} http_log_count={http_log_count} "
+        f"http_data_count={http_data_count} http_cmd_count={http_cmd_count} ap_ip={ap_ip} "
         f"sta_configured={1 if sta_configured else 0} "
         f"sta_connected={1 if sta_connected else 0} "
         f"sta_ip={normalized_sta_ip}"

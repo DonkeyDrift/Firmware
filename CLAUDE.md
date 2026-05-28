@@ -67,26 +67,11 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 
 ### Windows + WSL 加速构建
 
-固件编译优先使用 WSL 脚本；程序修改并且编译通过后，默认新开 PowerShell 窗口上传并打开串口监视，除非用户明确要求本次不要上传或监视。
+固件编译优先使用 WSL 脚本；项目当前优先使用 OTA 上传，不要在编译通过后自动新开 PowerShell 串口上传或串口监视，除非用户明确要求。
 
 ```powershell
-# 默认执行编译并上传；脚本自动探测项目根目录、WSL 发行版、sketch 与 FQBN
-.\arduino-cli-wsl.ps1
-
-# 仅编译
+# 仅编译；这是固件修改后的默认验证命令
 .\arduino-cli-wsl.ps1 -Compile
-
-# 仅上传已有 build_wsl 产物
-.\arduino-cli-wsl.ps1 -Upload
-
-# 编译 + 上传 + 串口监视
-.\arduino-cli-wsl.ps1 -Compile -Upload -Serial
-
-# 编译通过后在独立 PowerShell 窗口上传并监视
-Start-Process powershell.exe -ArgumentList '-NoExit', '-Command', '.\arduino-cli-wsl.ps1 -Upload -Serial'
-
-# 指定串口会透传给 arduino-cli.py
-.\arduino-cli-wsl.ps1 -Upload -ExtraArgs "--port COM9"
 
 # 清理 WSL 构建目录后重新编译
 .\arduino-cli-wsl.ps1 -Compile -Clean
@@ -96,9 +81,18 @@ Start-Process powershell.exe -ArgumentList '-NoExit', '-Command', '.\arduino-cli
 
 # 检查 WSL、rsync、arduino-cli 等依赖
 .\arduino-cli-wsl.ps1 -Check
+
+# 仅当用户明确要求串口上传时使用已有 build_wsl 产物
+.\arduino-cli-wsl.ps1 -Upload
+
+# 仅当用户明确要求串口监视时使用
+.\arduino-cli-wsl.ps1 -Upload -Serial
+
+# 指定串口会透传给 arduino-cli.py
+.\arduino-cli-wsl.ps1 -Upload -ExtraArgs "--port COM9"
 ```
 
-WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物，最后通过 Windows 端 `arduino-cli.py` 上传。
+WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。需要上传时优先走 OTA：先打开设备 OTA 窗口，再执行 `python arduino-cli.py --ota -i build_wsl/mus4.ino.bin --ota-host <设备IP或主机名>`。
 
 ### Python 测试
 

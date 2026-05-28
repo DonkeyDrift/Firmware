@@ -243,7 +243,8 @@ const uint16_t WIFI_WEB_CONSOLE_PORT = 80;
 const uint16_t WIFI_WEB_SOCKET_PORT = 81;
 const unsigned long WIFI_WEB_SOCKET_PUSH_INTERVAL_MS = 50;
 const uint8_t WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME = 4;
-const uint32_t WIFI_WEB_SOCKET_MIN_FREE_HEAP = 20000;
+const uint16_t WIFI_WEB_SOCKET_KEEPALIVE_SECONDS = 30;
+const uint32_t WIFI_WEB_SOCKET_MIN_FREE_HEAP = 60000;
 #endif
 const uint8_t WIFI_CONSOLE_CHANNEL = 6;
 const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;
@@ -1915,6 +1916,8 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
         wifiWebSocketClientId = client->id();
         wifiWebSocketClient = client;
         wifiWebSocketClientLastSeq = wifiWebDataSeq;
+        client->keepAlivePeriod(WIFI_WEB_SOCKET_KEEPALIVE_SECONDS);
+        client->setCloseClientOnQueueFull(false);
         sendWifiWebSocketHello(client);
         mus4LogLine("web", "ws connected");
         return;

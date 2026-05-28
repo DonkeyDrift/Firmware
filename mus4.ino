@@ -243,7 +243,7 @@ const uint32_t WIFI_WEB_TELEMETRY_MIN_FREE_HEAP = 60000;
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 const uint16_t WIFI_WEB_SOCKET_PORT = 81;
 const unsigned long WIFI_WEB_SOCKET_PUSH_INTERVAL_MS = 50;
-const uint8_t WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME = 4;
+const uint8_t WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME = 8;
 const uint16_t WIFI_WEB_SOCKET_KEEPALIVE_SECONDS = 30;
 #endif
 const uint8_t WIFI_CONSOLE_CHANNEL = 6;
@@ -322,6 +322,8 @@ uint8_t wifiWebLogCount = 0;
 uint32_t wifiWebDataSeq = 0;
 uint16_t wifiWebDataHead = 0;
 uint16_t wifiWebDataCount = 0;
+unsigned long lastWifiWebUpdateMs = 0;
+uint32_t wifiWebUpdateMaxDtMs = 0;
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 bool wifiWebSocketClientConnected = false;
 uint32_t wifiWebSocketClientId = 0;
@@ -331,6 +333,9 @@ uint32_t wifiWebSocketDroppedPoints = 0;
 uint32_t wifiWebSocketQueueFullSkips = 0;
 uint32_t wifiWebSocketHeapSkips = 0;
 uint32_t wifiWebSocketFramesSent = 0;
+uint32_t wifiWebSocketMaxBacklog = 0;
+uint32_t wifiWebSocketConnects = 0;
+uint32_t wifiWebSocketDisconnects = 0;
 unsigned long lastWifiWebSocketPushMs = 0;
 String wifiWebSocketPayload;
 uint8_t wifiWebSocketBinaryPayload[256];
@@ -1299,7 +1304,7 @@ static void printWifiOtaStatus(Print& out)
 
 static void printWirelessStatus(Print& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ip=%s\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ip=%s\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -1324,6 +1329,9 @@ static void printWirelessStatus(Print& out)
         wifiWebSocketQueueFullSkips,
         wifiWebSocketHeapSkips,
         wifiWebSocketFramesSent,
+        wifiWebSocketMaxBacklog,
+        wifiWebSocketConnects,
+        wifiWebSocketDisconnects,
 #else
         0,
         0,
@@ -1331,7 +1339,11 @@ static void printWirelessStatus(Print& out)
         0UL,
         0UL,
         0UL,
+        0UL,
+        0UL,
+        0UL,
 #endif
+        wifiWebUpdateMaxDtMs,
         WiFi.softAPIP().toString().c_str(),
         WiFi.softAPgetStationNum(),
         wifiStaConfigured ? 1 : 0,
@@ -1927,6 +1939,7 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
         wifiWebSocketClientId = client->id();
         wifiWebSocketClient = client;
         wifiWebSocketClientLastSeq = wifiWebDataSeq;
+        wifiWebSocketConnects++;
         client->keepAlivePeriod(WIFI_WEB_SOCKET_KEEPALIVE_SECONDS);
         client->setCloseClientOnQueueFull(false);
         sendWifiWebSocketHello(client);
@@ -1938,6 +1951,7 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
             wifiWebSocketClientConnected = false;
             wifiWebSocketClient = nullptr;
             wifiWebSocketClientLastSeq = wifiWebDataSeq;
+            wifiWebSocketDisconnects++;
             lastWifiWebSocketPushMs = millis();
             mus4LogLine("web", "ws disconnected");
         }
@@ -1977,6 +1991,7 @@ static void pushWifiWebSocketData()
         firstSeq = oldestSeq;
     }
     uint32_t available = wifiWebDataSeq - firstSeq + 1;
+    if (available > wifiWebSocketMaxBacklog) wifiWebSocketMaxBacklog = available;
     if (available > WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME) {
         uint32_t skipped = available - WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME;
         wifiWebSocketDroppedPoints += skipped;
@@ -2075,6 +2090,12 @@ static void setupWifiWebConsole()
 static void updateWifiWebConsole()
 {
     if (!wifiConsoleStarted) return;
+    unsigned long now = millis();
+    if (lastWifiWebUpdateMs != 0) {
+        uint32_t dt = (uint32_t)(now - lastWifiWebUpdateMs);
+        if (dt > wifiWebUpdateMaxDtMs) wifiWebUpdateMaxDtMs = dt;
+    }
+    lastWifiWebUpdateMs = now;
     sampleWifiWebData();
     wifiWebServer.handleClient();
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY

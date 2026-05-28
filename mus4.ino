@@ -242,7 +242,7 @@ const uint16_t WIFI_WEB_CONSOLE_PORT = 80;
 const uint32_t WIFI_WEB_TELEMETRY_MIN_FREE_HEAP = 60000;
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 const uint16_t WIFI_WEB_SOCKET_PORT = 81;
-const unsigned long WIFI_WEB_SOCKET_PUSH_INTERVAL_MS = 50;
+const unsigned long WIFI_WEB_SOCKET_PUSH_INTERVAL_MS = 16;
 const uint8_t WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME = 8;
 const uint8_t WIFI_WEB_SOCKET_MAX_REPLAY_POINTS = 32;
 const uint16_t WIFI_WEB_SOCKET_KEEPALIVE_SECONDS = 30;
@@ -1646,9 +1646,9 @@ function latestPoint(){return pointCount?points[(pointHead+points.length-1)%poin
 function pointAt(i){return points[(pointHead-pointCount+i+points.length)%points.length]}
 function map(v,min,max,h){if(max===min)return h/2;return h-(v-min)*(h/(max-min))}
 function ensureGrid(){const w=canvas.width,h=canvas.height;if(gridReady&&gridCanvas.width===w&&gridCanvas.height===h)return;gridCanvas.width=w;gridCanvas.height=h;gridCtx.clearRect(0,0,w,h);gridCtx.strokeStyle='#233041';gridCtx.lineWidth=1;for(let i=0;i<5;i++){const y=20+i*(h-40)/4;gridCtx.beginPath();gridCtx.moveTo(24,y);gridCtx.lineTo(w-16,y);gridCtx.stroke()}gridReady=true}
-function drawSeries(key,color,min,max){const w=canvas.width,h=canvas.height,timeWindow=4000,minTime=renderTime-timeWindow,plotX=24,plotW=w-40,plotH=h-40,buckets=[];for(let i=0;i<pointCount;i++){const p=pointAt(i);if(!p)continue;const x=plotX+(p.t-minTime)*plotW/timeWindow;if(x<plotX||x>w-16)continue;const xi=Math.round(x);const y=20+map(p[key]||0,min,max,plotH);let b=buckets[xi];if(!b)buckets[xi]=[y,y];else{if(y<b[0])b[0]=y;if(y>b[1])b[1]=y}}ctx.strokeStyle=color;ctx.beginPath();let drawn=false;for(let x=plotX;x<=w-16;x++){const b=buckets[x];if(!b)continue;if(!drawn){ctx.moveTo(x,(b[0]+b[1])/2);drawn=true}else ctx.lineTo(x,(b[0]+b[1])/2);if(b[1]-b[0]>1){ctx.moveTo(x,b[0]);ctx.lineTo(x,b[1]);ctx.moveTo(x,(b[0]+b[1])/2)}}if(drawn)ctx.stroke()}
+function drawSeries(key,color,min,max){const w=canvas.width,h=canvas.height,plotX=24,plotW=w-40,plotH=h-40;if(pointCount<2)return;const stepX=plotW/255,rightX=plotX+plotW;ctx.strokeStyle=color;ctx.beginPath();let drawn=false;for(let i=0;i<pointCount;i++){const p=pointAt(i);if(!p)continue;const x=rightX-(pointCount-1-i)*stepX;const y=20+map(p[key]||0,min,max,plotH);if(!drawn){ctx.moveTo(x,y);drawn=true}else{ctx.lineTo(x,y)}}if(drawn)ctx.stroke()}
 function draw(){const w=canvas.width,h=canvas.height;ensureGrid();ctx.clearRect(24,0,w-40,h);ctx.drawImage(gridCanvas,24,0,w-40,h,24,0,w-40,h);ctx.save();ctx.beginPath();ctx.rect(24,0,w-40,h);ctx.clip();ctx.lineWidth=2;drawSeries('thr','#39d98a',-100,100);drawSeries('str','#5cc8ff',-100,100);drawSeries('gz','#ff6b6b',-5,5);ctx.restore()}
-function renderLoop(now){requestAnimationFrame(renderLoop);let dt=Math.min(100,now-lastFrameTime);lastFrameTime=now;if(document.hidden||chartPaused)return;if(renderTime===0&&latestBackendTime>0)renderTime=latestBackendTime-chartLatencyMs;else if(latestBackendTime>0){const target=latestBackendTime-chartLatencyMs,diff=target-renderTime;if(Math.abs(diff)>1000)renderTime=target;else if(diff>0)renderTime=Math.min(target,renderTime+dt*Math.max(0.7,Math.min(1.8,1+diff/500)));else renderTime=target}if(now-lastDrawTime>=33){lastDrawTime=now;draw()}}
+function renderLoop(now){requestAnimationFrame(renderLoop);let dt=Math.min(100,now-lastFrameTime);lastFrameTime=now;if(document.hidden||chartPaused)return;if(now-lastDrawTime>=16){lastDrawTime=now;draw()}}
 refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,5000);setInterval(refreshWifiSta,5000);setInterval(pollLog,1000);connectDataSocket();setTimeout(()=>{if(!dataWsConnected)pollData()},1200);draw();requestAnimationFrame(renderLoop);
 </script>
 </body>

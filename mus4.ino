@@ -329,6 +329,7 @@ uint32_t wifiWebSocketClientLastSeq = 0;
 uint32_t wifiWebSocketDroppedPoints = 0;
 unsigned long lastWifiWebSocketPushMs = 0;
 String wifiWebSocketPayload;
+uint8_t wifiWebSocketBinaryPayload[256];
 #endif
 uint8_t wifiOtaLastProgressPct = 0;
 #endif
@@ -1552,7 +1553,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 </section>
 <section class="panel">
 <canvas id="chart" width="760" height="260"></canvas>
-<div class="legend"><span class="c1">Throttle</span><span class="c2">Steering</span><span class="c4">GyroZ</span><span class="c7">dt</span><span class="c8">req</span></div>
+<div class="legend"><span class="c1">Throttle</span><span class="c2">Steering</span><span class="c4">GyroZ</span></div>
 <div class="row" style="margin-top:8px"><button onclick="toggleChart()" id="chartBtn">暂停曲线</button><button onclick="clearChart()">清空曲线</button></div>
 <div class="muted" id="dataMeta">data ready</div>
 </section>
@@ -1572,10 +1573,11 @@ function updateNetworkCard(s){const ap=s.ap_ip||'--',sta=s.sta_ip||'0.0.0.0',cli
 async function refreshStatus(){try{const r=await fetch('/api/status');const t=await r.text();statusBox.textContent=t;updateNetworkCard(parseStatusText(t))}catch(e){statusBox.textContent='status error: '+e}}
 async function pollLog(){try{const r=await fetch('/api/log?since='+lastLogSeq);const j=await r.json();for(const e of j.entries){lastLogSeq=Math.max(lastLogSeq,e.seq);line('['+e.t+']['+e.src+'] '+e.line)}logMeta.textContent='seq='+lastLogSeq+' dropped='+j.dropped}catch(e){logMeta.textContent='log error: '+e}}
 function updateState(p){const modes={0:['RC','Manual input'],1:['ASSIST','Pilot steering'],2:['AUTO','Pilot control']},m=modes[p.mode]||['MODE '+p.mode,'unknown'];modeCard.className='stateCard mode'+p.mode;modeValue.textContent=m[0];modeSub.textContent=m[1];parkCard.className='stateCard '+(p.park?'parkLocked':'parkUnlocked');parkValue.textContent=p.park?'LOCKED':'UNLOCKED';parkSub.textContent=p.park?'output guarded':'drive enabled';const de=!!p.de,da=!!p.da,dc=Number(p.dc||0),gzf=Number(p.gzf||0);driftCard.className='stateCard '+(!de?'driftOff':da?'driftActive':'driftArmed');driftValue.textContent=!de?'OFF':da?'ACTIVE':'ARMED';driftSub.textContent='comp='+dc.toFixed(1)+' gzf='+gzf.toFixed(2);driftNeedle.style.left=Math.max(0,Math.min(100,(Math.max(-70,Math.min(70,dc))+70)*100/140))+'%';[p.ch1,p.ch2,p.ch3,p.ch4,p.ch5,p.ch6].forEach((v,i)=>chValues[i].textContent=v??'----')}
-function handleDataPayload(j,transport,elapsed){const arr=j.points||[];let latest=j.latest||null;for(const p of arr){p.req=transport==='ws'?0:elapsed;lastDataSeq=Math.max(lastDataSeq,p.seq);if(!chartPaused){addPoint(p);latestBackendTime=Math.max(latestBackendTime,p.t)}}if(latest){lastDataSeq=Math.max(lastDataSeq,latest.seq||0);updateState(latest)}const p=latest||latestPoint();dataTransport=transport;if(p)dataMeta.textContent=transport+' seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' ch4='+(p.ch4??'--')+' gz='+p.gz+' dt='+smoothedDt.toFixed(1)+'ms req='+(transport==='ws'?'ws':Math.round(elapsed)+'ms');else dataMeta.textContent=transport+' waiting data'}
+function handleDataPayload(j,transport,elapsed){const arr=j.points||[];let latest=j.latest||null;for(const p of arr){p.req=transport==='ws'?0:elapsed;lastDataSeq=Math.max(lastDataSeq,p.seq);if(!chartPaused){addPoint(p);latestBackendTime=Math.max(latestBackendTime,p.t)}}if(latest){lastDataSeq=Math.max(lastDataSeq,latest.seq||0);updateState(latest)}const p=latest||latestPoint();dataTransport=transport;if(p)dataMeta.textContent=transport+' seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' gz='+p.gz;else dataMeta.textContent=transport+' waiting data'}
+function decodeBinaryDataPayload(buffer){const v=new DataView(buffer);let o=0;const u8=()=>v.getUint8(o++),u16=()=>{const x=v.getUint16(o,true);o+=2;return x},u32=()=>{const x=v.getUint32(o,true);o+=4;return x},i16=()=>{const x=v.getInt16(o,true);o+=2;return x},f32=()=>{const x=v.getFloat32(o,true);o+=4;return x};if(u8()!==77||u8()!==52)throw new Error('bad magic');const version=u8();u8();if(version!==1)throw new Error('bad version');const dropped=u32(),seq=u32(),t=u32(),dt=u16(),thr=i16(),str=i16(),gz=f32(),mode=u8(),park=u8();const ch=[u16(),u16(),u16(),u16(),u16(),u16()];const latest={seq,t,dt,thr,str,gz,mode,park,ch1:ch[0],ch2:ch[1],ch3:ch[2],ch4:ch[3],ch5:ch[4],ch6:ch[5],rct:i16(),rcs:i16(),pt:i16(),ps:i16(),gzf:f32(),dc:f32(),de:u8(),da:u8()};const count=u8(),points=[];for(let i=0;i<count;i++)points.push({seq:u32(),t:u32(),dt:u16(),thr:i16(),str:i16(),gz:f32()});return{type:'data',dropped,latest,points}}
 function dataWsUrl(){return (location.protocol==='https:'?'wss:':'ws:')+'//'+location.hostname+':81/'}
 function scheduleDataWsReconnect(){if(dataWsReconnectTimer)return;dataWsReconnectTimer=setTimeout(()=>{dataWsReconnectTimer=0;connectDataSocket();dataWsReconnectDelay=Math.min(5000,dataWsReconnectDelay*2)},dataWsReconnectDelay)}
-function connectDataSocket(){try{if(dataWs&&(dataWs.readyState===WebSocket.OPEN||dataWs.readyState===WebSocket.CONNECTING))return;dataWs=new WebSocket(dataWsUrl());dataWs.onopen=()=>{dataWsConnected=true;dataWsReconnectDelay=500;dataTransport='ws';dataWs.send('since:'+lastDataSeq)};dataWs.onmessage=e=>{try{const j=JSON.parse(e.data);if(j.type==='data')handleDataPayload(j,'ws',0);else if(j.type==='hello')dataMeta.textContent='ws connected seq='+j.seq}catch(err){dataMeta.textContent='ws parse error: '+err}};dataWs.onclose=()=>{dataWsConnected=false;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,100)};dataWs.onerror=()=>{dataWsConnected=false;try{dataWs.close()}catch(e){}}}catch(e){dataWsConnected=false;dataMeta.textContent='ws error: '+e;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,100)}}
+function connectDataSocket(){try{if(dataWs&&(dataWs.readyState===WebSocket.OPEN||dataWs.readyState===WebSocket.CONNECTING))return;dataWs=new WebSocket(dataWsUrl());dataWs.binaryType='arraybuffer';dataWs.onopen=()=>{dataWsConnected=true;dataWsReconnectDelay=500;dataTransport='ws';dataWs.send('since:'+lastDataSeq)};dataWs.onmessage=e=>{try{if(e.data instanceof ArrayBuffer){handleDataPayload(decodeBinaryDataPayload(e.data),'ws',0);return}if(e.data instanceof Blob){e.data.arrayBuffer().then(b=>handleDataPayload(decodeBinaryDataPayload(b),'ws',0)).catch(err=>dataMeta.textContent='ws parse error: '+err);return}const j=JSON.parse(e.data);if(j.type==='hello')dataMeta.textContent='ws connected seq='+j.seq}catch(err){dataMeta.textContent='ws parse error: '+err}};dataWs.onclose=()=>{dataWsConnected=false;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,100)};dataWs.onerror=()=>{dataWsConnected=false;try{dataWs.close()}catch(e){}}}catch(e){dataWsConnected=false;dataMeta.textContent='ws error: '+e;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,100)}}
 async function pollData(){if(dataWsConnected)return;if(dataPolling)return;dataPolling=true;let delay=60;const start=performance.now();try{const r=await fetch('/api/data?since='+lastDataSeq);const j=await r.json();const elapsed=performance.now()-start;handleDataPayload(j,'poll',elapsed);delay=(j.points||[]).length?Math.max(30,Math.min(80,Math.round(elapsed*1.2))):100}catch(e){delay=160;dataMeta.textContent='data error: '+e}finally{dataPolling=false;if(!dataWsConnected)setTimeout(pollData,delay)}}
 async function sendCmd(){const v=cmd.value.trim();if(!v)return;await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});cmd.value='';refreshStatus()}
 function renderDevMode(v){devModeCard.className='stateCard '+(v?'mode2':'driftOff');devModeValue.textContent=v?'ON':'OFF';devModeSub.textContent=v?'OTA listening':'tap to enable'}
@@ -1595,7 +1597,7 @@ function latestPoint(){return pointCount?points[(pointHead+points.length-1)%poin
 function pointAt(i){return points[(pointHead-pointCount+i+points.length)%points.length]}
 function map(v,min,max,h){if(max===min)return h/2;return h-(v-min)*(h/(max-min))}
 function drawSeries(key,color,min,max){const w=canvas.width,h=canvas.height,timeWindow=4000,minTime=renderTime-timeWindow;ctx.strokeStyle=color;ctx.beginPath();let drawn=false;for(let i=0;i<pointCount;i++){const p=pointAt(i);if(!p)continue;const x=24+(p.t-minTime)*(w-40)/timeWindow;if(x<20||x>w-12)continue;const y=20+map(p[key]||0,min,max,h-40);if(!drawn){ctx.moveTo(x,y);drawn=true}else ctx.lineTo(x,y)}if(drawn)ctx.stroke()}
-function draw(){const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#233041';ctx.lineWidth=1;for(let i=0;i<5;i++){const y=20+i*(h-40)/4;ctx.beginPath();ctx.moveTo(24,y);ctx.lineTo(w-16,y);ctx.stroke()}ctx.save();ctx.beginPath();ctx.rect(24,0,w-40,h);ctx.clip();ctx.lineWidth=2;drawSeries('thr','#39d98a',-100,100);drawSeries('str','#5cc8ff',-100,100);drawSeries('gz','#ff6b6b',-5,5);ctx.lineWidth=1.5;drawSeries('dts','#a3e635',0,80);drawSeries('req','#fb923c',0,300);ctx.restore()}
+function draw(){const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#233041';ctx.lineWidth=1;for(let i=0;i<5;i++){const y=20+i*(h-40)/4;ctx.beginPath();ctx.moveTo(24,y);ctx.lineTo(w-16,y);ctx.stroke()}ctx.save();ctx.beginPath();ctx.rect(24,0,w-40,h);ctx.clip();ctx.lineWidth=2;drawSeries('thr','#39d98a',-100,100);drawSeries('str','#5cc8ff',-100,100);drawSeries('gz','#ff6b6b',-5,5);ctx.restore()}
 function renderLoop(now){requestAnimationFrame(renderLoop);let dt=Math.min(100,now-lastFrameTime);lastFrameTime=now;if(document.hidden||chartPaused)return;if(renderTime===0&&latestBackendTime>0)renderTime=latestBackendTime-chartLatencyMs;else if(latestBackendTime>0){const target=latestBackendTime-chartLatencyMs,diff=target-renderTime;if(Math.abs(diff)>1000)renderTime=target;else if(diff>0)renderTime=Math.min(target,renderTime+dt*Math.max(0.7,Math.min(1.8,1+diff/500)));else renderTime=target}draw()}
 refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,3000);setInterval(refreshWifiSta,5000);setInterval(pollLog,200);connectDataSocket();setTimeout(()=>{if(!dataWsConnected)pollData()},1200);draw();requestAnimationFrame(renderLoop);
 </script>
@@ -1951,25 +1953,55 @@ static void pushWifiWebSocketData()
         firstSeq += skipped;
         available = WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME;
     }
-    wifiWebSocketPayload = "{\"type\":\"data\",\"dropped\":";
-    wifiWebSocketPayload += wifiWebSocketDroppedPoints;
-    wifiWebSocketPayload += ",\"points\":[";
-    bool first = true;
+    uint8_t* cursor = wifiWebSocketBinaryPayload;
+    auto writeU8 = [&](uint8_t value) { *cursor++ = value; };
+    auto writeU16 = [&](uint16_t value) { memcpy(cursor, &value, sizeof(value)); cursor += sizeof(value); };
+    auto writeU32 = [&](uint32_t value) { memcpy(cursor, &value, sizeof(value)); cursor += sizeof(value); };
+    auto writeI16 = [&](int16_t value) { memcpy(cursor, &value, sizeof(value)); cursor += sizeof(value); };
+    auto writeF32 = [&](float value) { memcpy(cursor, &value, sizeof(value)); cursor += sizeof(value); };
+    uint8_t pointCount = 0;
     uint32_t lastSentSeq = wifiWebSocketClientLastSeq;
+    uint16_t latestIndex = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - 1) % WIFI_WEB_DATA_CAPACITY;
+    WebDataPoint& latest = wifiWebData[latestIndex];
+    writeU8('M');
+    writeU8('4');
+    writeU8(1);
+    writeU8(0);
+    writeU32(wifiWebSocketDroppedPoints);
+    writeU32(latest.seq);
+    writeU32((uint32_t)latest.t);
+    writeU16(latest.dtMs);
+    writeI16((int16_t)latest.throttle);
+    writeI16((int16_t)latest.steering);
+    writeF32(latest.gyroZ);
+    writeU8((uint8_t)latest.mode);
+    writeU8(latest.park ? 1 : 0);
+    for (uint8_t i = 0; i < RC_CHANNEL_COUNT; i++) writeU16((uint16_t)latest.rcChannels[i]);
+    writeI16((int16_t)latest.rcThrottle);
+    writeI16((int16_t)latest.rcSteering);
+    writeI16((int16_t)latest.pilotThrottle);
+    writeI16((int16_t)latest.pilotSteering);
+    writeF32(latest.gyroZFiltered);
+    writeF32(latest.driftCompensation);
+    writeU8(latest.driftEnabled ? 1 : 0);
+    writeU8(latest.driftActive ? 1 : 0);
+    uint8_t* pointCountSlot = cursor++;
     for (uint32_t seq = firstSeq; seq < firstSeq + available; seq++) {
         uint16_t index = wifiWebDataIndexForSeq(seq);
         if (index == WIFI_WEB_DATA_CAPACITY) continue;
-        if (!first) wifiWebSocketPayload += ',';
-        first = false;
-        appendWifiWebPlotPointJson(wifiWebSocketPayload, wifiWebData[index]);
+        WebDataPoint& point = wifiWebData[index];
+        writeU32(point.seq);
+        writeU32((uint32_t)point.t);
+        writeU16(point.dtMs);
+        writeI16((int16_t)point.throttle);
+        writeI16((int16_t)point.steering);
+        writeF32(point.gyroZ);
+        pointCount++;
         lastSentSeq = seq;
     }
-    wifiWebSocketPayload += "],\"latest\":";
-    uint16_t latestIndex = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - 1) % WIFI_WEB_DATA_CAPACITY;
-    appendWifiWebStateJson(wifiWebSocketPayload, wifiWebData[latestIndex]);
-    wifiWebSocketPayload += '}';
-    if (wifiWebSocketClient && wifiWebSocketClient->canSend()) {
-        wifiWebSocketClient->text(wifiWebSocketPayload);
+    *pointCountSlot = pointCount;
+    if (pointCount > 0 && wifiWebSocketClient && wifiWebSocketClient->canSend()) {
+        wifiWebSocketClient->binary(wifiWebSocketBinaryPayload, cursor - wifiWebSocketBinaryPayload);
         wifiWebSocketClientLastSeq = lastSentSeq;
         lastWifiWebSocketPushMs = now;
     }

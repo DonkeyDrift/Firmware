@@ -67,6 +67,8 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 
 ### Windows + WSL 加速构建
 
+固件编译优先使用 WSL 脚本；程序修改并且编译通过后，默认新开 PowerShell 窗口上传并打开串口监视，除非用户明确要求本次不要上传或监视。
+
 ```powershell
 # 默认执行编译并上传；脚本自动探测项目根目录、WSL 发行版、sketch 与 FQBN
 .\arduino-cli-wsl.ps1
@@ -79,6 +81,9 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 
 # 编译 + 上传 + 串口监视
 .\arduino-cli-wsl.ps1 -Compile -Upload -Serial
+
+# 编译通过后在独立 PowerShell 窗口上传并监视
+Start-Process powershell.exe -ArgumentList '-NoExit', '-Command', '.\arduino-cli-wsl.ps1 -Upload -Serial'
 
 # 指定串口会透传给 arduino-cli.py
 .\arduino-cli-wsl.ps1 -Upload -ExtraArgs "--port COM9"
@@ -134,7 +139,7 @@ pytest tests/ -v
 - `config.yaml`：`arduino-cli.py` 的主配置，包含 `arduino_cli`、`fqbn`、`port`、`baudrate`、`sketch_path`、`build_path`、串口自动检测与日志配置。
 - `sketch.yaml`：Arduino CLI 项目级默认配置，当前默认 FQBN 为 `esp32:esp32:dfrobot_firebeetle2_esp32e`，默认端口为 `/dev/ttyS4`。
 - `wslbuild.yaml`（若存在）：`arduino-cli-wsl.ps1` 会读取其中的 `distro`、`sketch`、`fqbn`、`work_dir`、`io_mode` 等覆盖项。
-- `WirelessSecrets.example.h`：Wi-Fi STA 凭据模板；本地 `WirelessSecrets.h` 可被 `mus4.ino` 自动包含，但可能含真实凭据，提交前必须检查是否应排除。
+- `WirelessSecrets.example.h`：Wi-Fi STA 凭据模板；本地 `WirelessSecrets.h` 可被 `mus4.ino` 自动包含，但可能含真实凭据，提交前必须检查且通常不应纳入提交。
 
 当前 `config.yaml` 默认：
 - FQBN：`esp32:esp32:esp32`
@@ -255,10 +260,11 @@ README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin
 - `Doc/Tools/arduino-cli-wsl_manual.md`：WSL 构建脚本背景与排障。
 - `Doc/README/OPERATIONS.md`：串口运行时操作命令与数据帧。
 - `provisioning_system/docs/deployment_and_testing.md`：独立配网系统的 ESP32 固件、Linux agent 和测试部署说明。
-- `Doc/Plan/`：历史实施方案，使用前需对照当前代码验证。
+- `Doc/Plan/`：方案、设计方案、实施路线和历史实施方案目录；新增方案类内容应写入此目录，使用清晰的中文文件名，使用前需对照当前代码验证。
 
 ## Git Conventions
 
 - 主分支：`master`
 - 特性分支命名：`v{版本号}-{特性}`，例如 `v1.2-WSL-Build`
 - 提交信息遵循 Conventional Commits，并使用中文，例如：`fix(arduino-cli): 修复串口上传进度回退闪烁的问题`
+- 完成实现且相关测试、编译或实机验证通过后，可主动创建本地稳定版本提交；不要自动 push，远端操作仍需用户明确授权。

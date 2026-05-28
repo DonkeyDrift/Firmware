@@ -179,10 +179,20 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertFalse(POLICY.is_wireless_command_allowed("ENABLE_OTA", authenticated=False, park_locked=False, dev_mode=True, origin="tcp"))
         self.assertFalse(POLICY.is_wireless_command_allowed("OTA_STATUS", authenticated=False, park_locked=False, dev_mode=True, origin="tcp"))
 
-    def test_ota_park_guard_forces_park_during_window_or_transfer(self):
-        self.assertFalse(POLICY.should_force_park_for_ota(ota_window_open=False, ota_in_progress=False))
-        self.assertTrue(POLICY.should_force_park_for_ota(ota_window_open=True, ota_in_progress=False))
-        self.assertTrue(POLICY.should_force_park_for_ota(ota_window_open=False, ota_in_progress=True))
+    def test_dev_mode_alone_does_not_force_park(self):
+        self.assertFalse(POLICY.should_force_park_for_ota(park_guard_active=False, ota_in_progress=False, dev_mode=True))
+
+    def test_ota_park_guard_forces_park_during_guard_or_transfer(self):
+        self.assertFalse(POLICY.should_force_park_for_ota(park_guard_active=False, ota_in_progress=False))
+        self.assertTrue(POLICY.should_force_park_for_ota(park_guard_active=True, ota_in_progress=False))
+        self.assertTrue(POLICY.should_force_park_for_ota(park_guard_active=False, ota_in_progress=True))
+        self.assertTrue(POLICY.should_force_park_for_ota(park_guard_active=True, ota_in_progress=False, dev_mode=True))
+
+    def test_dev_mode_keeps_ota_window_without_park_guard(self):
+        state = POLICY.dev_mode_ota_state(dev_mode=True, ota_window_open=False)
+
+        self.assertTrue(state["ota_window_open"])
+        self.assertFalse(state["park_guard_active"])
 
     def test_web_log_buffer_returns_incremental_entries_and_tracks_drops(self):
         buffer = POLICY.WebLogBuffer(capacity=2)

@@ -106,8 +106,15 @@ def should_emit_serial1_telemetry(ota_window_open, ota_in_progress):
     return not (ota_window_open or ota_in_progress)
 
 
-def should_force_park_for_ota(ota_window_open, ota_in_progress):
-    return ota_window_open or ota_in_progress
+def should_force_park_for_ota(park_guard_active, ota_in_progress, *, dev_mode=False):
+    return park_guard_active or ota_in_progress
+
+
+def dev_mode_ota_state(dev_mode, ota_window_open):
+    return {
+        "ota_window_open": bool(dev_mode or ota_window_open),
+        "park_guard_active": False,
+    }
 
 
 def authenticate_wireless_command(line, password):

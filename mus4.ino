@@ -883,8 +883,6 @@ static void forceWifiOtaParkLocked()
 static void keepDevModeOtaWindowActive()
 {
     if (!wifiDevModeEnabled) return;
-    wifiOtaParkGuardActive = true;
-    forceWifiOtaParkLocked();
     ensureWifiOtaStarted();
     wifiOtaWindowOpen = true;
     wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
@@ -1268,12 +1266,15 @@ static void setupWifiOtaCallbacks()
     ArduinoOTA.setPort(WIFI_OTA_PORT);
     ArduinoOTA.onStart([]() {
         wifiOtaInProgress = true;
+        wifiOtaParkGuardActive = true;
+        forceWifiOtaParkLocked();
         wifiOtaLastProgressPct = 0;
         mus4LogLine("ota", "start");
     });
     ArduinoOTA.onEnd([]() {
         wifiOtaInProgress = false;
         if (wifiDevModeEnabled) {
+            wifiOtaParkGuardActive = false;
             keepDevModeOtaWindowActive();
         } else {
             wifiOtaWindowOpen = false;
@@ -1288,6 +1289,7 @@ static void setupWifiOtaCallbacks()
     ArduinoOTA.onError([](ota_error_t error) {
         wifiOtaInProgress = false;
         if (wifiDevModeEnabled) {
+            wifiOtaParkGuardActive = false;
             keepDevModeOtaWindowActive();
         } else {
             wifiOtaWindowOpen = false;
@@ -1368,11 +1370,8 @@ static void updateWifiOta()
 {
     if (wifiDevModeEnabled) keepDevModeOtaWindowActive();
     if (!wifiOtaWindowOpen) return;
-    if (wifiOtaParkGuardActive) {
+    if (wifiOtaInProgress || wifiOtaParkGuardActive) {
         forceWifiOtaParkLocked();
-    } else if (car_output.park != PARK_LOCKED) {
-        closeWifiOtaWindow("PARK_UNLOCKED");
-        return;
     }
     unsigned long now = millis();
     if (!wifiDevModeEnabled && !wifiOtaInProgress && (long)(now - wifiOtaDeadlineMs) >= 0) {
@@ -1446,7 +1445,7 @@ static const char WIFI_WEB_CONSOLE_HTML[] PROGMEM = R"rawliteral(
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MUS4 Web Console</title>
 <style>
-body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8edf2}h1{margin:0 0 10px;font-size:22px}.grid{display:grid;grid-template-columns:1fr;gap:10px}.panel{background:#171c24;border:1px solid #2b3441;border-radius:8px;padding:10px}#status{white-space:pre-wrap;color:#b7c6d8;font-size:13px;margin-top:10px}.stateGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px;background:linear-gradient(135deg,#1c2430,#121821);box-shadow:0 0 0 rgba(0,0,0,0);transition:.25s}.stateHead{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em}.stateValue{font-size:24px;font-weight:800;margin-top:4px}.stateSub{color:#b7c6d8;font-size:12px;margin-top:3px}.stateDot{position:absolute;right:12px;top:12px;width:10px;height:10px;border-radius:50%;background:#667}.mode0{border-color:#39d98a}.mode1{border-color:#ffcc66}.mode2{border-color:#5cc8ff}.mode0 .stateDot{background:#39d98a}.mode1 .stateDot{background:#ffcc66}.mode2 .stateDot{background:#5cc8ff}.parkLocked{border-color:#ff6b6b;animation:pulse 1.2s infinite}.parkUnlocked{border-color:#39d98a}.parkLocked .stateDot{background:#ff6b6b}.parkUnlocked .stateDot{background:#39d98a}.driftOff{border-color:#475569}.driftArmed{border-color:#ffcc66}.driftActive{border-color:#d96bff;animation:pulse 1s infinite}.driftBar{height:6px;background:#273142;border-radius:999px;margin-top:10px;position:relative}.driftBar i{position:absolute;top:-3px;width:4px;height:12px;background:#d96bff;border-radius:2px;left:50%;transition:left .2s}.driftActive:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(217,107,255,.16),transparent);animation:scan 1.4s infinite}.rcGrid{display:grid;grid-template-columns:repeat(6,minmax(72px,1fr));gap:6px;margin-top:10px}.rcCell{background:#0d1219;border:1px solid #2b3441;border-radius:8px;padding:8px;text-align:center}.rcCell b{display:block;color:#8fa1b5;font-size:11px}.rcCell span{font:700 18px Consolas,monospace}.rcCell.modeCh{border-color:#ffcc66}.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}button,input{font-size:15px;border-radius:6px;border:1px solid #3b4655;background:#222b36;color:#eef;padding:8px}button{cursor:pointer}button:hover{background:#2d3948}input{flex:1;min-width:220px}.log{height:280px;overflow:auto;background:#05070a;color:#d7ffe0;font:13px/1.35 Consolas,monospace;padding:8px;border-radius:6px;white-space:pre-wrap}.muted{color:#8fa1b5;font-size:12px}canvas{width:100%;height:260px;background:#070a0f;border-radius:6px;border:1px solid #2b3441}.legend span{display:inline-block;margin-right:12px;font-size:12px}.c1{color:#39d98a}.c2{color:#5cc8ff}.c3{color:#ffcc66}.c4{color:#ff6b6b}.c5{color:#d96bff}.c6{color:#f472b6}.c7{color:#a3e635}.c8{color:#fb923c}@keyframes pulse{50%{box-shadow:0 0 18px rgba(255,107,107,.35);transform:translateY(-1px)}}@keyframes scan{from{transform:translateX(-100%)}to{transform:translateX(100%)}}@media(min-width:900px){.grid{grid-template-columns:1.1fr .9fr}.wide{grid-column:1/-1}}
+body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8edf2}h1{margin:0 0 10px;font-size:22px}.grid{display:grid;grid-template-columns:1fr;gap:10px}.panel{background:#171c24;border:1px solid #2b3441;border-radius:8px;padding:10px}#status{white-space:pre-wrap;color:#b7c6d8;font-size:13px;margin-top:10px}.stateGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px;background:linear-gradient(135deg,#1c2430,#121821);box-shadow:0 0 0 rgba(0,0,0,0);transition:.25s}.stateHead{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em}.stateValue{font-size:24px;font-weight:800;margin-top:4px}.stateSub{color:#b7c6d8;font-size:12px;margin-top:3px}.stateDot{position:absolute;right:12px;top:12px;width:10px;height:10px;border-radius:50%;background:#667}.mode0{border-color:#39d98a}.mode1{border-color:#ffcc66}.mode2{border-color:#5cc8ff}.mode0 .stateDot{background:#39d98a}.mode1 .stateDot{background:#ffcc66}.mode2 .stateDot{background:#5cc8ff}.parkLocked{border-color:#ff6b6b;animation:pulse 1.2s infinite}.parkUnlocked{border-color:#39d98a}.parkLocked .stateDot{background:#ff6b6b}.parkUnlocked .stateDot{background:#39d98a}.driftOff{border-color:#475569}.driftArmed{border-color:#ffcc66}.driftActive{border-color:#d96bff;animation:pulse 1s infinite}.driftBar{height:6px;background:#273142;border-radius:999px;margin-top:10px;position:relative}.driftBar i{position:absolute;top:-3px;width:4px;height:12px;background:#d96bff;border-radius:2px;left:50%;transition:left .2s}.driftActive:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(217,107,255,.16),transparent);animation:scan 1.4s infinite}.rcGrid{display:grid;grid-template-columns:repeat(6,minmax(72px,1fr));gap:6px;margin-top:10px}.rcCell{background:#0d1219;border:1px solid #2b3441;border-radius:8px;padding:8px;text-align:center}.rcCell b{display:block;color:#8fa1b5;font-size:11px}.rcCell span{font:700 18px Consolas,monospace}.rcCell.modeCh{border-color:#ffcc66}.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}button,input{font-size:15px;border-radius:6px;border:1px solid #3b4655;background:#222b36;color:#eef;padding:8px}button{cursor:pointer}button:hover{background:#2d3948}input{flex:1;min-width:220px}.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.72);z-index:10}.modal.show{display:flex}.dialog{width:min(420px,calc(100vw - 28px));background:linear-gradient(135deg,#1c2430,#121821);border:1px solid #ffcc66;border-radius:14px;padding:18px;box-shadow:0 18px 60px rgba(0,0,0,.45)}.dialog h2{margin:0 0 8px;font-size:20px}.dialog p{color:#b7c6d8;font-size:14px;line-height:1.5}.dialogActions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}.log{height:280px;overflow:auto;background:#05070a;color:#d7ffe0;font:13px/1.35 Consolas,monospace;padding:8px;border-radius:6px;white-space:pre-wrap}.muted{color:#8fa1b5;font-size:12px}canvas{width:100%;height:260px;background:#070a0f;border-radius:6px;border:1px solid #2b3441}.legend span{display:inline-block;margin-right:12px;font-size:12px}.c1{color:#39d98a}.c2{color:#5cc8ff}.c3{color:#ffcc66}.c4{color:#ff6b6b}.c5{color:#d96bff}.c6{color:#f472b6}.c7{color:#a3e635}.c8{color:#fb923c}@keyframes pulse{50%{box-shadow:0 0 18px rgba(255,107,107,.35);transform:translateY(-1px)}}@keyframes scan{from{transform:translateX(-100%)}to{transform:translateX(100%)}}@media(min-width:900px){.grid{grid-template-columns:1.1fr .9fr}.wide{grid-column:1/-1}}
 </style>
 </head>
 <body>
@@ -1455,6 +1454,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <section class="panel wide">
 <div class="stateGrid">
 <div id="modeCard" class="stateCard"><div class="stateHead">Mode</div><div class="stateValue" id="modeValue">--</div><div class="stateSub" id="modeSub">waiting</div><span class="stateDot"></span></div>
+<div id="devModeCard" class="stateCard" onclick="requestDevModeToggle()"><div class="stateHead">Dev Mode</div><div class="stateValue" id="devModeValue">--</div><div class="stateSub" id="devModeSub">tap to toggle</div><span class="stateDot"></span></div>
 <div id="parkCard" class="stateCard"><div class="stateHead">Park</div><div class="stateValue" id="parkValue">--</div><div class="stateSub" id="parkSub">waiting</div><span class="stateDot"></span></div>
 <div id="driftCard" class="stateCard"><div class="stateHead">Drift</div><div class="stateValue" id="driftValue">--</div><div class="stateSub" id="driftSub">waiting</div><div class="driftBar"><i id="driftNeedle"></i></div><span class="stateDot"></span></div>
 <div id="networkCard" class="stateCard"><div class="stateHead">Network</div><div class="stateValue" id="apIpValue">AP --</div><div class="stateSub" id="staIpValue">STA --</div><span class="stateDot"></span></div>
@@ -1465,8 +1465,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <section class="panel">
 <div class="row"><input id="cmd" placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停日志</button></div>
 <div class="row" style="margin:8px 0"><button onclick="quick('PING')">PING</button><button onclick="quick('STATUS')">STATUS</button><button onclick="quick('AUTH:mus4-debug')">AUTH</button><button onclick="quick('ENABLE_OTA')">ENABLE_OTA</button><button onclick="quick('OTA_STATUS')">OTA_STATUS</button></div>
-<div class="row" style="margin:8px 0"><label><input type="checkbox" id="devModeToggle" onchange="setDevMode(this.checked)"> 开发模式</label><span class="muted" id="devModeState">loading</span></div>
-<div class="muted">开发模式会持久化；仅 Web OTA 免认证，OTA 激活后强制 Park，不放宽控制命令。</div>
+<div class="muted" style="margin:8px 0">开发模式会持久化；仅 Web OTA 免认证并保持 OTA 监听，不放宽控制命令。OTA 传输期间会默认 Park Locked。</div>
 <div class="panel" style="margin:10px 0;padding:8px"><div class="stateHead">STA Wi-Fi 配置</div><div class="row" style="margin-top:8px"><input id="staSsid" placeholder="STA SSID"><input id="staPassword" type="password" placeholder="Wi-Fi 密码，留空表示开放网络"></div><div class="row" style="margin-top:8px"><button onclick="saveWifiSta()">保存并连接</button><button onclick="clearWifiSta()">清除 STA 配置</button><span class="muted" id="staConfigState">loading</span></div><div class="muted">保存前请先 AUTH；密码不会回显，凭据会保存到设备 NVS。</div></div>
 <div id="log" class="log"></div><div class="muted" id="logMeta">log ready</div>
 </section>
@@ -1477,8 +1476,9 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <div class="muted" id="dataMeta">data ready</div>
 </section>
 </div>
+<div id="devModeModal" class="modal"><div class="dialog"><h2>开启开发模式？</h2><p>开发模式会持久化，并允许 Web Console 免认证保持 OTA 监听。不会放宽控制命令；实际 OTA 传输期间固件会默认 Park Locked。</p><div class="dialogActions"><button onclick="closeDevModeModal(false)">取消</button><button onclick="closeDevModeModal(true)">确认开启</button></div></div></div>
 <script>
-const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),logMeta=document.getElementById('logMeta'),dataMeta=document.getElementById('dataMeta'),devModeToggle=document.getElementById('devModeToggle'),devModeState=document.getElementById('devModeState'),staSsid=document.getElementById('staSsid'),staPassword=document.getElementById('staPassword'),staConfigState=document.getElementById('staConfigState'),apIpValue=document.getElementById('apIpValue'),staIpValue=document.getElementById('staIpValue'),networkCard=document.getElementById('networkCard'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
+const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),logMeta=document.getElementById('logMeta'),dataMeta=document.getElementById('dataMeta'),devModeCard=document.getElementById('devModeCard'),devModeValue=document.getElementById('devModeValue'),devModeSub=document.getElementById('devModeSub'),devModeModal=document.getElementById('devModeModal'),staSsid=document.getElementById('staSsid'),staPassword=document.getElementById('staPassword'),staConfigState=document.getElementById('staConfigState'),apIpValue=document.getElementById('apIpValue'),staIpValue=document.getElementById('staIpValue'),networkCard=document.getElementById('networkCard'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
 let lastLogSeq=0,lastDataSeq=0,lastDrawMs=0,pointHead=0,pointCount=0,logPaused=false,chartPaused=false,dataPolling=false,drawPending=false,points=new Array(256);
 function line(t){if(logPaused)return;log.textContent+=t+'\n';if(log.textContent.length>16000)log.textContent=log.textContent.slice(-12000);log.scrollTop=log.scrollHeight}
 function clearLog(){log.textContent=''}
@@ -1492,8 +1492,11 @@ async function pollLog(){try{const r=await fetch('/api/log?since='+lastLogSeq);c
 function updateState(p){const modes={0:['RC','Manual input'],1:['ASSIST','Pilot steering'],2:['AUTO','Pilot control']},m=modes[p.mode]||['MODE '+p.mode,'unknown'];modeCard.className='stateCard mode'+p.mode;modeValue.textContent=m[0];modeSub.textContent=m[1];parkCard.className='stateCard '+(p.park?'parkLocked':'parkUnlocked');parkValue.textContent=p.park?'LOCKED':'UNLOCKED';parkSub.textContent=p.park?'output guarded':'drive enabled';const de=!!p.de,da=!!p.da,dc=Number(p.dc||0),gzf=Number(p.gzf||0);driftCard.className='stateCard '+(!de?'driftOff':da?'driftActive':'driftArmed');driftValue.textContent=!de?'OFF':da?'ACTIVE':'ARMED';driftSub.textContent='comp='+dc.toFixed(1)+' gzf='+gzf.toFixed(2);driftNeedle.style.left=Math.max(0,Math.min(100,(Math.max(-70,Math.min(70,dc))+70)*100/140))+'%';[p.ch1,p.ch2,p.ch3,p.ch4,p.ch5,p.ch6].forEach((v,i)=>chValues[i].textContent=v??'----')}
 async function pollData(){if(dataPolling)return;dataPolling=true;let delay=16;const start=performance.now();try{const r=await fetch('/api/data?since='+lastDataSeq);const arr=await r.json();let latest=null;for(const p of arr){lastDataSeq=Math.max(lastDataSeq,p.seq);latest=p;if(!chartPaused)addPoint(p)}if(latest)updateState(latest);if(arr.length&&!chartPaused)scheduleDraw();const p=latest||latestPoint(),elapsed=performance.now()-start;delay=Math.max(16,Math.min(48,Math.round(elapsed*1.5)));dataMeta.textContent=p?'seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' ch4='+p.ch4+' cur='+p.cur+' gz='+p.gz+' dt='+Math.round(elapsed)+'ms':'waiting data'}catch(e){delay=64;dataMeta.textContent='data error: '+e}finally{dataPolling=false;setTimeout(pollData,delay)}}
 async function sendCmd(){const v=cmd.value.trim();if(!v)return;await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});cmd.value='';refreshStatus()}
-async function refreshDevMode(){try{const r=await fetch('/api/devmode');const j=await r.json();devModeToggle.checked=!!j.enabled;devModeState.textContent=j.enabled?'ON':'OFF'}catch(e){devModeState.textContent='dev mode error'}}
-async function setDevMode(v){if(v&&!confirm('开发模式会持久化，并允许 Web Console 免认证打开 OTA。不会放宽控制命令。确认开启？')){devModeToggle.checked=false;return}try{const r=await fetch('/api/devmode',{method:'POST',headers:{'Content-Type':'text/plain'},body:v?'1':'0'});if(!r.ok)throw new Error(await r.text());const j=await r.json();devModeToggle.checked=!!j.enabled;devModeState.textContent=j.enabled?'ON':'OFF';refreshStatus()}catch(e){line('dev mode error: '+e);refreshDevMode()}}
+function renderDevMode(v){devModeCard.className='stateCard '+(v?'mode2':'driftOff');devModeValue.textContent=v?'ON':'OFF';devModeSub.textContent=v?'OTA listening':'tap to enable'}
+async function refreshDevMode(){try{const r=await fetch('/api/devmode');const j=await r.json();renderDevMode(!!j.enabled)}catch(e){devModeValue.textContent='ERR';devModeSub.textContent='dev mode error'}}
+function requestDevModeToggle(){if(devModeValue.textContent==='ON'){setDevMode(false);return}devModeModal.classList.add('show')}
+function closeDevModeModal(ok){devModeModal.classList.remove('show');if(ok)setDevMode(true)}
+async function setDevMode(v){try{const r=await fetch('/api/devmode',{method:'POST',headers:{'Content-Type':'text/plain'},body:v?'1':'0'});if(!r.ok)throw new Error(await r.text());const j=await r.json();renderDevMode(!!j.enabled);refreshStatus()}catch(e){line('dev mode error: '+e);refreshDevMode()}}
 async function refreshWifiSta(){try{const r=await fetch('/api/wifi-sta');const j=await r.json();if(document.activeElement!==staSsid)staSsid.value=j.ssid||'';staConfigState.textContent=(j.configured?'configured':'disabled')+' / '+(j.connected?'connected':j.timed_out?'timeout':'pending')+' / AP '+j.ap_ip+' / STA '+j.sta_ip+' / password '+(j.password_set?'set':'empty')}catch(e){staConfigState.textContent='sta error'}}
 async function saveWifiSta(){try{const body=new URLSearchParams();body.set('ssid',staSsid.value.trim());body.set('password',staPassword.value);const r=await fetch('/api/wifi-sta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok)throw new Error(await r.text());staPassword.value='';await refreshWifiSta();refreshStatus()}catch(e){line('wifi sta save error: '+e)}}
 async function clearWifiSta(){if(!confirm('确认清除并禁用 STA 配置？'))return;try{const r=await fetch('/api/wifi-sta/clear',{method:'POST'});if(!r.ok)throw new Error(await r.text());staPassword.value='';await refreshWifiSta();refreshStatus()}catch(e){line('wifi sta clear error: '+e)}}
@@ -3141,7 +3144,7 @@ void loop()
 
     park_change();
     #ifdef ENABLE_WIFI_CONSOLE
-    if (wifiOtaParkGuardActive) forceWifiOtaParkLocked();
+    if (wifiOtaParkGuardActive || wifiOtaInProgress) forceWifiOtaParkLocked();
     #endif
     mode_change(modeValid);
     update_drift_assist_control(driftValid, driftScaleValid);

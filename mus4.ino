@@ -209,6 +209,7 @@ unsigned long outputTTL = 100;
 struct SerialBuf { char buf[256]; uint16_t len; uint32_t frames; uint32_t errors; bool overflow; };
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
+static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb);
 #ifdef ENABLE_WIFI_CONSOLE
 #if __has_include("WirelessSecrets.h")
 #include "WirelessSecrets.h"
@@ -692,7 +693,8 @@ static bool processLine(const String& line, int* throttle, int* steering, int* s
 }
 
 #define PROCESS_COMMAND_LINE(line, out, sb) do { \
-    if ((line).equalsIgnoreCase("TEST")) { \
+    if (processLocalOtaMaintenanceCommand((line), (out), (sb))) { \
+    } else if ((line).equalsIgnoreCase("TEST")) { \
         bool ok = runUnitTests(); \
         (out).printf("TEST: total=%d passed=%d ok=%d\n", testsTotal, testsPassed, ok ? 1 : 0); \
     } else if ((line).equalsIgnoreCase("TEST_TUI")) { \
@@ -790,6 +792,11 @@ static bool isWirelessControlCommand(const String& line)
 static bool isWirelessOtaOpenCommand(const String& line)
 {
     return line.equalsIgnoreCase("ENABLE_OTA");
+}
+
+static bool isLocalOtaOpenCommand(const String& line)
+{
+    return line.startsWith("ENABLE_OTA:");
 }
 
 static bool isWirelessOtaStatusCommand(const String& line)
@@ -1037,6 +1044,44 @@ static void openWifiOtaWindow(Print& out)
     wifiOtaLastProgressPct = 0;
     out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.softAPIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
     mus4LogLine("ota", "ready");
+}
+
+static void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb)
+{
+    if (!line.substring(11).equals(WIFI_CONSOLE_AP_PASSWORD)) {
+        out.println("NACK:AUTH_REQUIRED");
+        sb.errors++;
+        return;
+    }
+    if (car_output.park != PARK_LOCKED) {
+        out.println("NACK:PARK_REQUIRED");
+        sb.errors++;
+        return;
+    }
+    ensureWifiOtaStarted();
+    wifiOtaWindowOpen = true;
+    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
+    wifiOtaLastProgressPct = 0;
+    out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.softAPIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
+    mus4LogLine("ota", "ready: local");
+}
+
+static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
+{
+    if (isLocalOtaOpenCommand(line)) {
+        openLocalWifiOtaWindow(line, out, sb);
+        return true;
+    }
+    if (isWirelessOtaStatusCommand(line)) {
+        printWifiOtaStatus(out);
+        return true;
+    }
+    if (isWirelessOtaCloseCommand(line)) {
+        closeWifiOtaWindow("LOCAL");
+        out.println("OTA_CLOSED");
+        return true;
+    }
+    return false;
 }
 
 static void updateWifiOta()
@@ -1417,6 +1462,11 @@ static void updateWifiConsole()
             }
         }
     }
+}
+#else
+static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
+{
+    return false;
 }
 #endif
 

@@ -40,6 +40,18 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertFalse(POLICY.is_wireless_command_allowed("DISABLE_OTA", authenticated=False, park_locked=True))
         self.assertTrue(POLICY.is_wireless_command_allowed("DISABLE_OTA", authenticated=True, park_locked=False))
 
+    def test_local_ota_open_requires_password_and_park_locked(self):
+        self.assertFalse(POLICY.is_local_ota_open_command_allowed("ENABLE_OTA", "mus4-debug", park_locked=True))
+        self.assertFalse(POLICY.is_local_ota_open_command_allowed("ENABLE_OTA:wrong", "mus4-debug", park_locked=True))
+        self.assertFalse(POLICY.is_local_ota_open_command_allowed("ENABLE_OTA:mus4-debug", "mus4-debug", park_locked=False))
+        self.assertTrue(POLICY.is_local_ota_open_command_allowed("ENABLE_OTA:mus4-debug", "mus4-debug", park_locked=True))
+
+    def test_local_ota_status_and_close_are_maintenance_commands(self):
+        self.assertTrue(POLICY.is_local_ota_status_command("OTA_STATUS"))
+        self.assertTrue(POLICY.is_local_ota_close_command("DISABLE_OTA"))
+        self.assertFalse(POLICY.is_local_ota_status_command("STATUS"))
+        self.assertFalse(POLICY.is_local_ota_close_command("ENABLE_OTA:mus4-debug"))
+
     def test_ota_window_active_before_deadline_only(self):
         self.assertFalse(POLICY.is_ota_window_active(now_ms=1000, deadline_ms=0))
         self.assertTrue(POLICY.is_ota_window_active(now_ms=1000, deadline_ms=2000))

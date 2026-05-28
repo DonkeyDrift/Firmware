@@ -43,6 +43,19 @@ def is_web_command_allowed(line, authenticated, park_locked):
     return is_wireless_command_allowed(line, authenticated, park_locked)
 
 
+def is_local_ota_open_command_allowed(line, password, park_locked):
+    prefix = "ENABLE_OTA:"
+    return line.startswith(prefix) and line[len(prefix):] == password and park_locked
+
+
+def is_local_ota_status_command(line):
+    return line.strip().upper() == "OTA_STATUS"
+
+
+def is_local_ota_close_command(line):
+    return line.strip().upper() == "DISABLE_OTA"
+
+
 def select_log_target(configured, wifi_console_enabled):
     if configured == "serial":
         return "serial"

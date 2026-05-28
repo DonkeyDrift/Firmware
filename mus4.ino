@@ -1453,8 +1453,8 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <div class="grid">
 <section class="panel wide">
 <div class="stateGrid">
-<div id="modeCard" class="stateCard"><div class="stateHead">Mode</div><div class="stateValue" id="modeValue">--</div><div class="stateSub" id="modeSub">waiting</div><span class="stateDot"></span></div>
 <div id="devModeCard" class="stateCard" onclick="requestDevModeToggle()"><div class="stateHead">Dev Mode</div><div class="stateValue" id="devModeValue">--</div><div class="stateSub" id="devModeSub">tap to toggle</div><span class="stateDot"></span></div>
+<div id="modeCard" class="stateCard"><div class="stateHead">Mode</div><div class="stateValue" id="modeValue">--</div><div class="stateSub" id="modeSub">waiting</div><span class="stateDot"></span></div>
 <div id="parkCard" class="stateCard"><div class="stateHead">Park</div><div class="stateValue" id="parkValue">--</div><div class="stateSub" id="parkSub">waiting</div><span class="stateDot"></span></div>
 <div id="driftCard" class="stateCard"><div class="stateHead">Drift</div><div class="stateValue" id="driftValue">--</div><div class="stateSub" id="driftSub">waiting</div><div class="driftBar"><i id="driftNeedle"></i></div><span class="stateDot"></span></div>
 <div id="networkCard" class="stateCard"><div class="stateHead">Network</div><div class="stateValue" id="apIpValue">AP --</div><div class="stateSub" id="staIpValue">STA --</div><span class="stateDot"></span></div>

@@ -140,6 +140,8 @@ uint16_t aux_stable_pwm[RC_CHANNEL_COUNT] = {0};
 uint16_t aux_candidate_pwm[RC_CHANNEL_COUNT] = {0};
 uint8_t aux_candidate_count[RC_CHANNEL_COUNT] = {0};
 bool aux_stable_initialized[RC_CHANNEL_COUNT] = {false};
+uint16_t primary_smooth_pwm[RC_CHANNEL_COUNT] = {0};
+bool primary_smooth_initialized[RC_CHANNEL_COUNT] = {false};
 bool filterDebugEnabled = false;          // 调试输出开关
 
 const int Channels[RC_CHANNEL_COUNT] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN, CH5_PIN, CH6_PIN};
@@ -344,6 +346,33 @@ static bool isAuxiliaryRcChannel(int ch)
     return ch == CH_PARK || ch == CH_MODE || ch == CH_DRIFT || ch == CH_DRIFT_SCALE;
 }
 
+static bool isPrimaryRcChannel(int ch)
+{
+    return ch == CH_STEERING || ch == CH_THROTTLE;
+}
+
+static uint16_t smoothPrimaryPWM(int ch, uint16_t value, bool valid)
+{
+    if (!isPrimaryRcChannel(ch)) return value;
+    if (!valid) return primary_smooth_initialized[ch] ? primary_smooth_pwm[ch] : value;
+    if (!primary_smooth_initialized[ch]) {
+        primary_smooth_pwm[ch] = value;
+        primary_smooth_initialized[ch] = true;
+        return value;
+    }
+
+    int diff = (int)value - (int)primary_smooth_pwm[ch];
+    int absDiff = abs(diff);
+    if (absDiff <= 6) return primary_smooth_pwm[ch];
+    if (absDiff >= 80) {
+        primary_smooth_pwm[ch] = value;
+        return value;
+    }
+
+    primary_smooth_pwm[ch] = primary_smooth_pwm[ch] + (diff * 35) / 100;
+    return primary_smooth_pwm[ch];
+}
+
 static uint16_t stabilizeAuxiliaryPWM(int ch, uint16_t value, bool valid)
 {
     if (!isAuxiliaryRcChannel(ch)) return value;
@@ -411,6 +440,19 @@ static bool runFilterTests()
     testBuf[2] = 1600; // 3/5 变为 1600
     out = medianFilter(testBuf, PWM_FILTER_SIZE);
     if (out != 1600) { mus4Logf("test", "Filter Test 4 Failed: Step response failed, got %d", out); passed = false; }
+
+    primary_smooth_initialized[CH_STEERING] = false;
+    uint16_t smooth = smoothPrimaryPWM(CH_STEERING, 1500, true);
+    smooth = smoothPrimaryPWM(CH_STEERING, 1504, true);
+    if (smooth != 1500) { mus4Logf("test", "Filter Test 5 Failed: deadband got %d", smooth); passed = false; }
+
+    smooth = smoothPrimaryPWM(CH_STEERING, 1540, true);
+    if (smooth <= 1500 || smooth >= 1540) { mus4Logf("test", "Filter Test 6 Failed: smoothing got %d", smooth); passed = false; }
+
+    smooth = smoothPrimaryPWM(CH_STEERING, 1650, true);
+    if (smooth != 1650) { mus4Logf("test", "Filter Test 7 Failed: passthrough got %d", smooth); passed = false; }
+    primary_smooth_initialized[CH_STEERING] = false;
+    primary_smooth_pwm[CH_STEERING] = 0;
 
     if (passed) mus4LogLine("test", "Filter Tests Passed!");
     return passed;
@@ -3112,13 +3154,17 @@ void loop()
         // 改进的滤波：滑动窗口中值滤波 (Size=5)
         auto filterPWM = [&](int ch, uint16_t raw, bool valid) -> uint16_t {
             if (!valid) {
-                return isAuxiliaryRcChannel(ch) ? stabilizeAuxiliaryPWM(ch, pwm_filtered[ch], false) : 1500;
+                if (isAuxiliaryRcChannel(ch)) return stabilizeAuxiliaryPWM(ch, pwm_filtered[ch], false);
+                if (isPrimaryRcChannel(ch)) return smoothPrimaryPWM(ch, pwm_filtered[ch], false);
+                return 1500;
             }
 
             // 边界保护：检查是否在合理 PWM 范围内 (800-2200us)
             // 如果超出范围，视为噪声丢弃（不更新缓冲区，直接返回上一次滤波值）
             if (raw < RC_PWM_MIN || raw > RC_PWM_MAX) {
-                return isAuxiliaryRcChannel(ch) ? stabilizeAuxiliaryPWM(ch, pwm_filtered[ch], false) : pwm_filtered[ch];
+                if (isAuxiliaryRcChannel(ch)) return stabilizeAuxiliaryPWM(ch, pwm_filtered[ch], false);
+                if (isPrimaryRcChannel(ch)) return smoothPrimaryPWM(ch, pwm_filtered[ch], false);
+                return pwm_filtered[ch];
             }
 
             if (!pwm_filter_initialized[ch]) {
@@ -3133,14 +3179,14 @@ void loop()
 
             // 纯中值滤波：确保输出为窗口内排序后的中间值
             uint16_t median = medianFilter(pwm_filter_buf[ch], PWM_FILTER_SIZE);
-            uint16_t stable = stabilizeAuxiliaryPWM(ch, median, true);
+            uint16_t filtered = isAuxiliaryRcChannel(ch) ? stabilizeAuxiliaryPWM(ch, median, true) : smoothPrimaryPWM(ch, median, true);
 
             // 调试输出
             if (filterDebugEnabled && ch == CH_THROTTLE) {
-                 mus4Logf("filter", "F_DBG: ch=%d, raw=%d, med=%d", ch, raw, median);
+                 mus4Logf("filter", "F_DBG: ch=%d, raw=%d, med=%d, out=%d", ch, raw, median, filtered);
             }
 
-            return stable;
+            return filtered;
         };
 
         // 对所有通道应用滤波
@@ -3314,5 +3360,5 @@ void loop()
         else uiIntervalCurrent = (uiIntervalCurrent > uiIntervalMin ? uiIntervalCurrent - 20 : uiIntervalMin);
         lastPerfEval = now;
     }
-    delay(10);
+    delay(4);
 }

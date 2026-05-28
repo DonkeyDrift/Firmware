@@ -244,6 +244,7 @@ const uint32_t WIFI_WEB_TELEMETRY_MIN_FREE_HEAP = 60000;
 const uint16_t WIFI_WEB_SOCKET_PORT = 81;
 const unsigned long WIFI_WEB_SOCKET_PUSH_INTERVAL_MS = 50;
 const uint8_t WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME = 8;
+const uint8_t WIFI_WEB_SOCKET_MAX_REPLAY_POINTS = 32;
 const uint16_t WIFI_WEB_SOCKET_KEEPALIVE_SECONDS = 30;
 #endif
 const uint8_t WIFI_CONSOLE_CHANNEL = 6;
@@ -324,6 +325,9 @@ uint16_t wifiWebDataHead = 0;
 uint16_t wifiWebDataCount = 0;
 unsigned long lastWifiWebUpdateMs = 0;
 uint32_t wifiWebUpdateMaxDtMs = 0;
+uint32_t wifiWebSampleMaxDtMs = 0;
+uint32_t wifiWebHttpMaxDtMs = 0;
+uint32_t wifiWebSocketMaxDtMs = 0;
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 bool wifiWebSocketClientConnected = false;
 uint32_t wifiWebSocketClientId = 0;
@@ -1304,7 +1308,7 @@ static void printWifiOtaStatus(Print& out)
 
 static void printWirelessStatus(Print& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ip=%s\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ip=%s\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -1344,6 +1348,9 @@ static void printWirelessStatus(Print& out)
         0UL,
 #endif
         wifiWebUpdateMaxDtMs,
+        wifiWebSampleMaxDtMs,
+        wifiWebHttpMaxDtMs,
+        wifiWebSocketMaxDtMs,
         WiFi.softAPIP().toString().c_str(),
         WiFi.softAPgetStationNum(),
         wifiStaConfigured ? 1 : 0,
@@ -1921,7 +1928,8 @@ static void handleWifiWebSocketMessage(AsyncWebSocketClient* client, uint8_t* da
         client->text(wifiWebSocketPayload);
     } else if (message.startsWith("since:")) {
         uint32_t seq = (uint32_t)message.substring(6).toInt();
-        if (seq <= wifiWebDataSeq) wifiWebSocketClientLastSeq = seq;
+        uint32_t replayFloor = wifiWebDataSeq > WIFI_WEB_SOCKET_MAX_REPLAY_POINTS ? wifiWebDataSeq - WIFI_WEB_SOCKET_MAX_REPLAY_POINTS : 0;
+        if (seq >= replayFloor && seq <= wifiWebDataSeq) wifiWebSocketClientLastSeq = seq;
     } else {
         client->text("{\"type\":\"error\",\"error\":\"read_only\"}");
     }
@@ -2096,10 +2104,19 @@ static void updateWifiWebConsole()
         if (dt > wifiWebUpdateMaxDtMs) wifiWebUpdateMaxDtMs = dt;
     }
     lastWifiWebUpdateMs = now;
+    unsigned long stageStart = millis();
     sampleWifiWebData();
+    uint32_t stageDt = (uint32_t)(millis() - stageStart);
+    if (stageDt > wifiWebSampleMaxDtMs) wifiWebSampleMaxDtMs = stageDt;
+    stageStart = millis();
     wifiWebServer.handleClient();
+    stageDt = (uint32_t)(millis() - stageStart);
+    if (stageDt > wifiWebHttpMaxDtMs) wifiWebHttpMaxDtMs = stageDt;
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
+    stageStart = millis();
     updateWifiWebSocket();
+    stageDt = (uint32_t)(millis() - stageStart);
+    if (stageDt > wifiWebSocketMaxDtMs) wifiWebSocketMaxDtMs = stageDt;
 #endif
 }
 

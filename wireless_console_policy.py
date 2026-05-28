@@ -22,14 +22,15 @@ def is_control_command(line):
     return True
 
 
-def is_wireless_command_allowed(line, authenticated, park_locked):
+def is_wireless_command_allowed(line, authenticated, park_locked, *, dev_mode=False, origin="tcp"):
     command = normalize_wireless_command(line)
+    web_dev_mode = dev_mode and origin == "web"
     if command in PUBLIC_COMMANDS:
         return True
     if command in OTA_OPEN_COMMANDS:
-        return authenticated and park_locked
+        return web_dev_mode or (authenticated and park_locked)
     if command in OTA_STATUS_COMMANDS or command in OTA_CLOSE_COMMANDS:
-        return authenticated
+        return web_dev_mode or authenticated
     if not authenticated:
         return False
     if command in PARK_LOCKED_COMMANDS:
@@ -39,13 +40,13 @@ def is_wireless_command_allowed(line, authenticated, park_locked):
     return is_control_command(line)
 
 
-def is_web_command_allowed(line, authenticated, park_locked):
-    return is_wireless_command_allowed(line, authenticated, park_locked)
+def is_web_command_allowed(line, authenticated, park_locked, dev_mode=False):
+    return is_wireless_command_allowed(line, authenticated, park_locked, dev_mode=dev_mode, origin="web")
 
 
 def is_local_ota_open_command_allowed(line, password, park_locked):
     prefix = "ENABLE_OTA:"
-    return line.startswith(prefix) and line[len(prefix):] == password and park_locked
+    return line.startswith(prefix) and line[len(prefix):] == password
 
 
 def is_local_ota_status_command(line):
@@ -92,6 +93,10 @@ def is_ota_window_active(now_ms, deadline_ms):
 
 def should_emit_serial1_telemetry(ota_window_open, ota_in_progress):
     return not (ota_window_open or ota_in_progress)
+
+
+def should_force_park_for_ota(ota_window_open, ota_in_progress):
+    return ota_window_open or ota_in_progress
 
 
 def authenticate_wireless_command(line, password):

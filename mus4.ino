@@ -31,6 +31,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ArduinoOTA.h>
+#include <Preferences.h>
 #include "driver/mcpwm_cap.h"
 #include "BuildInfo.h"
 #include "SharedTypes.h"
@@ -212,6 +213,7 @@ SerialBuf serial1Buf = {{0},0,0,0,false};
 static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb);
 static bool shouldEmitSerial1Telemetry();
 #ifdef ENABLE_WIFI_CONSOLE
+enum WirelessCommandOrigin { WIRELESS_ORIGIN_TCP, WIRELESS_ORIGIN_WEB };
 #if __has_include("WirelessSecrets.h")
 #include "WirelessSecrets.h"
 #endif
@@ -233,6 +235,8 @@ const char* WIFI_OTA_HOSTNAME = "mus4-ota";
 const char* WIFI_OTA_PASSWORD = "mus4-debug";
 const uint16_t WIFI_OTA_PORT = 3232;
 const unsigned long WIFI_OTA_WINDOW_MS = 120000UL;
+const char* MUS4_PREF_NAMESPACE = "mus4";
+const char* MUS4_PREF_DEV_MODE_KEY = "dev_mode";
 const uint8_t WIFI_WEB_LOG_CAPACITY = 64;
 const uint16_t WIFI_WEB_DATA_CAPACITY = 256;
 const unsigned long WIFI_WEB_DATA_INTERVAL_MS = 16;
@@ -271,6 +275,9 @@ bool wifiStaTimedOut = false;
 bool wifiOtaStarted = false;
 bool wifiOtaWindowOpen = false;
 bool wifiOtaInProgress = false;
+bool wifiOtaParkGuardActive = false;
+bool wifiDevModeEnabled = false;
+Preferences mus4Prefs;
 unsigned long lastWifiConsoleStartAttemptMs = 0;
 unsigned long wifiStaConnectStartMs = 0;
 unsigned long wifiOtaDeadlineMs = 0;
@@ -810,12 +817,13 @@ static bool isWirelessOtaCloseCommand(const String& line)
     return line.equalsIgnoreCase("DISABLE_OTA");
 }
 
-static bool isWirelessCommandAllowed(const String& line)
+static bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin)
 {
+    bool webDevMode = wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB;
     if (line.equalsIgnoreCase("PING") || line.equalsIgnoreCase("STATUS")) return true;
     if (line.startsWith("AUTH:")) return true;
-    if (isWirelessOtaOpenCommand(line)) return wifiConsoleAuthenticated && car_output.park == PARK_LOCKED;
-    if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return wifiConsoleAuthenticated;
+    if (isWirelessOtaOpenCommand(line)) return webDevMode || (wifiConsoleAuthenticated && car_output.park == PARK_LOCKED);
+    if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || wifiConsoleAuthenticated;
     if (!wifiConsoleAuthenticated) return false;
     if (line.equalsIgnoreCase("TEST") || line.equalsIgnoreCase("TEST_TUI") || line.equalsIgnoreCase("BENCH") || line.equalsIgnoreCase("STRESS") || line.equalsIgnoreCase("REGRESS") || line.equalsIgnoreCase("FILTER_TEST")) {
         return car_output.park == PARK_LOCKED;
@@ -835,6 +843,36 @@ static unsigned long wifiOtaTtlMs()
 static bool shouldEmitSerial1Telemetry()
 {
     return !wifiOtaWindowOpen && !wifiOtaInProgress;
+}
+
+static void forceWifiOtaParkLocked()
+{
+    rc_data.park = PARK_LOCKED;
+    car_output.park = PARK_LOCKED;
+    car_output.throttle = 0;
+}
+
+static void loadDevModePreference()
+{
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) {
+        wifiDevModeEnabled = false;
+        mus4LogLine("wifi", "dev_mode load failed");
+        return;
+    }
+    wifiDevModeEnabled = mus4Prefs.getBool(MUS4_PREF_DEV_MODE_KEY, false);
+    mus4Prefs.end();
+    mus4Logf("wifi", "dev_mode=%d", wifiDevModeEnabled ? 1 : 0);
+}
+
+static bool saveDevModePreference(bool enabled)
+{
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
+    size_t written = mus4Prefs.putBool(MUS4_PREF_DEV_MODE_KEY, enabled);
+    mus4Prefs.end();
+    if (written == 0) return false;
+    wifiDevModeEnabled = enabled;
+    mus4Logf("wifi", "dev_mode saved=%d", wifiDevModeEnabled ? 1 : 0);
+    return true;
 }
 
 static void appendJsonString(String& out, const char* text)
@@ -953,18 +991,20 @@ static String wifiStaIpText()
 
 static void printWifiOtaStatus(Print& out)
 {
-    out.printf("OTA_STATUS started=%d window=%d in_progress=%d ttl_ms=%lu progress=%u park=%d\n",
+    out.printf("OTA_STATUS started=%d window=%d in_progress=%d ttl_ms=%lu progress=%u park=%d dev_mode=%d park_guard=%d\n",
         wifiOtaStarted ? 1 : 0,
         wifiOtaWindowOpen ? 1 : 0,
         wifiOtaInProgress ? 1 : 0,
         wifiOtaTtlMs(),
         wifiOtaLastProgressPct,
-        car_output.park ? 1 : 0);
+        car_output.park ? 1 : 0,
+        wifiDevModeEnabled ? 1 : 0,
+        wifiOtaParkGuardActive ? 1 : 0);
 }
 
 static void printWirelessStatus(Print& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu version=%s build=\"%s %s\" web_port=%u ap_ip=%s sta_configured=%d sta_connected=%d sta_ip=%s\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u ap_ip=%s sta_configured=%d sta_connected=%d sta_ip=%s\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -974,6 +1014,8 @@ static void printWirelessStatus(Print& out)
         wifiOtaWindowOpen ? 1 : 0,
         wifiOtaLastProgressPct,
         wifiOtaTtlMs(),
+        wifiDevModeEnabled ? 1 : 0,
+        wifiOtaParkGuardActive ? 1 : 0,
         MUS4_FIRMWARE_VERSION,
         MUS4_BUILD_DATE,
         MUS4_BUILD_TIME,
@@ -989,6 +1031,7 @@ static void closeWifiOtaWindow(const char* reason)
     wifiOtaWindowOpen = false;
     wifiOtaDeadlineMs = 0;
     wifiOtaInProgress = false;
+    wifiOtaParkGuardActive = false;
     wifiOtaLastProgressPct = 0;
     if (wifiOtaStarted) {
         ArduinoOTA.end();
@@ -1010,6 +1053,7 @@ static void setupWifiOtaCallbacks()
     ArduinoOTA.onEnd([]() {
         wifiOtaInProgress = false;
         wifiOtaWindowOpen = false;
+        wifiOtaParkGuardActive = false;
         wifiOtaDeadlineMs = 0;
         mus4LogLine("ota", "end");
     });
@@ -1019,6 +1063,7 @@ static void setupWifiOtaCallbacks()
     ArduinoOTA.onError([](ota_error_t error) {
         wifiOtaInProgress = false;
         wifiOtaWindowOpen = false;
+        wifiOtaParkGuardActive = false;
         wifiOtaDeadlineMs = 0;
         mus4Logf("ota", "error: %u", error);
     });
@@ -1032,24 +1077,27 @@ static void ensureWifiOtaStarted()
     wifiOtaStarted = true;
 }
 
-static void openWifiOtaWindow(Print& out)
+static void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin)
 {
-    if (!wifiConsoleAuthenticated) {
+    bool webDevMode = wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB;
+    if (!webDevMode && !wifiConsoleAuthenticated) {
         out.println("NACK:AUTH_REQUIRED");
         wifiConsoleBuf.errors++;
         return;
     }
-    if (car_output.park != PARK_LOCKED) {
+    if (!webDevMode && car_output.park != PARK_LOCKED) {
         out.println("NACK:PARK_REQUIRED");
         wifiConsoleBuf.errors++;
         return;
     }
+    wifiOtaParkGuardActive = true;
+    forceWifiOtaParkLocked();
     ensureWifiOtaStarted();
     wifiOtaWindowOpen = true;
     wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
     wifiOtaLastProgressPct = 0;
     out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.softAPIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
-    mus4LogLine("ota", "ready");
+    mus4LogLine("ota", webDevMode ? "ready: web_dev" : "ready");
 }
 
 static void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb)
@@ -1059,11 +1107,8 @@ static void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb
         sb.errors++;
         return;
     }
-    if (car_output.park != PARK_LOCKED) {
-        out.println("NACK:PARK_REQUIRED");
-        sb.errors++;
-        return;
-    }
+    wifiOtaParkGuardActive = true;
+    forceWifiOtaParkLocked();
     ensureWifiOtaStarted();
     wifiOtaWindowOpen = true;
     wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
@@ -1093,7 +1138,9 @@ static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, Se
 static void updateWifiOta()
 {
     if (!wifiOtaWindowOpen) return;
-    if (car_output.park != PARK_LOCKED) {
+    if (wifiOtaParkGuardActive) {
+        forceWifiOtaParkLocked();
+    } else if (car_output.park != PARK_LOCKED) {
         closeWifiOtaWindow("PARK_UNLOCKED");
         return;
     }
@@ -1105,7 +1152,7 @@ static void updateWifiOta()
     ArduinoOTA.handle();
 }
 
-static void processWirelessConsoleLine(const String& line, Print& out)
+static void processWirelessConsoleLine(const String& line, Print& out, WirelessCommandOrigin origin)
 {
     if (line.equalsIgnoreCase("PING")) {
         out.println("PONG");
@@ -1120,13 +1167,13 @@ static void processWirelessConsoleLine(const String& line, Print& out)
         out.println(wifiConsoleAuthenticated ? "AUTH_OK" : "AUTH_FAIL");
         return;
     }
-    if (!isWirelessCommandAllowed(line)) {
+    if (!isWirelessCommandAllowed(line, origin)) {
         out.println("NACK:UNAUTHORIZED");
         wifiConsoleBuf.errors++;
         return;
     }
     if (isWirelessOtaOpenCommand(line)) {
-        openWifiOtaWindow(out);
+        openWifiOtaWindow(out, origin);
         return;
     }
     if (isWirelessOtaStatusCommand(line)) {
@@ -1184,6 +1231,8 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <section class="panel">
 <div class="row"><input id="cmd" placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停日志</button></div>
 <div class="row" style="margin:8px 0"><button onclick="quick('PING')">PING</button><button onclick="quick('STATUS')">STATUS</button><button onclick="quick('AUTH:mus4-debug')">AUTH</button><button onclick="quick('ENABLE_OTA')">ENABLE_OTA</button><button onclick="quick('OTA_STATUS')">OTA_STATUS</button></div>
+<div class="row" style="margin:8px 0"><label><input type="checkbox" id="devModeToggle" onchange="setDevMode(this.checked)"> 开发模式</label><span class="muted" id="devModeState">loading</span></div>
+<div class="muted">开发模式会持久化；仅 Web OTA 免认证，OTA 激活后强制 Park，不放宽控制命令。</div>
 <div id="log" class="log"></div><div class="muted" id="logMeta">log ready</div>
 </section>
 <section class="panel">
@@ -1194,7 +1243,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 </section>
 </div>
 <script>
-const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),logMeta=document.getElementById('logMeta'),dataMeta=document.getElementById('dataMeta'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
+const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),logMeta=document.getElementById('logMeta'),dataMeta=document.getElementById('dataMeta'),devModeToggle=document.getElementById('devModeToggle'),devModeState=document.getElementById('devModeState'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
 let lastLogSeq=0,lastDataSeq=0,lastDrawMs=0,pointHead=0,pointCount=0,logPaused=false,chartPaused=false,dataPolling=false,drawPending=false,points=new Array(256);
 function line(t){if(logPaused)return;log.textContent+=t+'\n';if(log.textContent.length>16000)log.textContent=log.textContent.slice(-12000);log.scrollTop=log.scrollHeight}
 function clearLog(){log.textContent=''}
@@ -1206,6 +1255,8 @@ async function pollLog(){try{const r=await fetch('/api/log?since='+lastLogSeq);c
 function updateState(p){const modes={0:['RC','Manual input'],1:['ASSIST','Pilot steering'],2:['AUTO','Pilot control']},m=modes[p.mode]||['MODE '+p.mode,'unknown'];modeCard.className='stateCard mode'+p.mode;modeValue.textContent=m[0];modeSub.textContent=m[1];parkCard.className='stateCard '+(p.park?'parkLocked':'parkUnlocked');parkValue.textContent=p.park?'LOCKED':'UNLOCKED';parkSub.textContent=p.park?'output guarded':'drive enabled';const de=!!p.de,da=!!p.da,dc=Number(p.dc||0),gzf=Number(p.gzf||0);driftCard.className='stateCard '+(!de?'driftOff':da?'driftActive':'driftArmed');driftValue.textContent=!de?'OFF':da?'ACTIVE':'ARMED';driftSub.textContent='comp='+dc.toFixed(1)+' gzf='+gzf.toFixed(2);driftNeedle.style.left=Math.max(0,Math.min(100,(Math.max(-70,Math.min(70,dc))+70)*100/140))+'%';[p.ch1,p.ch2,p.ch3,p.ch4,p.ch5,p.ch6].forEach((v,i)=>chValues[i].textContent=v??'----')}
 async function pollData(){if(dataPolling)return;dataPolling=true;let delay=16;const start=performance.now();try{const r=await fetch('/api/data?since='+lastDataSeq);const arr=await r.json();let latest=null;for(const p of arr){lastDataSeq=Math.max(lastDataSeq,p.seq);latest=p;if(!chartPaused)addPoint(p)}if(latest)updateState(latest);if(arr.length&&!chartPaused)scheduleDraw();const p=latest||latestPoint(),elapsed=performance.now()-start;delay=Math.max(16,Math.min(48,Math.round(elapsed*1.5)));dataMeta.textContent=p?'seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' ch4='+p.ch4+' cur='+p.cur+' gz='+p.gz+' dt='+Math.round(elapsed)+'ms':'waiting data'}catch(e){delay=64;dataMeta.textContent='data error: '+e}finally{dataPolling=false;setTimeout(pollData,delay)}}
 async function sendCmd(){const v=cmd.value.trim();if(!v)return;await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});cmd.value='';refreshStatus()}
+async function refreshDevMode(){try{const r=await fetch('/api/devmode');const j=await r.json();devModeToggle.checked=!!j.enabled;devModeState.textContent=j.enabled?'ON':'OFF'}catch(e){devModeState.textContent='dev mode error'}}
+async function setDevMode(v){if(v&&!confirm('开发模式会持久化，并允许 Web Console 免认证打开 OTA。不会放宽控制命令。确认开启？')){devModeToggle.checked=false;return}try{const r=await fetch('/api/devmode',{method:'POST',headers:{'Content-Type':'text/plain'},body:v?'1':'0'});if(!r.ok)throw new Error(await r.text());const j=await r.json();devModeToggle.checked=!!j.enabled;devModeState.textContent=j.enabled?'ON':'OFF';refreshStatus()}catch(e){line('dev mode error: '+e);refreshDevMode()}}
 async function quick(v){cmd.value=v;await sendCmd()}
 cmd.addEventListener('keydown',e=>{if(e.key==='Enter')sendCmd()});
 function addPoint(p){points[pointHead]=p;pointHead=(pointHead+1)%points.length;if(pointCount<points.length)pointCount++}
@@ -1215,7 +1266,7 @@ function map(v,min,max,h){if(max===min)return h/2;return h-(v-min)*(h/(max-min))
 function drawSeries(key,color,min,max){const w=canvas.width,h=canvas.height,pad=24;ctx.strokeStyle=color;ctx.beginPath();for(let i=0;i<pointCount;i++){const p=pointAt(i),v=p?p[key]:0,x=pad+i*(w-pad*2)/Math.max(1,pointCount-1),y=pad+map(v,min,max,h-pad*2);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)}ctx.stroke()}
 function scheduleDraw(){if(drawPending)return;drawPending=true;const wait=Math.max(0,33-(performance.now()-lastDrawMs));setTimeout(()=>requestAnimationFrame(()=>{drawPending=false;lastDrawMs=performance.now();draw()}),wait)}
 function draw(){const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#233041';ctx.lineWidth=1;for(let i=0;i<5;i++){const y=20+i*(h-40)/4;ctx.beginPath();ctx.moveTo(24,y);ctx.lineTo(w-16,y);ctx.stroke()}ctx.lineWidth=2;drawSeries('thr','#39d98a',-100,100);drawSeries('str','#5cc8ff',-100,100);drawSeries('cur','#ffcc66',-1000,3000);drawSeries('gz','#ff6b6b',-5,5);drawSeries('ch3','#d96bff',900,2100);drawSeries('ch4','#f472b6',900,2100);drawSeries('ch5','#a3e635',900,2100);drawSeries('ch6','#fb923c',900,2100)}
-refreshStatus();setInterval(refreshStatus,3000);setInterval(pollLog,200);setTimeout(pollData,1000);draw();
+refreshStatus();refreshDevMode();setInterval(refreshStatus,3000);setInterval(pollLog,200);setTimeout(pollData,1000);draw();
 </script>
 </body>
 </html>
@@ -1247,9 +1298,37 @@ static void handleWifiWebCommand()
     String response;
     StringPrint out(response);
     appendWifiWebLog("web", String("> ") + line);
-    processWirelessConsoleLine(line, out);
+    processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_WEB);
     appendWifiWebLogLines("cmd", response);
     wifiWebServer.send(200, "text/plain", response);
+}
+
+static void handleWifiWebDevMode()
+{
+    String response = String("{\"enabled\":") + (wifiDevModeEnabled ? "true" : "false") + "}";
+    wifiWebServer.send(200, "application/json", response);
+}
+
+static void handleWifiWebDevModeSet()
+{
+    String body = wifiWebServer.arg("plain");
+    body.trim();
+    body.toLowerCase();
+    bool enabled;
+    if (body == "1" || body == "true" || body == "on") {
+        enabled = true;
+    } else if (body == "0" || body == "false" || body == "off") {
+        enabled = false;
+    } else {
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
+        return;
+    }
+    if (!saveDevModePreference(enabled)) {
+        wifiWebServer.send(500, "application/json", "{\"saved\":false}");
+        return;
+    }
+    String response = String("{\"enabled\":") + (wifiDevModeEnabled ? "true" : "false") + ",\"saved\":true}";
+    wifiWebServer.send(200, "application/json", response);
 }
 
 static void handleWifiWebLog()
@@ -1351,6 +1430,8 @@ static void setupWifiWebConsole()
     wifiWebServer.on("/", HTTP_GET, handleWifiWebRoot);
     wifiWebServer.on("/api/status", HTTP_GET, handleWifiWebStatus);
     wifiWebServer.on("/api/cmd", HTTP_POST, handleWifiWebCommand);
+    wifiWebServer.on("/api/devmode", HTTP_GET, handleWifiWebDevMode);
+    wifiWebServer.on("/api/devmode", HTTP_POST, handleWifiWebDevModeSet);
     wifiWebServer.on("/api/log", HTTP_GET, handleWifiWebLog);
     wifiWebServer.on("/api/data", HTTP_GET, handleWifiWebData);
     wifiWebServer.begin();
@@ -1452,7 +1533,7 @@ static void updateWifiConsole()
             String response;
             StringPrint out(response);
             appendWifiWebLog("tcp", String("> ") + line);
-            processWirelessConsoleLine(line, out);
+            processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_TCP);
             wifiConsoleClient.print(response);
             appendWifiWebLogLines("cmd", response);
             wifiConsoleBuf.len = 0;
@@ -2604,6 +2685,7 @@ void setup()
       bleGamepad.begin();
     #endif
     #ifdef ENABLE_WIFI_CONSOLE
+      loadDevModePreference();
       setupWifiConsole();
     #endif
 
@@ -2750,6 +2832,9 @@ void loop()
     if (!driftScaleValid && !aux_stable_initialized[CH_DRIFT_SCALE]) pwm_filtered[CH_DRIFT_SCALE] = 1500;
 
     park_change();
+    #ifdef ENABLE_WIFI_CONSOLE
+    if (wifiOtaParkGuardActive) forceWifiOtaParkLocked();
+    #endif
     mode_change(modeValid);
     update_drift_assist_control(driftValid, driftScaleValid);
 

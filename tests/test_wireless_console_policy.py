@@ -43,7 +43,7 @@ class TestWirelessConsolePolicy(unittest.TestCase):
     def test_local_ota_open_requires_password_and_park_locked(self):
         self.assertFalse(POLICY.is_local_ota_open_command_allowed("ENABLE_OTA", "mus4-debug", park_locked=True))
         self.assertFalse(POLICY.is_local_ota_open_command_allowed("ENABLE_OTA:wrong", "mus4-debug", park_locked=True))
-        self.assertFalse(POLICY.is_local_ota_open_command_allowed("ENABLE_OTA:mus4-debug", "mus4-debug", park_locked=False))
+        self.assertTrue(POLICY.is_local_ota_open_command_allowed("ENABLE_OTA:mus4-debug", "mus4-debug", park_locked=False))
         self.assertTrue(POLICY.is_local_ota_open_command_allowed("ENABLE_OTA:mus4-debug", "mus4-debug", park_locked=True))
 
     def test_local_ota_status_and_close_are_maintenance_commands(self):
@@ -136,6 +136,25 @@ class TestWirelessConsolePolicy(unittest.TestCase):
     def test_web_command_blocks_unauthenticated_control_and_unlocked_ota(self):
         self.assertFalse(POLICY.is_web_command_allowed("10:20", authenticated=False, park_locked=True))
         self.assertFalse(POLICY.is_web_command_allowed("ENABLE_OTA", authenticated=True, park_locked=False))
+
+    def test_web_dev_mode_allows_ota_without_authentication_or_park(self):
+        self.assertTrue(POLICY.is_web_command_allowed("ENABLE_OTA", authenticated=False, park_locked=False, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("OTA_STATUS", authenticated=False, park_locked=False, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("DISABLE_OTA", authenticated=False, park_locked=False, dev_mode=True))
+
+    def test_web_dev_mode_does_not_bypass_control_or_diagnostics(self):
+        self.assertFalse(POLICY.is_web_command_allowed("10:20", authenticated=False, park_locked=False, dev_mode=True))
+        self.assertFalse(POLICY.is_web_command_allowed("TEST", authenticated=False, park_locked=False, dev_mode=True))
+        self.assertFalse(POLICY.is_web_command_allowed("TEST", authenticated=True, park_locked=False, dev_mode=True))
+
+    def test_tcp_console_ignores_dev_mode_ota_relaxation(self):
+        self.assertFalse(POLICY.is_wireless_command_allowed("ENABLE_OTA", authenticated=False, park_locked=False, dev_mode=True, origin="tcp"))
+        self.assertFalse(POLICY.is_wireless_command_allowed("OTA_STATUS", authenticated=False, park_locked=False, dev_mode=True, origin="tcp"))
+
+    def test_ota_park_guard_forces_park_during_window_or_transfer(self):
+        self.assertFalse(POLICY.should_force_park_for_ota(ota_window_open=False, ota_in_progress=False))
+        self.assertTrue(POLICY.should_force_park_for_ota(ota_window_open=True, ota_in_progress=False))
+        self.assertTrue(POLICY.should_force_park_for_ota(ota_window_open=False, ota_in_progress=True))
 
     def test_web_log_buffer_returns_incremental_entries_and_tracks_drops(self):
         buffer = POLICY.WebLogBuffer(capacity=2)

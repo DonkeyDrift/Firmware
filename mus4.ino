@@ -1472,7 +1472,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 </section>
 <section class="panel">
 <canvas id="chart" width="760" height="260"></canvas>
-<div class="legend"><span class="c1">Throttle</span><span class="c2">Steering</span><span class="c3">Current</span><span class="c4">GyroZ</span><span class="c5">CH3 Park</span><span class="c6">CH4 Mode</span><span class="c7">CH5 Drift</span><span class="c8">CH6 Scale</span></div>
+<div class="legend"><span class="c1">Throttle</span><span class="c2">Steering</span><span class="c4">GyroZ</span></div>
 <div class="row" style="margin-top:8px"><button onclick="toggleChart()" id="chartBtn">暂停曲线</button><button onclick="clearChart()">清空曲线</button></div>
 <div class="muted" id="dataMeta">data ready</div>
 </section>
@@ -1492,7 +1492,7 @@ function updateNetworkCard(s){const ap=s.ap_ip||'--',sta=s.sta_ip||'0.0.0.0',cli
 async function refreshStatus(){try{const r=await fetch('/api/status');const t=await r.text();statusBox.textContent=t;updateNetworkCard(parseStatusText(t))}catch(e){statusBox.textContent='status error: '+e}}
 async function pollLog(){try{const r=await fetch('/api/log?since='+lastLogSeq);const j=await r.json();for(const e of j.entries){lastLogSeq=Math.max(lastLogSeq,e.seq);line('['+e.t+']['+e.src+'] '+e.line)}logMeta.textContent='seq='+lastLogSeq+' dropped='+j.dropped}catch(e){logMeta.textContent='log error: '+e}}
 function updateState(p){const modes={0:['RC','Manual input'],1:['ASSIST','Pilot steering'],2:['AUTO','Pilot control']},m=modes[p.mode]||['MODE '+p.mode,'unknown'];modeCard.className='stateCard mode'+p.mode;modeValue.textContent=m[0];modeSub.textContent=m[1];parkCard.className='stateCard '+(p.park?'parkLocked':'parkUnlocked');parkValue.textContent=p.park?'LOCKED':'UNLOCKED';parkSub.textContent=p.park?'output guarded':'drive enabled';const de=!!p.de,da=!!p.da,dc=Number(p.dc||0),gzf=Number(p.gzf||0);driftCard.className='stateCard '+(!de?'driftOff':da?'driftActive':'driftArmed');driftValue.textContent=!de?'OFF':da?'ACTIVE':'ARMED';driftSub.textContent='comp='+dc.toFixed(1)+' gzf='+gzf.toFixed(2);driftNeedle.style.left=Math.max(0,Math.min(100,(Math.max(-70,Math.min(70,dc))+70)*100/140))+'%';[p.ch1,p.ch2,p.ch3,p.ch4,p.ch5,p.ch6].forEach((v,i)=>chValues[i].textContent=v??'----')}
-async function pollData(){if(dataPolling)return;dataPolling=true;let delay=20;const start=performance.now();try{const r=await fetch('/api/data?since='+lastDataSeq);const arr=await r.json();let latest=null;for(const p of arr){lastDataSeq=Math.max(lastDataSeq,p.seq);latest=p;if(!chartPaused){addPoint(p);latestBackendTime=Math.max(latestBackendTime,p.t)}}if(latest)updateState(latest);const p=latest||latestPoint(),elapsed=performance.now()-start;delay=arr.length?Math.max(20,Math.min(60,Math.round(elapsed*1.2))):80;dataMeta.textContent=p?'seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' ch4='+p.ch4+' cur='+p.cur+' gz='+p.gz+' dt='+Math.round(elapsed)+'ms':'waiting data'}catch(e){delay=120;dataMeta.textContent='data error: '+e}finally{dataPolling=false;setTimeout(pollData,delay)}}
+async function pollData(){if(dataPolling)return;dataPolling=true;let delay=20;const start=performance.now();try{const r=await fetch('/api/data?since='+lastDataSeq);const j=await r.json();const arr=j.points||[];let latest=j.latest||null;for(const p of arr){lastDataSeq=Math.max(lastDataSeq,p.seq);if(!chartPaused){addPoint(p);latestBackendTime=Math.max(latestBackendTime,p.t)}}if(latest){lastDataSeq=Math.max(lastDataSeq,latest.seq||0);updateState(latest)}const p=latest||latestPoint(),elapsed=performance.now()-start;delay=arr.length?Math.max(20,Math.min(60,Math.round(elapsed*1.2))):80;dataMeta.textContent=p?'seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' ch4='+(p.ch4??'--')+' gz='+p.gz+' dt='+Math.round(elapsed)+'ms':'waiting data'}catch(e){delay=120;dataMeta.textContent='data error: '+e}finally{dataPolling=false;setTimeout(pollData,delay)}}
 async function sendCmd(){const v=cmd.value.trim();if(!v)return;await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});cmd.value='';refreshStatus()}
 function renderDevMode(v){devModeCard.className='stateCard '+(v?'mode2':'driftOff');devModeValue.textContent=v?'ON':'OFF';devModeSub.textContent=v?'OTA listening':'tap to enable'}
 async function refreshDevMode(){try{const r=await fetch('/api/devmode');const j=await r.json();renderDevMode(!!j.enabled)}catch(e){devModeValue.textContent='ERR';devModeSub.textContent='dev mode error'}}
@@ -1511,7 +1511,7 @@ function latestPoint(){return pointCount?points[(pointHead+points.length-1)%poin
 function pointAt(i){return points[(pointHead-pointCount+i+points.length)%points.length]}
 function map(v,min,max,h){if(max===min)return h/2;return h-(v-min)*(h/(max-min))}
 function drawSeries(key,color,min,max){const w=canvas.width,h=canvas.height,timeWindow=4000,minTime=renderTime-timeWindow;ctx.strokeStyle=color;ctx.beginPath();let drawn=false;for(let i=0;i<pointCount;i++){const p=pointAt(i);if(!p)continue;const x=24+(p.t-minTime)*(w-40)/timeWindow;if(x<20||x>w-12)continue;const y=20+map(p[key]||0,min,max,h-40);if(!drawn){ctx.moveTo(x,y);drawn=true}else ctx.lineTo(x,y)}if(drawn)ctx.stroke()}
-function draw(){const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#233041';ctx.lineWidth=1;for(let i=0;i<5;i++){const y=20+i*(h-40)/4;ctx.beginPath();ctx.moveTo(24,y);ctx.lineTo(w-16,y);ctx.stroke()}ctx.save();ctx.beginPath();ctx.rect(24,0,w-40,h);ctx.clip();ctx.lineWidth=2;drawSeries('thr','#39d98a',-100,100);drawSeries('str','#5cc8ff',-100,100);drawSeries('cur','#ffcc66',-1000,3000);drawSeries('gz','#ff6b6b',-5,5);drawSeries('ch3','#d96bff',900,2100);drawSeries('ch4','#f472b6',900,2100);drawSeries('ch5','#a3e635',900,2100);drawSeries('ch6','#fb923c',900,2100);ctx.restore()}
+function draw(){const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#233041';ctx.lineWidth=1;for(let i=0;i<5;i++){const y=20+i*(h-40)/4;ctx.beginPath();ctx.moveTo(24,y);ctx.lineTo(w-16,y);ctx.stroke()}ctx.save();ctx.beginPath();ctx.rect(24,0,w-40,h);ctx.clip();ctx.lineWidth=2;drawSeries('thr','#39d98a',-100,100);drawSeries('str','#5cc8ff',-100,100);drawSeries('gz','#ff6b6b',-5,5);ctx.restore()}
 function renderLoop(now){requestAnimationFrame(renderLoop);let dt=Math.min(100,now-lastFrameTime);lastFrameTime=now;if(document.hidden||chartPaused)return;if(renderTime===0&&latestBackendTime>0)renderTime=latestBackendTime-chartLatencyMs;else if(latestBackendTime>0){const target=latestBackendTime-chartLatencyMs,diff=target-renderTime;if(Math.abs(diff)>1000)renderTime=target;else if(diff>0)renderTime=Math.min(target,renderTime+dt*Math.max(0.7,Math.min(1.8,1+diff/500)));else renderTime=target}draw()}
 refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,3000);setInterval(refreshWifiSta,5000);setInterval(pollLog,200);setTimeout(pollData,100);draw();requestAnimationFrame(renderLoop);
 </script>
@@ -1673,12 +1673,63 @@ static void handleWifiWebLog()
     wifiWebServer.send(200, "application/json", response);
 }
 
+static void appendWifiWebStateJson(String& response, WebDataPoint& point)
+{
+    response += "{\"seq\":";
+    response += point.seq;
+    response += ",\"t\":";
+    response += point.t;
+    response += ",\"thr\":";
+    response += point.throttle;
+    response += ",\"str\":";
+    response += point.steering;
+    response += ",\"mode\":";
+    response += point.mode;
+    response += ",\"park\":";
+    response += point.park ? 1 : 0;
+    response += ",\"rct\":";
+    response += point.rcThrottle;
+    response += ",\"rcs\":";
+    response += point.rcSteering;
+    response += ",\"ch1\":";
+    response += point.rcChannels[CH_STEERING];
+    response += ",\"ch2\":";
+    response += point.rcChannels[CH_THROTTLE];
+    response += ",\"ch3\":";
+    response += point.rcChannels[CH_PARK];
+    response += ",\"ch4\":";
+    response += point.rcChannels[CH_MODE];
+    response += ",\"ch5\":";
+    response += point.rcChannels[CH_DRIFT];
+    response += ",\"ch6\":";
+    response += point.rcChannels[CH_DRIFT_SCALE];
+    response += ",\"pt\":";
+    response += point.pilotThrottle;
+    response += ",\"ps\":";
+    response += point.pilotSteering;
+    response += ",\"cur\":";
+    response += String(point.currentMa, 2);
+    response += ",\"vol\":";
+    response += String(point.voltage, 2);
+    response += ",\"gz\":";
+    response += String(point.gyroZ, 3);
+    response += ",\"de\":";
+    response += point.driftEnabled ? 1 : 0;
+    response += ",\"da\":";
+    response += point.driftActive ? 1 : 0;
+    response += ",\"dc\":";
+    response += String(point.driftCompensation, 2);
+    response += ",\"gzf\":";
+    response += String(point.gyroZFiltered, 3);
+    response += '}';
+}
+
 static void handleWifiWebData()
 {
     uint32_t since = wifiWebServer.hasArg("since") ? (uint32_t)wifiWebServer.arg("since").toInt() : 0;
     String response;
-    response.reserve(1024);
-    response += "[";
+    response.reserve(768);
+    response += "{\"points\":[";
     bool first = true;
     for (uint16_t i = 0; i < wifiWebDataCount; i++) {
         uint16_t index = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - wifiWebDataCount + i) % WIFI_WEB_DATA_CAPACITY;
@@ -1694,47 +1745,18 @@ static void handleWifiWebData()
         response += point.throttle;
         response += ",\"str\":";
         response += point.steering;
-        response += ",\"mode\":";
-        response += point.mode;
-        response += ",\"park\":";
-        response += point.park ? 1 : 0;
-        response += ",\"rct\":";
-        response += point.rcThrottle;
-        response += ",\"rcs\":";
-        response += point.rcSteering;
-        response += ",\"ch1\":";
-        response += point.rcChannels[CH_STEERING];
-        response += ",\"ch2\":";
-        response += point.rcChannels[CH_THROTTLE];
-        response += ",\"ch3\":";
-        response += point.rcChannels[CH_PARK];
-        response += ",\"ch4\":";
-        response += point.rcChannels[CH_MODE];
-        response += ",\"ch5\":";
-        response += point.rcChannels[CH_DRIFT];
-        response += ",\"ch6\":";
-        response += point.rcChannels[CH_DRIFT_SCALE];
-        response += ",\"pt\":";
-        response += point.pilotThrottle;
-        response += ",\"ps\":";
-        response += point.pilotSteering;
-        response += ",\"cur\":";
-        response += String(point.currentMa, 2);
-        response += ",\"vol\":";
-        response += String(point.voltage, 2);
         response += ",\"gz\":";
         response += String(point.gyroZ, 3);
-        response += ",\"de\":";
-        response += point.driftEnabled ? 1 : 0;
-        response += ",\"da\":";
-        response += point.driftActive ? 1 : 0;
-        response += ",\"dc\":";
-        response += String(point.driftCompensation, 2);
-        response += ",\"gzf\":";
-        response += String(point.gyroZFiltered, 3);
         response += '}';
     }
-    response += "]";
+    response += "],\"latest\":";
+    if (wifiWebDataCount > 0) {
+        uint16_t latestIndex = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - 1) % WIFI_WEB_DATA_CAPACITY;
+        appendWifiWebStateJson(response, wifiWebData[latestIndex]);
+    } else {
+        response += "null";
+    }
+    response += '}';
     wifiWebServer.send(200, "application/json", response);
 }
 

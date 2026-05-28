@@ -214,6 +214,8 @@ static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, Se
 static bool shouldEmitSerial1Telemetry();
 #ifdef ENABLE_WIFI_CONSOLE
 enum WirelessCommandOrigin { WIRELESS_ORIGIN_TCP, WIRELESS_ORIGIN_WEB };
+static void ensureWifiOtaStarted();
+static void closeWifiOtaWindow(const char* reason);
 #if __has_include("WirelessSecrets.h")
 #include "WirelessSecrets.h"
 #endif
@@ -835,6 +837,7 @@ static bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin o
 static unsigned long wifiOtaTtlMs()
 {
     if (!wifiOtaWindowOpen) return 0;
+    if (wifiDevModeEnabled) return WIFI_OTA_WINDOW_MS;
     unsigned long now = millis();
     if ((long)(wifiOtaDeadlineMs - now) <= 0) return 0;
     return wifiOtaDeadlineMs - now;
@@ -850,6 +853,16 @@ static void forceWifiOtaParkLocked()
     rc_data.park = PARK_LOCKED;
     car_output.park = PARK_LOCKED;
     car_output.throttle = 0;
+}
+
+static void keepDevModeOtaWindowActive()
+{
+    if (!wifiDevModeEnabled) return;
+    wifiOtaParkGuardActive = true;
+    forceWifiOtaParkLocked();
+    ensureWifiOtaStarted();
+    wifiOtaWindowOpen = true;
+    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
 }
 
 static void loadDevModePreference()
@@ -871,6 +884,11 @@ static bool saveDevModePreference(bool enabled)
     mus4Prefs.end();
     if (written == 0) return false;
     wifiDevModeEnabled = enabled;
+    if (wifiDevModeEnabled) {
+        keepDevModeOtaWindowActive();
+    } else if (wifiOtaWindowOpen && !wifiOtaInProgress) {
+        closeWifiOtaWindow("DEV_MODE_OFF");
+    }
     mus4Logf("wifi", "dev_mode saved=%d", wifiDevModeEnabled ? 1 : 0);
     return true;
 }
@@ -1052,9 +1070,13 @@ static void setupWifiOtaCallbacks()
     });
     ArduinoOTA.onEnd([]() {
         wifiOtaInProgress = false;
-        wifiOtaWindowOpen = false;
-        wifiOtaParkGuardActive = false;
-        wifiOtaDeadlineMs = 0;
+        if (wifiDevModeEnabled) {
+            keepDevModeOtaWindowActive();
+        } else {
+            wifiOtaWindowOpen = false;
+            wifiOtaParkGuardActive = false;
+            wifiOtaDeadlineMs = 0;
+        }
         mus4LogLine("ota", "end");
     });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
@@ -1062,9 +1084,13 @@ static void setupWifiOtaCallbacks()
     });
     ArduinoOTA.onError([](ota_error_t error) {
         wifiOtaInProgress = false;
-        wifiOtaWindowOpen = false;
-        wifiOtaParkGuardActive = false;
-        wifiOtaDeadlineMs = 0;
+        if (wifiDevModeEnabled) {
+            keepDevModeOtaWindowActive();
+        } else {
+            wifiOtaWindowOpen = false;
+            wifiOtaParkGuardActive = false;
+            wifiOtaDeadlineMs = 0;
+        }
         mus4Logf("ota", "error: %u", error);
     });
 }
@@ -1137,6 +1163,7 @@ static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, Se
 
 static void updateWifiOta()
 {
+    if (wifiDevModeEnabled) keepDevModeOtaWindowActive();
     if (!wifiOtaWindowOpen) return;
     if (wifiOtaParkGuardActive) {
         forceWifiOtaParkLocked();
@@ -1145,7 +1172,7 @@ static void updateWifiOta()
         return;
     }
     unsigned long now = millis();
-    if (!wifiOtaInProgress && (long)(now - wifiOtaDeadlineMs) >= 0) {
+    if (!wifiDevModeEnabled && !wifiOtaInProgress && (long)(now - wifiOtaDeadlineMs) >= 0) {
         closeWifiOtaWindow("TIMEOUT");
         return;
     }
@@ -2687,6 +2714,7 @@ void setup()
     #ifdef ENABLE_WIFI_CONSOLE
       loadDevModePreference();
       setupWifiConsole();
+      keepDevModeOtaWindowActive();
     #endif
 
     g_i2cWorkingSpeed = I2C_SPEED;

@@ -239,12 +239,12 @@ const char* WIFI_CONSOLE_AP_SSID = "MUS4-DEBUG";
 const char* WIFI_CONSOLE_AP_PASSWORD = "mus4-debug";
 const uint16_t WIFI_CONSOLE_PORT = 2323;
 const uint16_t WIFI_WEB_CONSOLE_PORT = 80;
+const uint32_t WIFI_WEB_TELEMETRY_MIN_FREE_HEAP = 60000;
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 const uint16_t WIFI_WEB_SOCKET_PORT = 81;
 const unsigned long WIFI_WEB_SOCKET_PUSH_INTERVAL_MS = 50;
 const uint8_t WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME = 4;
 const uint16_t WIFI_WEB_SOCKET_KEEPALIVE_SECONDS = 30;
-const uint32_t WIFI_WEB_SOCKET_MIN_FREE_HEAP = 60000;
 #endif
 const uint8_t WIFI_CONSOLE_CHANNEL = 6;
 const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;
@@ -328,6 +328,9 @@ uint32_t wifiWebSocketClientId = 0;
 AsyncWebSocketClient* wifiWebSocketClient = nullptr;
 uint32_t wifiWebSocketClientLastSeq = 0;
 uint32_t wifiWebSocketDroppedPoints = 0;
+uint32_t wifiWebSocketQueueFullSkips = 0;
+uint32_t wifiWebSocketHeapSkips = 0;
+uint32_t wifiWebSocketFramesSent = 0;
 unsigned long lastWifiWebSocketPushMs = 0;
 String wifiWebSocketPayload;
 uint8_t wifiWebSocketBinaryPayload[256];
@@ -1296,7 +1299,7 @@ static void printWifiOtaStatus(Print& out)
 
 static void printWirelessStatus(Print& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u ws_port=%u ws_client=%d ws_dropped=%lu ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ip=%s\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ip=%s\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -1312,13 +1315,21 @@ static void printWirelessStatus(Print& out)
         MUS4_BUILD_DATE,
         MUS4_BUILD_TIME,
         WIFI_WEB_CONSOLE_PORT,
+        (unsigned long)ESP.getFreeHeap(),
+        (unsigned long)WIFI_WEB_TELEMETRY_MIN_FREE_HEAP,
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
         WIFI_WEB_SOCKET_PORT,
         wifiWebSocketClientConnected ? 1 : 0,
         wifiWebSocketDroppedPoints,
+        wifiWebSocketQueueFullSkips,
+        wifiWebSocketHeapSkips,
+        wifiWebSocketFramesSent,
 #else
         0,
         0,
+        0UL,
+        0UL,
+        0UL,
         0UL,
 #endif
         WiFi.softAPIP().toString().c_str(),
@@ -1943,10 +1954,19 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
 static void pushWifiWebSocketData()
 {
     if (!wifiWebSocketClientConnected) return;
-    if (!wifiWebSocketClient || !wifiWebSocketClient->canSend() || wifiWebSocketClient->queueIsFull()) return;
-    if (!wifiWebSocket.availableForWrite(wifiWebSocketClientId)) return;
+    if (!wifiWebSocketClient || !wifiWebSocketClient->canSend() || wifiWebSocketClient->queueIsFull()) {
+        wifiWebSocketQueueFullSkips++;
+        return;
+    }
+    if (!wifiWebSocket.availableForWrite(wifiWebSocketClientId)) {
+        wifiWebSocketQueueFullSkips++;
+        return;
+    }
     if (wifiOtaInProgress) return;
-    if (ESP.getFreeHeap() < WIFI_WEB_SOCKET_MIN_FREE_HEAP) return;
+    if (ESP.getFreeHeap() < WIFI_WEB_TELEMETRY_MIN_FREE_HEAP) {
+        wifiWebSocketHeapSkips++;
+        return;
+    }
     unsigned long now = millis();
     if (now - lastWifiWebSocketPushMs < WIFI_WEB_SOCKET_PUSH_INTERVAL_MS) return;
     if (wifiWebDataCount == 0 || wifiWebDataSeq <= wifiWebSocketClientLastSeq) return;
@@ -2013,6 +2033,7 @@ static void pushWifiWebSocketData()
     if (pointCount > 0 && wifiWebSocketClient && wifiWebSocketClient->canSend()) {
         wifiWebSocketClient->binary(wifiWebSocketBinaryPayload, cursor - wifiWebSocketBinaryPayload);
         wifiWebSocketClientLastSeq = lastSentSeq;
+        wifiWebSocketFramesSent++;
         lastWifiWebSocketPushMs = now;
     }
 }

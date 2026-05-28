@@ -87,8 +87,8 @@ def format_network_status(ap_ip, web_port, sta_configured, sta_connected, sta_ip
     )
 
 
-def is_ota_window_active(now_ms, deadline_ms):
-    return deadline_ms > 0 and now_ms < deadline_ms
+def is_ota_window_active(now_ms, deadline_ms, *, dev_mode=False):
+    return dev_mode or (deadline_ms > 0 and now_ms < deadline_ms)
 
 
 def should_emit_serial1_telemetry(ota_window_open, ota_in_progress):

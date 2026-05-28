@@ -1666,6 +1666,12 @@ static void recordWifiWebHandlerDt(unsigned long startedMs, uint32_t& maxDtMs)
     if (dt > maxDtMs) maxDtMs = dt;
 }
 
+static void sendWifiWebApiHeaders()
+{
+    wifiWebServer.sendHeader("Connection", "close");
+    wifiWebServer.sendHeader("Cache-Control", "no-store");
+}
+
 static void handleWifiWebStatus()
 {
     unsigned long startedMs = millis();
@@ -1673,6 +1679,7 @@ static void handleWifiWebStatus()
     String response;
     StringPrint out(response);
     printWirelessStatus(out);
+    sendWifiWebApiHeaders();
     wifiWebServer.send(200, "text/plain", response);
     recordWifiWebHandlerDt(startedMs, wifiWebStatusMaxDtMs);
 }
@@ -1684,6 +1691,7 @@ static void handleWifiWebCommand()
     String line = wifiWebServer.arg("plain");
     line.trim();
     if (line.length() == 0) {
+        sendWifiWebApiHeaders();
         wifiWebServer.send(400, "text/plain", "NACK:EMPTY\n");
         appendWifiWebLog("web", "> <empty>");
         appendWifiWebLog("cmd", "NACK:EMPTY");
@@ -1695,6 +1703,7 @@ static void handleWifiWebCommand()
     appendWifiWebLog("web", String("> ") + redactWirelessConsoleLine(line));
     processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_WEB);
     appendWifiWebLogLines("cmd", response);
+    sendWifiWebApiHeaders();
     wifiWebServer.send(200, "text/plain", response);
     recordWifiWebHandlerDt(startedMs, wifiWebCommandMaxDtMs);
 }
@@ -1821,6 +1830,7 @@ static void handleWifiWebLog()
         response += '}';
     }
     response += "]}";
+    sendWifiWebApiHeaders();
     wifiWebServer.send(200, "application/json", response);
     recordWifiWebHandlerDt(startedMs, wifiWebLogMaxDtMs);
 }
@@ -1920,6 +1930,7 @@ static void handleWifiWebData()
         response += "null";
     }
     response += '}';
+    sendWifiWebApiHeaders();
     wifiWebServer.send(200, "application/json", response);
     recordWifiWebHandlerDt(startedMs, wifiWebDataMaxDtMs);
 }

@@ -239,6 +239,12 @@ const uint16_t WIFI_OTA_PORT = 3232;
 const unsigned long WIFI_OTA_WINDOW_MS = 120000UL;
 const char* MUS4_PREF_NAMESPACE = "mus4";
 const char* MUS4_PREF_DEV_MODE_KEY = "dev_mode";
+const char* MUS4_PREF_STA_ENABLED_KEY = "sta_en";
+const char* MUS4_PREF_STA_SSID_KEY = "sta_ssid";
+const char* MUS4_PREF_STA_PASSWORD_KEY = "sta_pass";
+const uint8_t WIFI_STA_SSID_MAX_LEN = 32;
+const uint8_t WIFI_STA_PASSWORD_MAX_LEN = 63;
+const uint8_t WIFI_STA_PASSWORD_MIN_LEN = 8;
 const uint8_t WIFI_WEB_LOG_CAPACITY = 64;
 const uint16_t WIFI_WEB_DATA_CAPACITY = 256;
 const unsigned long WIFI_WEB_DATA_INTERVAL_MS = 16;
@@ -279,6 +285,9 @@ bool wifiOtaWindowOpen = false;
 bool wifiOtaInProgress = false;
 bool wifiOtaParkGuardActive = false;
 bool wifiDevModeEnabled = false;
+char wifiStaSsid[WIFI_STA_SSID_MAX_LEN + 1] = {0};
+char wifiStaPassword[WIFI_STA_PASSWORD_MAX_LEN + 1] = {0};
+bool wifiStaPasswordSet = false;
 Preferences mus4Prefs;
 unsigned long lastWifiConsoleStartAttemptMs = 0;
 unsigned long wifiStaConnectStartMs = 0;
@@ -702,8 +711,16 @@ static bool processLine(const String& line, int* throttle, int* steering, int* s
     return parseAndValidateCommand(line, throttle, steering);
 }
 
+#ifdef ENABLE_WIFI_CONSOLE
+static bool processWifiStaConfigCommand(const String& line, Print& out);
+static String wifiStaIpText();
+#else
+static bool processWifiStaConfigCommand(const String& line, Print& out) { return false; }
+#endif
+
 #define PROCESS_COMMAND_LINE(line, out, sb) do { \
     if (processLocalOtaMaintenanceCommand((line), (out), (sb))) { \
+    } else if (processWifiStaConfigCommand((line), (out))) { \
     } else if ((line).equalsIgnoreCase("TEST")) { \
         bool ok = runUnitTests(); \
         (out).printf("TEST: total=%d passed=%d ok=%d\n", testsTotal, testsPassed, ok ? 1 : 0); \
@@ -819,10 +836,18 @@ static bool isWirelessOtaCloseCommand(const String& line)
     return line.equalsIgnoreCase("DISABLE_OTA");
 }
 
+static bool isWifiStaConfigCommand(const String& line)
+{
+    return line.startsWith("WIFI_STA_SSID:") ||
+        line.startsWith("WIFI_STA_PASSWORD:") ||
+        line.equalsIgnoreCase("WIFI_STA_APPLY") ||
+        line.equalsIgnoreCase("WIFI_STA_CLEAR");
+}
+
 static bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin)
 {
     bool webDevMode = wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB;
-    if (line.equalsIgnoreCase("PING") || line.equalsIgnoreCase("STATUS")) return true;
+    if (line.equalsIgnoreCase("PING") || line.equalsIgnoreCase("STATUS") || line.equalsIgnoreCase("WIFI_STA_STATUS")) return true;
     if (line.startsWith("AUTH:")) return true;
     if (isWirelessOtaOpenCommand(line)) return webDevMode || (wifiConsoleAuthenticated && car_output.park == PARK_LOCKED);
     if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || wifiConsoleAuthenticated;
@@ -830,7 +855,7 @@ static bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin o
     if (line.equalsIgnoreCase("TEST") || line.equalsIgnoreCase("TEST_TUI") || line.equalsIgnoreCase("BENCH") || line.equalsIgnoreCase("STRESS") || line.equalsIgnoreCase("REGRESS") || line.equalsIgnoreCase("FILTER_TEST")) {
         return car_output.park == PARK_LOCKED;
     }
-    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL")) return true;
+    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || isWifiStaConfigCommand(line)) return true;
     return isWirelessControlCommand(line);
 }
 
@@ -938,6 +963,184 @@ static void appendWifiWebLogLines(const char* source, const String& text)
         if (line.length() > 0) appendWifiWebLog(source, line);
         start = end + 1;
     }
+}
+
+static String redactWirelessConsoleLine(const String& line)
+{
+    if (line.startsWith("AUTH:")) return "AUTH:<redacted>";
+    if (line.startsWith("WIFI_STA_PASSWORD:")) return "WIFI_STA_PASSWORD:<redacted>";
+    return line;
+}
+
+static bool copyWifiStaSsid(const String& ssid)
+{
+    if (ssid.length() == 0 || ssid.length() > WIFI_STA_SSID_MAX_LEN) return false;
+    ssid.toCharArray(wifiStaSsid, sizeof(wifiStaSsid));
+    return true;
+}
+
+static bool copyWifiStaPassword(const String& password)
+{
+    if (password.length() > 0 && (password.length() < WIFI_STA_PASSWORD_MIN_LEN || password.length() > WIFI_STA_PASSWORD_MAX_LEN)) return false;
+    password.toCharArray(wifiStaPassword, sizeof(wifiStaPassword));
+    wifiStaPasswordSet = password.length() > 0;
+    return true;
+}
+
+static void applyWifiStaCredentials()
+{
+    if (!wifiStaConfigured) return;
+    wifiStaConnected = false;
+    wifiStaTimedOut = false;
+    wifiStaConnectStartMs = millis();
+    WiFi.disconnect(false, false);
+    WiFi.begin(wifiStaSsid, wifiStaPassword);
+    mus4Logf("wifi", "STA connecting: %s", wifiStaSsid);
+}
+
+static void printWifiStaStatus(Print& out)
+{
+    out.printf("WIFI_STA configured=%d connected=%d timed_out=%d ssid=\"%s\" password_set=%d ap_ip=%s sta_ip=%s\n",
+        wifiStaConfigured ? 1 : 0,
+        wifiStaConnected ? 1 : 0,
+        wifiStaTimedOut ? 1 : 0,
+        wifiStaSsid,
+        wifiStaPasswordSet ? 1 : 0,
+        WiFi.softAPIP().toString().c_str(),
+        wifiStaIpText().c_str());
+}
+
+static bool saveWifiStaPreference(const String& ssid, const String& password)
+{
+    if (!copyWifiStaSsid(ssid) || !copyWifiStaPassword(password)) return false;
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = mus4Prefs.putBool(MUS4_PREF_STA_ENABLED_KEY, true);
+    size_t ssidWritten = mus4Prefs.putString(MUS4_PREF_STA_SSID_KEY, wifiStaSsid);
+    size_t passwordWritten = mus4Prefs.putString(MUS4_PREF_STA_PASSWORD_KEY, wifiStaPassword);
+    mus4Prefs.end();
+    if (enabledWritten == 0 || ssidWritten == 0 || (wifiStaPasswordSet && passwordWritten == 0)) return false;
+    wifiStaConfigured = true;
+    applyWifiStaCredentials();
+    return true;
+}
+
+static bool saveWifiStaSsidPreference(const String& ssid)
+{
+    if (!copyWifiStaSsid(ssid)) return false;
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = mus4Prefs.putBool(MUS4_PREF_STA_ENABLED_KEY, true);
+    size_t ssidWritten = mus4Prefs.putString(MUS4_PREF_STA_SSID_KEY, wifiStaSsid);
+    mus4Prefs.end();
+    if (enabledWritten == 0 || ssidWritten == 0) return false;
+    wifiStaConfigured = true;
+    return true;
+}
+
+static bool saveWifiStaPasswordPreference(const String& password)
+{
+    if (!copyWifiStaPassword(password)) return false;
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = mus4Prefs.putBool(MUS4_PREF_STA_ENABLED_KEY, true);
+    size_t passwordWritten = mus4Prefs.putString(MUS4_PREF_STA_PASSWORD_KEY, wifiStaPassword);
+    mus4Prefs.end();
+    if (enabledWritten == 0 || (wifiStaPasswordSet && passwordWritten == 0)) return false;
+    return true;
+}
+
+static bool clearWifiStaPreference()
+{
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = mus4Prefs.putBool(MUS4_PREF_STA_ENABLED_KEY, false);
+    mus4Prefs.remove(MUS4_PREF_STA_SSID_KEY);
+    mus4Prefs.remove(MUS4_PREF_STA_PASSWORD_KEY);
+    mus4Prefs.end();
+    if (enabledWritten == 0) return false;
+    wifiStaSsid[0] = 0;
+    wifiStaPassword[0] = 0;
+    wifiStaPasswordSet = false;
+    wifiStaConfigured = false;
+    wifiStaConnected = false;
+    wifiStaTimedOut = false;
+    WiFi.disconnect(false, false);
+    return true;
+}
+
+static void loadWifiStaPreference()
+{
+    wifiStaSsid[0] = 0;
+    wifiStaPassword[0] = 0;
+    wifiStaPasswordSet = false;
+    wifiStaConfigured = false;
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) {
+        copyWifiStaSsid(String(WIFI_STA_SSID));
+        copyWifiStaPassword(String(WIFI_STA_PASSWORD));
+        wifiStaConfigured = strlen(wifiStaSsid) > 0;
+        mus4LogLine("wifi", "STA config load failed, using build defaults");
+        return;
+    }
+    bool hasStaEnabled = mus4Prefs.isKey(MUS4_PREF_STA_ENABLED_KEY);
+    bool staEnabled = mus4Prefs.getBool(MUS4_PREF_STA_ENABLED_KEY, false);
+    String ssid = hasStaEnabled && staEnabled ? mus4Prefs.getString(MUS4_PREF_STA_SSID_KEY, "") : String(WIFI_STA_SSID);
+    String password = hasStaEnabled && staEnabled ? mus4Prefs.getString(MUS4_PREF_STA_PASSWORD_KEY, "") : String(WIFI_STA_PASSWORD);
+    mus4Prefs.end();
+    if (hasStaEnabled && !staEnabled) {
+        mus4LogLine("wifi", "STA disabled by preference");
+        return;
+    }
+    if (copyWifiStaSsid(ssid) && copyWifiStaPassword(password)) {
+        wifiStaConfigured = strlen(wifiStaSsid) > 0;
+    } else {
+        wifiStaSsid[0] = 0;
+        wifiStaPassword[0] = 0;
+        wifiStaPasswordSet = false;
+        wifiStaConfigured = false;
+        mus4LogLine("wifi", "STA config invalid");
+    }
+}
+
+static bool processWifiStaConfigCommand(const String& line, Print& out)
+{
+    if (line.equalsIgnoreCase("WIFI_STA_STATUS")) {
+        printWifiStaStatus(out);
+        return true;
+    }
+    if (line.startsWith("WIFI_STA_SSID:")) {
+        String ssid = line.substring(14);
+        ssid.trim();
+        if (!saveWifiStaSsidPreference(ssid)) {
+            out.println("NACK:WIFI_STA_SSID");
+            return true;
+        }
+        out.printf("WIFI_STA_SSID_SAVED configured=%d\n", wifiStaConfigured ? 1 : 0);
+        return true;
+    }
+    if (line.startsWith("WIFI_STA_PASSWORD:")) {
+        String password = line.substring(18);
+        if (!saveWifiStaPasswordPreference(password)) {
+            out.println("NACK:WIFI_STA_PASSWORD");
+            return true;
+        }
+        out.printf("WIFI_STA_PASSWORD_SAVED password_set=%d\n", wifiStaPasswordSet ? 1 : 0);
+        return true;
+    }
+    if (line.equalsIgnoreCase("WIFI_STA_APPLY")) {
+        if (!wifiStaConfigured) {
+            out.println("NACK:WIFI_STA_NOT_CONFIGURED");
+            return true;
+        }
+        applyWifiStaCredentials();
+        out.printf("WIFI_STA_APPLY_OK ssid=\"%s\"\n", wifiStaSsid);
+        return true;
+    }
+    if (line.equalsIgnoreCase("WIFI_STA_CLEAR")) {
+        if (!clearWifiStaPreference()) {
+            out.println("NACK:WIFI_STA_CLEAR");
+            return true;
+        }
+        out.println("WIFI_STA_CLEARED");
+        return true;
+    }
+    return false;
 }
 #endif
 
@@ -1212,6 +1415,9 @@ static void processWirelessConsoleLine(const String& line, Print& out, WirelessC
         out.println("OTA_CLOSED");
         return;
     }
+    if (processWifiStaConfigCommand(line, out)) {
+        return;
+    }
     PROCESS_COMMAND_LINE(line, out, wifiConsoleBuf);
 }
 
@@ -1251,6 +1457,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <div id="modeCard" class="stateCard"><div class="stateHead">Mode</div><div class="stateValue" id="modeValue">--</div><div class="stateSub" id="modeSub">waiting</div><span class="stateDot"></span></div>
 <div id="parkCard" class="stateCard"><div class="stateHead">Park</div><div class="stateValue" id="parkValue">--</div><div class="stateSub" id="parkSub">waiting</div><span class="stateDot"></span></div>
 <div id="driftCard" class="stateCard"><div class="stateHead">Drift</div><div class="stateValue" id="driftValue">--</div><div class="stateSub" id="driftSub">waiting</div><div class="driftBar"><i id="driftNeedle"></i></div><span class="stateDot"></span></div>
+<div id="networkCard" class="stateCard"><div class="stateHead">Network</div><div class="stateValue" id="apIpValue">AP --</div><div class="stateSub" id="staIpValue">STA --</div><span class="stateDot"></span></div>
 </div>
 <div class="rcGrid"><div class="rcCell"><b>CH1 Steering</b><span id="ch1Value">----</span></div><div class="rcCell"><b>CH2 Throttle</b><span id="ch2Value">----</span></div><div class="rcCell"><b>CH3 Park</b><span id="ch3Value">----</span></div><div class="rcCell modeCh"><b>CH4 Mode</b><span id="ch4Value">----</span></div><div class="rcCell"><b>CH5 Drift</b><span id="ch5Value">----</span></div><div class="rcCell"><b>CH6 Scale</b><span id="ch6Value">----</span></div></div>
 <div id="status">loading...</div>
@@ -1260,6 +1467,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <div class="row" style="margin:8px 0"><button onclick="quick('PING')">PING</button><button onclick="quick('STATUS')">STATUS</button><button onclick="quick('AUTH:mus4-debug')">AUTH</button><button onclick="quick('ENABLE_OTA')">ENABLE_OTA</button><button onclick="quick('OTA_STATUS')">OTA_STATUS</button></div>
 <div class="row" style="margin:8px 0"><label><input type="checkbox" id="devModeToggle" onchange="setDevMode(this.checked)"> 开发模式</label><span class="muted" id="devModeState">loading</span></div>
 <div class="muted">开发模式会持久化；仅 Web OTA 免认证，OTA 激活后强制 Park，不放宽控制命令。</div>
+<div class="panel" style="margin:10px 0;padding:8px"><div class="stateHead">STA Wi-Fi 配置</div><div class="row" style="margin-top:8px"><input id="staSsid" placeholder="STA SSID"><input id="staPassword" type="password" placeholder="Wi-Fi 密码，留空表示开放网络"></div><div class="row" style="margin-top:8px"><button onclick="saveWifiSta()">保存并连接</button><button onclick="clearWifiSta()">清除 STA 配置</button><span class="muted" id="staConfigState">loading</span></div><div class="muted">保存前请先 AUTH；密码不会回显，凭据会保存到设备 NVS。</div></div>
 <div id="log" class="log"></div><div class="muted" id="logMeta">log ready</div>
 </section>
 <section class="panel">
@@ -1270,20 +1478,25 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 </section>
 </div>
 <script>
-const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),logMeta=document.getElementById('logMeta'),dataMeta=document.getElementById('dataMeta'),devModeToggle=document.getElementById('devModeToggle'),devModeState=document.getElementById('devModeState'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
+const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),logMeta=document.getElementById('logMeta'),dataMeta=document.getElementById('dataMeta'),devModeToggle=document.getElementById('devModeToggle'),devModeState=document.getElementById('devModeState'),staSsid=document.getElementById('staSsid'),staPassword=document.getElementById('staPassword'),staConfigState=document.getElementById('staConfigState'),apIpValue=document.getElementById('apIpValue'),staIpValue=document.getElementById('staIpValue'),networkCard=document.getElementById('networkCard'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
 let lastLogSeq=0,lastDataSeq=0,lastDrawMs=0,pointHead=0,pointCount=0,logPaused=false,chartPaused=false,dataPolling=false,drawPending=false,points=new Array(256);
 function line(t){if(logPaused)return;log.textContent+=t+'\n';if(log.textContent.length>16000)log.textContent=log.textContent.slice(-12000);log.scrollTop=log.scrollHeight}
 function clearLog(){log.textContent=''}
 function togglePause(){logPaused=!logPaused;document.getElementById('pauseBtn').textContent=logPaused?'继续日志':'暂停日志'}
 function toggleChart(){chartPaused=!chartPaused;document.getElementById('chartBtn').textContent=chartPaused?'继续曲线':'暂停曲线'}
 function clearChart(){pointHead=0;pointCount=0;points.fill(null);scheduleDraw()}
-async function refreshStatus(){try{const r=await fetch('/api/status');statusBox.textContent=await r.text()}catch(e){statusBox.textContent='status error: '+e}}
+function parseStatusText(t){const m={};t.trim().split(/\s+/).forEach(x=>{const i=x.indexOf('=');if(i>0)m[x.slice(0,i)]=x.slice(i+1).replace(/^\"|\"$/g,'')});return m}
+function updateNetworkCard(s){const ap=s.ap_ip||'--',sta=s.sta_ip||'0.0.0.0',configured=s.sta_configured==='1',connected=s.sta_connected==='1';apIpValue.textContent='AP '+ap;staIpValue.textContent=configured?(connected?'STA '+sta:'STA pending '+sta):'STA disabled';networkCard.className='stateCard '+(connected?'mode0':configured?'mode1':'driftOff')}
+async function refreshStatus(){try{const r=await fetch('/api/status');const t=await r.text();statusBox.textContent=t;updateNetworkCard(parseStatusText(t))}catch(e){statusBox.textContent='status error: '+e}}
 async function pollLog(){try{const r=await fetch('/api/log?since='+lastLogSeq);const j=await r.json();for(const e of j.entries){lastLogSeq=Math.max(lastLogSeq,e.seq);line('['+e.t+']['+e.src+'] '+e.line)}logMeta.textContent='seq='+lastLogSeq+' dropped='+j.dropped}catch(e){logMeta.textContent='log error: '+e}}
 function updateState(p){const modes={0:['RC','Manual input'],1:['ASSIST','Pilot steering'],2:['AUTO','Pilot control']},m=modes[p.mode]||['MODE '+p.mode,'unknown'];modeCard.className='stateCard mode'+p.mode;modeValue.textContent=m[0];modeSub.textContent=m[1];parkCard.className='stateCard '+(p.park?'parkLocked':'parkUnlocked');parkValue.textContent=p.park?'LOCKED':'UNLOCKED';parkSub.textContent=p.park?'output guarded':'drive enabled';const de=!!p.de,da=!!p.da,dc=Number(p.dc||0),gzf=Number(p.gzf||0);driftCard.className='stateCard '+(!de?'driftOff':da?'driftActive':'driftArmed');driftValue.textContent=!de?'OFF':da?'ACTIVE':'ARMED';driftSub.textContent='comp='+dc.toFixed(1)+' gzf='+gzf.toFixed(2);driftNeedle.style.left=Math.max(0,Math.min(100,(Math.max(-70,Math.min(70,dc))+70)*100/140))+'%';[p.ch1,p.ch2,p.ch3,p.ch4,p.ch5,p.ch6].forEach((v,i)=>chValues[i].textContent=v??'----')}
 async function pollData(){if(dataPolling)return;dataPolling=true;let delay=16;const start=performance.now();try{const r=await fetch('/api/data?since='+lastDataSeq);const arr=await r.json();let latest=null;for(const p of arr){lastDataSeq=Math.max(lastDataSeq,p.seq);latest=p;if(!chartPaused)addPoint(p)}if(latest)updateState(latest);if(arr.length&&!chartPaused)scheduleDraw();const p=latest||latestPoint(),elapsed=performance.now()-start;delay=Math.max(16,Math.min(48,Math.round(elapsed*1.5)));dataMeta.textContent=p?'seq='+lastDataSeq+' thr='+p.thr+' str='+p.str+' ch4='+p.ch4+' cur='+p.cur+' gz='+p.gz+' dt='+Math.round(elapsed)+'ms':'waiting data'}catch(e){delay=64;dataMeta.textContent='data error: '+e}finally{dataPolling=false;setTimeout(pollData,delay)}}
 async function sendCmd(){const v=cmd.value.trim();if(!v)return;await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});cmd.value='';refreshStatus()}
 async function refreshDevMode(){try{const r=await fetch('/api/devmode');const j=await r.json();devModeToggle.checked=!!j.enabled;devModeState.textContent=j.enabled?'ON':'OFF'}catch(e){devModeState.textContent='dev mode error'}}
 async function setDevMode(v){if(v&&!confirm('开发模式会持久化，并允许 Web Console 免认证打开 OTA。不会放宽控制命令。确认开启？')){devModeToggle.checked=false;return}try{const r=await fetch('/api/devmode',{method:'POST',headers:{'Content-Type':'text/plain'},body:v?'1':'0'});if(!r.ok)throw new Error(await r.text());const j=await r.json();devModeToggle.checked=!!j.enabled;devModeState.textContent=j.enabled?'ON':'OFF';refreshStatus()}catch(e){line('dev mode error: '+e);refreshDevMode()}}
+async function refreshWifiSta(){try{const r=await fetch('/api/wifi-sta');const j=await r.json();if(document.activeElement!==staSsid)staSsid.value=j.ssid||'';staConfigState.textContent=(j.configured?'configured':'disabled')+' / '+(j.connected?'connected':j.timed_out?'timeout':'pending')+' / AP '+j.ap_ip+' / STA '+j.sta_ip+' / password '+(j.password_set?'set':'empty')}catch(e){staConfigState.textContent='sta error'}}
+async function saveWifiSta(){try{const body=new URLSearchParams();body.set('ssid',staSsid.value.trim());body.set('password',staPassword.value);const r=await fetch('/api/wifi-sta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok)throw new Error(await r.text());staPassword.value='';await refreshWifiSta();refreshStatus()}catch(e){line('wifi sta save error: '+e)}}
+async function clearWifiSta(){if(!confirm('确认清除并禁用 STA 配置？'))return;try{const r=await fetch('/api/wifi-sta/clear',{method:'POST'});if(!r.ok)throw new Error(await r.text());staPassword.value='';await refreshWifiSta();refreshStatus()}catch(e){line('wifi sta clear error: '+e)}}
 async function quick(v){cmd.value=v;await sendCmd()}
 cmd.addEventListener('keydown',e=>{if(e.key==='Enter')sendCmd()});
 function addPoint(p){points[pointHead]=p;pointHead=(pointHead+1)%points.length;if(pointCount<points.length)pointCount++}
@@ -1293,7 +1506,7 @@ function map(v,min,max,h){if(max===min)return h/2;return h-(v-min)*(h/(max-min))
 function drawSeries(key,color,min,max){const w=canvas.width,h=canvas.height,pad=24;ctx.strokeStyle=color;ctx.beginPath();for(let i=0;i<pointCount;i++){const p=pointAt(i),v=p?p[key]:0,x=pad+i*(w-pad*2)/Math.max(1,pointCount-1),y=pad+map(v,min,max,h-pad*2);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)}ctx.stroke()}
 function scheduleDraw(){if(drawPending)return;drawPending=true;const wait=Math.max(0,33-(performance.now()-lastDrawMs));setTimeout(()=>requestAnimationFrame(()=>{drawPending=false;lastDrawMs=performance.now();draw()}),wait)}
 function draw(){const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);ctx.strokeStyle='#233041';ctx.lineWidth=1;for(let i=0;i<5;i++){const y=20+i*(h-40)/4;ctx.beginPath();ctx.moveTo(24,y);ctx.lineTo(w-16,y);ctx.stroke()}ctx.lineWidth=2;drawSeries('thr','#39d98a',-100,100);drawSeries('str','#5cc8ff',-100,100);drawSeries('cur','#ffcc66',-1000,3000);drawSeries('gz','#ff6b6b',-5,5);drawSeries('ch3','#d96bff',900,2100);drawSeries('ch4','#f472b6',900,2100);drawSeries('ch5','#a3e635',900,2100);drawSeries('ch6','#fb923c',900,2100)}
-refreshStatus();refreshDevMode();setInterval(refreshStatus,3000);setInterval(pollLog,200);setTimeout(pollData,1000);draw();
+refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,3000);setInterval(refreshWifiSta,5000);setInterval(pollLog,200);setTimeout(pollData,1000);draw();
 </script>
 </body>
 </html>
@@ -1324,7 +1537,7 @@ static void handleWifiWebCommand()
     }
     String response;
     StringPrint out(response);
-    appendWifiWebLog("web", String("> ") + line);
+    appendWifiWebLog("web", String("> ") + redactWirelessConsoleLine(line));
     processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_WEB);
     appendWifiWebLogLines("cmd", response);
     wifiWebServer.send(200, "text/plain", response);
@@ -1356,6 +1569,72 @@ static void handleWifiWebDevModeSet()
     }
     String response = String("{\"enabled\":") + (wifiDevModeEnabled ? "true" : "false") + ",\"saved\":true}";
     wifiWebServer.send(200, "application/json", response);
+}
+
+static String wifiStaJson()
+{
+    String response;
+    response.reserve(192);
+    response += "{\"configured\":";
+    response += wifiStaConfigured ? "true" : "false";
+    response += ",\"connected\":";
+    response += wifiStaConnected ? "true" : "false";
+    response += ",\"timed_out\":";
+    response += wifiStaTimedOut ? "true" : "false";
+    response += ",\"ssid\":";
+    appendJsonString(response, wifiStaSsid);
+    response += ",\"password_set\":";
+    response += wifiStaPasswordSet ? "true" : "false";
+    response += ",\"ap_ip\":";
+    appendJsonString(response, WiFi.softAPIP().toString().c_str());
+    response += ",\"sta_ip\":";
+    appendJsonString(response, wifiStaIpText().c_str());
+    response += "}";
+    return response;
+}
+
+static void handleWifiWebSta()
+{
+    wifiWebServer.send(200, "application/json", wifiStaJson());
+}
+
+static void handleWifiWebStaSet()
+{
+    if (!wifiConsoleAuthenticated) {
+        wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
+        return;
+    }
+    String ssid = wifiWebServer.arg("ssid");
+    String password = wifiWebServer.arg("password");
+    ssid.trim();
+    if (ssid.length() == 0 || ssid.length() > WIFI_STA_SSID_MAX_LEN) {
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_ssid\"}");
+        return;
+    }
+    if (password.length() > 0 && (password.length() < WIFI_STA_PASSWORD_MIN_LEN || password.length() > WIFI_STA_PASSWORD_MAX_LEN)) {
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_password\"}");
+        return;
+    }
+    if (!saveWifiStaPreference(ssid, password)) {
+        wifiWebServer.send(500, "application/json", "{\"saved\":false}");
+        return;
+    }
+    appendWifiWebLog("web", String("wifi sta saved ssid=") + wifiStaSsid + " password=<redacted>");
+    wifiWebServer.send(200, "application/json", String("{\"saved\":true,\"applied\":true,\"state\":") + wifiStaJson() + "}");
+}
+
+static void handleWifiWebStaClear()
+{
+    if (!wifiConsoleAuthenticated) {
+        wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
+        return;
+    }
+    if (!clearWifiStaPreference()) {
+        wifiWebServer.send(500, "application/json", "{\"cleared\":false}");
+        return;
+    }
+    appendWifiWebLog("web", "wifi sta cleared");
+    wifiWebServer.send(200, "application/json", "{\"cleared\":true}");
 }
 
 static void handleWifiWebLog()
@@ -1459,6 +1738,9 @@ static void setupWifiWebConsole()
     wifiWebServer.on("/api/cmd", HTTP_POST, handleWifiWebCommand);
     wifiWebServer.on("/api/devmode", HTTP_GET, handleWifiWebDevMode);
     wifiWebServer.on("/api/devmode", HTTP_POST, handleWifiWebDevModeSet);
+    wifiWebServer.on("/api/wifi-sta", HTTP_GET, handleWifiWebSta);
+    wifiWebServer.on("/api/wifi-sta", HTTP_POST, handleWifiWebStaSet);
+    wifiWebServer.on("/api/wifi-sta/clear", HTTP_POST, handleWifiWebStaClear);
     wifiWebServer.on("/api/log", HTTP_GET, handleWifiWebLog);
     wifiWebServer.on("/api/data", HTTP_GET, handleWifiWebData);
     wifiWebServer.begin();
@@ -1474,7 +1756,6 @@ static void updateWifiWebConsole()
 static void setupWifiConsole()
 {
     lastWifiConsoleStartAttemptMs = millis();
-    wifiStaConfigured = strlen(WIFI_STA_SSID) > 0;
     wifiStaConnected = false;
     wifiStaTimedOut = false;
     WiFi.disconnect(true, true);
@@ -1495,9 +1776,7 @@ static void setupWifiConsole()
         return;
     }
     if (wifiStaConfigured) {
-        wifiStaConnectStartMs = millis();
-        WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASSWORD);
-        mus4Logf("wifi", "STA connecting: %s", WIFI_STA_SSID);
+        applyWifiStaCredentials();
     }
     wifiConsoleServer.begin();
     wifiConsoleServer.setNoDelay(true);
@@ -1559,7 +1838,7 @@ static void updateWifiConsole()
             line.trim();
             String response;
             StringPrint out(response);
-            appendWifiWebLog("tcp", String("> ") + line);
+            appendWifiWebLog("tcp", String("> ") + redactWirelessConsoleLine(line));
             processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_TCP);
             wifiConsoleClient.print(response);
             appendWifiWebLogLines("cmd", response);
@@ -2713,6 +2992,7 @@ void setup()
     #endif
     #ifdef ENABLE_WIFI_CONSOLE
       loadDevModePreference();
+      loadWifiStaPreference();
       setupWifiConsole();
       keepDevModeOtaWindowActive();
     #endif

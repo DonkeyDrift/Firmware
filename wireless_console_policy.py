@@ -1,6 +1,7 @@
-PUBLIC_COMMANDS = {"PING", "STATUS", "AUTH"}
+PUBLIC_COMMANDS = {"PING", "STATUS", "AUTH", "WIFI_STA_STATUS"}
 PARK_LOCKED_COMMANDS = {"TEST", "TEST_TUI", "BENCH", "STRESS", "REGRESS", "FILTER_TEST"}
 GENERAL_AUTHENTICATED_COMMANDS = {"ANSI", "NOANSI", "FILTER_DEBUG", "LOG_WEB", "LOG_SERIAL"}
+WIFI_STA_CONFIG_COMMANDS = {"WIFI_STA_SSID", "WIFI_STA_PASSWORD", "WIFI_STA_APPLY", "WIFI_STA_CLEAR"}
 OTA_OPEN_COMMANDS = {"ENABLE_OTA"}
 OTA_STATUS_COMMANDS = {"OTA_STATUS"}
 OTA_CLOSE_COMMANDS = {"DISABLE_OTA"}
@@ -35,9 +36,19 @@ def is_wireless_command_allowed(line, authenticated, park_locked, *, dev_mode=Fa
         return False
     if command in PARK_LOCKED_COMMANDS:
         return park_locked
-    if command in GENERAL_AUTHENTICATED_COMMANDS:
+    if command in GENERAL_AUTHENTICATED_COMMANDS or command in WIFI_STA_CONFIG_COMMANDS:
         return True
     return is_control_command(line)
+
+
+def redact_wireless_console_line(line):
+    stripped = line.strip()
+    command = normalize_wireless_command(stripped)
+    if command == "AUTH":
+        return "AUTH:<redacted>"
+    if command == "WIFI_STA_PASSWORD":
+        return "WIFI_STA_PASSWORD:<redacted>"
+    return line
 
 
 def is_web_command_allowed(line, authenticated, park_locked, dev_mode=False):

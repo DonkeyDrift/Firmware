@@ -29,7 +29,7 @@ MUS4（LP-MU-S4）是基于 ESP32 的遥控车辆/机器人底层控制系统，
 mus4/
 ├── mus4.ino                    # 主固件入口（~3700 行），包含 setup/loop/状态机/控制逻辑
 ├── SharedTypes.h               # 跨模块共享数据结构（SensorData、ControlData 等）
-├── BuildInfo.h                 # 固件版本与构建时间宏
+├── BuildInfo.h                 # 固件版本与构建时间宏（当前 v1.5.4）
 ├── TUI.h / TUI.cpp             # ANSI 终端仪表盘，支持脏矩形增量刷新与降级模式
 ├── Buzzer.h / Buzzer.cpp       # 蜂鸣器状态机（模式/停车提示音）
 ├── WirelessSecrets.h           # Wi-Fi STA 凭据（本地文件，不提交）
@@ -163,6 +163,7 @@ python provisioning_system/tests/test_agent.py -v
 | 命令 | 说明 |
 |------|------|
 | `TEST` | 运行固件内置命令解析单元测试 |
+| `TEST_TUI` | TUI 测试入口（当前输出 skipped） |
 | `BENCH` | 运行 TUI/循环性能基准测试 |
 | `STRESS` | 运行串口压力统计 |
 | `REGRESS` | 运行固件回归校验 |
@@ -273,7 +274,7 @@ Txx:Sxx\n
 ### 7.2 无线安全
 
 - 无线命令分层权限：
-  - **公开**: `PING`, `STATUS`, `AUTH`
+  - **公开**: `PING`, `STATUS`, `AUTH`, `WIFI_STA_STATUS`
   - **需认证**: `ANSI`, `NOANSI`, `FILTER_DEBUG`, `LOG_WEB`, `LOG_SERIAL`, Wi-Fi STA 配置
   - **需认证 + Park 锁定**: `TEST`, `BENCH`, `STRESS`, `REGRESS`, `FILTER_TEST`
   - **需认证 + Park 锁定（或开发模式）**: `ENABLE_OTA`

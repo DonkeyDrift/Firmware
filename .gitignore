@@ -42,3 +42,6 @@ provisioning_system/playwright_tests/
 tests/__pycache__/
 __pycache__/
 WirelessSecrets.h
+
+# Local OTA target configuration
+.mus4_ota_target

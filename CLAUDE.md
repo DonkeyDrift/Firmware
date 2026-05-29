@@ -137,12 +137,12 @@ pytest tests/ -v
 ## Configuration
 
 - `config.yaml`：`arduino-cli.py` 的主配置，包含 `arduino_cli`、`fqbn`、`port`、`baudrate`、`sketch_path`、`build_path`、串口自动检测与日志配置。
-- `sketch.yaml`：Arduino CLI 项目级默认配置，当前默认 FQBN 为 `esp32:esp32:dfrobot_firebeetle2_esp32e`，默认端口为 `/dev/ttyS4`。
+- `sketch.yaml`：Arduino CLI 项目级默认配置，当前默认 FQBN 为 `esp32:esp32:esp32:PartitionScheme=min_spiffs`，默认端口为 `/dev/ttyS4`。
 - `wslbuild.yaml`（若存在）：`arduino-cli-wsl.ps1` 会读取其中的 `distro`、`sketch`、`fqbn`、`work_dir`、`io_mode`、`sync_libs`、`extra_sync_args` 等覆盖项；命令行参数优先级最高。
 - `WirelessSecrets.example.h`：Wi-Fi STA 凭据模板；本地 `WirelessSecrets.h` 可被 `mus4.ino` 自动包含，但可能含真实凭据，提交前必须检查且通常不应纳入提交。
 
 当前 `config.yaml` 默认：
-- FQBN：`esp32:esp32:esp32`
+- FQBN：`esp32:esp32:esp32:PartitionScheme=min_spiffs`
 - sketch：`mus4.ino`
 - build path：`build`
 - baudrate：`115200`

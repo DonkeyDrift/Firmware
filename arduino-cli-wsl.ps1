@@ -121,7 +121,10 @@ param(
     [switch]$Clean,
 
     [Parameter(HelpMessage="Path to wslbuild.yaml config file (default: project root/wslbuild.yaml)")]
-    [string]$Config
+    [string]$Config,
+
+    [Parameter(HelpMessage="Check firmware size against ESP32 partition table and give recommendations")]
+    [switch]$CheckPartition
 )
 
 $ErrorActionPreference = "Stop"
@@ -315,6 +318,212 @@ function Run-WithAnimation {
         [Console]::Write("`r$esc[K$esc[32m  $TaskName - Done!$esc[0m`n")
         return $true
     }
+}
+
+# ==============================================================================
+# 分区大小检查模块
+# ==============================================================================
+
+<#
+.SYNOPSIS
+    从 FQBN 字符串中提取 PartitionScheme
+#>
+function Get-PartitionSchemeFromFQBN {
+    param([string]$FQBN)
+
+    if ($FQBN -match 'PartitionScheme=([^:,]+)') {
+        return $matches[1]
+    }
+    return "default"
+}
+
+<#
+.SYNOPSIS
+    在 WSL 中查找 ESP32 平台分区表目录
+#>
+function Find-Esp32PartitionTableDir {
+    $searchPatterns = @(
+        "`$HOME/.arduino15/packages/esp32/hardware/esp32/*/tools/partitions"
+        "`$HOME/Arduino/packages/esp32/hardware/esp32/*/tools/partitions"
+        "/usr/share/arduino/packages/esp32/hardware/esp32/*/tools/partitions"
+    )
+
+    foreach ($pattern in $searchPatterns) {
+        $result = Invoke-WslCommand -Command "ls -d $pattern 2>/dev/null | head -1" -IgnoreExitCode
+        $cleanResult = ($result | Out-String).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($cleanResult) -and $cleanResult -match 'partitions$') {
+            return $cleanResult
+        }
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
+    读取分区表 CSV，返回 app0 大小（字节）
+#>
+function Get-AppPartitionSize {
+    param([string]$PartitionDir, [string]$Scheme)
+
+    $csvPath = "$PartitionDir/$Scheme.csv"
+    $content = Invoke-WslCommand -Command "cat `"$csvPath`" 2>/dev/null || echo ''" -IgnoreExitCode
+    $cleanContent = ($content | Out-String).Trim()
+
+    if ([string]::IsNullOrWhiteSpace($cleanContent)) {
+        return 0
+    }
+
+    foreach ($line in $cleanContent -split "`n") {
+        $trimmed = $line.Trim()
+        if ($trimmed.StartsWith('#') -or [string]::IsNullOrWhiteSpace($trimmed)) { continue }
+
+        $parts = $trimmed -split ','
+        if ($parts.Count -ge 5) {
+            $name = $parts[0].Trim()
+            $type = $parts[1].Trim()
+
+            if ($name -eq 'app0' -and $type -eq 'app') {
+                $sizeStr = $parts[4].Trim()
+                # 支持 0x 前缀的十六进制
+                if ($sizeStr -match '^0x([0-9a-fA-F]+)$') {
+                    return [Convert]::ToInt32($matches[1], 16)
+                }
+                # 支持十进制
+                if ($sizeStr -match '^\d+$') {
+                    return [int]$sizeStr
+                }
+            }
+        }
+    }
+    return 0
+}
+
+<#
+.SYNOPSIS
+    获取固件大小估算值（字节）。优先编译产物，其次历史 build 目录
+#>
+function Get-FirmwareSizeEstimate {
+    param([string]$ProjectRoot, [string]$BuildDir = "build_wsl")
+
+    $searchDirs = @(
+        (Join-Path $ProjectRoot $BuildDir)
+        (Join-Path $ProjectRoot "build")
+    )
+
+    foreach ($dir in $searchDirs) {
+        if (Test-Path $dir) {
+            $bin = Get-ChildItem -Path $dir -Filter "*.bin" -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -notmatch '\.(bootloader|partitions|merged)\.bin$' } |
+                Sort-Object LastWriteTime -Descending |
+                Select-Object -First 1
+
+            if ($bin) {
+                return @{
+                    Size = $bin.Length
+                    Path = $bin.FullName
+                    LastWrite = $bin.LastWriteTime
+                }
+            }
+        }
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
+    执行固件大小与分区匹配度检查，并输出评估报告
+#>
+function Invoke-PartitionFitCheck {
+    param(
+        [string]$FQBN,
+        [string]$ProjectRoot,
+        [string]$BuildDir = "build_wsl",
+        [switch]$PreBuild
+    )
+
+    $partitionScheme = Get-PartitionSchemeFromFQBN -FQBN $FQBN
+    $partitionDir = Find-Esp32PartitionTableDir
+
+    if (-not $partitionDir) {
+        Write-Warning "无法定位 ESP32 分区表目录，跳过分区检查"
+        return
+    }
+
+    $appSize = Get-AppPartitionSize -PartitionDir $partitionDir -Scheme $partitionScheme
+    if ($appSize -eq 0) {
+        Write-Warning "未找到分区方案 '$partitionScheme' 的分区表，跳过检查"
+        return
+    }
+
+    $fwInfo = Get-FirmwareSizeEstimate -ProjectRoot $ProjectRoot -BuildDir $BuildDir
+
+    Write-Host "`n=== Partition Fit Report ===" -ForegroundColor Cyan
+    Write-Host "FQBN:        $FQBN" -ForegroundColor Gray
+    Write-Host "Partition:   $partitionScheme" -ForegroundColor Gray
+    Write-Host "App0 limit:  $($appSize) bytes ($([math]::Round($appSize/1KB,1)) KB / $([math]::Round($appSize/1MB,2)) MB)" -ForegroundColor Gray
+
+    if (-not $fwInfo) {
+        Write-Host "Firmware:    (无历史构建产物，编译后将再次检查)" -ForegroundColor Yellow
+        Write-Host "==============================`n" -ForegroundColor Cyan
+        return
+    }
+
+    $fwSize = $fwInfo.Size
+    $pct = [math]::Round(($fwSize / $appSize) * 100, 1)
+
+    $phaseLabel = if ($PreBuild) { "预估（基于历史产物）" } else { "实际" }
+    Write-Host "Firmware:    $($fwSize) bytes ($([math]::Round($fwSize/1KB,1)) KB) [$phaseLabel]" -ForegroundColor Gray
+    Write-Host "Utilization: $pct%" -ForegroundColor $(if ($pct -gt 95) { "Red" } elseif ($pct -gt 80) { "Yellow" } else { "Green" })
+
+    # 评估与建议
+    $recommendations = @()
+
+    if ($pct -gt 100) {
+        Write-Host "Status:      CRITICAL - 固件已超过 app0 分区大小，编译或上传必然失败!" -ForegroundColor Red
+        $recommendations += "当前固件 ($([math]::Round($fwSize/1KB,1)) KB) 超过 app0 分区 ($([math]::Round($appSize/1KB,1)) KB)"
+    } elseif ($pct -gt 95) {
+        Write-Host "Status:      WARNING - 固件非常接近分区上限，OTA 可能失败（OTA 需要约 2x 空闲空间）" -ForegroundColor Red
+        $recommendations += "空间极度紧张，建议更换分区方案"
+    } elseif ($pct -gt 80) {
+        Write-Host "Status:      CAUTION - 固件较大，OTA 升级时需谨慎" -ForegroundColor Yellow
+    } else {
+        Write-Host "Status:      OK - 空间充足" -ForegroundColor Green
+    }
+
+    # 给出分区调整建议
+    if ($pct -gt 80 -or $recommendations.Count -gt 0) {
+        Write-Host "`nRecommendations:" -ForegroundColor Cyan
+
+        if ($partitionScheme -ne 'huge_app' -and $partitionScheme -ne 'max_app_8MB') {
+            if ($pct -gt 95) {
+                Write-Host "  - 若不需要 OTA，改用 huge_app 分区（单 app 约 3MB，无 OTA 备份区）:" -ForegroundColor Yellow
+                Write-Host "    --build-property build.partitions=huge_app" -ForegroundColor Gray
+            } elseif ($pct -gt 80) {
+                Write-Host "  - 若 SPIFFS 空间需求不大，改用 min_spiffs（app 约 1.875MB，SPIFFS 仅 128KB）:" -ForegroundColor Yellow
+                Write-Host "    --build-property build.partitions=min_spiffs" -ForegroundColor Gray
+            }
+        }
+
+        if ($partitionScheme -eq 'huge_app' -and $pct -gt 95) {
+            Write-Host "  - 当前已是最大单 app 分区，考虑以下方案:" -ForegroundColor Yellow
+            Write-Host "    1) 精简固件：检查是否启用了未使用的库或功能" -ForegroundColor Gray
+            Write-Host "    2) 使用 8MB Flash 开发板 + default_8MB 分区（app 约 3.25MB）" -ForegroundColor Gray
+            Write-Host "    3) 修改 FQBN 为 esp32:esp32:esp32:PartitionScheme=default_8MB" -ForegroundColor Gray
+        }
+
+        if ($partitionScheme -eq 'default' -and $pct -gt 70) {
+            Write-Host "  - 从 default (1.25MB) 升级到 min_spiffs (1.875MB) 可提升 50% 空间:" -ForegroundColor Yellow
+            Write-Host "    FQBN 追加 :PartitionScheme=min_spiffs" -ForegroundColor Gray
+        }
+
+        if ($recommendations.Count -gt 0) {
+            foreach ($rec in $recommendations) {
+                Write-Host "  - $rec" -ForegroundColor Yellow
+            }
+        }
+    }
+
+    Write-Host "==============================`n" -ForegroundColor Cyan
 }
 
 # ==============================================================================
@@ -872,7 +1081,7 @@ if ($SyncLibs) {
 # --------------------------
 # 4. 默认行为逻辑
 # --------------------------
-if (-not $Compile.IsPresent -and -not $Upload.IsPresent -and -not $Serial.IsPresent) {
+if (-not $Compile.IsPresent -and -not $Upload.IsPresent -and -not $Serial.IsPresent -and -not $CheckPartition.IsPresent) {
     $Compile = $true
     $Upload = $true
 }
@@ -946,6 +1155,16 @@ if ($Compile) {
     $totalTime = $syncTime + $compileTime + $syncBackTime
     Write-Host "Total Build:   $("{0:N2}" -f $totalTime)s"
     Write-Host "========================`n" -ForegroundColor Yellow
+
+    # 编译后分区大小检查
+    Invoke-PartitionFitCheck -FQBN $FQBN -ProjectRoot $ProjectRoot -BuildDir $BuildDir
+}
+
+# --------------------------
+# 5b. 纯分区检查模式（不编译时）
+# --------------------------
+if ($CheckPartition -and -not $Compile) {
+    Invoke-PartitionFitCheck -FQBN $FQBN -ProjectRoot $ProjectRoot -BuildDir $BuildDir -PreBuild
 }
 
 # --------------------------

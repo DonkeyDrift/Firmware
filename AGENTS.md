@@ -132,7 +132,7 @@ python arduino-cli.py -cu --no-progress
 
 ### 2.4 关键配置参数
 
-- **默认 FQBN**: `esp32:esp32:esp32`（`config.yaml`）或 `esp32:esp32:dfrobot_firebeetle2_esp32e`（`sketch.yaml`）
+- **默认 FQBN**: `esp32:esp32:esp32:PartitionScheme=min_spiffs`（`config.yaml` / `sketch.yaml`）
 - **默认波特率**: `115200`
 - **默认 Sketch**: `mus4.ino`
 - **构建输出目录**: `build/`（原生）或 `build_wsl/`（WSL）

@@ -6,7 +6,7 @@
 distro: DKC
 
 # Arduino 开发板 FQBN（不设置则读取 sketch.yaml / config.yaml）
-fqbn: esp32:esp32:esp32
+fqbn: esp32:esp32:esp32:PartitionScheme=min_spiffs
 
 # sketch 文件路径（不设置则自动探测根目录下的 .ino）
 sketch: mus4.ino

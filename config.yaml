@@ -1,6 +1,6 @@
 default:
   arduino_cli: "arduino-cli"
-  fqbn: "esp32:esp32:esp32"
+  fqbn: "esp32:esp32:esp32:PartitionScheme=min_spiffs"
   # port: "/dev/ttyACM1" # for linux
   port: "auto" # 自动检索并匹配当前开发板串口
   baudrate: 115200

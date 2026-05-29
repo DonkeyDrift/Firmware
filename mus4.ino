@@ -47,6 +47,14 @@
 #include "SharedTypes.h"
 #include "TUI.h"
 
+// RC Receiver Calibration Defaults (PWM pulse width in microseconds)
+#define RC_THROTTLE_MIN 888
+#define RC_THROTTLE_MID 1493
+#define RC_THROTTLE_MAX 2149
+#define RC_STEERING_MIN 872
+#define RC_STEERING_MID 1488
+#define RC_STEERING_MAX 2113
+
 #define BUZZER_PIN 2
 
 #include "Buzzer.h"
@@ -261,6 +269,10 @@ const char* MUS4_PREF_DEV_MODE_KEY = "dev_mode";
 const char* MUS4_PREF_STA_ENABLED_KEY = "sta_en";
 const char* MUS4_PREF_STA_SSID_KEY = "sta_ssid";
 const char* MUS4_PREF_STA_PASSWORD_KEY = "sta_pass";
+const char* MUS4_PREF_STEER_MIN_KEY = "str_min";
+const char* MUS4_PREF_STEER_MID_KEY = "str_mid";
+const char* MUS4_PREF_STEER_MAX_KEY = "str_max";
+const char* MUS4_PREF_STEER_CAL_EN_KEY = "str_cal";
 const uint8_t WIFI_STA_SSID_MAX_LEN = 32;
 const uint8_t WIFI_STA_PASSWORD_MAX_LEN = 63;
 const uint8_t WIFI_STA_PASSWORD_MIN_LEN = 8;
@@ -310,6 +322,27 @@ bool wifiOtaInProgress = false;
 bool wifiOtaParkGuardActive = false;
 static bool wifiWebUpdateError = false;
 static size_t wifiWebUpdateReceived = 0;
+
+struct SteeringCalibration {
+    int16_t min_pwm;
+    int16_t mid_pwm;
+    int16_t max_pwm;
+};
+
+enum SteerCalState {
+    STEER_CAL_IDLE,
+    STEER_CAL_CENTER,
+    STEER_CAL_MINMAX,
+    STEER_CAL_DONE
+};
+
+static SteeringCalibration steer_cal;
+static bool steer_cal_enabled = false;
+static SteerCalState steer_cal_state = STEER_CAL_IDLE;
+static unsigned long steer_cal_stage_start_ms = 0;
+static int16_t steer_cal_temp_min = 0;
+static int16_t steer_cal_temp_max = 0;
+
 bool wifiDevModeEnabled = false;
 char wifiStaSsid[WIFI_STA_SSID_MAX_LEN + 1] = {0};
 char wifiStaPassword[WIFI_STA_PASSWORD_MAX_LEN + 1] = {0};
@@ -838,6 +871,45 @@ static bool processWifiStaConfigCommand(const String& line, Print& out) { return
     } else if ((line).equalsIgnoreCase("REGRESS")) { \
         bool ok = runRegression(); \
         (out).printf("REGRESS_OK=%d\n", ok ? 1 : 0); \
+    } else if ((line).equalsIgnoreCase("STEER_CAL")) { \
+        startSteerCalibration(out); \
+    } else if ((line).equalsIgnoreCase("CAL_SAVE")) { \
+        if (steer_cal_state == STEER_CAL_DONE) { \
+            if (steer_cal.min_pwm < steer_cal.mid_pwm && steer_cal.mid_pwm < steer_cal.max_pwm \
+                && (steer_cal.mid_pwm - steer_cal.min_pwm) > 100 && (steer_cal.max_pwm - steer_cal.mid_pwm) > 100) { \
+                if (saveSteeringCalibration()) { \
+                    steer_cal_state = STEER_CAL_IDLE; \
+                    (out).println("ACK:CAL_SAVED"); \
+                } else { \
+                    (out).println("NACK:CAL_SAVE_FAILED"); \
+                } \
+            } else { \
+                (out).println("NACK:CAL_INVALID_RANGE"); \
+            } \
+        } else { \
+            (out).println("NACK:CAL_NOT_DONE"); \
+        } \
+    } else if ((line).equalsIgnoreCase("CAL_RETRY")) { \
+        if (steer_cal_state == STEER_CAL_DONE) { \
+            steer_cal_state = STEER_CAL_CENTER; \
+            steer_cal_stage_start_ms = millis(); \
+            steer_cal_temp_min = 32767; \
+            steer_cal_temp_max = -32768; \
+            tui.log("[CAL] Retrying center capture..."); \
+            (out).println("ACK:CAL_RETRY"); \
+        } else { \
+            (out).println("NACK:CAL_NOT_DONE"); \
+        } \
+    } else if ((line).equalsIgnoreCase("CAL_ABORT")) { \
+        steer_cal_state = STEER_CAL_IDLE; \
+        loadSteeringCalibration(); \
+        (out).println("ACK:CAL_ABORTED"); \
+    } else if ((line).equalsIgnoreCase("CAL_RESET")) { \
+        resetSteeringCalibration(); \
+        steer_cal_state = STEER_CAL_IDLE; \
+        (out).println("ACK:CAL_RESET"); \
+    } else if ((line).equalsIgnoreCase("CAL_STATUS")) { \
+        printCalStatus(out); \
     } else { \
         int t, s, seq; \
         bool ok = processLine((line), &t, &s, &seq); \
@@ -947,7 +1019,7 @@ static bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin o
     if (isWirelessOtaOpenCommand(line)) return webDevMode || (wifiConsoleAuthenticated && car_output.park == PARK_LOCKED);
     if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || wifiConsoleAuthenticated;
     if (!wifiConsoleAuthenticated) return false;
-    if (line.equalsIgnoreCase("TEST") || line.equalsIgnoreCase("TEST_TUI") || line.equalsIgnoreCase("BENCH") || line.equalsIgnoreCase("STRESS") || line.equalsIgnoreCase("REGRESS") || line.equalsIgnoreCase("FILTER_TEST")) {
+    if (line.equalsIgnoreCase("TEST") || line.equalsIgnoreCase("TEST_TUI") || line.equalsIgnoreCase("BENCH") || line.equalsIgnoreCase("STRESS") || line.equalsIgnoreCase("REGRESS") || line.equalsIgnoreCase("FILTER_TEST") || line.equalsIgnoreCase("STEER_CAL")) {
         return car_output.park == PARK_LOCKED;
     }
     if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || isWifiStaConfigCommand(line)) return true;
@@ -1009,6 +1081,124 @@ static bool saveDevModePreference(bool enabled)
     }
     mus4Logf("wifi", "dev_mode saved=%d", wifiDevModeEnabled ? 1 : 0);
     return true;
+}
+
+static void loadSteeringCalibration()
+{
+    steer_cal.min_pwm = RC_STEERING_MIN;
+    steer_cal.mid_pwm = RC_STEERING_MID;
+    steer_cal.max_pwm = RC_STEERING_MAX;
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) {
+        steer_cal_enabled = false;
+        return;
+    }
+    steer_cal_enabled = mus4Prefs.getBool(MUS4_PREF_STEER_CAL_EN_KEY, false);
+    if (steer_cal_enabled) {
+        steer_cal.min_pwm = (int16_t)mus4Prefs.getShort(MUS4_PREF_STEER_MIN_KEY, RC_STEERING_MIN);
+        steer_cal.mid_pwm = (int16_t)mus4Prefs.getShort(MUS4_PREF_STEER_MID_KEY, RC_STEERING_MID);
+        steer_cal.max_pwm = (int16_t)mus4Prefs.getShort(MUS4_PREF_STEER_MAX_KEY, RC_STEERING_MAX);
+    }
+    mus4Prefs.end();
+    mus4Logf("cal", "steer_cal enabled=%d min=%d mid=%d max=%d",
+             steer_cal_enabled ? 1 : 0, steer_cal.min_pwm, steer_cal.mid_pwm, steer_cal.max_pwm);
+}
+
+static bool saveSteeringCalibration()
+{
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
+    mus4Prefs.putShort(MUS4_PREF_STEER_MIN_KEY, steer_cal.min_pwm);
+    mus4Prefs.putShort(MUS4_PREF_STEER_MID_KEY, steer_cal.mid_pwm);
+    mus4Prefs.putShort(MUS4_PREF_STEER_MAX_KEY, steer_cal.max_pwm);
+    mus4Prefs.putBool(MUS4_PREF_STEER_CAL_EN_KEY, true);
+    mus4Prefs.end();
+    steer_cal_enabled = true;
+    mus4Logf("cal", "saved min=%d mid=%d max=%d", steer_cal.min_pwm, steer_cal.mid_pwm, steer_cal.max_pwm);
+    return true;
+}
+
+static void resetSteeringCalibration()
+{
+    steer_cal.min_pwm = RC_STEERING_MIN;
+    steer_cal.mid_pwm = RC_STEERING_MID;
+    steer_cal.max_pwm = RC_STEERING_MAX;
+    steer_cal_enabled = false;
+    if (mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) {
+        mus4Prefs.remove(MUS4_PREF_STEER_MIN_KEY);
+        mus4Prefs.remove(MUS4_PREF_STEER_MID_KEY);
+        mus4Prefs.remove(MUS4_PREF_STEER_MAX_KEY);
+        mus4Prefs.remove(MUS4_PREF_STEER_CAL_EN_KEY);
+        mus4Prefs.end();
+    }
+    mus4LogLine("cal", "reset to defaults");
+}
+
+static int mapSteeringCalibrated(int16_t pwm)
+{
+    if (pwm < steer_cal.mid_pwm) {
+        return map(pwm, steer_cal.min_pwm, steer_cal.mid_pwm, -100, 0);
+    } else {
+        return map(pwm, steer_cal.mid_pwm, steer_cal.max_pwm, 0, 100);
+    }
+}
+
+static void printCalStatus(Print& out)
+{
+    out.printf("CAL_STATUS enabled=%d min=%d mid=%d max=%d state=%d\n",
+               steer_cal_enabled ? 1 : 0,
+               steer_cal.min_pwm, steer_cal.mid_pwm, steer_cal.max_pwm,
+               (int)steer_cal_state);
+}
+
+static bool startSteerCalibration(Print& out)
+{
+    if (car_output.park != PARK_LOCKED) {
+        out.println("NACK:PARK_REQUIRED");
+        return false;
+    }
+    steer_cal_state = STEER_CAL_CENTER;
+    steer_cal_stage_start_ms = millis();
+    steer_cal_temp_min = 32767;
+    steer_cal_temp_max = -32768;
+    tui.log("[CAL] Keep steering centered, auto-capture in 3s...");
+    mus4LogLine("cal", "center stage started");
+    return true;
+}
+
+static void updateSteerCalibration()
+{
+    if (steer_cal_state == STEER_CAL_IDLE) return;
+
+    unsigned long now = millis();
+    unsigned long elapsed = now - steer_cal_stage_start_ms;
+
+    if (steer_cal_state == STEER_CAL_CENTER) {
+        if (elapsed < 3000) return;
+        steer_cal.mid_pwm = (int16_t)pwm_filtered[CH_STEERING];
+        char buf[64];
+        snprintf(buf, sizeof(buf), "[CAL] Center captured: %d", steer_cal.mid_pwm);
+        tui.log(buf);
+        mus4Logf("cal", "center=%d", steer_cal.mid_pwm);
+        steer_cal_state = STEER_CAL_MINMAX;
+        steer_cal_stage_start_ms = now;
+        steer_cal_temp_min = 32767;
+        steer_cal_temp_max = -32768;
+        tui.log("[CAL] Swing stick full left/right within 5s...");
+    } else if (steer_cal_state == STEER_CAL_MINMAX) {
+        int16_t current = (int16_t)pwm_filtered[CH_STEERING];
+        if (current < steer_cal_temp_min) steer_cal_temp_min = current;
+        if (current > steer_cal_temp_max) steer_cal_temp_max = current;
+        if (elapsed < 5000) return;
+        steer_cal.min_pwm = steer_cal_temp_min;
+        steer_cal.max_pwm = steer_cal_temp_max;
+        char buf[96];
+        snprintf(buf, sizeof(buf), "[CAL] Range captured: min=%d max=%d", steer_cal.min_pwm, steer_cal.max_pwm);
+        tui.log(buf);
+        mus4Logf("cal", "range min=%d max=%d", steer_cal.min_pwm, steer_cal.max_pwm);
+        steer_cal_state = STEER_CAL_DONE;
+        snprintf(buf, sizeof(buf), "[CAL] Result: mid=%d min=%d max=%d", steer_cal.mid_pwm, steer_cal.min_pwm, steer_cal.max_pwm);
+        tui.log(buf);
+        tui.log("[CAL] Send CAL_SAVE / CAL_RETRY / CAL_ABORT");
+    }
 }
 
 static void appendJsonString(String& out, const char* text)
@@ -1597,7 +1787,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 </section>
 <section class="panel">
 <div class="row"><input id="cmd" placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停日志</button></div>
-<div class="row" style="margin:8px 0"><button onclick="quick('PING')">PING</button><button onclick="quick('STATUS')">STATUS</button><button onclick="quick('AUTH:mus4-debug')">AUTH</button><button onclick="quick('ENABLE_OTA')">ENABLE_OTA</button><button onclick="quick('OTA_STATUS')">OTA_STATUS</button><a href="/update" target="_blank" style="text-decoration:none"><button>OTA Upload</button></a></div>
+<div class="row" style="margin:8px 0"><button onclick="quick('PING')">PING</button><button onclick="quick('STATUS')">STATUS</button><button onclick="quick('AUTH:mus4-debug')">AUTH</button><button onclick="quick('ENABLE_OTA')">ENABLE_OTA</button><button onclick="quick('OTA_STATUS')">OTA_STATUS</button><button onclick="quick('STEER_CAL')">STEER_CAL</button><button onclick="quick('CAL_STATUS')">CAL_STATUS</button><a href="/update" target="_blank" style="text-decoration:none"><button>OTA Upload</button></a></div>
 <div class="muted" style="margin:8px 0">开发模式会持久化；仅 Web OTA 免认证并保持 OTA 监听，不放宽控制命令。OTA 传输期间会默认 Park Locked。</div>
 <div id="log" class="log"></div><div class="muted" id="logMeta">log ready</div>
 </section>
@@ -2569,13 +2759,7 @@ int User_steering = 0;  // RC遥控器发来的用户转向值
 int Pilot_throttle = 0; // 上位机发来的油门值
 int Pilot_steering = 0; // 上位机发来的转向值
 
-// RC Receiver Calibration Values (PWM pulse width in microseconds)
-const int RC_THROTTLE_MIN = 888;   // Throttle minimum pulse
-const int RC_THROTTLE_MID = 1493;  // Throttle center pulse
-const int RC_THROTTLE_MAX = 2149;  // Throttle maximum pulse
-const int RC_STEERING_MIN = 872;   // Steering minimum pulse
-const int RC_STEERING_MID = 1488;  // Steering center pulse
-const int RC_STEERING_MAX = 2113;  // Steering maximum pulse
+// RC calibration defaults moved to top of file (must precede function definitions for Arduino preprocessor compatibility)
 
 int carOutputModeLast = -1;
 unsigned long counter;
@@ -3312,7 +3496,15 @@ int process_steering_signal(int raw_pwm) {
 
     // 3. Mapping to Control Range (-100 to 100)
     // Target steering based on filtered PWM
-    float target_steering = map(filtered_pwm - 1488, 872 - 1488, 2113 - 1488, -100, 100);
+    int16_t cal_mid = steer_cal_enabled ? steer_cal.mid_pwm : RC_STEERING_MID;
+    int16_t cal_min = steer_cal_enabled ? steer_cal.min_pwm : RC_STEERING_MIN;
+    int16_t cal_max = steer_cal_enabled ? steer_cal.max_pwm : RC_STEERING_MAX;
+    float target_steering;
+    if (filtered_pwm < cal_mid) {
+        target_steering = map(filtered_pwm - cal_mid, cal_min - cal_mid, 0, -100, 0);
+    } else {
+        target_steering = map(filtered_pwm - cal_mid, 0, cal_max - cal_mid, 0, 100);
+    }
 
     // 4. PID Calculation
     float error = target_steering - pid_state.current_smooth_output;
@@ -3546,6 +3738,7 @@ void setup()
     #ifdef ENABLE_WIFI_CONSOLE
       loadDevModePreference();
       loadWifiStaPreference();
+      loadSteeringCalibration();
       setupWifiConsole();
       keepDevModeOtaWindowActive();
     #endif
@@ -3605,6 +3798,8 @@ void loop()
         read_mpu6050();
         lastSensorUpdate = millis();
     }
+
+    updateSteerCalibration();
 
     readSerialBuf(Serial, serial0Buf);
     readSerialBuf(Serial1, serial1Buf);
@@ -3771,7 +3966,11 @@ void loop()
             // RC => CAR
             car_output.throttle = map(rc_data.throttle, RC_THROTTLE_MIN, RC_THROTTLE_MAX, -100, 100);
         }
-        car_output.steering = map(rc_data.steering, RC_STEERING_MIN, RC_STEERING_MAX, -100, 100);
+        if (steer_cal_enabled) {
+            car_output.steering = mapSteeringCalibrated(rc_data.steering);
+        } else {
+            car_output.steering = map(rc_data.steering, RC_STEERING_MIN, RC_STEERING_MAX, -100, 100);
+        }
         // 漂移辅助：仅在手动模式下叠加反打补偿
         car_output.steering = apply_drift_assist(car_output.steering);
     }

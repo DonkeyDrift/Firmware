@@ -81,6 +81,8 @@ pip install pyyaml pyserial pytest
 
 ### 2.2 WSL 加速构建（推荐）
 
+**WSL 编译是首选方式**，相比 Windows 原生编译速度提升 3-5 倍（原生文件系统 ext4 优于 NTFS 挂载）。
+
 ```powershell
 # 仅编译（默认：同步到 WSL 原生文件系统后编译）
 .\arduino-cli-wsl.ps1 -Compile
@@ -88,15 +90,22 @@ pip install pyyaml pyserial pytest
 # 清理 WSL 构建目录后重新编译
 .\arduino-cli-wsl.ps1 -Compile -Clean
 
-# 编译后通过 OTA 上传（需先在设备 Web/TCP Console 打开 OTA 窗口）
-.\arduino-cli-wsl.ps1 -Compile -Upload -Ota -OtaHost <设备IP或主机名>
+# 编译后通过 HTTP OTA 上传（优先方式，无 1KB/ACK 瓶颈）
+# 优先读取项目根目录 .mus4_ota_target 第一行作为目标地址
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP或主机名>
 
-# 使用已有 build_wsl 产物通过 OTA 上传
-.\arduino-cli-wsl.ps1 -Upload -Ota -OtaHost <设备IP或主机名>
+# 使用已有 build_wsl 产物通过 HTTP OTA 上传
+.\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost <设备IP或主机名>
+
+# 若 .mus4_ota_target 已存在，可省略 -HttpOtaHost
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta
 
 # 仅当明确要求串口上传/监控时
 .\arduino-cli-wsl.ps1 -Upload
 .\arduino-cli-wsl.ps1 -Upload -Serial
+
+# 回退：旧 ArduinoOTA 方式（端口 3232，需 Python + espota.py）
+.\arduino-cli-wsl.ps1 -Compile -Upload -Ota -OtaHost <设备IP或主机名>
 ```
 
 ### 2.3 原生构建（Windows/Linux/macOS）
@@ -120,8 +129,11 @@ python arduino-cli.py -cus
 # 使用预编译固件上传
 python arduino-cli.py -u -i build/mus4.ino.bin --port COM9
 
-# OTA 上传
+# OTA 上传（ArduinoOTA，旧方式）
 python arduino-cli.py --ota -i build_wsl/mus4.ino.bin --ota-host mus4-ota
+
+# HTTP OTA 上传（新方式，使用 curl.exe）
+curl.exe -X POST http://<设备IP>/update -F "firmware=@build_wsl/mus4.ino.bin" --progress-bar
 
 # 列出检测到的串口
 python arduino-cli.py --list-ports
@@ -343,7 +355,9 @@ Txx:Sxx\n
 
 ## 11. 自动构建策略
 
-- 完成 `mus4.ino`、`SharedTypes.h`、`TUI.cpp`、`Buzzer.cpp` 等固件源代码修改后，**自动调用** `mus4-wsl-build` Skill 编译并上传
+- 完成 `mus4.ino`、`SharedTypes.h`、`TUI.cpp`、`Buzzer.cpp` 等固件源代码修改后，**自动调用** `mus4-wsl-build` Skill 进行 **WSL 编译并上传**
+- **必须首先使用 WSL 编译**（`arduino-cli-wsl.ps1 -Compile`），只有 WSL 不可用时才回退到原生编译
 - OTA 目标优先读取项目根目录 `.mus4_ota_target` 第一行
-- 默认参数：`-c -u -Ota -OtaHost <目标地址>`
+- **默认参数**：`-c -u -HttpOta -HttpOtaHost <目标地址>`（HTTP `/update` 端点，无 1KB/ACK 瓶颈）
+- 仅在设备固件不支持 HTTP `/update` 时回退到 `-Ota`
 - 不要自动执行 `git push`

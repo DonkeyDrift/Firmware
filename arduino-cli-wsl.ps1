@@ -93,6 +93,12 @@ param(
     [Parameter(HelpMessage="Path to espota.py")]
     [string]$EspotaTool,
 
+    [Parameter(HelpMessage="Use HTTP /update endpoint for OTA upload (replaces ArduinoOTA)")]
+    [switch]$HttpOta,
+
+    [Parameter(HelpMessage="HTTP OTA target host or IP (default: read from .mus4_ota_target)")]
+    [string]$HttpOtaHost,
+
     [Parameter(HelpMessage="Arduino Sketch file path (default: auto-detect)")]
     [Alias("i")]
     [string]$Sketch,
@@ -524,6 +530,82 @@ function Invoke-PartitionFitCheck {
     }
 
     Write-Host "==============================`n" -ForegroundColor Cyan
+}
+
+# ==============================================================================
+# HTTP OTA 上传模块
+# ==============================================================================
+
+<#
+.SYNOPSIS
+    读取项目根目录下的 .mus4_ota_target 文件，获取默认 HTTP OTA 目标主机
+#>
+function Get-HttpOtaTarget {
+    param([string]$ProjectRoot)
+    $targetFile = Join-Path $ProjectRoot ".mus4_ota_target"
+    if (Test-Path $targetFile) {
+        $content = Get-Content $targetFile -Raw
+        $firstLine = ($content -split "`r?`n")[0].Trim()
+        if (-not [string]::IsNullOrWhiteSpace($firstLine)) {
+            return $firstLine
+        }
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
+    使用 curl.exe 通过 HTTP /update 端点上传固件
+    curl 自带进度条输出到 stderr，直接显示在控制台
+#>
+function Invoke-HttpOtaUpload {
+    param(
+        [Parameter(Mandatory=$true)][string]$BinPath,
+        [Parameter(Mandatory=$true)][string]$TargetHost
+    )
+    if (-not (Test-Path $BinPath)) {
+        Write-Error "Binary file not found: $BinPath"
+        return $false
+    }
+
+    $uri = "http://$TargetHost/update"
+    Write-Host "`n>>> HTTP OTA Upload to $uri" -ForegroundColor Cyan
+    Write-Host "    Firmware: $BinPath" -ForegroundColor Gray
+    Write-Host "    Note: requires Web Console auth + Park locked (or dev mode enabled)" -ForegroundColor DarkGray
+
+    # 确保使用绝对路径，避免 curl 解析相对路径问题
+    $absBinPath = Resolve-Path $BinPath
+
+    $curlArgs = @(
+        "-X", "POST",
+        "-H", "Content-Type: multipart/form-data",
+        "-F", "firmware=@$absBinPath",
+        "--progress-bar",
+        "--fail",
+        $uri
+    )
+
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        # 直接调用 curl.exe，让进度条实时输出到控制台 stderr
+        & curl.exe @curlArgs
+        $exitCode = $LASTEXITCODE
+    } catch {
+        Write-Error "curl.exe execution failed: $_"
+        return $false
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+
+    if ($exitCode -eq 0) {
+        Write-Host "`n>>> HTTP OTA Upload Successful!" -ForegroundColor Green
+        return $true
+    } else {
+        Write-Host "`n>>> HTTP OTA Upload Failed (curl exit code: $exitCode)" -ForegroundColor Red
+        Write-Host "    Tips: check Web Console auth, Park lock, and target availability." -ForegroundColor Yellow
+        return $false
+    }
 }
 
 # ==============================================================================
@@ -1205,45 +1287,58 @@ if ($Upload -or $Serial) {
         }
     }
 
-    # Call upload / serial
-    $pyArgs = @()
-    if ($Upload) {
-        $pyArgs += "-u"
-        $pyArgs += "-i"
-        $pyArgs += "`"$BinPath`""
-        if ($Ota) {
-            $pyArgs += "--ota"
-            if (-not [string]::IsNullOrWhiteSpace($OtaHost)) {
-                $pyArgs += "--ota-host"
-                $pyArgs += $OtaHost
-            }
-            if ($OtaPort -gt 0) {
-                $pyArgs += "--ota-port"
-                $pyArgs += $OtaPort.ToString()
-            }
-            if (-not [string]::IsNullOrWhiteSpace($OtaPassword)) {
-                $pyArgs += "--ota-password"
-                $pyArgs += $OtaPassword
-            }
-            if (-not [string]::IsNullOrWhiteSpace($EspotaTool)) {
-                $pyArgs += "--espota-tool"
-                $pyArgs += "`"$EspotaTool`""
+    if ($HttpOta) {
+        # HTTP OTA 上传路径（新方式，通过 Web Console /update 端点）
+        if ([string]::IsNullOrWhiteSpace($HttpOtaHost)) {
+            $HttpOtaHost = Get-HttpOtaTarget -ProjectRoot $ProjectRoot
+        }
+        if ([string]::IsNullOrWhiteSpace($HttpOtaHost)) {
+            Write-Error "HTTP OTA 需要指定目标主机。请使用 -HttpOtaHost 参数，或在项目根目录创建 .mus4_ota_target 文件（每行一个 IP/主机名）。"
+            exit 1
+        }
+        $success = Invoke-HttpOtaUpload -BinPath $BinPath -TargetHost $HttpOtaHost
+        if (-not $success) { exit 1 }
+    } else {
+        # 原有上传路径：串口 / ArduinoOTA
+        $pyArgs = @()
+        if ($Upload) {
+            $pyArgs += "-u"
+            $pyArgs += "-i"
+            $pyArgs += "`"$BinPath`""
+            if ($Ota) {
+                $pyArgs += "--ota"
+                if (-not [string]::IsNullOrWhiteSpace($OtaHost)) {
+                    $pyArgs += "--ota-host"
+                    $pyArgs += $OtaHost
+                }
+                if ($OtaPort -gt 0) {
+                    $pyArgs += "--ota-port"
+                    $pyArgs += $OtaPort.ToString()
+                }
+                if (-not [string]::IsNullOrWhiteSpace($OtaPassword)) {
+                    $pyArgs += "--ota-password"
+                    $pyArgs += $OtaPassword
+                }
+                if (-not [string]::IsNullOrWhiteSpace($EspotaTool)) {
+                    $pyArgs += "--espota-tool"
+                    $pyArgs += "`"$EspotaTool`""
+                }
             }
         }
-    }
-    if ($Serial) {
-        $pyArgs += "-s"
-    }
+        if ($Serial) {
+            $pyArgs += "-s"
+        }
 
-    if ($Sketch) {
-        $pyArgs += "--sketch"
-        $pyArgs += "`"$Sketch`""
-    }
-    if (-not [string]::IsNullOrWhiteSpace($pythonExtraArgs)) {
-        $pyArgs += $pythonExtraArgs.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
-    }
+        if ($Sketch) {
+            $pyArgs += "--sketch"
+            $pyArgs += "`"$Sketch`""
+        }
+        if (-not [string]::IsNullOrWhiteSpace($pythonExtraArgs)) {
+            $pyArgs += $pythonExtraArgs.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+        }
 
-    python (Join-Path $ProjectRoot "arduino-cli.py") $pyArgs
+        python (Join-Path $ProjectRoot "arduino-cli.py") $pyArgs
+    }
 }
 
 Write-Host ">>> All Done!" -ForegroundColor Green

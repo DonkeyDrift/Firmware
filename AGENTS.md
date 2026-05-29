@@ -338,3 +338,12 @@ Txx:Sxx\n
 | `Doc/README/OPERATIONS.md` | 串口运行时操作命令与数据帧 |
 | `Doc/Plan/` | 设计方案与实施路线；新增方案类内容写入此目录 |
 | `CLAUDE.md` | 面向 Claude Code 的详细行为参考与编辑安全备忘 |
+
+---
+
+## 11. 自动构建策略
+
+- 完成 `mus4.ino`、`SharedTypes.h`、`TUI.cpp`、`Buzzer.cpp` 等固件源代码修改后，**自动调用** `mus4-wsl-build` Skill 编译并上传
+- OTA 目标优先读取项目根目录 `.mus4_ota_target` 第一行
+- 默认参数：`-c -u -Ota -OtaHost <目标地址>`
+- 不要自动执行 `git push`

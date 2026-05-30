@@ -71,7 +71,7 @@
 2. 在 Web Console 前端增加 `Start Tub`、`Stop Tub`、`Download Tub JSON` 控件。
 3. 在现有遥测点进入页面数据路径后调用 `captureTubPoint(point)`。
 4. 记录期间按 `seq` 去重后追加样本；停止后通过 `Blob` 和临时 `<a>` 下载 JSON 文件。
-5. 设置 `TUB_MAX_SAMPLES = 20000`，达到上限后自动停止，避免浏览器内存无限增长。
+5. 设置 `TUB_MAX_SAMPLES = 12000`，达到上限后自动停止，避免浏览器内存无限增长；Tub 控件使用短函数名、不额外增加状态 DOM，并直接保存遥测点对象，控制 Web Console HTML 体积以保留 OTA 空间余量。
 
 ## 安全边界
 

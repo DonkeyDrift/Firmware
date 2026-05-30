@@ -578,8 +578,8 @@ function Invoke-HttpOtaUpload {
 
     $curlArgs = @(
         "-X", "POST",
-        "-H", "Content-Type: multipart/form-data",
-        "-F", "firmware=@$absBinPath",
+        "-H", "Expect:",
+        "-F", "firmware=@$absBinPath;type=application/octet-stream",
         "--progress-bar",
         "--fail",
         $uri

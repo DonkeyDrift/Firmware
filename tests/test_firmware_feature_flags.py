@@ -37,12 +37,14 @@ def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
     assert "mus4.web_data_point.tub.v1" in source
     assert "tubRecording" in source
     assert "tubSamples" in source
-    assert "startTubRecording" in source
-    assert "stopTubRecording" in source
-    assert "downloadTubJson" in source
-    assert "captureTubPoint" in source
+    assert "function ts()" in source
+    assert "function te()" in source
+    assert "function td()" in source
+    assert "function tp(p)" in source
     assert "handleDataPayload" in source
-    assert "captureTubPoint(latest)" in source
+    assert "tp(latest)" in source
     assert "TUB_MAX_SAMPLES" in source
+    assert "Tub Start" in source
+    assert "Download Tub JSON" not in source
     assert "LittleFS" not in source
     assert "SPIFFS" not in source

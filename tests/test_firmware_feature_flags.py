@@ -29,3 +29,20 @@ def test_diagnostic_code_is_not_built_by_default():
 
     assert re.search(r"^//\s*#define\s+ENABLE_DIAGNOSTIC_COMMANDS\b", source, re.MULTILINE)
     assert re.search(r"^//\s*#define\s+ENABLE_BOOT_STEERING_SELF_TEST\b", source, re.MULTILINE)
+
+
+def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "mus4.web_data_point.tub.v1" in source
+    assert "tubRecording" in source
+    assert "tubSamples" in source
+    assert "startTubRecording" in source
+    assert "stopTubRecording" in source
+    assert "downloadTubJson" in source
+    assert "captureTubPoint" in source
+    assert "handleDataPayload" in source
+    assert "captureTubPoint(latest)" in source
+    assert "TUB_MAX_SAMPLES" in source
+    assert "LittleFS" not in source
+    assert "SPIFFS" not in source

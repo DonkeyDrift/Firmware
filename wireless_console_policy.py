@@ -223,3 +223,14 @@ def format_web_data_point(seq, now_ms, control, rc, pilot, sensor, drift=None):
         "dc": drift.get("compensation", 0.0),
         "gzf": drift.get("gyroZFiltered", 0.0),
     }
+
+
+def format_tub_package(started_ms, stopped_ms, samples, schema="mus4.web_data_point.tub.v1"):
+    return {
+        "schema": schema,
+        "source": "mus4-web-console",
+        "started_ms": started_ms,
+        "stopped_ms": stopped_ms,
+        "count": len(samples),
+        "samples": samples,
+    }

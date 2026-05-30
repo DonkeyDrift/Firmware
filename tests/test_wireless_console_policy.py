@@ -289,6 +289,41 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertEqual(point["dc"], 0.0)
         self.assertEqual(point["gzf"], 0.0)
 
+    def test_formats_tub_package_with_web_data_points(self):
+        point = POLICY.format_web_data_point(
+            seq=7,
+            now_ms=1234,
+            control={"throttle": 10, "steering": -20, "mode": 1, "park": False},
+            rc={"throttle": 1510, "steering": 1490, "ch1": 1490, "ch2": 1510, "ch3": 1000, "ch4": 1500, "ch5": 2000, "ch6": 1600},
+            pilot={"throttle": 8, "steering": -18},
+            sensor={"current_mA": 123.4, "voltage": 7.6, "gyroZ": -0.12},
+            drift={"enabled": True, "active": True, "compensation": -12.5, "gyroZFiltered": 0.34},
+        )
+
+        package = POLICY.format_tub_package(started_ms=1000, stopped_ms=3500, samples=[point])
+
+        self.assertEqual(package["schema"], "mus4.web_data_point.tub.v1")
+        self.assertEqual(package["source"], "mus4-web-console")
+        self.assertEqual(package["started_ms"], 1000)
+        self.assertEqual(package["stopped_ms"], 3500)
+        self.assertEqual(package["count"], 1)
+        self.assertEqual(package["samples"], [point])
+
+    def test_tub_package_includes_all_rc_channels(self):
+        point = POLICY.format_web_data_point(
+            seq=8,
+            now_ms=1500,
+            control={"throttle": 0, "steering": 0, "mode": 0, "park": True},
+            rc={"throttle": 1200, "steering": 1300, "ch1": 1300, "ch2": 1200, "ch3": 1100, "ch4": 1400, "ch5": 1700, "ch6": 1900},
+            pilot={"throttle": 0, "steering": 0},
+            sensor={"current_mA": 0.0, "voltage": 0.0, "gyroZ": 0.0},
+        )
+
+        package = POLICY.format_tub_package(started_ms=1500, stopped_ms=1500, samples=[point])
+        sample = package["samples"][0]
+
+        self.assertEqual([sample[f"ch{i}"] for i in range(1, 7)], [1300, 1200, 1100, 1400, 1700, 1900])
+
     def test_log_target_commands_require_authentication(self):
         self.assertFalse(POLICY.is_wireless_command_allowed("LOG_WEB", authenticated=False, park_locked=True))
         self.assertFalse(POLICY.is_wireless_command_allowed("LOG_SERIAL", authenticated=False, park_locked=True))

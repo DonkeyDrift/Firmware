@@ -128,6 +128,11 @@ python arduino-cli.py --config config.yaml monitor
 
 ## ChangeLog
 
+### 2026-05-30 v1.5.14
+
+- 固件次版本号从 `v1.5.13` 更新到 `v1.5.14`。
+- 新增 Web Console Tub JSON 连续记录与浏览器下载功能，便于采集 CH1-CH6 等遥测样本交给模型分析。
+
 ### 2026-05-30 v1.5.13
 
 - 固件次版本号从 `v1.5.12` 更新到 `v1.5.13`。

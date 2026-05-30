@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MUS4（LP-MU-S4）是基于 ESP32 的遥控车辆/机器人底层控制系统，当前代码面向 MUS4-v2.3 PCB。固件负责 RC PWM 输入采集、Pilot 上位机串口控制、多模式控制融合、Park/紧急制动、I2C 传感器采集、TUI 状态显示与可选 BLE Gamepad 输出。
+MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件，当前以 MUS4-v2.3 PCB 为准。固件负责 RC PWM 输入采集、Pilot 上位机串口控制、多模式控制融合、Park/紧急制动、I2C 传感器采集、TUI 状态显示、Wi-Fi/TCP/Web Console、OTA 更新，以及在未启用 Wi-Fi Console 时可选的 BLE Gamepad 输出。
 
-根目录同时包含两类代码：
-- Arduino/C++ 固件：主 sketch 在根目录 `mus4.ino`，公共类型与外设辅助模块也在根目录。
-- 构建与烧录工具：`arduino-cli.py` 与 `arduino-cli-wsl.ps1` 负责编译、上传、串口检测、OTA 上传、WSL 加速构建。
+根目录同时包含两类主线代码：
+- Arduino/C++ 固件：主 sketch 为 `mus4.ino`，公共类型与外设辅助模块也在根目录。
+- 构建与烧录工具：`arduino-cli.py` 与 `arduino-cli-wsl.ps1` 负责编译、上传、串口检测、OTA 上传和 WSL 加速构建。
 
-固件目标是 ESP32 + Arduino framework，主要依赖 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050、WebServer、ArduinoOTA，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。
+主要依赖包括 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050、WebServer、ArduinoOTA、AsyncTCP、ESPAsyncWebServer，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。
 
 ## Commands
 
@@ -20,7 +20,7 @@ MUS4（LP-MU-S4）是基于 ESP32 的遥控车辆/机器人底层控制系统，
 pip install pyyaml pyserial pytest
 ```
 
-项目未发现专用 Python lint/format 配置；若修改 Python 工具脚本，至少运行相关 `pytest`。
+项目未发现专用 Python lint/format 配置；修改 Python 工具脚本或策略镜像后，至少运行相关 `pytest`。
 
 ### Arduino CLI 构建、上传、监视
 
@@ -52,7 +52,7 @@ python arduino-cli.py --list-ports
 # 逐行输出日志，适合重定向或 CI 日志
 python arduino-cli.py -cu --no-progress
 
-# OTA 上传，默认端口 3232，密码默认 mus4-debug
+# ArduinoOTA 上传，默认端口 3232，密码默认 mus4-debug
 python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 ```
 
@@ -63,7 +63,7 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 - `--baud 115200`：覆盖串口波特率。
 - `--auto-reset` / `--no-auto-reset`：控制串口监视前复位。
 - `--regress-reset --regress-count 10`：运行复位回归测试。
-- `--ota-host` / `--ota-port` / `--ota-password` / `--espota-tool`：覆盖 OTA 上传目标与工具路径。
+- `--ota-host` / `--ota-port` / `--ota-password` / `--espota-tool`：覆盖 ArduinoOTA 上传目标与工具路径。
 
 ### Windows + WSL 加速构建
 
@@ -82,11 +82,20 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 # 检查 WSL、rsync、arduino-cli 等依赖
 .\arduino-cli-wsl.ps1 -Check
 
-# 编译后通过 OTA 上传；上传前需先在设备 Web/TCP Console 中打开 OTA 窗口
+# 编译并检查固件大小与分区占用
+.\arduino-cli-wsl.ps1 -Compile -CheckPartition
+
+# 编译后通过 ArduinoOTA 上传；上传前需先在设备 Web/TCP Console 中打开 OTA 窗口
 .\arduino-cli-wsl.ps1 -Compile -Upload -Ota -OtaHost <设备IP或主机名>
 
-# 使用已有 build_wsl 产物通过 OTA 上传
+# 使用已有 build_wsl 产物通过 ArduinoOTA 上传
 .\arduino-cli-wsl.ps1 -Upload -Ota -OtaHost <设备IP或主机名>
+
+# 编译后通过 Web Console 的 HTTP /update 端点上传
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP或主机名>
+
+# 使用已有 build_wsl 产物通过 HTTP OTA 上传；未传主机时读取 .mus4_ota_target 首行
+.\arduino-cli-wsl.ps1 -Upload -HttpOta
 
 # 仅当用户明确要求串口上传时使用已有 build_wsl 产物
 .\arduino-cli-wsl.ps1 -Upload
@@ -98,7 +107,7 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 .\arduino-cli-wsl.ps1 -Upload -ExtraArgs "--port COM9"
 ```
 
-WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。需要上传时优先走 OTA：先打开设备 OTA 窗口，再执行 `python arduino-cli.py --ota -i build_wsl/mus4.ino.bin --ota-host <设备IP或主机名>`，或使用 `arduino-cli-wsl.ps1 -Upload -Ota -OtaHost <设备IP或主机名>` 复用 WSL 产物上传。
+WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。HTTP OTA 使用设备 Web Console 的 `/update` 端点，需要 Web Console 已认证且 Park 锁定，或开发模式允许；目标主机可通过 `-HttpOtaHost` 指定，或写入项目根目录 `.mus4_ota_target` 的首行。
 
 ### Python 测试
 
@@ -109,10 +118,12 @@ pytest tests/
 # 运行单个测试文件
 pytest tests/test_arduino_cli.py
 pytest tests/test_wireless_console_policy.py
+pytest tests/test_firmware_feature_flags.py
 
 # 运行单个测试用例
 pytest tests/test_arduino_cli.py -k "test_prefers_explicit_port_when_available"
 pytest tests/test_wireless_console_policy.py -k "test_requires_authentication_and_park_locked_for_ota_open"
+pytest tests/test_firmware_feature_flags.py -k "test_websocket_curve_data_feature_is_enabled"
 
 # 配网代理测试
 python provisioning_system/tests/test_agent.py -v
@@ -123,7 +134,7 @@ pytest tests/ -v
 
 ### 固件运行时串口测试命令
 
-在 USB Serial 或 Serial1 监视器中输入并回车：
+在 USB Serial、Serial1、TCP Console 或 Web Console 中输入并回车；无线入口受认证和 Park 权限限制：
 - `TEST`：运行固件内置命令解析测试。
 - `TEST_TUI`：TUI 测试入口，当前输出 skipped。
 - `BENCH`：运行 TUI/循环性能基准。
@@ -131,6 +142,9 @@ pytest tests/ -v
 - `REGRESS`：运行固件回归校验。
 - `FILTER_TEST`：运行 RC 滤波测试入口。
 - `FILTER_DEBUG`：切换 RC 滤波调试输出。
+- `STEER_CAL` / `CAL_SAVE` / `CAL_RETRY` / `CAL_ABORT` / `CAL_RESET` / `CAL_STATUS`：转向通道交互式标定流程。
+- `WIFI_STA_SSID` / `WIFI_STA_PASSWORD` / `WIFI_STA_APPLY` / `WIFI_STA_CLEAR` / `WIFI_STA_STATUS`：Wi-Fi STA 配置与状态命令。
+- `ENABLE_OTA` / `OTA_STATUS` / `DISABLE_OTA`：OTA 窗口控制。
 - `LOG_WEB` / `LOG_SERIAL`：切换 MUS4 日志输出目标。
 - `ANSI` / `NOANSI`：切换 TUI ANSI 转义序列显示。
 
@@ -139,6 +153,7 @@ pytest tests/ -v
 - `config.yaml`：`arduino-cli.py` 的主配置，包含 `arduino_cli`、`fqbn`、`port`、`baudrate`、`sketch_path`、`build_path`、串口自动检测与日志配置。
 - `sketch.yaml`：Arduino CLI 项目级默认配置，当前默认 FQBN 为 `esp32:esp32:esp32:PartitionScheme=min_spiffs`，默认端口为 `/dev/ttyS4`。
 - `wslbuild.yaml`（若存在）：`arduino-cli-wsl.ps1` 会读取其中的 `distro`、`sketch`、`fqbn`、`work_dir`、`io_mode`、`sync_libs`、`extra_sync_args` 等覆盖项；命令行参数优先级最高。
+- `.mus4_ota_target`（若存在）：HTTP OTA 默认目标主机列表，脚本读取首个非空首行。
 - `WirelessSecrets.example.h`：Wi-Fi STA 凭据模板；本地 `WirelessSecrets.h` 可被 `mus4.ino` 自动包含，但可能含真实凭据，提交前必须检查且通常不应纳入提交。
 
 当前 `config.yaml` 默认：
@@ -155,11 +170,14 @@ pytest tests/ -v
 
 ### 构建工具层
 
-`arduino-cli.py` 是跨平台主入口：读取 `config.yaml`，封装 `arduino-cli compile/upload/monitor`，处理串口自动匹配、上次成功端口缓存、双串口回退、复位、进度输出和日志。
+`arduino-cli.py` 是跨平台主入口：读取 `config.yaml`，封装 `arduino-cli compile/upload/monitor`，处理串口自动匹配、上次成功端口缓存、双串口回退、复位、进度输出、日志、预编译 `.bin` 选择和 ArduinoOTA 上传。
 
-`arduino-cli-wsl.ps1` 是 Windows/WSL 包装层：自动探测 WSL 环境，把源码同步到 WSL 原生文件系统编译，回传产物后调用 `arduino-cli.py` 执行 Windows 端串口上传。
+`arduino-cli-wsl.ps1` 是 Windows/WSL 包装层：自动探测 WSL 环境，把源码同步到 WSL 原生文件系统编译，回传产物后调用 `arduino-cli.py` 执行 Windows 端串口上传或 ArduinoOTA；HTTP OTA 则直接通过 `curl.exe` POST 到设备 Web Console 的 `/update` 端点。
 
-Python 测试集中在 `tests/test_arduino_cli.py`，主要覆盖串口选择、双串口回退、进度解析和上传命令构造等纯逻辑。
+Python 测试集中在 `tests/`：
+- `tests/test_arduino_cli.py` 覆盖串口选择、双串口回退、进度解析、上传命令构造和预编译固件选择等纯逻辑。
+- `tests/test_wireless_console_policy.py` 覆盖无线控制台认证、Park 锁定、OTA 窗口、Web/STA 状态格式和行缓冲规则。
+- `tests/test_firmware_feature_flags.py` 用源码断言保护关键编译开关和 Web Console 曲线实现形态。
 
 ### 固件应用层
 
@@ -167,17 +185,16 @@ Python 测试集中在 `tests/test_arduino_cli.py`，主要覆盖串口选择、
 1. RC 接收机通过 CH1-CH6 PWM 输入触发中断，计算脉宽并滤波；CH5/CH6 当前用于 Drift Assist 开关与强度比例。
 2. USB `Serial`、`Serial1`、TCP Console 与 Web Console 接收命令，解析 `Throttle:Steering`、序列号与校验和格式。
 3. 控制逻辑按模式融合 RC 与 Pilot 数据，更新 `car_output`，Drift Assist 可在条件满足时叠加转向补偿。
-4. Park/紧急制动状态机可覆盖油门输出并控制 LED 闪烁。
+4. Park/紧急制动状态机可覆盖油门输出并控制 LED 闪烁；OTA 窗口或 OTA 传输期间会暂停 Serial1 遥测。
 5. 输出层通过 ESP32 `ledc` 产生 PWM，驱动转向舵机与油门电调，并通过 Serial1 回传 `Txx:Sxx`。
-6. TUI、I2C 传感器、Web 数据曲线/日志缓冲和 BLE Gamepad 作为旁路功能读取状态并输出显示或手柄轴数据。
+6. TUI、I2C 传感器、Web 数据曲线/日志缓冲、WebSocket 遥测和 BLE Gamepad 作为旁路功能读取状态并输出显示或手柄轴数据。
 
 ### 核心模块
 
 - `SharedTypes.h`：跨模块共享的数据结构与状态枚举，例如 `SensorData`、`ControlData`。
 - `TUI.h` / `TUI.cpp`：ANSI 终端仪表盘渲染，支持降级模式和增量刷新。
 - `Buzzer.h` / `Buzzer.cpp`：蜂鸣器状态机，硬件支持时使用。
-- `wireless_console_policy.py`：Wi-Fi/TCP/Web Console 权限策略的 Python 镜像，用于在桌面测试中覆盖认证、Park 锁定、OTA 窗口和行缓冲行为。
-- `tests/test_wireless_console_policy.py`：无线控制台权限策略测试；改动认证、诊断命令、OTA 窗口或行缓冲规则时必须同步更新。
+- `wireless_console_policy.py`：Wi-Fi/TCP/Web Console 权限策略的 Python 镜像，用于在桌面测试中覆盖认证、Park 锁定、OTA 窗口、STA 状态、日志脱敏和行缓冲行为。
 - `examples/`：I2C、传感器等独立示例 sketch。
 - `multi_agent_framework/`：独立 Python 多智能体框架代码，不属于 ESP32 固件主链路。
 - `provisioning_system/`：ESP32 Wi-Fi provisioning 与 Linux agent 相关工具，独立于 MUS4 主固件构建流程；ESP32 AP/Web Server 通过 UART 把 Wi-Fi 凭据发给 Linux agent，agent 使用 NetworkManager/nmcli 连接目标网络并回传结果。
@@ -204,7 +221,7 @@ Python 测试集中在 `tests/test_arduino_cli.py`，主要覆盖串口选择、
 - 带序列号时返回 `ACK:Seq` / `NACK:Seq`
 
 状态回传：
-- Serial1 输出 `Txx:Sxx\n`
+- Serial1 输出 `Txx:Sxx\n`；OTA 窗口打开或 OTA 进行中时暂停。
 
 ### 当前 v2.3 引脚
 
@@ -214,6 +231,8 @@ Python 测试集中在 `tests/test_arduino_cli.py`，主要覆盖串口选择、
 | RC CH2 油门 | 39 | 仅输入 |
 | RC CH3 Park | 34 | 仅输入 |
 | RC CH4 模式 | 26 | PWM 输入 |
+| RC CH5 Drift 开关 | 27 | PWM 输入 |
+| RC CH6 Drift 强度 | 35 | 仅输入 |
 | 转向舵机 | 23 | `ledc` PWM，当前 300Hz/14bit，1000-2000µs 映射 |
 | 油门电调 | 25 | `ledc` PWM，当前 300Hz/14bit，1000-2000µs 映射 |
 | 备用 PWM_1 | 32 | 预留输出 |
@@ -229,9 +248,9 @@ README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin
 
 ### Wi-Fi Console、Web Console 与 OTA
 
-`mus4.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`。启用后 ESP32 以 AP+STA 模式启动：AP SSID 为 `MUS4-DEBUG`，TCP 控制台端口为 `2323`，Web Console 端口为 `80`，OTA 默认主机名为 `mus4-ota`、端口 `3232`。
+`mus4.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`，并在该路径下启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY`。启用后 ESP32 以 AP+STA 模式启动：AP SSID 为 `MUS4-DEBUG`，TCP 控制台端口为 `2323`，Web Console 端口为 `80`，WebSocket 遥测端口为 `81`，ArduinoOTA 默认主机名为 `mus4-ota`、端口 `3232`。
 
-无线命令权限分层：`PING`、`STATUS`、`AUTH` 可未认证访问；控制指令和 `ANSI`/`NOANSI`/`FILTER_DEBUG` 需要认证；`TEST`、`BENCH`、`REGRESS` 等诊断命令还要求 Park 锁定；`ENABLE_OTA` 要求认证且 Park 锁定，`OTA_STATUS` 与 `DISABLE_OTA` 要求认证。修改这部分逻辑时，同步更新 `wireless_console_policy.py` 与 `tests/test_wireless_console_policy.py`。
+无线命令权限分层：`PING`、`STATUS`、`AUTH`、`WIFI_STA_STATUS` 可未认证访问；控制指令和 `ANSI`/`NOANSI`/`FILTER_DEBUG`/`LOG_WEB`/`LOG_SERIAL`/Wi-Fi STA 配置命令需要认证；`TEST`、`BENCH`、`REGRESS`、转向标定等诊断/维护命令还要求 Park 锁定；`ENABLE_OTA` 要求认证且 Park 锁定，`OTA_STATUS` 与 `DISABLE_OTA` 要求认证。修改这部分逻辑时，同步更新 `wireless_console_policy.py` 与 `tests/test_wireless_console_policy.py`。
 
 ### BLE Gamepad Mode
 
@@ -241,15 +260,18 @@ README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin
 
 设备名称在代码中维护；修改 BLE 相关行为后需要重新编译并在目标主机上重新配对验证。
 
-### Drift Assist
+### Drift Assist 与转向标定
 
-`mus4.ino` 当前包含漂移辅助编译开关与参数：`DRIFT_ASSIST_ENABLED`、增益、阈值、最大补偿和平滑/衰减系数。相关逻辑依赖 IMU 角速度与 CH3 档位状态，修改时同时检查 Park/解锁语义，避免与安全状态机冲突。
+`mus4.ino` 当前包含漂移辅助编译开关与参数：`DRIFT_ASSIST_ENABLED`、增益、阈值、最大补偿和平滑/衰减系数。相关逻辑依赖 IMU 角速度与 CH3/CH5/CH6 通道状态，修改时同时检查 Park/解锁语义，避免与安全状态机冲突。
+
+转向标定状态存储在 Preferences 中，相关命令受无线权限策略保护。修改标定命令、持久化键或转向映射后，同时检查 `wireless_console_policy.py` 和运行时串口命令列表。
 
 ## Safety-Critical Editing Notes
 
 - 该固件会直接控制舵机与电调；修改输出映射、Park、紧急制动、模式融合或无线控制入口时，必须保留 PWM 限幅和失效安全路径。
 - 中断处理函数必须保留 `IRAM_ATTR`，与中断共享的数据继续使用 `volatile` 或等价保护。
 - 串口、Web Console、TCP Console 输入都视为不可信边界；控制命令必须经过认证/权限和范围校验后才能影响输出。
+- `ENABLE_DIAGNOSTIC_COMMANDS` 与 `ENABLE_BOOT_STEERING_SELF_TEST` 默认应保持注释状态；`tests/test_firmware_feature_flags.py` 会保护这一点。
 
 ## Documentation Map
 

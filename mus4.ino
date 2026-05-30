@@ -25,8 +25,10 @@
 
 #define ENABLE_WIFI_CONSOLE
 #ifdef ENABLE_WIFI_CONSOLE
-// #define ENABLE_WIFI_WEBSOCKET_TELEMETRY
+#define ENABLE_WIFI_WEBSOCKET_TELEMETRY
 #endif
+// #define ENABLE_DIAGNOSTIC_COMMANDS
+// #define ENABLE_BOOT_STEERING_SELF_TEST
 
 #include <Wire.h>
 #include <FastLED.h>
@@ -193,10 +195,10 @@ CRGB leds[NUM_LEDS]; // Define the array of leds
 #define COLOR_WHITE "\033[37m"
 
 // 输出控制参数
-#define SENSOR_UPDATE_INTERVAL 8     // 传感器数据更新间隔（毫秒）- ~60Hz
-#define RC_DATA_UPDATE_INTERVAL 8    // RC数据更新间隔（毫秒）- ~60Hz
-#define RC_FILTER_UPDATE_INTERVAL 4   // RC滤波更新间隔（毫秒）- ~125Hz，平衡响应和稳定
-#define UI_UPDATE_INTERVAL 16         // UI更新间隔（毫秒）- 60Hz丝滑体验
+#define SENSOR_UPDATE_INTERVAL 2     // 传感器数据更新间隔（毫秒）- ~60Hz
+#define RC_DATA_UPDATE_INTERVAL 2    // RC数据更新间隔（毫秒）- ~60Hz
+#define RC_FILTER_UPDATE_INTERVAL 2   // RC滤波更新间隔（毫秒）- ~125Hz，平衡响应和稳定
+#define UI_UPDATE_INTERVAL 2         // UI更新间隔（毫秒）- 60Hz丝滑体验
 
 // 波形图参数
 #define WAVE_WIDTH 20                 // 波形图宽度 (reduced for performance)
@@ -251,7 +253,7 @@ const uint16_t WIFI_WEB_CONSOLE_PORT = 80;
 const uint32_t WIFI_WEB_TELEMETRY_MIN_FREE_HEAP = 60000;
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 const uint16_t WIFI_WEB_SOCKET_PORT = 81;
-const unsigned long WIFI_WEB_SOCKET_PUSH_INTERVAL_MS = 33;
+const unsigned long WIFI_WEB_SOCKET_PUSH_INTERVAL_MS = 16;
 const uint8_t WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME = 8;
 const uint8_t WIFI_WEB_SOCKET_MAX_REPLAY_POINTS = 32;
 const uint16_t WIFI_WEB_SOCKET_KEEPALIVE_SECONDS = 60;
@@ -495,6 +497,7 @@ static uint16_t stabilizeAuxiliaryPWM(int ch, uint16_t value, bool valid)
     return aux_stable_pwm[ch];
 }
 
+#ifdef ENABLE_DIAGNOSTIC_COMMANDS
 static bool runFilterTests()
 {
     mus4LogLine("test", "Running Filter Tests...");
@@ -584,6 +587,7 @@ static bool runBenchmarks()
     mus4Logf("bench", "BENCH: loops=%lu duration=%lums", score, t1);
     return score > 1;
 }
+#endif
 struct struct_message
 {
     int throttle; // 油门值
@@ -612,6 +616,7 @@ const int SERVO_RANGE_V = 2458; // ±500µs范围
 const int MOTOR_OFFSET_V = 1;
 const int SERVO_OFFSET_V = -1;
 
+#ifdef ENABLE_DIAGNOSTIC_COMMANDS
 static bool runStress()
 {
     uint32_t errs0 = serial0Buf.errors;
@@ -632,6 +637,7 @@ static bool runRegression()
     mus4Logf("regress", "REGRESS: ok=%d", ok?1:0);
     return ok;
 }
+#endif
 
 // 波形图数据
 int throttleWave[WAVE_WIDTH] = {0};
@@ -792,10 +798,12 @@ static bool processLine(const String& line, int* throttle, int* steering, int* s
         mus4Logf("filter", "Filter Debug: %s", filterDebugEnabled ? "ON" : "OFF");
         return false;
     }
+#ifdef ENABLE_DIAGNOSTIC_COMMANDS
     if (line.equalsIgnoreCase("FILTER_TEST")) {
-        runFilterTests(); 
-        return false; 
+        runFilterTests();
+        return false;
     }
+#endif
 
     *seq = -1;
     int star = line.lastIndexOf('*');
@@ -849,11 +857,6 @@ static bool processWifiStaConfigCommand(const String& line, Print& out) { return
 #define PROCESS_COMMAND_LINE(line, out, sb) do { \
     if (processLocalOtaMaintenanceCommand((line), (out), (sb))) { \
     } else if (processWifiStaConfigCommand((line), (out))) { \
-    } else if ((line).equalsIgnoreCase("TEST")) { \
-        bool ok = runUnitTests(); \
-        (out).printf("TEST: total=%d passed=%d ok=%d\n", testsTotal, testsPassed, ok ? 1 : 0); \
-    } else if ((line).equalsIgnoreCase("TEST_TUI")) { \
-        (out).println("Skipped TEST_TUI"); \
     } else if ((line).equalsIgnoreCase("LOG_WEB")) { \
         setMus4LogTargetWeb(); \
         mus4LogLine("log", mus4LogTarget == MUS4_LOG_TARGET_WEB ? "target=web" : "target=serial wifi_disabled"); \
@@ -862,15 +865,6 @@ static bool processWifiStaConfigCommand(const String& line, Print& out) { return
         mus4LogTarget = MUS4_LOG_TARGET_SERIAL; \
         mus4LogLine("log", "target=serial"); \
         (out).println("ACK:LOG_SERIAL"); \
-    } else if ((line).equalsIgnoreCase("BENCH")) { \
-        bool ok = runBenchmarks(); \
-        (out).printf("BENCH_OK=%d\n", ok ? 1 : 0); \
-    } else if ((line).equalsIgnoreCase("STRESS")) { \
-        bool ok = runStress(); \
-        (out).printf("STRESS_OK=%d\n", ok ? 1 : 0); \
-    } else if ((line).equalsIgnoreCase("REGRESS")) { \
-        bool ok = runRegression(); \
-        (out).printf("REGRESS_OK=%d\n", ok ? 1 : 0); \
     } else if ((line).equalsIgnoreCase("STEER_CAL")) { \
         startSteerCalibration(out); \
     } else if ((line).equalsIgnoreCase("CAL_SAVE")) { \
@@ -1019,7 +1013,7 @@ static bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin o
     if (isWirelessOtaOpenCommand(line)) return webDevMode || (wifiConsoleAuthenticated && car_output.park == PARK_LOCKED);
     if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || wifiConsoleAuthenticated;
     if (!wifiConsoleAuthenticated) return false;
-    if (line.equalsIgnoreCase("TEST") || line.equalsIgnoreCase("TEST_TUI") || line.equalsIgnoreCase("BENCH") || line.equalsIgnoreCase("STRESS") || line.equalsIgnoreCase("REGRESS") || line.equalsIgnoreCase("FILTER_TEST") || line.equalsIgnoreCase("STEER_CAL")) {
+    if (line.equalsIgnoreCase("STEER_CAL")) {
         return car_output.park == PARK_LOCKED;
     }
     if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || isWifiStaConfigCommand(line)) return true;
@@ -1787,7 +1781,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 </section>
 <section class="panel">
 <div class="row"><input id="cmd" placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停日志</button></div>
-<div class="row" style="margin:8px 0"><button onclick="quick('PING')">PING</button><button onclick="quick('STATUS')">STATUS</button><button onclick="quick('AUTH:mus4-debug')">AUTH</button><button onclick="quick('ENABLE_OTA')">ENABLE_OTA</button><button onclick="quick('OTA_STATUS')">OTA_STATUS</button><button onclick="quick('STEER_CAL')">STEER_CAL</button><button onclick="quick('CAL_STATUS')">CAL_STATUS</button><a href="/update" target="_blank" style="text-decoration:none"><button>OTA Upload</button></a></div>
+<div class="row" style="margin:8px 0"><button onclick="quick('PING')">PING</button><button onclick="quick('STATUS')">STATUS</button><button onclick="quick('AUTH:mus4-debug')">AUTH</button><button onclick="quick('ENABLE_OTA')">ENABLE_OTA</button><button onclick="quick('OTA_STATUS')">OTA_STATUS</button><a href="/update" target="_blank" style="text-decoration:none"><button>OTA Upload</button></a></div>
 <div class="muted" style="margin:8px 0">开发模式会持久化；仅 Web OTA 免认证并保持 OTA 监听，不放宽控制命令。OTA 传输期间会默认 Park Locked。</div>
 <div id="log" class="log"></div><div class="muted" id="logMeta">log ready</div>
 </section>
@@ -1802,24 +1796,24 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <div id="wifiStaModal" class="modal"><div class="dialog"><h2>STA Wi-Fi 配置</h2><div class="row"><input id="staSsid" placeholder="STA SSID"></div><div class="row" style="margin-top:8px"><input id="staPassword" type="password" placeholder="Wi-Fi 密码，留空表示开放网络"></div><p>保存前请先 AUTH；密码不会回显，凭据会保存到设备 NVS。</p><div class="dialogActions"><button onclick="closeWifiStaModal()">取消</button><button onclick="clearWifiSta()">清除</button><button onclick="saveWifiSta()">保存并连接</button></div></div></div>
 <script>
 const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),logMeta=document.getElementById('logMeta'),dataMeta=document.getElementById('dataMeta'),devModeCheck=document.getElementById('devModeCheck'),devModeSwitchText=document.getElementById('devModeSwitchText'),devModeModal=document.getElementById('devModeModal'),versionLabel=document.getElementById('versionLabel'),staSsid=document.getElementById('staSsid'),staPassword=document.getElementById('staPassword'),wifiStaModal=document.getElementById('wifiStaModal'),apIpValue=document.getElementById('apIpValue'),staIpValue=document.getElementById('staIpValue'),staStateValue=document.getElementById('staStateValue'),apClientValue=document.getElementById('apClientValue'),apCard=document.getElementById('apCard'),staCard=document.getElementById('staCard'),voltageCard=document.getElementById('voltageCard'),voltageValue=document.getElementById('voltageValue'),voltageSub=document.getElementById('voltageSub'),chartPanel=document.getElementById('chartPanel'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),thrMeta=document.getElementById('thrMeta'),strMeta=document.getElementById('strMeta'),gzMeta=document.getElementById('gzMeta'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
-let lastLogSeq=0,lastDataSeq=0,pointHead=0,pointCount=0,logPaused=false,chartPaused=false,dataPolling=false,points=new Array(256),pendingPoints=[],scrollOffset=0,queuePrimed=false,gapCount=0,latestBackendTime=0,renderTime=0,lastFrameTime=performance.now(),lastDrawTime=0,chartLatencyMs=160,smoothedDt=16,dataWs=null,dataWsConnected=false,dataWsReconnectDelay=500,dataWsReconnectTimer=0,dataWsPingTimer=0,dataTransport='poll',screenSaverActive=false,screenSaverStartTime=0,parkLockedAt=0,ch1Samples=[],gridCanvas=document.createElement('canvas'),gridCtx=gridCanvas.getContext('2d'),gridReady=false,saverTime=0;const SAVER_LOGO_B64='X19fX19fX18gICAgICAgICAgICAgX19fX19fICAgICAgICAgICAgICAgICAgIF9fX19fX19fXyAgICAgICAgICAgICAgCl9fXyAgX18gXF9fX19fX19fX19fX19fXyAgL19fX19fX19fX19fICBfXyAgICBfXyAgX19fXy9fX19fXyBfX19fX19fXwpfXyAgLyAvIC8gIF9fIFxfICBfXyBcXyAgLy9fLyAgXyBcXyAgLyAvIC8gICAgXyAgLyAgICBfICBfXyBgL18gIF9fXy8KXyAgL18vIC8vIC9fLyAvICAvIC8gLyAgLDwgIC8gIF9fLyAgL18vIC8gICAgIC8gL19fXyAgLyAvXy8gL18gIC8gICAgCi9fX19fXy8gXF9fX18vL18vIC9fLy9fL3xffCBcX19fL19cX18sIC8gICAgICBcX19fXy8gIFxfXyxfLyAvXy8gICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAvX19fXy8gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg';
+let lastLogSeq=0,lastDataSeq=0,pointHead=0,pointCount=0,logPaused=false,chartPaused=false,dataPolling=false,points=new Array(256),scrollOffset=0,lastFrameTime=performance.now(),lastDrawTime=0,smoothedDt=16,dataWs=null,dataWsConnected=false,dataWsReconnectDelay=500,dataWsReconnectTimer=0,dataTransport='poll',screenSaverActive=false,screenSaverStartTime=0,parkLockedAt=0,ch1Samples=[],gridCanvas=document.createElement('canvas'),gridCtx=gridCanvas.getContext('2d'),gridReady=false,saverTime=0;const SAVER_LOGO_B64='X19fX19fX18gICAgICAgICAgICAgX19fX19fICAgICAgICAgICAgICAgICAgIF9fX19fX19fXyAgICAgICAgICAgICAgCl9fXyAgX18gXF9fX19fX19fX19fX19fXyAgL19fX19fX19fX19fICBfXyAgICBfXyAgX19fXy9fX19fXyBfX19fX19fXwpfXyAgLyAvIC8gIF9fIFxfICBfXyBcXyAgLy9fLyAgXyBcXyAgLyAvIC8gICAgXyAgLyAgICBfICBfXyBgL18gIF9fXy8KXyAgL18vIC8vIC9fLyAvICAvIC8gLyAgLDwgIC8gIF9fLyAgL18vIC8gICAgIC8gL19fXyAgLyAvXy8gL18gIC8gICAgCi9fX19fXy8gXF9fX18vL18vIC9fLy9fL3xffCBcX19fL19cX18sIC8gICAgICBcX19fXy8gIFxfXyxfLyAvXy8gICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAvX19fXy8gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg';
 function line(t){if(logPaused)return;log.textContent+=t+'\n';if(log.textContent.length>16000)log.textContent=log.textContent.slice(-12000);log.scrollTop=log.scrollHeight}
 function clearLog(){log.textContent=''}
 function togglePause(){logPaused=!logPaused;document.getElementById('pauseBtn').textContent=logPaused?'继续日志':'暂停日志'}
 function toggleChart(){chartPaused=!chartPaused;document.getElementById('chartBtn').textContent=chartPaused?'继续曲线':'暂停曲线'}
 function toggleChartFullscreen(){if(document.fullscreenElement===chartPanel)document.exitFullscreen();else chartPanel.requestFullscreen()}
 document.addEventListener('fullscreenchange',()=>{document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?'退出全屏':'全屏曲线';gridReady=false;draw()});
-function clearChart(){pointHead=0;pointCount=0;points.fill(null);pendingPoints=[];scrollOffset=0;queuePrimed=false;gapCount=0;latestBackendTime=0;renderTime=0;smoothedDt=16;dataWsPingTimer=0;gridReady=false;draw()}function enterScreenSaver(){screenSaverActive=true;screenSaverStartTime=performance.now();saverTime=0;dataMeta.textContent='screensaver active'}function exitScreenSaver(){screenSaverActive=false;screenSaverStartTime=0;parkLockedAt=0;ch1Samples=[];clearChart();dataMeta.textContent='screensaver exited'}
+function clearChart(){pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;draw()}function enterScreenSaver(){screenSaverActive=true;screenSaverStartTime=performance.now();saverTime=0;dataMeta.textContent='screensaver active'}function exitScreenSaver(){screenSaverActive=false;screenSaverStartTime=0;parkLockedAt=0;ch1Samples=[];clearChart();dataMeta.textContent='screensaver exited'}
 function parseStatusText(t){const m={};t.trim().split(/\s+/).forEach(x=>{const i=x.indexOf('=');if(i>0)m[x.slice(0,i)]=x.slice(i+1).replace(/^\"|\"$/g,'')});return m}
 function updateNetworkCard(s){const ap=s.ap_ip||'--',sta=s.sta_ip||'0.0.0.0',clients=s.ap_clients||'0',configured=s.sta_configured==='1',connected=s.sta_connected==='1';apIpValue.textContent=ap;apClientValue.textContent=clients;apClientValue.title='AP clients';apCard.className='stateCard mode0';staIpValue.textContent=configured?sta:'disabled';staStateValue.textContent=connected?'connected':configured?'pending':'not configured';staCard.className='stateCard '+(connected?'mode0':'driftOff');if(s.version){versionLabel.textContent=s.version}}
 async function refreshStatus(){try{const r=await fetch('/api/status');const t=await r.text();statusBox.textContent=t;updateNetworkCard(parseStatusText(t))}catch(e){statusBox.textContent='status error: '+e}}
 async function pollLog(){try{const r=await fetch('/api/log?since='+lastLogSeq);const j=await r.json();for(const e of j.entries){lastLogSeq=Math.max(lastLogSeq,e.seq);line('['+e.t+']['+e.src+'] '+e.line)}logMeta.textContent='seq='+lastLogSeq+' dropped='+j.dropped}catch(e){logMeta.textContent='log error: '+e}}
 function updateState(p){const modes={0:['RC','Manual input'],1:['ASSIST','Pilot steering'],2:['AUTO','Pilot control']},m=modes[p.mode]||['MODE '+p.mode,'unknown'];modeCard.className='stateCard mode'+p.mode;modeValue.textContent=m[0];modeSub.textContent=m[1];parkCard.className='stateCard '+(p.park?'parkLocked':'parkUnlocked');parkValue.textContent=p.park?'LOCKED':'UNLOCKED';parkSub.textContent=p.park?'output guarded':'drive enabled';const de=!!p.de,da=!!p.da,dc=Number(p.dc||0),gzf=Number(p.gzf||0);driftCard.className='stateCard '+(!de?'driftOff':da?'driftActive':'driftArmed');driftValue.textContent=!de?'OFF':da?'ACTIVE':'ARMED';driftSub.textContent='comp='+dc.toFixed(1)+' gzf='+gzf.toFixed(2);driftNeedle.style.left=Math.max(0,Math.min(100,(Math.max(-70,Math.min(70,dc))+70)*100/140))+'%';[p.ch1,p.ch2,p.ch3,p.ch4,p.ch5,p.ch6].forEach((v,i)=>chValues[i].textContent=v??'----');const v=Number(p.vol);if(!isNaN(v)&&v>0){voltageValue.textContent=v.toFixed(2)+'V';const pct=Math.max(0,Math.min(100,Math.round((v-10.5)/(12.6-10.5)*100)));voltageSub.textContent=pct+'%';voltageCard.className='stateCard '+(pct>30?'mode0':pct>15?'driftArmed':'driftOff')}else{voltageValue.textContent='--';voltageSub.textContent='battery'}const parkLocked=!!p.park;if(parkLocked){if(parkLockedAt===0)parkLockedAt=performance.now()}else{parkLockedAt=0;if(screenSaverActive)exitScreenSaver()}const now=performance.now();const ch1Val=Number(p.ch1);if(!isNaN(ch1Val)){ch1Samples.push({t:now,v:ch1Val});while(ch1Samples.length>0&&now-ch1Samples[0].t>60000)ch1Samples.shift();if(ch1Samples.length>=2){let minCh1=Infinity,maxCh1=-Infinity;for(const s of ch1Samples){if(s.v<minCh1)minCh1=s.v;if(s.v>maxCh1)maxCh1=s.v}const range=maxCh1-minCh1;console.log('saver: active='+screenSaverActive+' park='+parkLocked+' ch1='+ch1Val+' range='+range.toFixed(1)+' n='+ch1Samples.length);if(!screenSaverActive&&parkLockedAt>0&&now-parkLockedAt>=10000&&range<10){enterScreenSaver()}else if(screenSaverActive&&range>=10){exitScreenSaver()}}else if(screenSaverActive&&ch1Samples.length===1){const last=ch1Samples[0].v;if(Math.abs(ch1Val-last)>=10){console.log('saver: instant exit ch1='+ch1Val+' last='+last);exitScreenSaver()}}}}
-function handleDataPayload(j,transport,elapsed){const arr=j.points||[];let latest=j.latest||null;for(const p of arr){p.req=transport==='ws'?0:elapsed;lastDataSeq=Math.max(lastDataSeq,p.seq);if(!chartPaused&&!screenSaverActive){pendingPoints.push(p);latestBackendTime=Math.max(latestBackendTime,p.t)}}if(latest){lastDataSeq=Math.max(lastDataSeq,latest.seq||0);updateState(latest)}const p=latest||latestPoint();dataTransport=transport;if(p){thrMeta.textContent=p.thr;strMeta.textContent=p.str;gzMeta.textContent=Number(p.gz||0).toFixed(3);dataMeta.textContent=transport+' seq='+lastDataSeq}else dataMeta.textContent=transport+' waiting data'}
+function handleDataPayload(j,transport,elapsed){const arr=j.points||[];let latest=j.latest||null;let added=0;for(const p of arr){p.req=transport==='ws'?0:elapsed;lastDataSeq=Math.max(lastDataSeq,p.seq||0);if(!chartPaused&&!screenSaverActive){addPoint(p);added++}}if(latest){lastDataSeq=Math.max(lastDataSeq,latest.seq||0);updateState(latest)}const p=latest||latestPoint();dataTransport=transport;if(p){thrMeta.textContent=p.thr;strMeta.textContent=p.str;gzMeta.textContent=Number(p.gz||0).toFixed(3);dataMeta.textContent=transport+' realtime seq='+lastDataSeq+' +'+added}else dataMeta.textContent=transport+' waiting data';if(added>0)draw()}
 function decodeBinaryDataPayload(buffer){const v=new DataView(buffer);let o=0;const u8=()=>v.getUint8(o++),u16=()=>{const x=v.getUint16(o,true);o+=2;return x},u32=()=>{const x=v.getUint32(o,true);o+=4;return x},i16=()=>{const x=v.getInt16(o,true);o+=2;return x},f32=()=>{const x=v.getFloat32(o,true);o+=4;return x};if(u8()!==77||u8()!==52)throw new Error('bad magic');const version=u8();u8();if(version!==1)throw new Error('bad version');const dropped=u32(),seq=u32(),t=u32(),dt=u16(),thr=i16(),str=i16(),gz=f32(),mode=u8(),park=u8();const ch=[u16(),u16(),u16(),u16(),u16(),u16()];const latest={seq,t,dt,thr,str,gz,mode,park,ch1:ch[0],ch2:ch[1],ch3:ch[2],ch4:ch[3],ch5:ch[4],ch6:ch[5],rct:i16(),rcs:i16(),pt:i16(),ps:i16(),gzf:f32(),dc:f32(),de:u8(),da:u8(),vol:f32()};const count=u8(),points=[];for(let i=0;i<count;i++)points.push({seq:u32(),t:u32(),dt:u16(),thr:i16(),str:i16(),gz:f32()});return{type:'data',dropped,latest,points}}
 function dataWsUrl(){return (location.protocol==='https:'?'wss:':'ws:')+'//'+location.hostname+':81/'}
 function scheduleDataWsReconnect(){if(dataWsReconnectTimer)return;dataWsReconnectTimer=setTimeout(()=>{dataWsReconnectTimer=0;connectDataSocket();dataWsReconnectDelay=Math.min(8000,dataWsReconnectDelay*2)},dataWsReconnectDelay)}
-function connectDataSocket(){try{if(dataWs&&dataWs.readyState!==WebSocket.CLOSED)return;if(dataWs){dataWs.onclose=null;dataWs.onerror=null;try{dataWs.close()}catch(e){}}if(dataWsPingTimer){clearInterval(dataWsPingTimer);dataWsPingTimer=0}const ws=new WebSocket(dataWsUrl());dataWs=ws;ws.binaryType='arraybuffer';ws.onopen=()=>{if(dataWs!==ws){ws.close();return}dataWsConnected=true;dataWsReconnectDelay=1000;dataTransport='ws';ws.send('since:'+lastDataSeq);dataWsPingTimer=setInterval(()=>{if(dataWs===ws&&dataWs.readyState===WebSocket.OPEN)ws.send('ping')},25000)};ws.onmessage=e=>{if(dataWs!==ws)return;try{if(e.data instanceof ArrayBuffer){handleDataPayload(decodeBinaryDataPayload(e.data),'ws',0);return}if(e.data instanceof Blob){e.data.arrayBuffer().then(b=>{if(dataWs===ws)handleDataPayload(decodeBinaryDataPayload(b),'ws',0)}).catch(err=>dataMeta.textContent='ws parse error: '+err);return}const j=JSON.parse(e.data);if(j.type==='hello')dataMeta.textContent='ws connected seq='+j.seq}catch(err){dataMeta.textContent='ws parse error: '+err}};ws.onclose=()=>{if(dataWs!==ws)return;if(dataWsPingTimer){clearInterval(dataWsPingTimer);dataWsPingTimer=0}dataWsConnected=false;dataWs=null;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,2000)};ws.onerror=()=>{if(dataWs!==ws)return;dataWsConnected=false;try{ws.close()}catch(e){}}}catch(e){if(dataWsPingTimer){clearInterval(dataWsPingTimer);dataWsPingTimer=0}dataWsConnected=false;dataWs=null;dataMeta.textContent='ws error: '+e;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,2000)}}
+function connectDataSocket(){try{if(dataWs&&dataWs.readyState!==WebSocket.CLOSED)return;if(dataWs){dataWs.onclose=null;dataWs.onerror=null;try{dataWs.close()}catch(e){}}const ws=new WebSocket(dataWsUrl());dataWs=ws;ws.binaryType='arraybuffer';ws.onopen=()=>{if(dataWs!==ws){ws.close();return}dataWsConnected=true;dataWsReconnectDelay=1000;dataTransport='ws';ws.send('since:'+lastDataSeq)};ws.onmessage=e=>{if(dataWs!==ws)return;try{if(e.data instanceof ArrayBuffer){handleDataPayload(decodeBinaryDataPayload(e.data),'ws',0);return}if(e.data instanceof Blob){e.data.arrayBuffer().then(b=>{if(dataWs===ws)handleDataPayload(decodeBinaryDataPayload(b),'ws',0)}).catch(err=>dataMeta.textContent='ws parse error: '+err);return}const j=JSON.parse(e.data);if(j.type==='hello')dataMeta.textContent='ws connected seq='+j.seq}catch(err){dataMeta.textContent='ws parse error: '+err}};ws.onclose=()=>{if(dataWs!==ws)return;dataWsConnected=false;dataWs=null;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,2000)};ws.onerror=()=>{if(dataWs!==ws)return;dataWsConnected=false;try{ws.close()}catch(e){}}}catch(e){dataWsConnected=false;dataWs=null;dataMeta.textContent='ws error: '+e;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,2000)}}
 async function pollData(){if(dataWsConnected)return;if(dataPolling)return;dataPolling=true;let delay=60;const start=performance.now();try{const r=await fetch('/api/data?since='+lastDataSeq);const j=await r.json();const elapsed=performance.now()-start;handleDataPayload(j,'poll',elapsed);delay=(j.points||[]).length?Math.max(30,Math.min(80,Math.round(elapsed*1.2))):100}catch(e){delay=160;dataMeta.textContent='data error: '+e}finally{dataPolling=false;if(!dataWsConnected)setTimeout(pollData,delay)}}
 async function sendCmd(){const v=cmd.value.trim();if(!v)return;await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});cmd.value='';refreshStatus()}
 function renderDevMode(v){devModeCheck.checked=!!v;devModeSwitchText.textContent=v?'ON':'OFF'}function toggleDevModeFromSwitch(){if(devModeCheck.checked){devModeModal.classList.add('show')}else{setDevMode(false)}}
@@ -1841,7 +1835,7 @@ function map(v,min,max,h){if(max===min)return h/2;return h-(v-min)*(h/(max-min))
 function ensureGrid(){const w=canvas.width,h=canvas.height;if(gridReady&&gridCanvas.width===w&&gridCanvas.height===h)return;gridCanvas.width=w;gridCanvas.height=h;gridCtx.clearRect(0,0,w,h);gridCtx.strokeStyle='#233041';gridCtx.lineWidth=1;for(let i=0;i<5;i++){const y=20+i*(h-40)/4;gridCtx.beginPath();gridCtx.moveTo(24,y);gridCtx.lineTo(w-16,y);gridCtx.stroke()}gridReady=true}
 function drawSeries(key,color,min,max){const w=canvas.width,h=canvas.height,plotX=24,plotW=w-40,plotH=h-40;if(pointCount<2)return;const stepX=plotW/255,rightX=plotX+plotW,buckets=[];for(let i=0;i<pointCount;i++){const p=pointAt(i);if(!p)continue;const x=rightX-(pointCount-1-i)*stepX;const xi=Math.round(x);if(xi<plotX-5||xi>w-16+5)continue;const y=20+map(p[key]||0,min,max,plotH);let b=buckets[xi];if(!b)buckets[xi]={min:y,max:y,xSum:x,count:1};else{if(y<b.min)b.min=y;if(y>b.max)b.max=y;b.xSum+=x;b.count++}}ctx.strokeStyle=color;ctx.beginPath();let drawn=false;for(let xi=0;xi<=w;xi++){const b=buckets[xi];if(!b)continue;const x=b.xSum/b.count;const mid=(b.min+b.max)/2;if(!drawn){ctx.moveTo(x,mid);drawn=true}else{ctx.lineTo(x,mid)}if(b.max-b.min>1){ctx.moveTo(x,b.min);ctx.lineTo(x,b.max);ctx.moveTo(x,mid)}}if(drawn)ctx.stroke()}
 function draw(){const w=canvas.width,h=canvas.height;ensureGrid();ctx.clearRect(24,0,w-40,h);ctx.drawImage(gridCanvas,24,0,w-40,h,24,0,w-40,h);ctx.fillStyle='#8fa1b5';ctx.font='10px sans-serif';ctx.textAlign='right';ctx.textBaseline='middle';const yLabels=[100,50,0,-50,-100];for(let i=0;i<5;i++){ctx.fillText(String(yLabels[i]),22,20+i*(h-40)/4)}ctx.save();ctx.beginPath();ctx.rect(24,0,w-40,h);ctx.clip();ctx.lineWidth=2;drawSeries('thr','#39d98a',-100,100);drawSeries('str','#5cc8ff',-100,100);drawSeries('gz','#ff6b6b',-5,5);if(screenSaverActive){ctx.save();ctx.fillStyle='rgba(92,200,255,0.5)';ctx.font='14px monospace';ctx.textAlign='center';ctx.textBaseline='middle';const lines=atob(SAVER_LOGO_B64).split('\n');const lineH=18;const cy=h/2;lines.forEach((line,i)=>{ctx.fillText(line,24+(w-40)/2,cy-(lines.length-1)*lineH/2+i*lineH)});ctx.restore();ctx.fillStyle='#5cc8ff';ctx.font='14px sans-serif';ctx.textAlign='right';ctx.fillText('Drifting for Fun~',w-20,h-20)}ctx.restore()}
-function renderLoop(now){requestAnimationFrame(renderLoop);let dt=Math.min(100,now-lastFrameTime);lastFrameTime=now;if(document.hidden||chartPaused)return;if(screenSaverActive){const stepX=(canvas.width-40)/255;scrollOffset+=dt/18*stepX;scrollOffset=Math.min(scrollOffset,stepX*1.5);while(scrollOffset>=stepX){addPoint({seq:0,t:saverTime,dt:16,thr:95*Math.sin(saverTime/400),str:70*Math.sin(saverTime/550+1),gz:3.5*Math.sin(saverTime/300+2)});saverTime+=16;scrollOffset-=stepX}}else if(latestBackendTime>0){const stepX=(canvas.width-40)/255;if(!queuePrimed){if(pendingPoints.length>=5)queuePrimed=true}if(queuePrimed){scrollOffset+=dt/18*stepX;scrollOffset=Math.min(scrollOffset,stepX*1.5);if(scrollOffset>=stepX){if(pendingPoints.length>0){const p=pendingPoints.shift();if(gapCount>0&&pointCount>0){const prev=latestPoint();for(let i=1;i<=gapCount;i++){const t=i/(gapCount+1);const interp={...prev};for(const k of['thr','str','gz']){if(k in prev&&k in p){interp[k]=prev[k]+(p[k]-prev[k])*t}}addPoint(interp)}gapCount=0}addPoint(p)}else{gapCount++}scrollOffset-=stepX}}}if(now-lastDrawTime>=16){lastDrawTime=now;draw()}}
+function renderLoop(now){requestAnimationFrame(renderLoop);let dt=Math.min(100,now-lastFrameTime);lastFrameTime=now;if(document.hidden||chartPaused)return;if(screenSaverActive){const stepX=(canvas.width-40)/255;scrollOffset+=dt/18*stepX;scrollOffset=Math.min(scrollOffset,stepX*1.5);while(scrollOffset>=stepX){addPoint({seq:0,t:saverTime,dt:16,thr:95*Math.sin(saverTime/400),str:70*Math.sin(saverTime/550+1),gz:3.5*Math.sin(saverTime/300+2)});saverTime+=16;scrollOffset-=stepX}if(now-lastDrawTime>=16){lastDrawTime=now;draw()}}}
 refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,5000);setInterval(refreshWifiSta,5000);setInterval(pollLog,1000);connectDataSocket();setTimeout(()=>{if(!dataWsConnected)pollData()},1200);draw();requestAnimationFrame(renderLoop);
 </script>
 </body>
@@ -2277,12 +2271,6 @@ static void sendWifiWebSocketHello(AsyncWebSocketClient* client)
     if (!client) return;
     wifiWebSocketPayload = "{\"type\":\"hello\",\"seq\":";
     wifiWebSocketPayload += wifiWebDataSeq;
-    wifiWebSocketPayload += ",\"sample_ms\":";
-    wifiWebSocketPayload += WIFI_WEB_DATA_INTERVAL_MS;
-    wifiWebSocketPayload += ",\"push_ms\":";
-    wifiWebSocketPayload += WIFI_WEB_SOCKET_PUSH_INTERVAL_MS;
-    wifiWebSocketPayload += ",\"ws_port\":";
-    wifiWebSocketPayload += WIFI_WEB_SOCKET_PORT;
     wifiWebSocketPayload += '}';
     client->text(wifiWebSocketPayload);
 }
@@ -2294,17 +2282,10 @@ static void handleWifiWebSocketMessage(AsyncWebSocketClient* client, uint8_t* da
     message.reserve(length + 1);
     for (size_t i = 0; i < length; i++) message += (char)data[i];
     message.trim();
-    if (message == "ping") {
-        wifiWebSocketPayload = "{\"type\":\"pong\",\"t\":";
-        wifiWebSocketPayload += millis();
-        wifiWebSocketPayload += '}';
-        client->text(wifiWebSocketPayload);
-    } else if (message.startsWith("since:")) {
+    if (message.startsWith("since:")) {
         uint32_t seq = (uint32_t)message.substring(6).toInt();
         uint32_t replayFloor = wifiWebDataSeq > WIFI_WEB_SOCKET_MAX_REPLAY_POINTS ? wifiWebDataSeq - WIFI_WEB_SOCKET_MAX_REPLAY_POINTS : 0;
         if (seq >= replayFloor && seq <= wifiWebDataSeq) wifiWebSocketClientLastSeq = seq;
-    } else {
-        client->text("{\"type\":\"error\",\"error\":\"read_only\"}");
     }
 }
 
@@ -3643,6 +3624,7 @@ int apply_drift_assist(int driver_steering) {
 #endif
 }
 
+#ifdef ENABLE_BOOT_STEERING_SELF_TEST
 void run_steering_tests() {
     mus4LogLine("test", "--- Starting Steering Signal Processing Unit Tests (PID Enabled) ---");
     
@@ -3713,6 +3695,7 @@ void run_steering_tests() {
     mus4LogLine("test", "--- End Tests ---");
     reset_steering_filter(); // Reset for actual operation
 }
+#endif
 
 void setup()
 {
@@ -3730,7 +3713,9 @@ void setup()
     mus4LogLine("boot", "ESP32 Receiver Serial Ready!");
     Serial1.println("ESP32 Receiver Serial1 Ready!");
 
+#ifdef ENABLE_BOOT_STEERING_SELF_TEST
     run_steering_tests(); // Run unit tests for steering signal processing
+#endif
 
     #ifdef ENABLE_GAMEPAD_MODE
       bleGamepad.begin();

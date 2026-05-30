@@ -126,6 +126,13 @@ python arduino-cli.py --config config.yaml monitor
 3. 提交代码
 4. 新建 Pull Request
 
+## ChangeLog
+
+### 2026-05-30 v1.5.13
+
+- 固件次版本号从 `v1.5.12` 更新到 `v1.5.13`。
+- 保留当前已验证的 WebSocket 曲线实时显示能力，便于通过 HTTP OTA 发布当前稳定固件。
+
 ## 许可证
 
 本项目遵循 MIT 许可证。

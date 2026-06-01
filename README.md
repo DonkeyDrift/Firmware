@@ -128,6 +128,11 @@ python arduino-cli.py --config config.yaml monitor
 
 ## ChangeLog
 
+### 2026-06-01 v1.5.15
+
+- 固件次版本号从 `v1.5.14` 更新到 `v1.5.15`。
+- 修复 Web Console 的 STA Wi-Fi 配置弹窗在用户输入 SSID 后离焦时，周期刷新可能把输入值覆盖为当前保存值或编译默认值的问题。
+
 ### 2026-05-30 v1.5.14
 
 - 固件次版本号从 `v1.5.13` 更新到 `v1.5.14`。

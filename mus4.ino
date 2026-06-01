@@ -1826,11 +1826,12 @@ async function refreshDevMode(){try{const r=await fetch('/api/devmode');const j=
 function requestDevModeToggle(){if(devModeCheck.checked){setDevMode(false);return}devModeModal.classList.add('show')}
 function closeDevModeModal(ok){devModeModal.classList.remove('show');if(ok)setDevMode(true)}
 async function setDevMode(v){try{const r=await fetch('/api/devmode',{method:'POST',headers:{'Content-Type':'text/plain'},body:v?'1':'0'});if(!r.ok)throw new Error(await r.text());const j=await r.json();renderDevMode(!!j.enabled);refreshStatus()}catch(e){line('dev mode error: '+e);refreshDevMode()}}
-async function refreshWifiSta(){try{const r=await fetch('/api/wifi-sta');const j=await r.json();if(document.activeElement!==staSsid)staSsid.value=j.ssid||''}catch(e){line('sta config error: '+e)}}
-async function openWifiStaModal(){await refreshWifiSta();wifiStaModal.classList.add('show')}
+function isWifiStaModalOpen(){return wifiStaModal.classList.contains('show')}
+async function refreshWifiSta(forceFill=false){try{const r=await fetch('/api/wifi-sta');const j=await r.json();if(forceFill||(!isWifiStaModalOpen()&&document.activeElement!==staSsid))staSsid.value=j.ssid||''}catch(e){line('sta config error: '+e)}}
+async function openWifiStaModal(){await refreshWifiSta(true);wifiStaModal.classList.add('show')}
 function closeWifiStaModal(){wifiStaModal.classList.remove('show')}
-async function saveWifiSta(){try{const body=new URLSearchParams();body.set('ssid',staSsid.value.trim());body.set('password',staPassword.value);const r=await fetch('/api/wifi-sta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok)throw new Error(await r.text());staPassword.value='';await refreshWifiSta();refreshStatus();closeWifiStaModal()}catch(e){line('wifi sta save error: '+e)}}
-async function clearWifiSta(){if(!confirm('确认清除并禁用 STA 配置？'))return;try{const r=await fetch('/api/wifi-sta/clear',{method:'POST'});if(!r.ok)throw new Error(await r.text());staPassword.value='';await refreshWifiSta();refreshStatus();closeWifiStaModal()}catch(e){line('wifi sta clear error: '+e)}}
+async function saveWifiSta(){try{const body=new URLSearchParams();body.set('ssid',staSsid.value.trim());body.set('password',staPassword.value);const r=await fetch('/api/wifi-sta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok)throw new Error(await r.text());staPassword.value='';await refreshWifiSta(true);refreshStatus();closeWifiStaModal()}catch(e){line('wifi sta save error: '+e)}}
+async function clearWifiSta(){if(!confirm('确认清除并禁用 STA 配置？'))return;try{const r=await fetch('/api/wifi-sta/clear',{method:'POST'});if(!r.ok)throw new Error(await r.text());staPassword.value='';await refreshWifiSta(true);refreshStatus();closeWifiStaModal()}catch(e){line('wifi sta clear error: '+e)}}
 async function quick(v){cmd.value=v;await sendCmd()}
 cmd.addEventListener('keydown',e=>{if(e.key==='Enter')sendCmd()});
 function addPoint(p){const dt=Number(p.dt||16);smoothedDt=smoothedDt*0.85+Math.max(0,Math.min(80,dt))*0.15;p.dts=smoothedDt;points[pointHead]=p;pointHead=(pointHead+1)%points.length;if(pointCount<points.length)pointCount++}

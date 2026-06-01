@@ -48,3 +48,12 @@ def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
     assert "Download Tub JSON" not in source
     assert "LittleFS" not in source
     assert "SPIFFS" not in source
+
+
+def test_web_console_sta_refresh_does_not_overwrite_open_modal_input():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "function isWifiStaModalOpen()" in source
+    assert "async function refreshWifiSta(forceFill=false)" in source
+    assert "if(forceFill||(!isWifiStaModalOpen()&&document.activeElement!==staSsid))" in source
+    assert "async function openWifiStaModal(){await refreshWifiSta(true);wifiStaModal.classList.add('show')}" in source

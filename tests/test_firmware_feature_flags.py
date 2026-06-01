@@ -94,3 +94,23 @@ def test_web_console_sta_save_defers_wifi_reconnect_until_after_http_response():
     assert handler_body.index("wifiWebServer.send(200") < handler_body.index("scheduleWifiStaApply()")
     assert "wifiStaApplyPending" in source
     assert "WIFI_STA_APPLY_DELAY_MS" in source
+
+
+def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "id=\"wifiStaFailureModal\"" in source
+    assert "function showWifiStaFailureModal" in source
+    assert "function waitWifiStaConnectionResult" in source
+    assert "last_error_message" in source
+    assert "STA 连接失败" in source
+
+    save_body = re.search(
+        r"async function saveWifiSta\(\)\{(?P<body>.*?)\}\n\s*async function clearWifiSta",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "setTimeout(resolve,1000)" in save_body
+    assert "waitWifiStaConnectionResult()" in save_body
+    assert save_body.index("setTimeout(resolve,1000)") < save_body.index("waitWifiStaConnectionResult()")
+    assert "showCommandError(t)" not in save_body

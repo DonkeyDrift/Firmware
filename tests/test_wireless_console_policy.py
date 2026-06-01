@@ -138,6 +138,54 @@ class TestWirelessConsolePolicy(unittest.TestCase):
             "web_port=80 free_heap=0 min_free_heap=0 ws_queue_full_skip=0 ws_max_backlog=0 ws_connects=0 ws_disconnects=0 web_update_dt_max=0 web_sample_dt_max=0 web_http_dt_max=0 web_ws_dt_max=0 http_status_count=0 http_log_count=0 http_data_count=0 http_cmd_count=0 http_status_dt_max=0 http_log_dt_max=0 http_data_dt_max=0 http_cmd_dt_max=0 ap_ip=192.168.4.1 sta_configured=1 sta_connected=1 sta_ip=192.168.31.88",
         )
 
+    def test_formats_wifi_sta_state_with_failure_reason(self):
+        state = POLICY.format_wifi_sta_state(
+            configured=True,
+            connected=False,
+            timed_out=True,
+            connecting=False,
+            ssid="HomeWiFi",
+            password_set=True,
+            ap_ip="192.168.4.1",
+            sta_ip="0.0.0.0",
+            last_error="timeout",
+            last_error_message="STA 连接超时，请检查 SSID、密码与路由器信号。",
+        )
+
+        self.assertEqual(
+            state,
+            {
+                "configured": True,
+                "connected": False,
+                "timed_out": True,
+                "connecting": False,
+                "ssid": "HomeWiFi",
+                "password_set": True,
+                "ap_ip": "192.168.4.1",
+                "sta_ip": "0.0.0.0",
+                "last_error": "timeout",
+                "last_error_message": "STA 连接超时，请检查 SSID、密码与路由器信号。",
+            },
+        )
+
+    def test_formats_wifi_sta_state_clears_error_when_connected(self):
+        state = POLICY.format_wifi_sta_state(
+            configured=True,
+            connected=True,
+            timed_out=False,
+            connecting=False,
+            ssid="HomeWiFi",
+            password_set=True,
+            ap_ip="192.168.4.1",
+            sta_ip="192.168.3.144",
+            last_error="timeout",
+            last_error_message="STA 连接超时，请检查 SSID、密码与路由器信号。",
+        )
+
+        self.assertEqual(state["last_error"], "")
+        self.assertEqual(state["last_error_message"], "")
+        self.assertEqual(state["sta_ip"], "192.168.3.144")
+
     def test_web_command_permissions_match_wireless_console(self):
         scenarios = [
             ("PING", False, False),

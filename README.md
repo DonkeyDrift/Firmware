@@ -128,6 +128,12 @@ python arduino-cli.py --config config.yaml monitor
 
 ## ChangeLog
 
+### 2026-06-01 v1.5.19
+
+- 固件次版本号从 `v1.5.18` 更新到 `v1.5.19`。
+- Web Console 保存 STA Wi-Fi 后会等待连接结果；连接失败时在页面内悬浮窗显示原因和处理建议。
+- 扩展 STA 状态输出，新增连接中状态、失败原因码和失败原因说明，便于 Web Console 与命令行排障。
+
 ### 2026-06-01 v1.5.18
 
 - 固件次版本号从 `v1.5.17` 更新到 `v1.5.18`。

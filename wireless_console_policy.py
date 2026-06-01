@@ -130,6 +130,35 @@ def format_network_status(
     )
 
 
+def format_wifi_sta_state(
+    configured,
+    connected,
+    timed_out,
+    connecting,
+    ssid,
+    password_set,
+    ap_ip,
+    sta_ip,
+    last_error="",
+    last_error_message="",
+):
+    normalized_sta_ip = sta_ip if connected and sta_ip else "0.0.0.0"
+    normalized_error = "" if connected else last_error
+    normalized_message = "" if connected else last_error_message
+    return {
+        "configured": bool(configured),
+        "connected": bool(connected),
+        "timed_out": bool(timed_out),
+        "connecting": bool(connecting),
+        "ssid": ssid,
+        "password_set": bool(password_set),
+        "ap_ip": ap_ip,
+        "sta_ip": normalized_sta_ip,
+        "last_error": normalized_error,
+        "last_error_message": normalized_message,
+    }
+
+
 def is_ota_window_active(now_ms, deadline_ms, *, dev_mode=False):
     return dev_mode or (deadline_ms > 0 and now_ms < deadline_ms)
 

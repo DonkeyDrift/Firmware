@@ -128,6 +128,12 @@ python arduino-cli.py --config config.yaml monitor
 
 ## ChangeLog
 
+### 2026-06-01 v1.5.20
+
+- 固件次版本号从 `v1.5.19` 更新到 `v1.5.20`。
+- 修复 STA 断开或重连时运行时断开操作扰动 SoftAP，导致 AP 需要多次重试才能连接的问题。
+- 为 Windows 连通性探测提供本地 DNS 捕获和 `/connecttest.txt`、`/ncsi.txt` 响应，降低系统因“无 Internet”自动断开 MUS4-DEBUG AP 的概率。
+
 ### 2026-06-01 v1.5.19
 
 - 固件次版本号从 `v1.5.18` 更新到 `v1.5.19`。

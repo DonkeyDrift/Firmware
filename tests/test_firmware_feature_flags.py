@@ -114,3 +114,45 @@ def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
     assert "waitWifiStaConnectionResult()" in save_body
     assert save_body.index("setTimeout(resolve,1000)") < save_body.index("waitWifiStaConnectionResult()")
     assert "showCommandError(t)" not in save_body
+
+
+def test_runtime_sta_disconnect_does_not_reset_soft_ap():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    apply_body = re.search(
+        r"static void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    clear_body = re.search(
+        r"static bool clearWifiStaPreference\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    setup_body = re.search(
+        r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "static void disconnectWifiStaOnly()" in source
+    assert "esp_wifi_disconnect()" in source
+    assert "disconnectWifiStaOnly()" in apply_body
+    assert "disconnectWifiStaOnly()" in clear_body
+    assert "WiFi.disconnect(false, false)" not in apply_body
+    assert "WiFi.disconnect(false, false)" not in clear_body
+    assert "WiFi.disconnect(true, true)" in setup_body
+
+
+def test_web_console_handles_windows_connectivity_probe_locally():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "#include <DNSServer.h>" in source
+    assert "DNSServer wifiCaptiveDnsServer" in source
+    assert "wifiCaptiveDnsServer.start" in source
+    assert "wifiCaptiveDnsServer.processNextRequest()" in source
+    assert "handleWifiWebWindowsConnectTest" in source
+    assert "Microsoft Connect Test" in source
+    assert "Microsoft NCSI" in source
+    assert 'wifiWebServer.on("/connecttest.txt", HTTP_GET, handleWifiWebWindowsConnectTest)' in source
+    assert 'wifiWebServer.on("/ncsi.txt", HTTP_GET, handleWifiWebWindowsNcsi)' in source

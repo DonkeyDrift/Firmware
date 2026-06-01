@@ -37,6 +37,8 @@
 #include <Adafruit_INA219.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <DNSServer.h>
+#include <esp_wifi.h>
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -285,6 +287,7 @@ const unsigned long WIFI_WEB_DATA_INTERVAL_MS = 16;
 WiFiServer wifiConsoleServer(WIFI_CONSOLE_PORT);
 WiFiClient wifiConsoleClient;
 WebServer wifiWebServer(WIFI_WEB_CONSOLE_PORT);
+DNSServer wifiCaptiveDnsServer;
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 AsyncWebServer wifiWebSocketServer(WIFI_WEB_SOCKET_PORT);
 AsyncWebSocket wifiWebSocket("/");
@@ -1285,6 +1288,11 @@ static bool copyWifiStaPassword(const String& password)
     return true;
 }
 
+static void disconnectWifiStaOnly()
+{
+    esp_wifi_disconnect();
+}
+
 static void clearWifiStaLastError()
 {
     wifiStaLastError[0] = 0;
@@ -1311,7 +1319,7 @@ static void applyWifiStaCredentials()
     wifiStaConnecting = true;
     clearWifiStaLastError();
     wifiStaConnectStartMs = millis();
-    WiFi.disconnect(false, false);
+    disconnectWifiStaOnly();
     WiFi.begin(wifiStaSsid, wifiStaPassword);
     mus4Logf("wifi", "STA connecting: %s", wifiStaSsid);
 }
@@ -1390,7 +1398,7 @@ static bool clearWifiStaPreference()
     wifiStaConnecting = false;
     clearWifiStaLastError();
     wifiStaApplyPending = false;
-    WiFi.disconnect(false, false);
+    disconnectWifiStaOnly();
     return true;
 }
 
@@ -1914,6 +1922,16 @@ refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,5000
 static void handleWifiWebRoot()
 {
     wifiWebServer.send_P(200, "text/html", WIFI_WEB_CONSOLE_HTML);
+}
+
+static void handleWifiWebWindowsConnectTest()
+{
+    wifiWebServer.send(200, "text/plain", "Microsoft Connect Test");
+}
+
+static void handleWifiWebWindowsNcsi()
+{
+    wifiWebServer.send(200, "text/plain", "Microsoft NCSI");
 }
 
 static void recordWifiWebHandlerDt(unsigned long startedMs, uint32_t& maxDtMs)
@@ -2511,6 +2529,8 @@ static void updateWifiWebSocket()
 static void setupWifiWebConsole()
 {
     wifiWebServer.on("/", HTTP_GET, handleWifiWebRoot);
+    wifiWebServer.on("/connecttest.txt", HTTP_GET, handleWifiWebWindowsConnectTest);
+    wifiWebServer.on("/ncsi.txt", HTTP_GET, handleWifiWebWindowsNcsi);
     wifiWebServer.on("/api/status", HTTP_GET, handleWifiWebStatus);
     wifiWebServer.on("/api/cmd", HTTP_POST, handleWifiWebCommand);
     wifiWebServer.on("/api/devmode", HTTP_GET, handleWifiWebDevMode);
@@ -2577,6 +2597,7 @@ static void setupWifiConsole()
         mus4LogLine("wifi", "AP start failed");
         return;
     }
+    wifiCaptiveDnsServer.start(53, "*", WiFi.softAPIP());
     if (wifiStaConfigured) {
         applyWifiStaCredentials();
     }
@@ -2624,6 +2645,9 @@ static void updateWifiSta()
 
 static void updateWifiConsole()
 {
+    if (wifiConsoleStarted) {
+        wifiCaptiveDnsServer.processNextRequest();
+    }
     if (!wifiConsoleStarted) {
         if (millis() - lastWifiConsoleStartAttemptMs >= WIFI_CONSOLE_RETRY_INTERVAL_MS) {
             setupWifiConsole();

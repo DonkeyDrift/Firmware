@@ -128,6 +128,11 @@ python arduino-cli.py --config config.yaml monitor
 
 ## ChangeLog
 
+### 2026-06-01 v1.5.16
+
+- 固件次版本号从 `v1.5.15` 更新到 `v1.5.16`。
+- 修复 Web Console 保存 STA Wi-Fi 配置时立即重连可能中断当前 HTTP 请求，导致浏览器提示 `Failed to fetch` 的问题。
+
 ### 2026-06-01 v1.5.15
 
 - 固件次版本号从 `v1.5.14` 更新到 `v1.5.15`。

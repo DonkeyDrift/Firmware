@@ -57,3 +57,24 @@ def test_web_console_sta_refresh_does_not_overwrite_open_modal_input():
     assert "async function refreshWifiSta(forceFill=false)" in source
     assert "if(forceFill||(!isWifiStaModalOpen()&&document.activeElement!==staSsid))" in source
     assert "async function openWifiStaModal(){await refreshWifiSta(true);wifiStaModal.classList.add('show')}" in source
+
+
+def test_web_console_sta_save_defers_wifi_reconnect_until_after_http_response():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    save_body = re.search(
+        r"static bool saveWifiStaPreference\(const String& ssid, const String& password\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    handler_body = re.search(
+        r"static void handleWifiWebStaSet\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "applyWifiStaCredentials" not in save_body
+    assert "scheduleWifiStaApply()" in handler_body
+    assert handler_body.index("wifiWebServer.send(200") < handler_body.index("scheduleWifiStaApply()")
+    assert "wifiStaApplyPending" in source
+    assert "WIFI_STA_APPLY_DELAY_MS" in source

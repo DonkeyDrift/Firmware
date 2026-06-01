@@ -262,6 +262,7 @@ const uint8_t WIFI_CONSOLE_CHANNEL = 6;
 const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;
 const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;
 const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;
+const unsigned long WIFI_STA_APPLY_DELAY_MS = 800;
 const char* WIFI_OTA_HOSTNAME = "mus4-ota";
 const char* WIFI_OTA_PASSWORD = "mus4-debug";
 const uint16_t WIFI_OTA_PORT = 3232;
@@ -318,6 +319,7 @@ bool wifiConsoleAuthenticated = false;
 bool wifiStaConfigured = false;
 bool wifiStaConnected = false;
 bool wifiStaTimedOut = false;
+bool wifiStaApplyPending = false;
 bool wifiOtaStarted = false;
 bool wifiOtaWindowOpen = false;
 bool wifiOtaInProgress = false;
@@ -352,6 +354,7 @@ bool wifiStaPasswordSet = false;
 Preferences mus4Prefs;
 unsigned long lastWifiConsoleStartAttemptMs = 0;
 unsigned long wifiStaConnectStartMs = 0;
+unsigned long wifiStaApplyDeadlineMs = 0;
 unsigned long wifiOtaDeadlineMs = 0;
 unsigned long lastWifiWebDataSampleMs = 0;
 uint32_t wifiWebLogSeq = 0;
@@ -1267,12 +1270,19 @@ static bool copyWifiStaPassword(const String& password)
 static void applyWifiStaCredentials()
 {
     if (!wifiStaConfigured) return;
+    wifiStaApplyPending = false;
     wifiStaConnected = false;
     wifiStaTimedOut = false;
     wifiStaConnectStartMs = millis();
     WiFi.disconnect(false, false);
     WiFi.begin(wifiStaSsid, wifiStaPassword);
     mus4Logf("wifi", "STA connecting: %s", wifiStaSsid);
+}
+
+static void scheduleWifiStaApply()
+{
+    wifiStaApplyPending = true;
+    wifiStaApplyDeadlineMs = millis() + WIFI_STA_APPLY_DELAY_MS;
 }
 
 static void printWifiStaStatus(Print& out)
@@ -1297,7 +1307,6 @@ static bool saveWifiStaPreference(const String& ssid, const String& password)
     mus4Prefs.end();
     if (enabledWritten == 0 || ssidWritten == 0 || (wifiStaPasswordSet && passwordWritten == 0)) return false;
     wifiStaConfigured = true;
-    applyWifiStaCredentials();
     return true;
 }
 
@@ -1338,6 +1347,7 @@ static bool clearWifiStaPreference()
     wifiStaConfigured = false;
     wifiStaConnected = false;
     wifiStaTimedOut = false;
+    wifiStaApplyPending = false;
     WiFi.disconnect(false, false);
     return true;
 }
@@ -1978,6 +1988,7 @@ static void handleWifiWebStaSet()
     }
     appendWifiWebLog("web", String("wifi sta saved ssid=") + wifiStaSsid + " password=<redacted>");
     wifiWebServer.send(200, "application/json", String("{\"saved\":true,\"applied\":true,\"state\":") + wifiStaJson() + "}");
+    scheduleWifiStaApply();
 }
 
 static void handleWifiWebStaClear()
@@ -2518,6 +2529,9 @@ static void setupWifiConsole()
 static void updateWifiSta()
 {
     if (!wifiStaConfigured) return;
+    if (wifiStaApplyPending && (long)(millis() - wifiStaApplyDeadlineMs) >= 0) {
+        applyWifiStaCredentials();
+    }
     wl_status_t status = WiFi.status();
     if (status == WL_CONNECTED) {
         if (!wifiStaConnected) {

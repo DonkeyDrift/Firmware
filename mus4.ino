@@ -1775,7 +1775,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 </style>
 </head>
 <body>
-<div class="headerRow"><h1>MUS4 Web Console</h1><span class="version" id="versionLabel">--</span><label class="toggleSwitch" id="devModeToggle" style="gap:4px"><span class="toggleLabel">Auto OTA <b id="devModeSwitchText">OFF</b></span><input type="checkbox" id="devModeCheck" onchange="toggleDevModeFromSwitch()"><span class="slider"></span></label></div>
+<div class="headerRow"><h1>MUS4 Web Console</h1><span class="version" id="versionLabel">--</span><label class="toggleSwitch" id="devModeToggle" style="gap:4px"><span class="toggleLabel">DEBUG MODE <b id="devModeSwitchText">OFF</b></span><input type="checkbox" id="devModeCheck" onchange="toggleDevModeFromSwitch()"><span class="slider"></span></label></div>
 <div class="grid">
 <section class="panel wide">
 <div class="stateGrid">

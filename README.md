@@ -128,6 +128,11 @@ python arduino-cli.py --config config.yaml monitor
 
 ## ChangeLog
 
+### 2026-06-01 v1.5.17
+
+- 固件次版本号从 `v1.5.16` 更新到 `v1.5.17`。
+- 将 Web Console 右上角开发模式开关标签从 `Auto OTA` 改为 `DEBUG MODE`，使其更准确表达开关含义。
+
 ### 2026-06-01 v1.5.16
 
 - 固件次版本号从 `v1.5.15` 更新到 `v1.5.16`。

@@ -31,6 +31,13 @@ def test_diagnostic_code_is_not_built_by_default():
     assert re.search(r"^//\s*#define\s+ENABLE_BOOT_STEERING_SELF_TEST\b", source, re.MULTILINE)
 
 
+def test_web_console_uses_debug_mode_label_for_development_switch():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "DEBUG MODE <b id=\"devModeSwitchText\">OFF</b>" in source
+    assert "Auto OTA <b id=\"devModeSwitchText\">OFF</b>" not in source
+
+
 def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 

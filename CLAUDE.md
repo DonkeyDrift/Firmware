@@ -119,11 +119,15 @@ pytest tests/
 pytest tests/test_arduino_cli.py
 pytest tests/test_wireless_console_policy.py
 pytest tests/test_firmware_feature_flags.py
+pytest tests/test_train_tub_driver.py
+pytest tests/test_mus4_pilot_infer.py
 
 # 运行单个测试用例
 pytest tests/test_arduino_cli.py -k "test_prefers_explicit_port_when_available"
 pytest tests/test_wireless_console_policy.py -k "test_requires_authentication_and_park_locked_for_ota_open"
 pytest tests/test_firmware_feature_flags.py -k "test_websocket_curve_data_feature_is_enabled"
+pytest tests/test_train_tub_driver.py -k "test_build_windows_excludes_leakage_columns_by_default"
+pytest tests/test_mus4_pilot_infer.py -k "test_live_mode_requires_explicit_risk_ack"
 
 # 配网代理测试
 python provisioning_system/tests/test_agent.py -v
@@ -178,6 +182,8 @@ Python 测试集中在 `tests/`：
 - `tests/test_arduino_cli.py` 覆盖串口选择、双串口回退、进度解析、上传命令构造和预编译固件选择等纯逻辑。
 - `tests/test_wireless_console_policy.py` 覆盖无线控制台认证、Park 锁定、OTA 窗口、Web/STA 状态格式和行缓冲规则。
 - `tests/test_firmware_feature_flags.py` 用源码断言保护关键编译开关和 Web Console 曲线实现形态。
+- `tests/test_train_tub_driver.py` 覆盖 Tub JSON 读取、数据质量报告、特征防泄漏和窗口数据集构造。
+- `tests/test_mus4_pilot_infer.py` 覆盖模型推理控制器的标准化校验、安全门控、串口命令和 ACK 解析。
 
 ### 固件应用层
 
@@ -195,11 +201,17 @@ Python 测试集中在 `tests/`：
 - `TUI.h` / `TUI.cpp`：ANSI 终端仪表盘渲染，支持降级模式和增量刷新。
 - `Buzzer.h` / `Buzzer.cpp`：蜂鸣器状态机，硬件支持时使用。
 - `wireless_console_policy.py`：Wi-Fi/TCP/Web Console 权限策略的 Python 镜像，用于在桌面测试中覆盖认证、Park 锁定、OTA 窗口、STA 状态、日志脱敏和行缓冲行为。
+- `tools/train_tub_driver.py`：读取 Web Console 导出的 Tub JSON，生成数据质量报告，并可训练 GRU 行为克隆 baseline；默认排除 `ch1/ch2/rct/rcs/thr/str/seq/t` 等泄漏字段。
+- `tools/mus4_pilot_infer.py`：在 Linux 主机加载 GRU baseline，通过 Web Console 遥测和串口向 ESP32 发送 Pilot 控制命令；默认 `dry-run`，`live` 模式必须显式确认风险，并受 Park、模式、限幅、速率和 ACK 失败保护。
 - `examples/`：I2C、传感器等独立示例 sketch。
 - `multi_agent_framework/`：独立 Python 多智能体框架代码，不属于 ESP32 固件主链路。
 - `provisioning_system/`：ESP32 Wi-Fi provisioning 与 Linux agent 相关工具，独立于 MUS4 主固件构建流程；ESP32 AP/Web Server 通过 UART 把 Wi-Fi 凭据发给 Linux agent，agent 使用 NetworkManager/nmcli 连接目标网络并回传结果。
 
 ## Firmware Behavior Reference
+
+### 版本与发布记录
+
+当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `README.md` 的 `ChangeLog`。README 中部分硬件与路径描述可能滞后，硬件细节以 `mus4.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
 
 ### 控制模式
 
@@ -280,6 +292,8 @@ README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin
 - `Doc/Hardware/CONFIG.md`：硬件配置说明。
 - `Doc/Tools/ArduinoCLI.md`：`arduino-cli.py` 使用说明。
 - `Doc/Tools/arduino-cli-wsl_manual.md`：WSL 构建脚本背景与排障。
+- `Doc/Tools/train_tub_driver.md`：Tub JSON 报告与 GRU baseline 训练说明。
+- `Doc/Tools/mus4_pilot_infer.md`：Pilot 模型推理控制器、安全门控和部署说明。
 - `Doc/README/OPERATIONS.md`：串口运行时操作命令与数据帧。
 - `provisioning_system/docs/deployment_and_testing.md`：独立配网系统的 ESP32 固件、Linux agent 和测试部署说明。
 - `Doc/Plan/`：方案、设计方案、实施路线和历史实施方案目录；新增方案类内容应写入此目录，使用清晰的中文文件名，使用前需对照当前代码验证。

@@ -159,15 +159,16 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertFalse(POLICY.is_web_command_allowed("10:20", authenticated=False, park_locked=True))
         self.assertFalse(POLICY.is_web_command_allowed("ENABLE_OTA", authenticated=True, park_locked=False))
 
-    def test_web_dev_mode_allows_ota_without_authentication_or_park(self):
-        self.assertTrue(POLICY.is_web_command_allowed("ENABLE_OTA", authenticated=False, park_locked=False, dev_mode=True))
+    def test_web_dev_mode_allows_ota_without_authentication_but_keeps_park_guard(self):
+        self.assertFalse(POLICY.is_web_command_allowed("ENABLE_OTA", authenticated=False, park_locked=False, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("ENABLE_OTA", authenticated=False, park_locked=True, dev_mode=True))
         self.assertTrue(POLICY.is_web_command_allowed("OTA_STATUS", authenticated=False, park_locked=False, dev_mode=True))
         self.assertTrue(POLICY.is_web_command_allowed("DISABLE_OTA", authenticated=False, park_locked=False, dev_mode=True))
 
-    def test_web_dev_mode_does_not_bypass_control_or_diagnostics(self):
-        self.assertFalse(POLICY.is_web_command_allowed("10:20", authenticated=False, park_locked=False, dev_mode=True))
+    def test_web_dev_mode_bypasses_authentication_but_not_park_restricted_commands(self):
+        self.assertTrue(POLICY.is_web_command_allowed("10:20", authenticated=False, park_locked=False, dev_mode=True))
         self.assertFalse(POLICY.is_web_command_allowed("TEST", authenticated=False, park_locked=False, dev_mode=True))
-        self.assertFalse(POLICY.is_web_command_allowed("TEST", authenticated=True, park_locked=False, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("TEST", authenticated=False, park_locked=True, dev_mode=True))
 
     def test_wifi_sta_status_is_public(self):
         self.assertTrue(POLICY.is_wireless_command_allowed("WIFI_STA_STATUS", authenticated=False, park_locked=False))
@@ -184,9 +185,10 @@ class TestWirelessConsolePolicy(unittest.TestCase):
                 self.assertFalse(POLICY.is_wireless_command_allowed(command, authenticated=False, park_locked=True))
                 self.assertTrue(POLICY.is_wireless_command_allowed(command, authenticated=True, park_locked=False))
 
-    def test_web_dev_mode_does_not_bypass_wifi_sta_config(self):
-        self.assertFalse(POLICY.is_web_command_allowed("WIFI_STA_PASSWORD:secret123", authenticated=False, park_locked=False, dev_mode=True))
-        self.assertTrue(POLICY.is_web_command_allowed("WIFI_STA_PASSWORD:secret123", authenticated=True, park_locked=False, dev_mode=True))
+    def test_web_dev_mode_allows_wifi_sta_config_without_authentication(self):
+        self.assertTrue(POLICY.is_web_command_allowed("WIFI_STA_SSID:HomeWiFi", authenticated=False, park_locked=False, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("WIFI_STA_PASSWORD:secret123", authenticated=False, park_locked=False, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("WIFI_STA_CLEAR", authenticated=False, park_locked=False, dev_mode=True))
 
     def test_redacts_sensitive_wireless_commands(self):
         self.assertEqual(POLICY.redact_wireless_console_line("AUTH:mus4-debug"), "AUTH:<redacted>")

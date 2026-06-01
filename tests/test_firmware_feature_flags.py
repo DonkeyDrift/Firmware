@@ -38,6 +38,15 @@ def test_web_console_uses_debug_mode_label_for_development_switch():
     assert "Auto OTA <b id=\"devModeSwitchText\">OFF</b>" not in source
 
 
+def test_web_console_explains_auth_and_park_rejections():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "function explainCommandError(t)" in source
+    assert "请将 CH3/Park 切到锁定状态后重试" in source
+    assert "请先 AUTH，或开启 DEBUG MODE 后重试" in source
+    assert "alert(msg)" in source
+
+
 def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 

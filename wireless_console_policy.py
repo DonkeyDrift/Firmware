@@ -29,10 +29,10 @@ def is_wireless_command_allowed(line, authenticated, park_locked, *, dev_mode=Fa
     if command in PUBLIC_COMMANDS:
         return True
     if command in OTA_OPEN_COMMANDS:
-        return web_dev_mode or (authenticated and park_locked)
+        return (web_dev_mode or authenticated) and park_locked
     if command in OTA_STATUS_COMMANDS or command in OTA_CLOSE_COMMANDS:
         return web_dev_mode or authenticated
-    if not authenticated:
+    if not authenticated and not web_dev_mode:
         return False
     if command in PARK_LOCKED_COMMANDS:
         return park_locked

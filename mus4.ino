@@ -1008,17 +1008,32 @@ static bool isWifiStaConfigCommand(const String& line)
         line.equalsIgnoreCase("WIFI_STA_CLEAR");
 }
 
+static bool isParkLockedWirelessCommand(const String& line)
+{
+    return isWirelessOtaOpenCommand(line) ||
+        line.equalsIgnoreCase("STEER_CAL") ||
+        line.equalsIgnoreCase("CAL_SAVE") ||
+        line.equalsIgnoreCase("CAL_RETRY") ||
+        line.equalsIgnoreCase("CAL_ABORT") ||
+        line.equalsIgnoreCase("CAL_RESET") ||
+        line.equalsIgnoreCase("CAL_STATUS") ||
+        line.equalsIgnoreCase("TEST") ||
+        line.equalsIgnoreCase("TEST_TUI") ||
+        line.equalsIgnoreCase("BENCH") ||
+        line.equalsIgnoreCase("STRESS") ||
+        line.equalsIgnoreCase("REGRESS") ||
+        line.equalsIgnoreCase("FILTER_TEST");
+}
+
 static bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin)
 {
     bool webDevMode = wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB;
     if (line.equalsIgnoreCase("PING") || line.equalsIgnoreCase("STATUS") || line.equalsIgnoreCase("WIFI_STA_STATUS")) return true;
     if (line.startsWith("AUTH:")) return true;
-    if (isWirelessOtaOpenCommand(line)) return webDevMode || (wifiConsoleAuthenticated && car_output.park == PARK_LOCKED);
+    if (isWirelessOtaOpenCommand(line)) return (webDevMode || wifiConsoleAuthenticated) && car_output.park == PARK_LOCKED;
     if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || wifiConsoleAuthenticated;
-    if (!wifiConsoleAuthenticated) return false;
-    if (line.equalsIgnoreCase("STEER_CAL")) {
-        return car_output.park == PARK_LOCKED;
-    }
+    if (!wifiConsoleAuthenticated && !webDevMode) return false;
+    if (isParkLockedWirelessCommand(line)) return car_output.park == PARK_LOCKED;
     if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || isWifiStaConfigCommand(line)) return true;
     return isWirelessControlCommand(line);
 }
@@ -1642,7 +1657,7 @@ static void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin)
         wifiConsoleBuf.errors++;
         return;
     }
-    if (!webDevMode && car_output.park != PARK_LOCKED) {
+    if (car_output.park != PARK_LOCKED) {
         out.println("NACK:PARK_REQUIRED");
         wifiConsoleBuf.errors++;
         return;
@@ -1723,7 +1738,12 @@ static void processWirelessConsoleLine(const String& line, Print& out, WirelessC
         return;
     }
     if (!isWirelessCommandAllowed(line, origin)) {
-        out.println("NACK:UNAUTHORIZED");
+        bool webDevMode = wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB;
+        if (isParkLockedWirelessCommand(line) && car_output.park != PARK_LOCKED && (wifiConsoleAuthenticated || webDevMode)) {
+            out.println("NACK:PARK_REQUIRED");
+        } else {
+            out.println("NACK:UNAUTHORIZED");
+        }
         wifiConsoleBuf.errors++;
         return;
     }
@@ -1792,7 +1812,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <section class="panel">
 <div class="row"><input id="cmd" placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停日志</button></div>
 <div class="row" style="margin:8px 0"><button onclick="quick('PING')">PING</button><button onclick="quick('STATUS')">STATUS</button><button onclick="quick('AUTH:mus4-debug')">AUTH</button><button onclick="quick('ENABLE_OTA')">ENABLE_OTA</button><button onclick="quick('OTA_STATUS')">OTA_STATUS</button><a href="/update" target="_blank" style="text-decoration:none"><button>OTA Upload</button></a></div>
-<div class="muted" style="margin:8px 0">开发模式会持久化；仅 Web OTA 免认证并保持 OTA 监听，不放宽控制命令。OTA 传输期间会默认 Park Locked。</div>
+<div class="muted" style="margin:8px 0">开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。</div>
 <div id="log" class="log"></div><div class="muted" id="logMeta">log ready</div>
 </section>
 <section class="panel" id="chartPanel">
@@ -1830,7 +1850,9 @@ function dataWsUrl(){return (location.protocol==='https:'?'wss:':'ws:')+'//'+loc
 function scheduleDataWsReconnect(){if(dataWsReconnectTimer)return;dataWsReconnectTimer=setTimeout(()=>{dataWsReconnectTimer=0;connectDataSocket();dataWsReconnectDelay=Math.min(8000,dataWsReconnectDelay*2)},dataWsReconnectDelay)}
 function connectDataSocket(){try{if(dataWs&&dataWs.readyState!==WebSocket.CLOSED)return;if(dataWs){dataWs.onclose=null;dataWs.onerror=null;try{dataWs.close()}catch(e){}}const ws=new WebSocket(dataWsUrl());dataWs=ws;ws.binaryType='arraybuffer';ws.onopen=()=>{if(dataWs!==ws){ws.close();return}dataWsConnected=true;dataWsReconnectDelay=1000;dataTransport='ws';ws.send('since:'+lastDataSeq)};ws.onmessage=e=>{if(dataWs!==ws)return;try{if(e.data instanceof ArrayBuffer){handleDataPayload(decodeBinaryDataPayload(e.data),'ws',0);return}if(e.data instanceof Blob){e.data.arrayBuffer().then(b=>{if(dataWs===ws)handleDataPayload(decodeBinaryDataPayload(b),'ws',0)}).catch(err=>dataMeta.textContent='ws parse error: '+err);return}const j=JSON.parse(e.data);if(j.type==='hello')dataMeta.textContent='ws connected seq='+j.seq}catch(err){dataMeta.textContent='ws parse error: '+err}};ws.onclose=()=>{if(dataWs!==ws)return;dataWsConnected=false;dataWs=null;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,2000)};ws.onerror=()=>{if(dataWs!==ws)return;dataWsConnected=false;try{ws.close()}catch(e){}}}catch(e){dataWsConnected=false;dataWs=null;dataMeta.textContent='ws error: '+e;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,2000)}}
 async function pollData(){if(dataWsConnected)return;if(dataPolling)return;dataPolling=true;let delay=60;const start=performance.now();try{const r=await fetch('/api/data?since='+lastDataSeq);const j=await r.json();const elapsed=performance.now()-start;handleDataPayload(j,'poll',elapsed);delay=(j.points||[]).length?Math.max(30,Math.min(80,Math.round(elapsed*1.2))):100}catch(e){delay=160;dataMeta.textContent='data error: '+e}finally{dataPolling=false;if(!dataWsConnected)setTimeout(pollData,delay)}}
-async function sendCmd(){const v=cmd.value.trim();if(!v)return;await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});cmd.value='';refreshStatus()}
+function explainCommandError(t){if(t.includes('PARK_REQUIRED'))return '当前操作需要 Park Locked。请将 CH3/Park 切到锁定状态后重试。';if(t.includes('AUTH_REQUIRED')||t.includes('UNAUTHORIZED'))return '当前操作需要授权。请先 AUTH，或开启 DEBUG MODE 后重试。';return ''}
+function showCommandError(t){const msg=explainCommandError(t);if(msg)alert(msg)}
+async function sendCmd(){const v=cmd.value.trim();if(!v)return;const r=await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:v});const t=await r.text();showCommandError(t);cmd.value='';refreshStatus()}
 function renderDevMode(v){devModeCheck.checked=!!v;devModeSwitchText.textContent=v?'ON':'OFF'}function toggleDevModeFromSwitch(){if(devModeCheck.checked){devModeModal.classList.add('show')}else{setDevMode(false)}}
 async function refreshDevMode(){try{const r=await fetch('/api/devmode');const j=await r.json();renderDevMode(!!j.enabled)}catch(e){devModeSwitchText.textContent='ERR'}}
 function requestDevModeToggle(){if(devModeCheck.checked){setDevMode(false);return}devModeModal.classList.add('show')}
@@ -1840,8 +1862,8 @@ function isWifiStaModalOpen(){return wifiStaModal.classList.contains('show')}
 async function refreshWifiSta(forceFill=false){try{const r=await fetch('/api/wifi-sta');const j=await r.json();if(forceFill||(!isWifiStaModalOpen()&&document.activeElement!==staSsid))staSsid.value=j.ssid||''}catch(e){line('sta config error: '+e)}}
 async function openWifiStaModal(){await refreshWifiSta(true);wifiStaModal.classList.add('show')}
 function closeWifiStaModal(){wifiStaModal.classList.remove('show')}
-async function saveWifiSta(){try{const body=new URLSearchParams();body.set('ssid',staSsid.value.trim());body.set('password',staPassword.value);const r=await fetch('/api/wifi-sta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok)throw new Error(await r.text());staPassword.value='';await refreshWifiSta(true);refreshStatus();closeWifiStaModal()}catch(e){line('wifi sta save error: '+e)}}
-async function clearWifiSta(){if(!confirm('确认清除并禁用 STA 配置？'))return;try{const r=await fetch('/api/wifi-sta/clear',{method:'POST'});if(!r.ok)throw new Error(await r.text());staPassword.value='';await refreshWifiSta(true);refreshStatus();closeWifiStaModal()}catch(e){line('wifi sta clear error: '+e)}}
+async function saveWifiSta(){try{const body=new URLSearchParams();body.set('ssid',staSsid.value.trim());body.set('password',staPassword.value);const r=await fetch('/api/wifi-sta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok){const t=await r.text();showCommandError(t);throw new Error(t)}staPassword.value='';await refreshWifiSta(true);refreshStatus();closeWifiStaModal()}catch(e){line('wifi sta save error: '+e)}}
+async function clearWifiSta(){if(!confirm('确认清除并禁用 STA 配置？'))return;try{const r=await fetch('/api/wifi-sta/clear',{method:'POST'});if(!r.ok){const t=await r.text();showCommandError(t);throw new Error(t)}staPassword.value='';await refreshWifiSta(true);refreshStatus();closeWifiStaModal()}catch(e){line('wifi sta clear error: '+e)}}
 async function quick(v){cmd.value=v;await sendCmd()}
 cmd.addEventListener('keydown',e=>{if(e.key==='Enter')sendCmd()});
 function addPoint(p){const dt=Number(p.dt||16);smoothedDt=smoothedDt*0.85+Math.max(0,Math.min(80,dt))*0.15;p.dts=smoothedDt;points[pointHead]=p;pointHead=(pointHead+1)%points.length;if(pointCount<points.length)pointCount++}
@@ -1967,7 +1989,7 @@ static void handleWifiWebSta()
 
 static void handleWifiWebStaSet()
 {
-    if (!wifiConsoleAuthenticated) {
+    if (!wifiConsoleAuthenticated && !wifiDevModeEnabled) {
         wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
         return;
     }
@@ -1993,7 +2015,7 @@ static void handleWifiWebStaSet()
 
 static void handleWifiWebStaClear()
 {
-    if (!wifiConsoleAuthenticated) {
+    if (!wifiConsoleAuthenticated && !wifiDevModeEnabled) {
         wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
         return;
     }
@@ -2211,7 +2233,7 @@ static void handleWifiWebUpdateUpload()
             mus4LogLine("ota", "http update rejected: auth required");
             return;
         }
-        if (!webDevMode && car_output.park != PARK_LOCKED) {
+        if (car_output.park != PARK_LOCKED) {
             wifiWebUpdateError = true;
             mus4LogLine("ota", "http update rejected: park required");
             return;

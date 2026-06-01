@@ -128,6 +128,12 @@ python arduino-cli.py --config config.yaml monitor
 
 ## ChangeLog
 
+### 2026-06-01 v1.5.18
+
+- 固件次版本号从 `v1.5.17` 更新到 `v1.5.18`。
+- 调整 DEBUG MODE 权限策略：Web Console 操作免 AUTH，但仍保留 Park Locked 安全限制，并在非 Park 或未授权时给出明确弹窗引导。
+- 同步更新无线权限策略镜像测试，覆盖 STA 修改、OTA 和控制命令的开发模式免认证行为。
+
 ### 2026-06-01 v1.5.17
 
 - 固件次版本号从 `v1.5.16` 更新到 `v1.5.17`。

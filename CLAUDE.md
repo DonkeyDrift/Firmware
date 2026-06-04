@@ -94,6 +94,9 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 # 编译后通过 Web Console 的 HTTP /update 端点上传
 .\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP或主机名>
 
+# 当前调试默认优先走设备 AP 地址；显式传入可避免被 .mus4_ota_target 覆盖
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.4.1
+
 # 使用已有 build_wsl 产物通过 HTTP OTA 上传；未传主机时读取 .mus4_ota_target 首行
 .\arduino-cli-wsl.ps1 -Upload -HttpOta
 
@@ -107,7 +110,7 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 .\arduino-cli-wsl.ps1 -Upload -ExtraArgs "--port COM9"
 ```
 
-WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。HTTP OTA 使用设备 Web Console 的 `/update` 端点，需要 Web Console 已认证且 Park 锁定，或开发模式允许；目标主机可通过 `-HttpOtaHost` 指定，或写入项目根目录 `.mus4_ota_target` 的首行。
+WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。HTTP OTA 使用设备 Web Console 的 `/update` 端点，需要 Web Console 已认证且 Park 锁定，或开发模式允许；目标主机可通过 `-HttpOtaHost` 指定，或写入项目根目录 `.mus4_ota_target` 的首行。当前调试默认优先显式使用设备 AP 地址 `192.168.4.1`，不要因为 `.mus4_ota_target` 中保存了 STA 地址而改用它，除非用户本次明确指定。
 
 ### Python 测试
 
@@ -234,7 +237,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 ### 版本与发布记录
 
-当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `README.md` 的 `ChangeLog`。README 中部分硬件与路径描述可能滞后，硬件细节以 `mus4.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
+当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.5.20`。README 中部分硬件与路径描述可能滞后，硬件细节以 `mus4.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
 
 ### 控制模式
 

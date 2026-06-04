@@ -136,6 +136,22 @@ python provisioning_system/tests/test_agent.py -v
 pytest tests/ -v
 ```
 
+### 数据采集与模型工具
+
+```bash
+# 仅检查 Web Console 导出的 Tub JSON 并生成报告
+python tools/train_tub_driver.py <tub.json> --report-only --dry-run
+
+# 训练 GRU baseline；默认排除 ch1/ch2/rct/rcs/thr/str 等泄漏字段
+python tools/train_tub_driver.py <tub.json> --out-dir <model_dir> --overwrite
+
+# 模型 Pilot 推理默认 dry-run，不会向车辆发送控制
+python tools/mus4_pilot_infer.py --model-dir <model_dir> --esp32-url http://<设备IP>
+
+# live 模式必须显式确认风险，并指定串口
+python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mode live --i-understand-risk
+```
+
 ### 固件运行时串口测试命令
 
 在 USB Serial、Serial1、TCP Console 或 Web Console 中输入并回车；无线入口受认证和 Park 权限限制：
@@ -201,8 +217,15 @@ Python 测试集中在 `tests/`：
 - `TUI.h` / `TUI.cpp`：ANSI 终端仪表盘渲染，支持降级模式和增量刷新。
 - `Buzzer.h` / `Buzzer.cpp`：蜂鸣器状态机，硬件支持时使用。
 - `wireless_console_policy.py`：Wi-Fi/TCP/Web Console 权限策略的 Python 镜像，用于在桌面测试中覆盖认证、Park 锁定、OTA 窗口、STA 状态、日志脱敏和行缓冲行为。
-- `tools/train_tub_driver.py`：读取 Web Console 导出的 Tub JSON，生成数据质量报告，并可训练 GRU 行为克隆 baseline；默认排除 `ch1/ch2/rct/rcs/thr/str/seq/t` 等泄漏字段。
-- `tools/mus4_pilot_infer.py`：在 Linux 主机加载 GRU baseline，通过 Web Console 遥测和串口向 ESP32 发送 Pilot 控制命令；默认 `dry-run`，`live` 模式必须显式确认风险，并受 Park、模式、限幅、速率和 ACK 失败保护。
+
+### 数据采集与 Pilot 工具链
+
+Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub_driver.py` 负责读取一个或多个 Tub JSON、输出数据质量报告、构造窗口数据集并训练 GRU baseline；默认排除 `ch1/ch2/rct/rcs/thr/str/seq/t` 等泄漏字段，相关测试在 `tests/test_train_tub_driver.py`。
+
+`tools/mus4_pilot_infer.py` 在主机侧加载训练产物，通过 Web Console 拉取遥测并经串口向 ESP32 发送 Pilot 控制命令；默认 `dry-run`，`zero-output`/`live` 要求串口，`live` 还必须传 `--i-understand-risk`，并受 Park、模式、限幅、速率和 ACK 失败保护。相关测试在 `tests/test_mus4_pilot_infer.py`。
+
+### 辅助子系统
+
 - `examples/`：I2C、传感器等独立示例 sketch。
 - `multi_agent_framework/`：独立 Python 多智能体框架代码，不属于 ESP32 固件主链路。
 - `provisioning_system/`：ESP32 Wi-Fi provisioning 与 Linux agent 相关工具，独立于 MUS4 主固件构建流程；ESP32 AP/Web Server 通过 UART 把 Wi-Fi 凭据发给 Linux agent，agent 使用 NetworkManager/nmcli 连接目标网络并回传结果。
@@ -281,6 +304,7 @@ README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin
 ## Safety-Critical Editing Notes
 
 - 该固件会直接控制舵机与电调；修改输出映射、Park、紧急制动、模式融合或无线控制入口时，必须保留 PWM 限幅和失效安全路径。
+- 当前执行器输出使用 `ledcAttachChannel(..., 300, 14, ...)`，PWM 常量按 300Hz/14bit、1000-2000µs 计算；部分旧文档仍写 50Hz，改输出参数时以 `mus4.ino` 为准并同步文档。
 - 中断处理函数必须保留 `IRAM_ATTR`，与中断共享的数据继续使用 `volatile` 或等价保护。
 - 串口、Web Console、TCP Console 输入都视为不可信边界；控制命令必须经过认证/权限和范围校验后才能影响输出。
 - `ENABLE_DIAGNOSTIC_COMMANDS` 与 `ENABLE_BOOT_STEERING_SELF_TEST` 默认应保持注释状态；`tests/test_firmware_feature_flags.py` 会保护这一点。

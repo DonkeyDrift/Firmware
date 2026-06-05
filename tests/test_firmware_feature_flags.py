@@ -84,6 +84,9 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert "networkSub.textContent" not in source
     assert "networkIpValue.textContent" not in source
     assert "v.toFixed(1)+'V'" in source
+    assert "if(!isNaN(v)&&v>=5)" in source
+    assert "voltageValue.textContent='未连接'" in source
+    assert "if(!isNaN(v)&&v>0)" not in source
     assert "v.toFixed(2)+'V'" not in source
 
 

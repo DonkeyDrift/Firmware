@@ -117,7 +117,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert source.index('<section class="panel" id="chartPanel">') < source.index('<section class="panel" id="serialPanel">')
     assert '<section class="panel" id="serialPanel">' in source
     assert "#serialPanel{display:flex;flex-direction:column}" in source
-    assert "#serialPanel .log{flex:1;min-height:calc(5 * 1.35em + 16px)}" in source
+    assert "#serialPanel .log{flex:1;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
     assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}}" in source
     assert "@media(min-width:900px){.grid{grid-template-columns:1fr 2fr}.wide{grid-column:1/-1}}" not in source
     assert '<button onclick="toggleChart()" id="chartBtn">暂停曲线</button><button onclick="clearChart()">清空</button><button onclick="toggleChartFullscreen()" id="chartFullscreenBtn">全屏</button>' in source

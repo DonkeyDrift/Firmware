@@ -50,6 +50,28 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px}" in source
 
 
+def test_web_console_groups_rc_and_status_into_collapsible_sections():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert 'id="rcFold" class="fold open"' in source
+    assert 'id="statusFold" class="fold"' in source
+    assert '<span class="foldIcon">▾</span>RC Channels' in source
+    assert '<span class="foldIcon">▸</span>STATUS Details' in source
+    assert '.fold:not(.open) .foldBody{display:none}' in source
+    assert "function toggleFold(id)" in source
+    assert "function renderStatus(t)" in source
+    assert "function parseStatusPairs(t)" in source
+    assert "statusBox.textContent=t;updateNetworkCard" not in source
+
+
+def test_web_console_status_parser_preserves_quoted_values_with_spaces():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "t.trim().split(/\\s+/)" not in source
+    assert "while(i<n&&t[i]!==q)" in source
+    assert "parseStatusPairs(t).forEach" in source
+
+
 def test_web_console_explains_auth_and_park_rejections():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 

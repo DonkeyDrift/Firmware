@@ -1302,6 +1302,19 @@ static void clearWifiStaLastError()
     wifiStaLastErrorMessage[0] = 0;
 }
 
+static void clearWifiStaRuntimeStateWithoutDisconnect()
+{
+    wifiStaSsid[0] = 0;
+    wifiStaPassword[0] = 0;
+    wifiStaPasswordSet = false;
+    wifiStaConfigured = false;
+    wifiStaConnected = false;
+    wifiStaTimedOut = false;
+    wifiStaConnecting = false;
+    clearWifiStaLastError();
+    wifiStaApplyPending = false;
+}
+
 static void setWifiStaLastError(const char* code, const char* message, bool timedOut)
 {
     if (wifiStaLastError[0] != 0) return;
@@ -1392,16 +1405,7 @@ static bool clearWifiStaPreference()
     mus4Prefs.remove(MUS4_PREF_STA_PASSWORD_KEY);
     mus4Prefs.end();
     if (enabledWritten == 0) return false;
-    wifiStaSsid[0] = 0;
-    wifiStaPassword[0] = 0;
-    wifiStaPasswordSet = false;
-    wifiStaConfigured = false;
-    wifiStaConnected = false;
-    wifiStaTimedOut = false;
-    wifiStaConnecting = false;
-    clearWifiStaLastError();
-    wifiStaApplyPending = false;
-    disconnectWifiStaOnly();
+    clearWifiStaRuntimeStateWithoutDisconnect();
     return true;
 }
 

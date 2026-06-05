@@ -399,8 +399,18 @@ def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
 def test_runtime_sta_disconnect_does_not_reset_soft_ap():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
+    disconnect_body = re.search(
+        r"static void disconnectWifiStaOnly\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
     apply_body = re.search(
         r"static void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    runtime_clear_body = re.search(
+        r"static void clearWifiStaRuntimeStateWithoutDisconnect\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -416,11 +426,23 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
     ).group("body")
 
     assert "static void disconnectWifiStaOnly()" in source
-    assert "esp_wifi_disconnect()" in source
+    assert "esp_wifi_disconnect()" in disconnect_body
     assert "disconnectWifiStaOnly()" in apply_body
-    assert "disconnectWifiStaOnly()" in clear_body
-    assert "WiFi.disconnect(false, false)" not in apply_body
-    assert "WiFi.disconnect(false, false)" not in clear_body
+    assert "clearWifiStaRuntimeStateWithoutDisconnect()" in clear_body
+    assert "disconnectWifiStaOnly()" not in clear_body
+    assert "esp_wifi_disconnect()" not in clear_body
+    assert "WiFi.disconnect(" not in clear_body
+    assert "WiFi.mode(" not in clear_body
+    assert "WiFi.softAP(" not in clear_body
+    assert "disconnectWifiStaOnly" not in runtime_clear_body
+    assert "esp_wifi_disconnect" not in runtime_clear_body
+    assert "WiFi.disconnect" not in runtime_clear_body
+    assert "WiFi.mode" not in runtime_clear_body
+    assert "wifiStaConfigured = false" in runtime_clear_body
+    assert "wifiStaConnected = false" in runtime_clear_body
+    assert "wifiStaConnecting = false" in runtime_clear_body
+    assert "wifiStaApplyPending = false" in runtime_clear_body
+    assert "clearWifiStaLastError()" in runtime_clear_body
     assert "WiFi.disconnect(true, true)" in setup_body
 
 

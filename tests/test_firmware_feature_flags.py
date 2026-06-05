@@ -371,10 +371,17 @@ def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
         source,
         re.DOTALL,
     ).group("body")
+    wait_body = re.search(
+        r"async function waitWifiStaConnectionResult\(\)\{(?P<body>.*?)\}\nasync function saveWifiSta",
+        source,
+        re.DOTALL,
+    ).group("body")
     assert "setTimeout(resolve,1000)" in save_body
     assert "waitWifiStaConnectionResult()" in save_body
     assert save_body.index("setTimeout(resolve,1000)") < save_body.index("waitWifiStaConnectionResult()")
     assert "showCommandError(t)" not in save_body
+    assert "await refreshStatus();cmd.value=''" in wait_body
+    assert wait_body.index("staNotice.textContent='已连接'") < wait_body.index("await refreshStatus();cmd.value=''")
 
 
 def test_runtime_sta_disconnect_does_not_reset_soft_ap():

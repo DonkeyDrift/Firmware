@@ -53,10 +53,11 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
 def test_web_console_groups_rc_and_status_into_collapsible_sections():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert 'id="rcFold" class="fold open"' in source
+    assert 'id="rcFold" class="fold"' in source
     assert 'id="statusFold" class="fold"' in source
-    assert '<span class="foldIcon">▾</span>RC Channels' in source
+    assert '<span class="foldIcon">▸</span>RC Channels' in source
     assert '<span class="foldIcon">▸</span>STATUS Details' in source
+    assert 'aria-expanded="false"><span class="foldIcon">▸</span>RC Channels' in source
     assert '.fold:not(.open) .foldBody{display:none}' in source
     assert "function toggleFold(id)" in source
     assert "function renderStatus(t)" in source
@@ -70,6 +71,14 @@ def test_web_console_status_parser_preserves_quoted_values_with_spaces():
     assert "t.trim().split(/\\s+/)" not in source
     assert "while(i<n&&t[i]!==q)" in source
     assert "parseStatusPairs(t).forEach" in source
+
+
+def test_web_console_status_details_use_responsive_columns():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert ".statusTable{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));" in source
+    assert "@media(max-width:900px){.statusTable{grid-template-columns:repeat(2,minmax(0,1fr))}}" in source
+    assert "@media(max-width:560px){.statusTable{grid-template-columns:1fr}}" in source
 
 
 def test_web_console_explains_auth_and_park_rejections():

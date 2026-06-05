@@ -277,7 +277,19 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
     assert "function selectWifiSsid" in source
     assert "setInterval(refreshWifiScan,1000)" in source
     assert "fetch('/api/wifi-sta/scan')" in source
-    assert "staSsid.value=ssid" in source
+    select_body = re.search(
+        r"function selectWifiSsid\(ssid\)\{(?P<body>.*?)\}\n",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "staSsid.value=ssid" in select_body
+    assert "staPassword.value=''" in select_body
+    assert "staPasswordPlaceholder=false" in select_body
+    assert "staPasswordDirty=false" in select_body
+    assert "staPasswordVisible=false" in select_body
+    assert "staSavedPassword=''" in select_body
+    assert "staSavedPasswordKnown=false" in select_body
+    assert "updateStaPasswordEye()" in select_body
     assert '<label for="staSsid">SSID</label>' in source
     assert '<label for="staPassword">密码</label>' in source
     assert 'id="staPasswordEye"' in source

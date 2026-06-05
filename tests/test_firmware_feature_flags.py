@@ -118,11 +118,15 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert '<section class="panel" id="serialPanel">' in source
     assert "#serialPanel{display:flex;flex-direction:column}" in source
     assert "#serialPanel .log{flex:0 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
+    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#serialPanel .log{height:calc(20 * 1.35em + 16px)}}" in source
     assert "canvas{width:100%;height:auto;aspect-ratio:38/13;" in source
     assert "#chartPanel:fullscreen canvas{width:min(100%,calc((100vh - 118px) * 38 / 13));height:auto;max-height:calc(100vh - 118px);aspect-ratio:38/13}" in source
     assert "dataMeta.textContent=transport+' realtime seq='+lastDataSeq+' +'+added" not in source
-    assert "dataMeta.textContent=transport+' +'+added" in source
-    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}}" in source
+    assert "dataMeta.textContent=transport+' +'+added" not in source
+    assert 'id="dataMeta"' not in source
+    assert "data ready" not in source
+    assert "dataMeta" not in source
+    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}}" not in source
     assert "@media(min-width:900px){.grid{grid-template-columns:1fr 2fr}.wide{grid-column:1/-1}}" not in source
     assert '.chartControls{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}.chartTools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}' in source
     assert '<div class="chartControls"><button onclick="toggleChart()" id="chartBtn">暂停</button><button onclick="clearChart()">清空</button><button onclick="toggleChartFullscreen()" id="chartFullscreenBtn">全屏</button><div class="chartTools"><button onclick="ts()">Tub Start</button><button onclick="te()">Tub Stop</button><button onclick="td()">Tub JSON</button></div></div>' in source

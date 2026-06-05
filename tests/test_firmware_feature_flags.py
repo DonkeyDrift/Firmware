@@ -44,13 +44,21 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
 
     assert ".headerRow{display:flex;align-items:flex-end;" in source
     assert ".version{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block;transform:translateY(-1px)}" in source
-    assert "#modeCard{flex:0.30}" in source
-    assert "#parkCard{flex:0.30}" in source
-    assert "#voltageCard{flex:0.30}" in source
-    assert "#networkCard{flex:0.80}" in source
+    assert ".stateGrid{display:grid;gap:10px;align-items:stretch;grid-template-columns:" in source
+    assert "#modeCard{grid-area:mode}" in source
+    assert "#parkCard{grid-area:park}" in source
+    assert "#driftCard{grid-area:drift}" in source
+    assert "#voltageCard{grid-area:voltage}" in source
+    assert "#networkCard{grid-area:network}" in source
+    assert 'grid-template-areas:"mode park drift voltage network"' in source
+    assert 'grid-template-areas:"mode park drift" "voltage network network"' in source
+    assert 'grid-template-areas:"mode park voltage" "drift drift drift" "network network network"' in source
+    assert "minmax(160px,.56fr)" in source
+    assert "grid-template-columns:84px 154px 100px" in source
     assert ".stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px" in source
-    assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px}" in source
-    assert ".stateMeta span{overflow-wrap:anywhere;font-size:15px;font-weight:700}" in source
+    assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.08}" in source
+    assert ".stateMeta span{font-size:15px;font-weight:700;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.2}" in source
+    assert "text-overflow:ellipsis" not in source
 
 
 def test_web_console_places_voltage_before_combined_network_card():

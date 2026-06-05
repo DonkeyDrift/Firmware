@@ -46,8 +46,22 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert ".version{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block;transform:translateY(-1px)}" in source
     assert "#modeCard{flex:0.30}" in source
     assert "#parkCard{flex:0.30}" in source
+    assert "#voltageCard{flex:1}" in source
+    assert "#apCard{flex:1}" in source
+    assert "#staCard{flex:1}" in source
     assert ".stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px" in source
     assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px}" in source
+
+
+def test_web_console_places_voltage_between_drift_and_ap_cards():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    drift_index = source.index('id="driftCard"')
+    voltage_index = source.index('id="voltageCard"')
+    ap_index = source.index('id="apCard"')
+    sta_index = source.index('id="staCard"')
+
+    assert drift_index < voltage_index < ap_index < sta_index
 
 
 def test_web_console_groups_rc_and_status_into_collapsible_sections():

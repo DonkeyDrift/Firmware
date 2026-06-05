@@ -139,6 +139,8 @@ python provisioning_system/tests/test_agent.py -v
 pytest tests/ -v
 ```
 
+`provisioning_system/playwright_tests/` 下存在 Playwright 依赖，但当前 `package.json` 的 `npm test` 只是占位脚本并会退出失败；除非先补充有效测试脚本，否则不要把 `npm test` 当作该目录的验证命令。
+
 ### 数据采集与模型工具
 
 ```bash
@@ -324,6 +326,8 @@ README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin
 - `Doc/README/OPERATIONS.md`：串口运行时操作命令与数据帧。
 - `provisioning_system/docs/deployment_and_testing.md`：独立配网系统的 ESP32 固件、Linux agent 和测试部署说明。
 - `Doc/Plan/`：方案、设计方案、实施路线和历史实施方案目录；新增方案类内容应写入此目录，使用清晰的中文文件名，使用前需对照当前代码验证。
+- `README.md`：项目早期介绍，部分构建命令、硬件引脚和文档路径已滞后；引用前必须对照 `mus4.ino`、`Doc/Hardware/pin_definitions.md`、`Doc/Arch/architecture.md` 和本文件验证。
+- `AGENTS.md`：其他代理工具的历史指南，包含旧版本号和外部工具专属指令；Claude Code 操作本仓库时优先遵循本文件、源码和当前项目文档。
 
 ## Git Conventions
 

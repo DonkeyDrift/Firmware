@@ -43,6 +43,7 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert ".headerRow{display:flex;align-items:flex-end;" in source
+    assert ".version{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block;transform:translateY(-1px)}" in source
     assert "#modeCard{flex:0.30}" in source
     assert "#parkCard{flex:0.30}" in source
     assert ".stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px" in source

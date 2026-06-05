@@ -15,7 +15,8 @@ def test_websocket_curve_data_feature_is_enabled():
 def test_web_console_keeps_original_ui_and_direct_curve_path():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "MUS4 Web Console" in source
+    assert "Donkey Console" in source
+    assert "MUS4 Web Console" not in source
     assert "MUS4 Compact Console" not in source
     assert "pendingPoints.push" not in source
     assert "const interp={...prev}" not in source
@@ -31,10 +32,11 @@ def test_diagnostic_code_is_not_built_by_default():
     assert re.search(r"^//\s*#define\s+ENABLE_BOOT_STEERING_SELF_TEST\b", source, re.MULTILINE)
 
 
-def test_web_console_uses_dev_mode_label_for_development_switch():
+def test_web_console_uses_dev_label_for_development_switch():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "DEV MODE <b id=\"devModeSwitchText\">OFF</b>" in source
+    assert "DEV <b id=\"devModeSwitchText\">OFF</b>" in source
+    assert "DEV MODE <b id=\"devModeSwitchText\">OFF</b>" not in source
     assert "DEBUG MODE <b id=\"devModeSwitchText\">OFF</b>" not in source
     assert "Auto OTA <b id=\"devModeSwitchText\">OFF</b>" not in source
 
@@ -43,6 +45,10 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert ".headerRow{display:flex;align-items:flex-end;" in source
+    assert ".otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800}" in source
+    assert ".devHint{position:relative}" in source
+    assert ".devHint:hover:after" in source
+    assert "content:'开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。'" in source
     assert ".version{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block;transform:translateY(-1px)}" in source
     assert ".stateGrid{display:grid;gap:10px;align-items:stretch;grid-template-columns:" in source
     assert "#modeCard{grid-area:mode}" in source
@@ -101,6 +107,23 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert "voltageValue.textContent='未连接'" in source
     assert "if(!isNaN(v)&&v>0)" not in source
     assert "v.toFixed(2)+'V'" not in source
+
+
+def test_web_console_header_ota_button_and_log_area_are_compact():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert '<a href="/update" target="_blank" class="otaLink"><button class="otaButton">OTA</button></a><label class="toggleSwitch"' in source
+    assert '<button>OTA Upload</button>' not in source
+    assert '<button onclick="quick(\'PING\')">PING</button>' not in source
+    assert '<button onclick="quick(\'STATUS\')">STATUS</button>' not in source
+    assert '<button onclick="quick(\'AUTH:mus4-debug\')">AUTH</button>' not in source
+    assert '<button onclick="quick(\'ENABLE_OTA\')">ENABLE_OTA</button>' not in source
+    assert '<button onclick="quick(\'OTA_STATUS\')">OTA_STATUS</button>' not in source
+    assert '<div class="muted" style="margin:8px 0">开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。</div>' not in source
+    assert ".log{height:calc(5 * 1.35em + 16px);" in source
+    assert ".log{height:280px;" not in source
+    assert "versionLabel.textContent=s.version.replace(/^V/,'v')" in source
+    assert "logMeta.textContent='seq='+lastLogSeq+' dropped='+j.dropped" not in source
 
 
 def test_web_console_network_ip_click_copies_with_non_blocking_toast():

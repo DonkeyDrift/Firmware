@@ -170,8 +170,8 @@ def test_web_console_network_ip_click_copies_with_non_blocking_toast():
     assert 'title="点击复制 IP"' not in source
     assert 'id="toast" class="toast"' in source
     assert ".copyValue{cursor:pointer;position:relative}" in source
-    assert ".copyValue:hover:after" in source
-    assert "content:'点击复制 IP'" in source
+    assert ".copyValue:hover:after{content:'点击复制 IP';position:absolute;left:72px;top:-26px;background:#111820;border:1px solid #5cc8ff;border-radius:8px;padding:4px 8px;color:#dbeafe;font-size:12px;font-weight:600;white-space:nowrap;pointer-events:none;z-index:4}" in source
+    assert ".gear{position:absolute;right:10px;top:32px;width:30px;height:30px;min-width:0;padding:0;border-radius:50%;font-size:16px;line-height:1;z-index:6}" in source
     assert "text-decoration:underline" not in source
     assert "text-decoration-style:dotted" not in source
     assert "text-underline-offset" not in source

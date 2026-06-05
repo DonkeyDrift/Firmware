@@ -252,7 +252,49 @@ def test_web_console_sta_refresh_does_not_overwrite_open_modal_input():
     assert "function isWifiStaModalOpen()" in source
     assert "async function refreshWifiSta(forceFill=false)" in source
     assert "if(forceFill||(!isWifiStaModalOpen()&&document.activeElement!==staSsid))" in source
-    assert "async function openWifiStaModal(){await refreshWifiSta(true);wifiStaModal.classList.add('show')}" in source
+    assert "async function openWifiStaModal()" in source
+    assert "await refreshWifiSta(true)" in source
+    assert "wifiStaModal.classList.add('show')" in source
+
+
+def test_web_console_sta_settings_support_scan_and_password_visibility():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "注意只能连接2.4G WiFi" in source
+    assert "保存前请先 AUTH；密码不会回显，凭据会保存到设备 NVS。" not in source
+    assert 'id="staSsidSearchBtn"' in source
+    assert 'id="wifiScanPopover"' in source
+    assert 'id="wifiScanList"' in source
+    assert "function openWifiScanPopover" in source
+    assert "function closeWifiScanPopover" in source
+    assert "async function refreshWifiScan" in source
+    assert "function selectWifiSsid" in source
+    assert "setInterval(refreshWifiScan,1000)" in source
+    assert "fetch('/api/wifi-sta/scan')" in source
+    assert "staSsid.value=ssid" in source
+    assert 'id="staPasswordEye"' in source
+    assert "staPasswordPlaceholder" in source
+    assert "staPasswordDirty" in source
+    assert "staPassword.value='*'" in source
+    assert "keep_password" in source
+    assert "function showStaPassword" in source
+    assert "function hideStaPassword" in source
+    assert "staPassword.type='text'" in source
+    assert "staPassword.type='password'" in source
+
+
+def test_web_console_sta_scan_api_uses_async_wifi_scan():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "static void handleWifiWebStaScan()" in source
+    assert 'wifiWebServer.on("/api/wifi-sta/scan", HTTP_GET, handleWifiWebStaScan)' in source
+    assert "WiFi.scanNetworks(true" in source
+    assert "WiFi.scanComplete()" in source
+    assert "WiFi.scanDelete()" in source
+    assert "WiFi.RSSI" in source
+    assert "WiFi.channel" in source
+    assert "\\\"rssi\\\":" in source
+    assert "\\\"channel\\\":" in source
 
 
 def test_web_console_sta_save_defers_wifi_reconnect_until_after_http_response():

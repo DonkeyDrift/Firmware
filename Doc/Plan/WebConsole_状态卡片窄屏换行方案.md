@@ -93,6 +93,7 @@ Web Console 顶部状态卡片当前使用 `flex-wrap` 自动换行。页面宽�
 - 断言 Park 宽度使用 `minmax(160px,.56fr)`，窄屏使用 `154px`。
 - 断言窄屏下 `Mode`、`Park`、`Voltage`、`Drift`、`Network` 主值字号统一缩小到 `18px`。
 - 断言窄屏下 `Drift` 副标题、`Network` 的 SSID 等辅助文本也跟随缩小。
+- 断言最终窄屏下 `.rcGrid` 使用 `repeat(3,minmax(72px,1fr))`，形成两行三列。
 - 断言状态文本使用自动换行，不使用 `text-overflow:ellipsis`。
 - 保留 DOM 顺序测试，确保 HTML 顺序不被改变。
 
@@ -119,6 +120,7 @@ pytest tests/test_firmware_feature_flags.py tests/test_wireless_console_policy.p
 - 最终窄屏显示为第一行 `Mode / Park / Voltage`，第二行 `Drift`，第三行 `Network`。
 - `UNLOCKED` 在过渡区间和窄屏下完整显示。
 - 最终窄屏下 `Drift` 和 `Network` 的字体也像 `Mode` 一样相应变小。
+- 最终窄屏下 `RC Channels` 改为两行三列，每行显示 3 个通道。
 - 状态卡文本不出现省略号。
 - 相关 Python 测试通过。
 - 固件 WSL 编译通过。

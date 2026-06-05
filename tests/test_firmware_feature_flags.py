@@ -272,15 +272,48 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
     assert "setInterval(refreshWifiScan,1000)" in source
     assert "fetch('/api/wifi-sta/scan')" in source
     assert "staSsid.value=ssid" in source
+    assert '<label for="staSsid">SSID</label>' in source
+    assert '<label for="staPassword">密码</label>' in source
     assert 'id="staPasswordEye"' in source
+    assert 'onclick="toggleStaPasswordVisibility()"' in source
+    assert "onmousedown=\"showStaPassword()\"" not in source
+    assert "onmouseup=\"hideStaPassword()\"" not in source
+    assert "ontouchstart=\"showStaPassword()\"" not in source
+    assert "ontouchend=\"hideStaPassword()\"" not in source
     assert "staPasswordPlaceholder" in source
     assert "staPasswordDirty" in source
-    assert "staPassword.value='*'" in source
+    assert "staPasswordVisible" in source
+    assert "staSavedPassword" in source
+    assert "staSavedPasswordKnown" in source
+    assert "staPassword.value='*'.repeat(Number(j.password_len||0))" in source
     assert "keep_password" in source
-    assert "function showStaPassword" in source
-    assert "function hideStaPassword" in source
+    assert "function toggleStaPasswordVisibility" in source
+    assert "async function fetchSavedStaPassword" in source
+    assert "function maskStaPassword" in source
+    assert "function updateStaPasswordEye" in source
+    assert "staPasswordEye.textContent=staPasswordVisible?'🙈':'👁'" in source
+    assert "fetch('/api/wifi-sta/password')" in source
     assert "staPassword.type='text'" in source
     assert "staPassword.type='password'" in source
+
+
+def test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_secret():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "static void handleWifiWebStaPassword()" in source
+    assert 'wifiWebServer.on("/api/wifi-sta/password", HTTP_GET, handleWifiWebStaPassword)' in source
+    assert "if (!wifiConsoleAuthenticated && !wifiDevModeEnabled)" in source
+    assert "\\\"password_len\\\":" in source
+    assert "appendJsonString(response, wifiStaPassword)" in source
+
+    public_body = re.search(
+        r"static String wifiStaJson\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "password_len" in public_body
+    assert "appendJsonString(response, wifiStaPassword)" not in public_body
+    assert "\"password\":" not in public_body
 
 
 def test_web_console_sta_scan_api_uses_async_wifi_scan():

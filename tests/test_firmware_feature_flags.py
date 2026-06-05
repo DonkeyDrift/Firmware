@@ -47,7 +47,7 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert ".headerRow{display:flex;align-items:flex-end;" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
     assert ".otaLink{margin-left:auto;text-decoration:none}" in source
-    assert ".otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:12px;padding:5px 9px;min-width:0}" in source
+    assert ".otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;line-height:1}" in source
     assert ".devHint{position:relative}" in source
     assert ".devHint:hover:after" in source
     assert "content:'开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。'" in source
@@ -117,7 +117,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert '<a href="/update" target="_blank" class="otaLink"><button class="otaButton">OTA</button></a><label class="toggleSwitch"' in source
     assert '<input id="cmd"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停</button>' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
-    assert "input{flex:0 1 260px;min-width:140px;max-width:320px}" in source
+    assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "document.getElementById('pauseBtn').textContent=logPaused?'继续':'暂停'" in source
     assert '>暂停日志</button>' not in source
     assert "'继续日志'" not in source
@@ -132,6 +132,10 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert ".log{height:calc(5 * 1.35em + 16px);" in source
     assert ".log{height:280px;" not in source
     assert "versionLabel.textContent=s.version.replace(/^V/,'v')" in source
+    assert '<div id="log" class="log"></div>' in source
+    assert 'id="logMeta"' not in source
+    assert "logMeta" not in source
+    assert "log ready" not in source
     assert "logMeta.textContent='seq='+lastLogSeq+' dropped='+j.dropped" not in source
 
 

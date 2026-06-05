@@ -87,6 +87,23 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert "v.toFixed(2)+'V'" not in source
 
 
+def test_web_console_network_ip_click_copies_with_non_blocking_toast():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert 'id="networkValue" onclick="copyNetworkIp()"' in source
+    assert 'id="toast" class="toast"' in source
+    assert ".copyValue{cursor:pointer;" in source
+    assert ".toast.show" in source
+    assert "toastTimer=0" in source
+    assert "networkCopyIp" in source
+    assert "function showToast" in source
+    assert "async function copyNetworkIp()" in source
+    assert "navigator.clipboard.writeText" in source
+    assert "document.execCommand('copy')" in source
+    assert "复制失败，请手动选择 IP" in source
+    assert "alert('已复制" not in source
+
+
 def test_web_console_groups_rc_and_status_into_collapsible_sections():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 

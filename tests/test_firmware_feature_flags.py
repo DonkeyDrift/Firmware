@@ -55,6 +55,9 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert 'grid-template-areas:"mode park voltage" "drift drift drift" "network network network"' in source
     assert "minmax(160px,.56fr)" in source
     assert "grid-template-columns:84px 154px 100px" in source
+    assert "#modeCard .stateValue,#parkCard .stateValue,#voltageCard .stateValue,#driftCard .stateValue,#networkCard .stateValue{font-size:18px}" in source
+    assert "#modeCard .stateSub,#parkCard .stateSub,#driftCard .stateSub{font-size:11px}" in source
+    assert "#voltageCard .stateMeta span,#networkCard .stateMeta span{font-size:13px}" in source
     assert ".stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px" in source
     assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.08}" in source
     assert ".stateMeta span{font-size:15px;font-weight:700;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.2}" in source

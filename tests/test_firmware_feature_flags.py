@@ -46,10 +46,11 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert ".version{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block;transform:translateY(-1px)}" in source
     assert "#modeCard{flex:0.30}" in source
     assert "#parkCard{flex:0.30}" in source
-    assert "#voltageCard{flex:1}" in source
-    assert "#networkCard{flex:1.4}" in source
+    assert "#voltageCard{flex:0.30}" in source
+    assert "#networkCard{flex:0.80}" in source
     assert ".stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px" in source
     assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px}" in source
+    assert ".stateMeta span{overflow-wrap:anywhere;font-size:15px;font-weight:700}" in source
 
 
 def test_web_console_places_voltage_before_combined_network_card():
@@ -70,12 +71,20 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert 'id="networkApTab"' in source
     assert 'id="networkStaTab"' in source
     assert 'id="networkSsidValue"' in source
-    assert 'id="networkIpValue"' in source
+    assert 'id="networkIpValue"' not in source
+    assert 'id="networkSub"' not in source
+    assert '<b>SSID</b><span id="networkSsidValue">--</span>' in source
+    assert '<b>REMAIN</b><span id="voltageSub">battery</span>' in source
     assert 'openWifiStaModal()' in source
     assert 'ap_ssid=\\"%s\\"' in source
     assert 'sta_ssid=\\"%s\\"' in source
     assert "networkTabPinned" in source
     assert "staConnected?'sta':'ap'" in source
+    assert ".netTabs{position:absolute;right:28px;top:8px;" in source
+    assert "networkSub.textContent" not in source
+    assert "networkIpValue.textContent" not in source
+    assert "v.toFixed(1)+'V'" in source
+    assert "v.toFixed(2)+'V'" not in source
 
 
 def test_web_console_groups_rc_and_status_into_collapsible_sections():

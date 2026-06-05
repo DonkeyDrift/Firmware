@@ -47,21 +47,35 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert "#modeCard{flex:0.30}" in source
     assert "#parkCard{flex:0.30}" in source
     assert "#voltageCard{flex:1}" in source
-    assert "#apCard{flex:1}" in source
-    assert "#staCard{flex:1}" in source
+    assert "#networkCard{flex:1.4}" in source
     assert ".stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px" in source
     assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px}" in source
 
 
-def test_web_console_places_voltage_between_drift_and_ap_cards():
+def test_web_console_places_voltage_before_combined_network_card():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     drift_index = source.index('id="driftCard"')
     voltage_index = source.index('id="voltageCard"')
-    ap_index = source.index('id="apCard"')
-    sta_index = source.index('id="staCard"')
+    network_index = source.index('id="networkCard"')
 
-    assert drift_index < voltage_index < ap_index < sta_index
+    assert 'id="apCard"' not in source
+    assert 'id="staCard"' not in source
+    assert drift_index < voltage_index < network_index
+
+
+def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert 'id="networkApTab"' in source
+    assert 'id="networkStaTab"' in source
+    assert 'id="networkSsidValue"' in source
+    assert 'id="networkIpValue"' in source
+    assert 'openWifiStaModal()' in source
+    assert 'ap_ssid=\\"%s\\"' in source
+    assert 'sta_ssid=\\"%s\\"' in source
+    assert "networkTabPinned" in source
+    assert "staConnected?'sta':'ap'" in source
 
 
 def test_web_console_groups_rc_and_status_into_collapsible_sections():

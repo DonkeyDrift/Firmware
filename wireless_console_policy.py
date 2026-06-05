@@ -94,6 +94,8 @@ def format_network_status(
     sta_configured,
     sta_connected,
     sta_ip,
+    ap_ssid="MUS4-DEBUG",
+    sta_ssid="",
     free_heap=0,
     min_free_heap=0,
     ws_queue_full_skip=0,
@@ -123,10 +125,11 @@ def format_network_status(
         f"http_status_count={http_status_count} http_log_count={http_log_count} "
         f"http_data_count={http_data_count} http_cmd_count={http_cmd_count} "
         f"http_status_dt_max={http_status_dt_max} http_log_dt_max={http_log_dt_max} "
-        f"http_data_dt_max={http_data_dt_max} http_cmd_dt_max={http_cmd_dt_max} ap_ip={ap_ip} "
+        f"http_data_dt_max={http_data_dt_max} http_cmd_dt_max={http_cmd_dt_max} "
+        f"ap_ssid=\"{ap_ssid}\" ap_ip={ap_ip} "
         f"sta_configured={1 if sta_configured else 0} "
         f"sta_connected={1 if sta_connected else 0} "
-        f"sta_ip={normalized_sta_ip}"
+        f"sta_ssid=\"{sta_ssid}\" sta_ip={normalized_sta_ip}"
     )
 
 

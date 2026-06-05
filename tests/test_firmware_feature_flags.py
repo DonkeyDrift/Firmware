@@ -114,6 +114,13 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
 def test_web_console_header_ota_button_and_log_area_are_compact():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
+    assert source.index('<section class="panel" id="chartPanel">') < source.index('<div class="row"><input id="cmd">')
+    assert '<button onclick="toggleChart()" id="chartBtn">暂停曲线</button><button onclick="clearChart()">清空</button><button onclick="toggleChartFullscreen()" id="chartFullscreenBtn">全屏</button>' in source
+    assert "document.getElementById('chartBtn').textContent=chartPaused?'绘制':'暂停曲线'" in source
+    assert "document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?'退出全屏':'全屏'" in source
+    assert '<button onclick="clearChart()">清空曲线</button>' not in source
+    assert "'继续曲线'" not in source
+    assert "'全屏曲线'" not in source
     assert '<a href="/update" target="_blank" class="otaLink"><button class="otaButton">OTA</button></a><label class="toggleSwitch"' in source
     assert '<input id="cmd"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停</button>' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source

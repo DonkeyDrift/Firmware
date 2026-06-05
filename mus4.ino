@@ -1845,16 +1845,16 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <div id="rcFold" class="fold"><button class="foldHead" onclick="toggleFold('rcFold')" aria-expanded="false"><span class="foldIcon">▸</span>RC Channels</button><div class="foldBody"><div class="rcGrid"><div class="rcCell"><b>CH1 Steering</b><span id="ch1Value">----</span></div><div class="rcCell"><b>CH2 Throttle</b><span id="ch2Value">----</span></div><div class="rcCell"><b>CH3 Park</b><span id="ch3Value">----</span></div><div class="rcCell modeCh"><b>CH4 Mode</b><span id="ch4Value">----</span></div><div class="rcCell"><b>CH5 Drift</b><span id="ch5Value">----</span></div><div class="rcCell"><b>CH6 Scale</b><span id="ch6Value">----</span></div></div></div></div>
 <div id="statusFold" class="fold"><button class="foldHead" onclick="toggleFold('statusFold')" aria-expanded="false"><span class="foldIcon">▸</span>STATUS Details</button><div class="foldBody"><div id="status">loading...</div></div></div>
 </section>
-<section class="panel">
-<div class="row"><input id="cmd"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停</button></div>
-<div id="log" class="log"></div>
-</section>
 <section class="panel" id="chartPanel">
 <canvas id="chart" width="760" height="260"></canvas>
 <div class="legend"><span class="c1">Throttle<b id="thrMeta">--</b></span><span class="c2">Steering<b id="strMeta">--</b></span><span class="c4">GyroZ<b id="gzMeta">--</b></span></div>
-<div class="row" style="margin-top:8px"><button onclick="toggleChart()" id="chartBtn">暂停曲线</button><button onclick="clearChart()">清空曲线</button><button onclick="toggleChartFullscreen()" id="chartFullscreenBtn">全屏曲线</button></div>
+<div class="row" style="margin-top:8px"><button onclick="toggleChart()" id="chartBtn">暂停曲线</button><button onclick="clearChart()">清空</button><button onclick="toggleChartFullscreen()" id="chartFullscreenBtn">全屏</button></div>
 <div class="row" style="margin-top:8px"><button onclick="ts()">Tub Start</button><button onclick="te()">Tub Stop</button><button onclick="td()">Tub JSON</button></div>
 <div class="muted" id="dataMeta">data ready</div>
+</section>
+<section class="panel">
+<div class="row"><input id="cmd"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停</button></div>
+<div id="log" class="log"></div>
 </section>
 </div>
 <div id="devModeModal" class="modal"><div class="dialog"><h2>开启开发模式？</h2><p>开发模式会持久化，并允许 Web Console 免认证保持 OTA 监听。不会放宽控制命令；实际 OTA 传输期间固件会默认 Park Locked。</p><div class="dialogActions"><button onclick="closeDevModeModal(false)">取消</button><button onclick="closeDevModeModal(true)">确认开启</button></div></div></div>
@@ -1867,9 +1867,9 @@ let lastLogSeq=0,lastDataSeq=0,pointHead=0,pointCount=0,logPaused=false,chartPau
 function line(t){if(logPaused)return;log.textContent+=t+'\n';if(log.textContent.length>16000)log.textContent=log.textContent.slice(-12000);log.scrollTop=log.scrollHeight}
 function clearLog(){log.textContent=''}
 function togglePause(){logPaused=!logPaused;document.getElementById('pauseBtn').textContent=logPaused?'继续':'暂停'}
-function toggleChart(){chartPaused=!chartPaused;document.getElementById('chartBtn').textContent=chartPaused?'继续曲线':'暂停曲线'}
+function toggleChart(){chartPaused=!chartPaused;document.getElementById('chartBtn').textContent=chartPaused?'绘制':'暂停曲线'}
 function toggleChartFullscreen(){if(document.fullscreenElement===chartPanel)document.exitFullscreen();else chartPanel.requestFullscreen()}
-document.addEventListener('fullscreenchange',()=>{document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?'退出全屏':'全屏曲线';gridReady=false;draw()});
+document.addEventListener('fullscreenchange',()=>{document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?'退出全屏':'全屏';gridReady=false;draw()});
 function clearChart(){pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;draw()}function enterScreenSaver(){screenSaverActive=true;screenSaverStartTime=performance.now();saverTime=0;dataMeta.textContent='screensaver active'}function exitScreenSaver(){screenSaverActive=false;screenSaverStartTime=0;parkLockedAt=0;ch1Samples=[];clearChart();dataMeta.textContent='screensaver exited'}
 function toggleFold(id){const f=document.getElementById(id);if(!f)return;const open=!f.classList.contains('open');f.classList.toggle('open',open);const i=f.querySelector('.foldIcon'),b=f.querySelector('.foldHead');if(i)i.textContent=open?'▾':'▸';if(b)b.setAttribute('aria-expanded',open?'true':'false')}
 function parseStatusPairs(t){const pairs=[],n=t.length;let i=0;while(i<n){while(i<n&&/\s/.test(t[i]))i++;let k='';while(i<n&&!/\s|=/.test(t[i]))k+=t[i++];if(!k||t[i]!=='='){while(i<n&&!/\s/.test(t[i]))i++;continue}i++;let v='';if(t[i]==='\"'){const q=t[i++];while(i<n&&t[i]!==q)v+=t[i++];if(i<n&&t[i]===q)i++}else{while(i<n&&!/\s/.test(t[i]))v+=t[i++]}pairs.push([k,v])}return pairs}

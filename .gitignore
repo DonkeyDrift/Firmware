@@ -28,6 +28,7 @@ Temporary Items
 build
 settings.json
 node_modules/
+.superpowers/
 
 # Log files
 *.log

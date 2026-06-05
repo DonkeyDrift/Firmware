@@ -31,11 +31,22 @@ def test_diagnostic_code_is_not_built_by_default():
     assert re.search(r"^//\s*#define\s+ENABLE_BOOT_STEERING_SELF_TEST\b", source, re.MULTILINE)
 
 
-def test_web_console_uses_debug_mode_label_for_development_switch():
+def test_web_console_uses_dev_mode_label_for_development_switch():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "DEBUG MODE <b id=\"devModeSwitchText\">OFF</b>" in source
+    assert "DEV MODE <b id=\"devModeSwitchText\">OFF</b>" in source
+    assert "DEBUG MODE <b id=\"devModeSwitchText\">OFF</b>" not in source
     assert "Auto OTA <b id=\"devModeSwitchText\">OFF</b>" not in source
+
+
+def test_web_console_header_and_state_cards_keep_compact_layout():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert ".headerRow{display:flex;align-items:flex-end;" in source
+    assert "#modeCard{flex:0.30}" in source
+    assert "#parkCard{flex:0.30}" in source
+    assert ".stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px" in source
+    assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px}" in source
 
 
 def test_web_console_explains_auth_and_park_rejections():
@@ -43,7 +54,8 @@ def test_web_console_explains_auth_and_park_rejections():
 
     assert "function explainCommandError(t)" in source
     assert "请将 CH3/Park 切到锁定状态后重试" in source
-    assert "请先 AUTH，或开启 DEBUG MODE 后重试" in source
+    assert "请先 AUTH，或开启 DEV MODE 后重试" in source
+    assert "请先 AUTH，或开启 DEBUG MODE 后重试" not in source
     assert "alert(msg)" in source
 
 

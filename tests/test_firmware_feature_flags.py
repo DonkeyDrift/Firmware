@@ -120,11 +120,15 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "#serialPanel .log{flex:1;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
     assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}}" in source
     assert "@media(min-width:900px){.grid{grid-template-columns:1fr 2fr}.wide{grid-column:1/-1}}" not in source
-    assert '<button onclick="toggleChart()" id="chartBtn">暂停曲线</button><button onclick="clearChart()">清空</button><button onclick="toggleChartFullscreen()" id="chartFullscreenBtn">全屏</button>' in source
-    assert "document.getElementById('chartBtn').textContent=chartPaused?'绘制':'暂停曲线'" in source
-    assert "document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?'退出全屏':'全屏'" in source
+    assert '.chartControls{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}.chartTools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}' in source
+    assert '<div class="chartControls"><button onclick="toggleChart()" id="chartBtn">暂停</button><button onclick="clearChart()">清空</button><button onclick="toggleChartFullscreen()" id="chartFullscreenBtn">全屏</button><div class="chartTools"><button onclick="ts()">Tub Start</button><button onclick="te()">Tub Stop</button><button onclick="td()">Tub JSON</button></div></div>' in source
+    assert "document.getElementById('chartBtn').textContent=chartPaused?'绘制':'暂停'" in source
+    assert "document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?'分屏':'全屏'" in source
     assert '<button onclick="clearChart()">清空曲线</button>' not in source
+    assert '<button onclick="toggleChart()" id="chartBtn">暂停曲线</button>' not in source
+    assert "'暂停曲线'" not in source
     assert "'继续曲线'" not in source
+    assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" target="_blank" class="otaLink"><button class="otaButton">OTA</button></a><label class="toggleSwitch"' in source
     assert '<input id="cmd"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停</button>' in source

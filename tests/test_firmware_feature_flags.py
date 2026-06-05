@@ -260,7 +260,13 @@ def test_web_console_sta_refresh_does_not_overwrite_open_modal_input():
 def test_web_console_sta_settings_support_scan_and_password_visibility():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
+    assert 'id="staNotice"' in source
     assert "注意只能连接2.4G WiFi" in source
+    assert "staNotice.textContent='正在连接'" in source
+    assert "staNotice.textContent='已连接'" in source
+    assert "staNotice.textContent='连接失败'" in source
+    assert ">连接</button>" in source
+    assert ">保存并连接</button>" not in source
     assert "保存前请先 AUTH；密码不会回显，凭据会保存到设备 NVS。" not in source
     assert 'id="staSsidSearchBtn"' in source
     assert 'id="wifiScanPopover"' in source

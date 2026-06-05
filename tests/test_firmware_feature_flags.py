@@ -91,8 +91,14 @@ def test_web_console_network_ip_click_copies_with_non_blocking_toast():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert 'id="networkValue" onclick="copyNetworkIp()"' in source
+    assert 'title="点击复制 IP"' not in source
     assert 'id="toast" class="toast"' in source
-    assert ".copyValue{cursor:pointer;" in source
+    assert ".copyValue{cursor:pointer;position:relative}" in source
+    assert ".copyValue:hover:after" in source
+    assert "content:'点击复制 IP'" in source
+    assert "text-decoration:underline" not in source
+    assert "text-decoration-style:dotted" not in source
+    assert "text-underline-offset" not in source
     assert ".toast.show" in source
     assert "toastTimer=0" in source
     assert "networkCopyIp" in source

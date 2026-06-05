@@ -94,8 +94,8 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 # 编译后通过 Web Console 的 HTTP /update 端点上传
 .\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP或主机名>
 
-# 当前调试默认优先走设备 AP 地址；显式传入可避免被 .mus4_ota_target 覆盖
-.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.4.1
+# 当前调试目标可按 .mus4_ota_target 首行；显式传入可避免被旧目标覆盖
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.144
 
 # 使用已有 build_wsl 产物通过 HTTP OTA 上传；未传主机时读取 .mus4_ota_target 首行
 .\arduino-cli-wsl.ps1 -Upload -HttpOta
@@ -110,7 +110,7 @@ python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
 .\arduino-cli-wsl.ps1 -Upload -ExtraArgs "--port COM9"
 ```
 
-WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。HTTP OTA 使用设备 Web Console 的 `/update` 端点，需要 Web Console 已认证且 Park 锁定，或开发模式允许；目标主机可通过 `-HttpOtaHost` 指定，或写入项目根目录 `.mus4_ota_target` 的首行。当前调试默认优先显式使用设备 AP 地址 `192.168.4.1`，不要因为 `.mus4_ota_target` 中保存了 STA 地址而改用它，除非用户本次明确指定。
+WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。HTTP OTA 使用设备 Web Console 的 `/update` 端点，需要 Web Console 已认证且 Park 锁定，或开发模式允许；目标主机可通过 `-HttpOtaHost` 指定，或写入项目根目录 `.mus4_ota_target` 的首行。当前调试优先使用 `.mus4_ota_target` 中的目标；截至 2026-06-05 当前目标为 `192.168.3.144`，如需改用 AP 默认地址再显式传入 `192.168.4.1`。
 
 ### Python 测试
 
@@ -202,7 +202,7 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 Python 测试集中在 `tests/`：
 - `tests/test_arduino_cli.py` 覆盖串口选择、双串口回退、进度解析、上传命令构造和预编译固件选择等纯逻辑。
 - `tests/test_wireless_console_policy.py` 覆盖无线控制台认证、Park 锁定、OTA 窗口、Web/STA 状态格式和行缓冲规则。
-- `tests/test_firmware_feature_flags.py` 用源码断言保护关键编译开关和 Web Console 曲线实现形态。
+- `tests/test_firmware_feature_flags.py` 用源码断言保护关键编译开关、Web Console/Donkey Console UI、状态卡片布局、曲线实现形态和前端安全门控。
 - `tests/test_train_tub_driver.py` 覆盖 Tub JSON 读取、数据质量报告、特征防泄漏和窗口数据集构造。
 - `tests/test_mus4_pilot_infer.py` 覆盖模型推理控制器的标准化校验、安全门控、串口命令和 ACK 解析。
 
@@ -288,9 +288,11 @@ README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin
 
 ### Wi-Fi Console、Web Console 与 OTA
 
-`mus4.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`，并在该路径下启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY`。启用后 ESP32 以 AP+STA 模式启动：AP SSID 为 `MUS4-DEBUG`，TCP 控制台端口为 `2323`，Web Console 端口为 `80`，WebSocket 遥测端口为 `81`，ArduinoOTA 默认主机名为 `mus4-ota`、端口 `3232`。
+`mus4.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`，并在该路径下启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY`。启用后 ESP32 以 AP+STA 模式启动：AP SSID 为 `MUS4-DEBUG`，TCP 控制台端口为 `2323`，Web Console/Donkey Console 端口为 `80`，WebSocket 遥测端口为 `81`，ArduinoOTA 默认主机名为 `mus4-ota`、端口 `3232`。
 
 无线命令权限分层：`PING`、`STATUS`、`AUTH`、`WIFI_STA_STATUS` 可未认证访问；控制指令和 `ANSI`/`NOANSI`/`FILTER_DEBUG`/`LOG_WEB`/`LOG_SERIAL`/Wi-Fi STA 配置命令需要认证；`TEST`、`BENCH`、`REGRESS`、转向标定等诊断/维护命令还要求 Park 锁定；`ENABLE_OTA` 要求认证且 Park 锁定，`OTA_STATUS` 与 `DISABLE_OTA` 要求认证。修改这部分逻辑时，同步更新 `wireless_console_policy.py` 与 `tests/test_wireless_console_policy.py`。
+
+Web UI 的 HTML/CSS/JS 目前内嵌在 `mus4.ino` 的 `WIFI_WEB_CONSOLE_HTML` 中，页面品牌已显示为 `Donkey Console`。修改标题、顶部 DEV/OTA 区、状态卡片、串口日志、Tub JSON 或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
 
 ### BLE Gamepad Mode
 

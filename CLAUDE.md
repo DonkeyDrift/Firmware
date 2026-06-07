@@ -14,11 +14,13 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 
 ## Commands
 
-### Python 依赖
+### Python 依赖与固件构建依赖
 
 ```bash
 pip install pyyaml pyserial pytest
 ```
+
+固件构建还需要安装 Arduino CLI、ESP32 Arduino core，以及 FastLED、Adafruit INA219、Adafruit MPU6050、AsyncTCP、ESPAsyncWebServer 等 Arduino 库。
 
 项目未发现专用 Python lint/format 配置；修改 Python 工具脚本或策略镜像后，至少运行相关 `pytest`。
 
@@ -284,6 +286,8 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 | I2C SDA | 21 | INA219 / MPU6050 |
 | I2C SCL | 22 | INA219 / MPU6050 |
 
+GPIO 34、35、36、39 是 ESP32 仅输入引脚，不能配置为输出，也没有内部上拉/下拉。
+
 README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin_definitions.md` 和本文件为准。
 
 ### Wi-Fi Console、Web Console 与 OTA
@@ -329,7 +333,7 @@ Web UI 的 HTML/CSS/JS 目前内嵌在 `mus4.ino` 的 `WIFI_WEB_CONSOLE_HTML` �
 - `provisioning_system/docs/deployment_and_testing.md`：独立配网系统的 ESP32 固件、Linux agent 和测试部署说明。
 - `Doc/Plan/`：方案、设计方案、实施路线和历史实施方案目录；新增方案类内容应写入此目录，使用清晰的中文文件名，使用前需对照当前代码验证。
 - `README.md`：项目早期介绍，部分构建命令、硬件引脚和文档路径已滞后；引用前必须对照 `mus4.ino`、`Doc/Hardware/pin_definitions.md`、`Doc/Arch/architecture.md` 和本文件验证。
-- `AGENTS.md`：其他代理工具的历史指南，包含旧版本号和外部工具专属指令；Claude Code 操作本仓库时优先遵循本文件、源码和当前项目文档。
+- `AGENTS.md`：其他代理工具的历史指南，包含旧版本号、MiniClaw 专属身份指令和外部工具流程；Claude Code 操作本仓库时不要继承其中的代理身份或工具专属规则，优先遵循本文件、源码和当前项目文档。
 
 ## Git Conventions
 

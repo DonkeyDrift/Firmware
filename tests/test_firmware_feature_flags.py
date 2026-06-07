@@ -7,6 +7,8 @@ MUS4_SKETCH = PROJECT_ROOT / "mus4.ino"
 ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
 CONFIG_YAML = PROJECT_ROOT / "config.yaml"
 WSLBUILD_YAML = PROJECT_ROOT / "wslbuild.yaml"
+SMART_PROVISIONING_SKETCH = PROJECT_ROOT / "examples" / "smart_provisioning" / "smart_provisioning.ino"
+SMART_PROVISIONING_WEB_UI = PROJECT_ROOT / "examples" / "smart_provisioning" / "web_ui.h"
 
 
 def test_local_libraries_path_is_configured_for_build_tools():
@@ -20,6 +22,36 @@ def test_local_libraries_path_is_configured_for_build_tools():
     assert "--libraries" in wsl_script
     assert "$WSLWorkDir/$script:LibrariesPath" in wsl_script
     assert "$WSLProjectRoot/$script:LibrariesPath" in wsl_script
+
+
+def test_smart_provisioning_example_returns_ip_before_closing_ap():
+    source = SMART_PROVISIONING_SKETCH.read_text(encoding="utf-8")
+
+    assert "WiFi.mode(WIFI_AP_STA)" in source
+    assert "server.on(\"/config\", HTTP_POST, handleConfig)" in source
+    assert "server.send(statusCode, \"application/json\", body)" in source
+    assert "WiFi.localIP().toString()" in source
+    assert "scheduleApShutdown()" in source
+    assert "WiFi.softAPdisconnect(true)" in source
+    assert "dnsServer.processNextRequest()" in source
+    assert "MDNS.begin(MDNS_HOSTNAME)" in source
+    assert "Password: <redacted>" in source
+    assert "WiFi.mode(WIFI_STA)" in source
+    assert "delay(AP_SHUTDOWN_DELAY_MS)" not in source
+
+
+def test_smart_provisioning_web_ui_polls_new_ip_and_falls_back_to_mdns():
+    source = SMART_PROVISIONING_WEB_UI.read_text(encoding="utf-8")
+
+    assert "fetch('/config'" in source
+    assert "'Content-Type':'application/json'" in source
+    assert "JSON.stringify({ssid,password})" in source
+    assert "http://${ip}/" in source
+    assert "mode:'no-cors'" in source
+    assert "await sleep(2000)" in source
+    assert "http://esp32.local/" in source
+    assert "location.href=url" in source
+    assert "手动打开" in source
 
 
 def test_websocket_curve_data_feature_is_enabled():

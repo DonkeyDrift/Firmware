@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-06-07 v1.5.24
+
+- 固件次版本号从 `v1.5.23` 更新到 `v1.5.24`。
+- 新增 Web Console AP tab 下的 AP SSID 配置弹窗，保存后持久化到 NVS。
+- 保存 AP SSID 后自动重启 SoftAP，使新 SSID 无需整机重启即可生效。
+- Network 齿轮按钮按当前 AP/STA tab 分流，STA tab 继续打开原 STA Wi-Fi 配置。
+
 ## 2026-06-05 v1.5.23
 
 - 固件次版本号从 `v1.5.22` 更新到 `v1.5.23`。

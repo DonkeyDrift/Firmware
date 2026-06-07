@@ -241,7 +241,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 ### 版本与发布记录
 
-当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.5.23`。README 中部分硬件与路径描述可能滞后，硬件细节以 `mus4.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
+当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.5.24`。README 中部分硬件与路径描述可能滞后，硬件细节以 `mus4.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
 
 ### 控制模式
 

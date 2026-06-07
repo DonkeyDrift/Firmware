@@ -96,7 +96,8 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert 'id="networkSub"' not in source
     assert '<b>SSID</b><span id="networkSsidValue">--</span>' in source
     assert '<b>REMAIN</b><span id="voltageSub">battery</span>' in source
-    assert 'openWifiStaModal()' in source
+    assert 'onclick="event.stopPropagation();openNetworkSettings()"' in source
+    assert '<button class="gear" onclick="event.stopPropagation();openWifiStaModal()">' not in source
     assert 'ap_ssid=\\"%s\\"' in source
     assert 'sta_ssid=\\"%s\\"' in source
     assert "networkTabPinned" in source
@@ -109,6 +110,28 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert "voltageValue.textContent='未连接'" in source
     assert "if(!isNaN(v)&&v>0)" not in source
     assert "v.toFixed(2)+'V'" not in source
+
+
+def test_web_console_ap_ssid_modal_and_api_are_present():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert 'id="wifiApModal"' in source
+    assert 'AP SSID 配置' in source
+    assert 'id="apSsid"' in source
+    assert '保存并重启 AP' in source
+    assert 'openNetworkSettings()' in source
+    assert 'openWifiApModal()' in source
+    assert "selected==='ap'?openWifiApModal():openWifiStaModal()" in source
+    assert "fetch('/api/wifi-ap')" in source
+    assert "fetch('/api/wifi-ap',{method:'POST'" in source
+    assert 'wifiWebServer.on("/api/wifi-ap", HTTP_GET, handleWifiWebAp)' in source
+    assert 'wifiWebServer.on("/api/wifi-ap", HTTP_POST, handleWifiWebApSet)' in source
+    assert 'MUS4_PREF_AP_SSID_KEY' in source
+    assert 'wifiApSsid' in source
+    assert 'scheduleWifiApRestart()' in source
+    assert 'restartWifiAp()' in source
+    assert 'WIFI_CONSOLE_AP_DEFAULT_SSID' in source
+    assert 'WIFI_CONSOLE_AP_SSID' not in source
 
 
 def test_web_console_header_ota_button_and_log_area_are_compact():

@@ -309,7 +309,8 @@ class ArduinoAutomation:
         self.port = args.port or self.config.get('default', {}).get('port', '')
         self.baud = args.baud or self.config.get('default', {}).get('baudrate', 115200)
         self.sketch = args.sketch or self.config.get('default', {}).get('sketch_path', '')
-        
+        self.libraries_path = self.config.get('default', {}).get('libraries_path', 'libraries')
+
         reset_cfg = self.config.get('reset', {})
         self.reset_enabled = args.auto_reset if args.auto_reset is not None else reset_cfg.get('enable', True)
         self.reset_delay_ms = args.reset_delay or reset_cfg.get('delay_ms', 200)
@@ -330,6 +331,17 @@ class ArduinoAutomation:
         self.os_type = platform.system()
         self.validate_environment()
         self.log_reset_interfaces()
+
+    def _config_base_dir(self):
+        return os.path.dirname(os.path.abspath(self.config_path))
+
+    def resolve_local_libraries_path(self):
+        libraries_path = str(self.libraries_path or "").strip()
+        if not libraries_path:
+            return None
+        if not os.path.isabs(libraries_path):
+            libraries_path = os.path.join(self._config_base_dir(), libraries_path)
+        return libraries_path if os.path.isdir(libraries_path) else None
 
     def _resolve_serial_state_file(self):
         configured = self.serial_detection_cfg.get("state_file", self.DEFAULT_STATE_FILE)
@@ -865,7 +877,12 @@ class ArduinoAutomation:
                 build_path = os.path.join(base_dir, build_path)
             cmd.extend(["--build-path", build_path, "--output-dir", build_path])
             self.logger.info(f"构建输出目录: {build_path}")
-        
+
+        local_libraries_path = self.resolve_local_libraries_path()
+        if local_libraries_path:
+            cmd.extend(["--libraries", local_libraries_path])
+            self.logger.info(f"本地库优先路径: {local_libraries_path}")
+
         cmd.append(self.sketch)
         success, _ = self.run_command(cmd, message="正在编译... ")
         if not success:

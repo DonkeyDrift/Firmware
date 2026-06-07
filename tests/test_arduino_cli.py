@@ -53,9 +53,54 @@ def make_automation(port="auto", serial_detection_cfg=None):
     automation.fqbn = "esp32:esp32:esp32"
     automation.sketch = "mus4/mus4.ino"
     automation.config = {"default": {}}
+    automation.config_path = str(PROJECT_ROOT / "config.yaml")
+    automation.libraries_path = "libraries"
     automation.os_type = "Windows"
     automation.serial_state_file = str(PROJECT_ROOT / ".tmp_serial_state_test.json")
     return automation
+
+
+class TestCompileCommand(unittest.TestCase):
+    def test_compile_uses_local_libraries_when_directory_exists(self):
+        automation = make_automation()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sketch = root / "mus4.ino"
+            libraries = root / "libraries"
+            build = root / "build"
+            sketch.write_text("", encoding="utf-8")
+            libraries.mkdir()
+            automation.sketch = str(sketch)
+            automation.config_path = str(root / "config.yaml")
+            automation.config = {"default": {"libraries_path": "libraries", "build_path": str(build)}}
+            automation.args.config = str(root / "config.yaml")
+            automation.run_command = MagicMock(return_value=(True, "ok"))
+
+            result = automation.compile()
+
+        self.assertTrue(result)
+        command = automation.run_command.call_args.args[0]
+        self.assertIn("--libraries", command)
+        self.assertIn(str(libraries), command)
+
+    def test_compile_skips_local_libraries_when_directory_is_missing(self):
+        automation = make_automation()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sketch = root / "mus4.ino"
+            build = root / "build"
+            sketch.write_text("", encoding="utf-8")
+            automation.sketch = str(sketch)
+            automation.config_path = str(root / "config.yaml")
+            automation.config = {"default": {"libraries_path": "libraries", "build_path": str(build)}}
+            automation.args.config = str(root / "config.yaml")
+            automation.run_command = MagicMock(return_value=(True, "ok"))
+
+            result = automation.compile()
+
+        self.assertTrue(result)
+        command = automation.run_command.call_args.args[0]
+        self.assertNotIn("--libraries", command)
 
 
 class TestPrecompiledFirmwareSelection(unittest.TestCase):

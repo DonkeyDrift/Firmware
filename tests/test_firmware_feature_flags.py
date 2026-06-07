@@ -4,6 +4,22 @@ import re
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 MUS4_SKETCH = PROJECT_ROOT / "mus4.ino"
+ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
+CONFIG_YAML = PROJECT_ROOT / "config.yaml"
+WSLBUILD_YAML = PROJECT_ROOT / "wslbuild.yaml"
+
+
+def test_local_libraries_path_is_configured_for_build_tools():
+    wsl_script = ARDUINO_WSL_SCRIPT.read_text(encoding="utf-8")
+    config = CONFIG_YAML.read_text(encoding="utf-8")
+    wsl_config = WSLBUILD_YAML.read_text(encoding="utf-8")
+
+    assert 'libraries_path: "libraries"' in config
+    assert "libraries_path: libraries" in wsl_config
+    assert "libraries_path" in wsl_script
+    assert "--libraries" in wsl_script
+    assert "$WSLWorkDir/$script:LibrariesPath" in wsl_script
+    assert "$WSLProjectRoot/$script:LibrariesPath" in wsl_script
 
 
 def test_websocket_curve_data_feature_is_enabled():

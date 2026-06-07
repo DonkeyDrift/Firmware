@@ -1100,6 +1100,7 @@ Write-Verbose "Using I/O mode: $IoMode"
 
 # 库同步相关配置
 $pythonExtraArgs = if ($PSBoundParameters.ContainsKey("ExtraArgs")) { $ExtraArgs } else { "" }
+$script:LibrariesPath = if ($projectConfig["libraries_path"]) { [string]$projectConfig["libraries_path"] } else { "libraries" }
 if ($projectConfig["sync_libs"] -and $projectConfig["sync_libs"] -match "^(true|1|yes)$") {
     $SyncLibs = $true
 }
@@ -1134,6 +1135,13 @@ if ($IoMode -eq "mnt") {
     Write-Verbose "WSL work dir: $WSLWorkDir"
 }
 $WSLSketchPath = "$WSLWorkDir/$SketchPath"
+$localLibrariesWinPath = Join-Path $ProjectRoot $script:LibrariesPath
+$localLibrariesArg = ""
+if (Test-Path $localLibrariesWinPath) {
+    $wslLibrariesPath = if ($IoMode -eq "native") { "$WSLWorkDir/$script:LibrariesPath" } else { "$WSLProjectRoot/$script:LibrariesPath" }
+    $localLibrariesArg = " --libraries `"`"$wslLibrariesPath`"`""
+    Write-Verbose "Using local Arduino libraries: $wslLibrariesPath"
+}
 
 # WSL 端 arduino-cli 路径
 $script:ArduinoCliPath = Get-WslArduinoCliPath
@@ -1203,7 +1211,7 @@ if ($Compile) {
     # 2. Compile
     $compileCmd = "wsl"
     $compileTask = if ($IoMode -eq "native") { "Compiling in WSL (Native FS)" } else { "Compiling in WSL (Mounted FS)" }
-    $compileArgs = "${distroPrefix}bash -lc '$script:ArduinoCliPath compile --fqbn $FQBN --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir"" ""$WSLSketchPath""'"
+    $compileArgs = "${distroPrefix}bash -lc '$script:ArduinoCliPath compile --fqbn $FQBN --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir""$localLibrariesArg ""$WSLSketchPath""'"
     $compileStart = Get-Date
     if (-not (Run-WithAnimation -Command $compileCmd -Arguments $compileArgs -TaskName $compileTask)) { exit 1 }
     $compileTime = ((Get-Date) - $compileStart).TotalSeconds

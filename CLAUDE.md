@@ -10,7 +10,7 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 - Arduino/C++ 固件：主 sketch 为 `mus4.ino`，公共类型与外设辅助模块也在根目录。
 - 构建与烧录工具：`arduino-cli.py` 与 `arduino-cli-wsl.ps1` 负责编译、上传、串口检测、OTA 上传和 WSL 加速构建。
 
-主要依赖包括 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050、WebServer、ArduinoOTA、AsyncTCP、ESPAsyncWebServer，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。
+主要依赖包括 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050、WebServer、ArduinoOTA、AsyncTCP、ESPAsyncWebServer，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。根目录 `libraries/` 存放随仓库携带的 Arduino 库，`arduino-cli.py` 会在该目录存在时通过 `--libraries` 优先使用本地库。
 
 ## Commands
 
@@ -189,6 +189,7 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 - build path：`build`
 - baudrate：`115200`
 - port：`auto`
+- 本地库路径：`libraries`
 - 日志文件：`ArduinoCLI.log`
 
 串口自动检测会根据描述、厂商、VID/PID 和首选关键字匹配 ESP32/CP210/CH340/FTDI 等 USB 串口；双串口板当前优先 `SERIAL-A`。

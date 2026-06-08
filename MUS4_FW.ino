@@ -265,7 +265,7 @@ const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;
 const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;
 const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;
 const unsigned long WIFI_STA_APPLY_DELAY_MS = 800;
-const unsigned long WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS = 3000;
+const unsigned long WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS = 1000;
 const char* WIFI_OTA_HOSTNAME = "mus4-ota";
 const char* WIFI_OTA_PASSWORD = "mus4-debug";
 const uint16_t WIFI_OTA_PORT = 3232;
@@ -1332,6 +1332,7 @@ static void clearWifiStaRuntimeStateWithoutDisconnect()
 
 static void setWifiStaLastError(const char* code, const char* message, bool timedOut)
 {
+    wifiApStopPending = false;
     if (wifiStaLastError[0] != 0) return;
     snprintf(wifiStaLastError, sizeof(wifiStaLastError), "%s", code);
     snprintf(wifiStaLastErrorMessage, sizeof(wifiStaLastErrorMessage), "%s", message);
@@ -1374,6 +1375,13 @@ static void scheduleWifiApStopAfterStaConnected()
     wifiApStopDeadlineMs = millis() + WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS;
 }
 
+static bool configureWifiSoftApNetwork()
+{
+    IPAddress apIp(192, 168, 4, 1);
+    IPAddress subnet(255, 255, 255, 0);
+    return WiFi.softAPConfig(apIp, apIp, subnet);
+}
+
 static void stopWifiApAfterStaConnected()
 {
     wifiApStopPending = false;
@@ -1390,6 +1398,7 @@ static bool restartWifiAp()
     WiFi.softAPdisconnect(true);
     delay(100);
     WiFi.mode(WIFI_AP_STA);
+    configureWifiSoftApNetwork();
     bool started = WiFi.softAP(
         wifiApSsid,
         WIFI_CONSOLE_AP_PASSWORD,
@@ -1403,6 +1412,9 @@ static bool restartWifiAp()
         return false;
     }
     wifiCaptiveDnsServer.start(53, "*", WiFi.softAPIP());
+    wifiConsoleServer.begin();
+    wifiConsoleServer.setNoDelay(true);
+    wifiWebServer.begin();
     wifiConsoleStarted = true;
     mus4Logf("wifi", "AP restarted ssid=%s IP: %s", wifiApSsid, WiFi.softAPIP().toString().c_str());
     return true;
@@ -2018,8 +2030,8 @@ function closeWifiStaModal(){closeWifiScanPopover();maskStaPassword();wifiStaMod
 function closeWifiStaFailureModal(){wifiStaFailureModal.classList.remove('show')}
 function showWifiStaFailureModal(j){const ssid=(j&&j.ssid)||staSsid.value.trim()||'--',reason=(j&&j.last_error_message)||'STA 连接失败，请检查 SSID、密码与路由器状态。';wifiStaFailureText.textContent='SSID：'+ssid+'\n原因：'+reason+'\n建议：检查 SSID、密码、路由器距离后重新保存。';wifiStaFailureModal.classList.add('show')}
 async function probeStaConsoleUrl(url){try{await fetch(url,{mode:'no-cors',cache:'no-store'});return true}catch(e){return false}}
-async function redirectToStaConsole(ip){const url='http://'+ip+'/';staNotice.textContent='STA 已连接，正在跳转到 '+url;showToast('STA 已连接，正在跳转到 '+url,true);for(let i=0;i<10;i++){await new Promise(resolve=>setTimeout(resolve,2000));if(await probeStaConsoleUrl(url)){location.href=url;return true}}showToast('自动跳转失败，请手动打开 '+url,false);return false}
-async function waitWifiStaConnectionResult(){const deadline=Date.now()+17000;while(Date.now()<deadline){const j=await refreshWifiSta(false);if(j&&j.connected){staNotice.textContent='已连接';await refreshStatus();cmd.value='';if(j.sta_ip&&j.sta_ip!=='0.0.0.0'){await redirectToStaConsole(j.sta_ip)}closeWifiStaModal();return true}if(j&&(j.last_error||j.timed_out)){staNotice.textContent='连接失败';showWifiStaFailureModal(j);return false}await new Promise(resolve=>setTimeout(resolve,1000))}staNotice.textContent='连接失败';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'STA 连接超时，请检查 SSID、密码与路由器信号。'});return false}
+async function redirectToStaConsole(ip){const url='http://'+ip+'/';staNotice.textContent='STA 已连接，IP：'+ip+'，正在跳转到 '+url;showToast('STA 已连接，正在跳转到 '+url,true);if(await probeStaConsoleUrl(url)){location.href=url;return true}await new Promise(resolve=>setTimeout(resolve,300));location.href=url;return true}
+async function waitWifiStaConnectionResult(){const deadline=Date.now()+17000;while(Date.now()<deadline){const j=await refreshWifiSta(false);if(j&&j.connected){staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 1 秒后关闭';await refreshStatus();cmd.value='';if(j.sta_ip&&j.sta_ip!=='0.0.0.0'){await redirectToStaConsole(j.sta_ip)}closeWifiStaModal();return true}if(j&&(j.last_error||j.timed_out)){staNotice.textContent='连接失败';showWifiStaFailureModal(j);return false}await new Promise(resolve=>setTimeout(resolve,1000))}staNotice.textContent='连接失败';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'STA 连接超时，请检查 SSID、密码与路由器信号。'});return false}
 async function saveWifiSta(){try{closeWifiScanPopover();staNotice.textContent='正在连接';const body=new URLSearchParams();body.set('ssid',staSsid.value.trim());if(!staPasswordDirty&&(staPasswordPlaceholder||staSavedPasswordKnown))body.set('keep_password','1');else body.set('password',staPassword.value);const r=await fetch('/api/wifi-sta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok){const t=await r.text();staNotice.textContent='连接失败';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:t});throw new Error(t)}staPassword.value='';staPasswordPlaceholder=false;staPasswordDirty=false;staPasswordVisible=false;staSavedPassword='';staSavedPasswordKnown=false;updateStaPasswordEye();await refreshWifiSta(true);refreshStatus();await new Promise(resolve=>setTimeout(resolve,1000));await waitWifiStaConnectionResult()}catch(e){line('wifi sta save error: '+e)}}
 async function clearWifiSta(){if(!confirm('确认清除并禁用 STA 配置？'))return;try{closeWifiScanPopover();const r=await fetch('/api/wifi-sta/clear',{method:'POST'});if(!r.ok){const t=await r.text();showCommandError(t);throw new Error(t)}staPassword.value='';staPasswordPlaceholder=false;staPasswordDirty=false;staPasswordVisible=false;staSavedPassword='';staSavedPasswordKnown=false;updateStaPasswordEye();await refreshWifiSta(true);refreshStatus();closeWifiStaModal()}catch(e){line('wifi sta clear error: '+e)}}
 async function quick(v){cmd.value=v;await sendCmd()}
@@ -2044,14 +2056,49 @@ static void handleWifiWebRoot()
     wifiWebServer.send_P(200, "text/html", WIFI_WEB_CONSOLE_HTML);
 }
 
+static void redirectWifiWebCaptivePortalToRoot()
+{
+    String url = String("http://") + WiFi.softAPIP().toString() + "/";
+    wifiWebServer.sendHeader("Cache-Control", "no-store");
+    wifiWebServer.sendHeader("Location", url);
+    wifiWebServer.send(302, "text/plain", "");
+}
+
+static void handleWifiWebCaptivePortal()
+{
+    redirectWifiWebCaptivePortalToRoot();
+}
+
+static void handleWifiWebCaptivePortalRedirectPage()
+{
+    String url = String("http://") + WiFi.softAPIP().toString() + "/";
+    String response = String("<!doctype html><html><head><meta charset=\"utf-8\">") +
+        "<meta http-equiv=\"refresh\" content=\"0;url=" + url + "\">" +
+        "<script>location.replace('" + url + "');</script></head>" +
+        "<body><a href=\"" + url + "\">打开 Donkey Console</a></body></html>";
+    wifiWebServer.sendHeader("Cache-Control", "no-store");
+    wifiWebServer.send(200, "text/html", response);
+}
+
 static void handleWifiWebWindowsConnectTest()
 {
-    wifiWebServer.send(200, "text/plain", "Microsoft Connect Test");
+    handleWifiWebCaptivePortal();
 }
 
 static void handleWifiWebWindowsNcsi()
 {
-    wifiWebServer.send(200, "text/plain", "Microsoft NCSI");
+    handleWifiWebCaptivePortal();
+}
+
+static void handleWifiWebCaptivePortalNotFound()
+{
+    String uri = wifiWebServer.uri();
+    if (uri.startsWith("/api/")) {
+        wifiWebServer.sendHeader("Cache-Control", "no-store");
+        wifiWebServer.send(404, "application/json", "{\"error\":\"not_found\"}");
+        return;
+    }
+    redirectWifiWebCaptivePortalToRoot();
 }
 
 static void recordWifiWebHandlerDt(unsigned long startedMs, uint32_t& maxDtMs)
@@ -2798,6 +2845,14 @@ static void setupWifiWebConsole()
     wifiWebServer.on("/", HTTP_GET, handleWifiWebRoot);
     wifiWebServer.on("/connecttest.txt", HTTP_GET, handleWifiWebWindowsConnectTest);
     wifiWebServer.on("/ncsi.txt", HTTP_GET, handleWifiWebWindowsNcsi);
+    wifiWebServer.on("/redirect", HTTP_GET, handleWifiWebCaptivePortalRedirectPage);
+    wifiWebServer.on("/hotspot-detect.html", HTTP_GET, handleWifiWebCaptivePortal);
+    wifiWebServer.on("/library/test/success.html", HTTP_GET, handleWifiWebCaptivePortal);
+    wifiWebServer.on("/success.txt", HTTP_GET, handleWifiWebCaptivePortal);
+    wifiWebServer.on("/generate_204", HTTP_GET, handleWifiWebCaptivePortal);
+    wifiWebServer.on("/gen_204", HTTP_GET, handleWifiWebCaptivePortal);
+    wifiWebServer.on("/mobile/status.php", HTTP_GET, handleWifiWebCaptivePortal);
+    wifiWebServer.on("/connectivity-check.html", HTTP_GET, handleWifiWebCaptivePortal);
     wifiWebServer.on("/api/status", HTTP_GET, handleWifiWebStatus);
     wifiWebServer.on("/api/cmd", HTTP_POST, handleWifiWebCommand);
     wifiWebServer.on("/api/devmode", HTTP_GET, handleWifiWebDevMode);
@@ -2813,6 +2868,7 @@ static void setupWifiWebConsole()
     wifiWebServer.on("/api/data", HTTP_GET, handleWifiWebData);
     wifiWebServer.on("/update", HTTP_GET, handleWifiWebUpdateGet);
     wifiWebServer.on("/update", HTTP_POST, handleWifiWebUpdatePost, handleWifiWebUpdateUpload);
+    wifiWebServer.onNotFound(handleWifiWebCaptivePortalNotFound);
     wifiWebServer.begin();
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
     setupWifiWebSocket();
@@ -2864,6 +2920,7 @@ static void setupWifiConsole()
     delay(100);
     WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);
+    configureWifiSoftApNetwork();
     bool started = WiFi.softAP(
         wifiApSsid,
         WIFI_CONSOLE_AP_PASSWORD,
@@ -2908,6 +2965,7 @@ static void updateWifiSta()
     if (wifiStaConnected) {
         wifiStaConnected = false;
         mus4LogLine("wifi", "STA disconnected");
+        restartWifiAp();
     }
     if (!wifiStaConnecting) return;
     if (status == WL_NO_SSID_AVAIL) {

@@ -97,6 +97,16 @@ pip install pyyaml pyserial pytest
 
 仓库包含本地 [`libraries/`](libraries/) 目录；构建脚本会优先使用其中的 Arduino 库。
 
+### 通过调试 AP 访问 Web Console
+
+设备 AP 开启时，电脑连接 `MUS4-DEBUG` 后打开：
+
+```text
+http://192.168.4.1/
+```
+
+固件会响应常见 Captive Portal 探测路径，可能触发系统自动弹出浏览器。Windows 上该自动弹窗只有在 MUS4 AP 是当前有效网络路径时才可靠。如果电脑同时连接了有线网络、VPN 或其他可联网网络，Windows 可能会把 `msftconnecttest.com` 走其他网卡并打开 Microsoft/MSN 页面。此时可以保持有线网络连接，但请手动打开 `http://192.168.4.1/`。
+
 ### Windows + WSL 加速构建
 
 固件修改后的推荐验证方式：

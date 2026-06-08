@@ -29,7 +29,7 @@ pip install pyyaml pyserial pytest
 
 固件编译优先使用 WSL 脚本；项目当前优先使用 OTA 上传，不要在编译通过后自动新开 PowerShell 串口上传或串口监视，除非用户明确要求。
 
-> 当前仓库主 sketch 已重命名为 `MUS4_FW.ino`。若 `config.yaml` 或 `wslbuild.yaml` 仍指向旧的 `mus4.ino`，运行构建命令时显式传入 `-Sketch MUS4_FW.ino` 或 `--sketch MUS4_FW.ino`。
+> 当前仓库主 sketch 为 `MUS4_FW.ino`，`config.yaml` 与 `wslbuild.yaml` 当前均指向该文件；运行构建命令时仍建议显式传入 `-Sketch MUS4_FW.ino` 或 `--sketch MUS4_FW.ino`，避免使用旧配置或外部缓存。
 
 ```powershell
 # 仅编译；这是固件修改后的默认验证命令
@@ -180,15 +180,15 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 
 ## Configuration
 
-- `config.yaml`：`arduino-cli.py` 的主配置，包含 `arduino_cli`、`fqbn`、`port`、`baudrate`、`sketch_path`、`build_path`、串口自动检测与日志配置；若仍指向旧 `mus4.ino`，使用命令行 `--sketch MUS4_FW.ino` 覆盖。
+- `config.yaml`：`arduino-cli.py` 的主配置，包含 `arduino_cli`、`fqbn`、`port`、`baudrate`、`sketch_path`、`build_path`、串口自动检测与日志配置；当前 `sketch_path` 为 `MUS4_FW.ino`。
 - `sketch.yaml`：Arduino CLI 项目级默认配置，当前默认 FQBN 为 `esp32:esp32:esp32:PartitionScheme=min_spiffs`，默认端口为 `/dev/ttyS4`。
-- `wslbuild.yaml`（若存在）：`arduino-cli-wsl.ps1` 会读取其中的 `distro`、`sketch`、`fqbn`、`work_dir`、`io_mode`、`sync_libs`、`extra_sync_args` 等覆盖项；命令行参数优先级最高。
+- `wslbuild.yaml`：`arduino-cli-wsl.ps1` 会读取其中的 `distro`、`sketch`、`fqbn`、`work_dir`、`io_mode`、`sync_libs`、`extra_sync_args` 等覆盖项；当前 `distro` 为 `DKC`、`sketch` 为 `MUS4_FW.ino`、`io_mode` 为 `native`，命令行参数优先级最高。
 - `.mus4_ota_target`（若存在）：HTTP OTA 默认目标主机列表，脚本读取首个非空首行。
 - `WirelessSecrets.example.h`：Wi-Fi STA 凭据模板；本地 `WirelessSecrets.h` 可被 `MUS4_FW.ino` 自动包含，但可能含真实凭据，提交前必须检查且通常不应纳入提交。
 
 当前 `config.yaml` 默认：
 - FQBN：`esp32:esp32:esp32:PartitionScheme=min_spiffs`
-- sketch：可能仍为旧 `mus4.ino`；当前源码文件为 `MUS4_FW.ino`
+- sketch：`MUS4_FW.ino`
 - build path：`build`
 - baudrate：`115200`
 - port：`auto`
@@ -342,7 +342,7 @@ Web UI 的 HTML/CSS/JS 目前内嵌在 `MUS4_FW.ino` 的 `WIFI_WEB_CONSOLE_HTML`
 
 ## Git Conventions
 
-- 主分支：`master`
-- 特性分支命名：`v{版本号}-{特性}`，例如 `v1.2-WSL-Build`
+- 主分支：`main`（远端 `master` 历史分支仍存在，但当前远端 HEAD 与本地工作分支为 `main`）。
+- 特性分支命名沿用历史约定：`v{版本号}-{特性}`，例如 `v1.2-WSL-Build`
 - 提交信息遵循 Conventional Commits，并使用中文，例如：`fix(arduino-cli): 修复串口上传进度回退闪烁的问题`
 - 完成实现且相关测试、编译或实机验证通过后，可主动创建本地稳定版本提交；不要自动 push，远端操作仍需用户明确授权。

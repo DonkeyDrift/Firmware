@@ -97,6 +97,16 @@ Firmware builds also require:
 
 The repository includes a local [`libraries/`](libraries/) directory. Build scripts prefer those local Arduino libraries when present.
 
+### Web Console through the debug AP
+
+When the device AP is enabled, connect the computer to `MUS4-DEBUG` and open:
+
+```text
+http://192.168.4.1/
+```
+
+The firmware serves common captive-portal probe paths and may trigger an automatic browser popup. On Windows, this popup is only reliable when the MUS4 AP is the active network path. If the computer is also connected to Ethernet, VPN, or another Internet-capable network, Windows may route `msftconnecttest.com` through that other interface and open Microsoft/MSN instead. In that case, keep the wired network connected if needed, but open `http://192.168.4.1/` manually.
+
 ### Windows + WSL accelerated build
 
 This is the preferred validation path after firmware changes:

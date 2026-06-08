@@ -3,7 +3,7 @@ import re
 
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
-MUS4_SKETCH = PROJECT_ROOT / "mus4.ino"
+MUS4_SKETCH = PROJECT_ROOT / "MUS4_FW.ino"
 ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
 CONFIG_YAML = PROJECT_ROOT / "config.yaml"
 WSLBUILD_YAML = PROJECT_ROOT / "wslbuild.yaml"
@@ -334,7 +334,7 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
     assert 'id="staNotice"' in source
     assert "注意只能连接2.4G WiFi" in source
     assert "staNotice.textContent='正在连接'" in source
-    assert "staNotice.textContent='已连接'" in source
+    assert "staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 1 秒后关闭'" in source
     assert "staNotice.textContent='连接失败'" in source
     assert ">连接</button>" in source
     assert ">保存并连接</button>" not in source
@@ -419,10 +419,10 @@ def test_web_console_sta_scan_api_uses_async_wifi_scan():
     assert "\\\"channel\\\":" in source
 
 
-def test_web_console_stops_ap_after_successful_wifi_sta_connection():
+def test_web_console_stops_ap_one_second_after_successful_wifi_sta_connection():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS" in source
+    assert "const unsigned long WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS = 1000;" in source
     assert "bool wifiApStopPending" in source
     assert "scheduleWifiApStopAfterStaConnected()" in source
     assert "stopWifiApAfterStaConnected()" in source
@@ -433,6 +433,31 @@ def test_web_console_stops_ap_after_successful_wifi_sta_connection():
     assert "wifiApStopPending && (long)(millis() - wifiApStopDeadlineMs) >= 0" in source
     assert "delay(WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS)" not in source
 
+    update_sta_body = re.search(
+        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    connected_branch = update_sta_body.split("if (status == WL_CONNECTED)", 1)[1].split("if (wifiStaConnected)", 1)[0]
+    assert "scheduleWifiApStopAfterStaConnected()" in connected_branch
+    assert "WiFi.softAP(" not in connected_branch
+    assert "restartWifiAp()" not in connected_branch
+    assert "scheduleWifiApRestart()" not in connected_branch
+    assert "wifiApSsid" not in connected_branch
+
+
+def test_web_console_keeps_ap_available_when_wifi_sta_connection_fails():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    failure_body = re.search(
+        r"static void setWifiStaLastError\(const char\* code, const char\* message, bool timedOut\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "wifiApStopPending = false" in failure_body
+    assert "wifiStaConnecting = false" in failure_body
+    assert "wifiStaConnected = false" in failure_body
+
 
 def test_web_console_redirects_to_sta_ip_after_successful_wifi_sta_connection():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
@@ -441,12 +466,13 @@ def test_web_console_redirects_to_sta_ip_after_successful_wifi_sta_connection():
     assert "async function redirectToStaConsole(ip)" in source
     assert "mode:'no-cors'" in source
     assert "cache:'no-store'" in source
-    assert "await new Promise(resolve=>setTimeout(resolve,2000))" in source
+    assert "await new Promise(resolve=>setTimeout(resolve,2000))" not in source
+    assert "await new Promise(resolve=>setTimeout(resolve,300))" in source
     assert "location.href=url" in source
     assert "redirectToStaConsole(j.sta_ip)" in source
     assert "j.sta_ip&&j.sta_ip!=='0.0.0.0'" in source
     assert "const url='http://'+ip+'/'" in source
-    assert "STA 已连接，正在跳转到 '+url" in source
+    assert "STA 已连接，IP：'+ip+'，正在跳转到 '+url" in source
 
 
 def test_web_console_sta_save_defers_wifi_reconnect_until_after_http_response():
@@ -494,7 +520,55 @@ def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
     assert save_body.index("setTimeout(resolve,1000)") < save_body.index("waitWifiStaConnectionResult()")
     assert "showCommandError(t)" not in save_body
     assert "await refreshStatus();cmd.value=''" in wait_body
-    assert wait_body.index("staNotice.textContent='已连接'") < wait_body.index("await refreshStatus();cmd.value=''")
+    assert wait_body.index("staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 1 秒后关闭'") < wait_body.index("await refreshStatus();cmd.value=''")
+
+
+def test_wifi_softap_uses_explicit_ipv4_gateway_configuration():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    restart_body = re.search(
+        r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    setup_body = re.search(
+        r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "static bool configureWifiSoftApNetwork()" in source
+    assert "IPAddress apIp(192, 168, 4, 1)" in source
+    assert "IPAddress subnet(255, 255, 255, 0)" in source
+    assert "WiFi.softAPConfig(apIp, apIp, subnet)" in source
+    assert "configureWifiSoftApNetwork()" in restart_body
+    assert restart_body.index("configureWifiSoftApNetwork()") < restart_body.index("WiFi.softAP(")
+    assert "configureWifiSoftApNetwork()" in setup_body
+    assert setup_body.index("configureWifiSoftApNetwork()") < setup_body.index("WiFi.softAP(")
+
+
+def test_restart_wifi_ap_restores_web_console_servers_after_sta_disconnect():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    restart_body = re.search(
+        r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    update_sta_body = re.search(
+        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    disconnected_branch = update_sta_body.split("if (wifiStaConnected)", 1)[1].split("if (!wifiStaConnecting)", 1)[0]
+
+    assert "restartWifiAp()" in disconnected_branch
+    assert "WiFi.softAP(" in restart_body
+    assert "wifiCaptiveDnsServer.start(53, \"*\", WiFi.softAPIP())" in restart_body
+    assert "wifiConsoleServer.begin()" in restart_body
+    assert "wifiConsoleServer.setNoDelay(true)" in restart_body
+    assert "wifiWebServer.begin()" in restart_body
+    assert "wifiConsoleStarted = true" in restart_body
 
 
 def test_runtime_sta_disconnect_does_not_reset_soft_ap():
@@ -547,15 +621,51 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
     assert "WiFi.disconnect(true, true)" in setup_body
 
 
-def test_web_console_handles_windows_connectivity_probe_locally():
+def test_web_console_handles_common_captive_portal_probes_locally():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "#include <DNSServer.h>" in source
     assert "DNSServer wifiCaptiveDnsServer" in source
     assert "wifiCaptiveDnsServer.start" in source
     assert "wifiCaptiveDnsServer.processNextRequest()" in source
+    assert "static void redirectWifiWebCaptivePortalToRoot()" in source
+    assert "static void handleWifiWebCaptivePortal()" in source
+    assert "static void handleWifiWebCaptivePortalRedirectPage()" in source
+    assert "static void handleWifiWebCaptivePortalNotFound()" in source
     assert "handleWifiWebWindowsConnectTest" in source
-    assert "Microsoft Connect Test" in source
-    assert "Microsoft NCSI" in source
+    assert "handleWifiWebWindowsNcsi" in source
+    assert "Microsoft Connect Test" not in source
+    assert "Microsoft NCSI" not in source
+    assert "String url = String(\"http://\") + WiFi.softAPIP().toString() + \"/\"" in source
+    assert "wifiWebServer.sendHeader(\"Location\", url)" in source
+    assert "wifiWebServer.send(302, \"text/plain\", \"\")" in source
     assert 'wifiWebServer.on("/connecttest.txt", HTTP_GET, handleWifiWebWindowsConnectTest)' in source
     assert 'wifiWebServer.on("/ncsi.txt", HTTP_GET, handleWifiWebWindowsNcsi)' in source
+    assert 'wifiWebServer.on("/redirect", HTTP_GET, handleWifiWebCaptivePortalRedirectPage)' in source
+    assert 'wifiWebServer.on("/hotspot-detect.html", HTTP_GET, handleWifiWebCaptivePortal)' in source
+    assert 'wifiWebServer.on("/library/test/success.html", HTTP_GET, handleWifiWebCaptivePortal)' in source
+    assert 'wifiWebServer.on("/success.txt", HTTP_GET, handleWifiWebCaptivePortal)' in source
+    assert 'wifiWebServer.on("/generate_204", HTTP_GET, handleWifiWebCaptivePortal)' in source
+    assert 'wifiWebServer.on("/gen_204", HTTP_GET, handleWifiWebCaptivePortal)' in source
+    assert 'wifiWebServer.on("/mobile/status.php", HTTP_GET, handleWifiWebCaptivePortal)' in source
+    assert 'wifiWebServer.on("/connectivity-check.html", HTTP_GET, handleWifiWebCaptivePortal)' in source
+    assert "wifiWebServer.onNotFound(handleWifiWebCaptivePortalNotFound)" in source
+
+    redirect_body = re.search(
+        r"static void handleWifiWebCaptivePortalRedirectPage\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "location.replace" in redirect_body
+    assert "http-equiv=\\\"refresh\\\"" in redirect_body
+    assert "打开 Donkey Console" in redirect_body
+    assert "WiFi.softAPIP().toString()" in redirect_body
+
+    not_found_body = re.search(
+        r"static void handleWifiWebCaptivePortalNotFound\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert 'uri.startsWith("/api/")' in not_found_body
+    assert 'wifiWebServer.send(404, "application/json", "{\\"error\\":\\"not_found\\"}")' in not_found_body
+    assert "redirectWifiWebCaptivePortalToRoot()" in not_found_body

@@ -1,0 +1,2 @@
+default_fqbn: esp32:esp32:esp32:PartitionScheme=min_spiffs
+default_port: /dev/ttyS4

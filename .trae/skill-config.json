@@ -1,6 +1,5 @@
 {
   "disabledSkills": [
-    "arduino-cli",
-    "git-automation"
+    "arduino-cli"
   ]
 }

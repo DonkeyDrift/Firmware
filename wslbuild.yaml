@@ -1,0 +1,34 @@
+# arduino-cli-wsl 配置文件示例
+# 复制此文件为 wslbuild.yaml 并根据实际情况修改
+# 优先级：命令行参数 > 环境变量 > 本配置文件 > 内置默认值
+
+# WSL 发行版名称（不设置则自动探测默认发行版）
+distro: DKC
+
+# Arduino 开发板 FQBN（不设置则读取 sketch.yaml / config.yaml）
+fqbn: esp32:esp32:esp32:PartitionScheme=min_spiffs
+
+# sketch 文件路径（不设置则自动探测根目录下的 .ino）
+sketch: mus4.ino
+
+# 项目内 Arduino 库目录；存在时编译会追加 --libraries 优先使用本地库
+libraries_path: libraries
+
+# WSL 端工作目录（编译时的工作路径，默认 ~/arduino-build/<项目名>）
+# work_dir: ~/arduino-build/mus4
+
+# I/O 模式
+# native = 同步到 WSL 原生 ext4 分区编译（性能最优，默认）
+# mnt    = 直接在 /mnt/c 挂载分区编译，省去同步步骤，适合小项目
+io_mode: native
+
+# 是否在编译前自动同步 Arduino 库
+sync_libs: false
+
+# 库同步排除列表（正则表达式）
+lib_exclude:
+  - ^\.
+  - ^tmp$
+
+# rsync 同步额外参数
+extra_sync_args: --no-perms --no-owner

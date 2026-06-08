@@ -7,7 +7,7 @@ public:
     TUI(Print& out);
     void update(unsigned long currentTime);
     void render();
-    void setRC(int ch1, int ch2, int ch3, int ch4);
+    void setRC(int ch1, int ch2, int ch3, int ch4, int ch5, int ch6);
     void setOutput(int throttle, int steering, int mode, bool park);
     void setSensors(const SensorData& data);
     
@@ -34,7 +34,7 @@ private:
 
     // Current State
     struct State {
-        int ch1, ch2, ch3, ch4;
+        int ch1, ch2, ch3, ch4, ch5, ch6;
         ControlData output;
         SensorData sensors;
         int throttleWave[WAVE_WIDTH];

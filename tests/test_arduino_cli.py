@@ -53,9 +53,75 @@ def make_automation(port="auto", serial_detection_cfg=None):
     automation.fqbn = "esp32:esp32:esp32"
     automation.sketch = "mus4/mus4.ino"
     automation.config = {"default": {}}
+    automation.config_path = str(PROJECT_ROOT / "config.yaml")
+    automation.libraries_path = "libraries"
     automation.os_type = "Windows"
     automation.serial_state_file = str(PROJECT_ROOT / ".tmp_serial_state_test.json")
     return automation
+
+
+class TestCompileCommand(unittest.TestCase):
+    def test_compile_uses_local_libraries_when_directory_exists(self):
+        automation = make_automation()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sketch = root / "mus4.ino"
+            libraries = root / "libraries"
+            build = root / "build"
+            sketch.write_text("", encoding="utf-8")
+            libraries.mkdir()
+            automation.sketch = str(sketch)
+            automation.config_path = str(root / "config.yaml")
+            automation.config = {"default": {"libraries_path": "libraries", "build_path": str(build)}}
+            automation.args.config = str(root / "config.yaml")
+            automation.run_command = MagicMock(return_value=(True, "ok"))
+
+            result = automation.compile()
+
+        self.assertTrue(result)
+        command = automation.run_command.call_args.args[0]
+        self.assertIn("--libraries", command)
+        self.assertIn(str(libraries), command)
+
+    def test_compile_skips_local_libraries_when_directory_is_missing(self):
+        automation = make_automation()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sketch = root / "mus4.ino"
+            build = root / "build"
+            sketch.write_text("", encoding="utf-8")
+            automation.sketch = str(sketch)
+            automation.config_path = str(root / "config.yaml")
+            automation.config = {"default": {"libraries_path": "libraries", "build_path": str(build)}}
+            automation.args.config = str(root / "config.yaml")
+            automation.run_command = MagicMock(return_value=(True, "ok"))
+
+            result = automation.compile()
+
+        self.assertTrue(result)
+        command = automation.run_command.call_args.args[0]
+        self.assertNotIn("--libraries", command)
+
+
+class TestPrecompiledFirmwareSelection(unittest.TestCase):
+    def test_replaces_bootloader_fragment_with_main_firmware_when_available(self):
+        automation = make_automation()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            main_firmware = root / "mus4.ino.bin"
+            bootloader = root / "mus4.ino.bootloader.bin"
+            main_firmware.write_bytes(b"app")
+            bootloader.write_bytes(b"bootloader")
+
+            selected = automation.normalize_precompiled_input_file(str(bootloader))
+
+        self.assertEqual(selected, str(main_firmware))
+
+    def test_keeps_main_firmware_input_file(self):
+        automation = make_automation()
+        selected = automation.normalize_precompiled_input_file("build_wsl/mus4.ino.bin")
+
+        self.assertEqual(selected, "build_wsl/mus4.ino.bin")
 
 
 class TestSerialPortSelection(unittest.TestCase):
@@ -247,6 +313,160 @@ class TestSerialPortState(unittest.TestCase):
             automation.save_last_success_port("COM27")
             loaded = automation.get_last_success_port()
         self.assertEqual(loaded, "COM27")
+
+
+class TestOtaUploadTooling(unittest.TestCase):
+    def test_prefers_explicit_espota_tool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            explicit = root / "custom_espota.py"
+            env_tool = root / "env_espota.py"
+            explicit.write_text("", encoding="utf-8")
+            env_tool.write_text("", encoding="utf-8")
+
+            selected = ARDUINO_CLI.find_espota_tool(
+                explicit_path=str(explicit),
+                env={"ESPOTA_PY": str(env_tool)},
+            )
+
+        self.assertEqual(selected, str(explicit))
+
+    def test_uses_espota_tool_from_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_tool = pathlib.Path(tmp) / "espota.py"
+            env_tool.write_text("", encoding="utf-8")
+
+            selected = ARDUINO_CLI.find_espota_tool(env={"ESPOTA_PY": str(env_tool)})
+
+        self.assertEqual(selected, str(env_tool))
+
+    def test_discovers_newest_arduino15_espota_tool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            local_appdata = pathlib.Path(tmp)
+            old_tool = local_appdata / "Arduino15" / "packages" / "esp32" / "hardware" / "esp32" / "3.2.0" / "tools" / "espota.py"
+            new_tool = local_appdata / "Arduino15" / "packages" / "esp32" / "hardware" / "esp32" / "3.3.8-cn" / "tools" / "espota.py"
+            old_tool.parent.mkdir(parents=True)
+            new_tool.parent.mkdir(parents=True)
+            old_tool.write_text("", encoding="utf-8")
+            new_tool.write_text("", encoding="utf-8")
+
+            selected = ARDUINO_CLI.find_espota_tool(
+                env={},
+                local_appdata=str(local_appdata),
+                home=str(local_appdata / "home"),
+            )
+
+        self.assertEqual(selected, str(new_tool))
+
+    def test_builds_espota_command(self):
+        command = ARDUINO_CLI.build_espota_command(
+            python_exe="python",
+            espota_tool="C:/tools/espota.py",
+            host="192.168.4.1",
+            port=3232,
+            password="mus4-debug",
+            bin_path="C:/build/mus4.ino.bin",
+        )
+
+        self.assertEqual(command, [
+            "python",
+            "C:/tools/espota.py",
+            "-i", "192.168.4.1",
+            "-p", "3232",
+            "-a", "mus4-debug",
+            "-f", "C:/build/mus4.ino.bin",
+            "--progress",
+        ])
+
+    def test_parses_espota_upload_progress(self):
+        progress = ARDUINO_CLI.parse_espota_progress_line("Uploading: [==========          ] 50%")
+
+        self.assertEqual(progress, "[==========          ] 50.0%")
+
+    def test_splits_progress_chunks_on_carriage_return(self):
+        chunks = list(ARDUINO_CLI.split_progress_chunks("Uploading: [=                   ] 5%\rUploading: [==========          ] 50%\r"))
+
+        self.assertEqual(chunks, [
+            "Uploading: [=                   ] 5%",
+            "Uploading: [==========          ] 50%",
+        ])
+
+    def test_ota_upload_uses_espota_progress_parser(self):
+        automation = make_automation(port="auto")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            firmware = root / "mus4.ino.bin"
+            espota_tool = root / "espota.py"
+            firmware.write_bytes(b"app")
+            espota_tool.write_text("", encoding="utf-8")
+            automation.args = SimpleNamespace(
+                port=None,
+                input_file=str(firmware),
+                build_path=None,
+                config="config.yaml",
+                ota_host="192.168.4.1",
+                ota_port=3232,
+                ota_password="mus4-debug",
+                espota_tool=str(espota_tool),
+            )
+            automation.run_command = MagicMock(return_value=(True, "ok"))
+
+            result = automation.ota_upload()
+
+        self.assertTrue(result)
+        self.assertIs(automation.run_command.call_args.kwargs["progress_parser"], ARDUINO_CLI.parse_espota_progress_line)
+
+    def test_ota_upload_does_not_resolve_serial_ports(self):
+        automation = make_automation(port="auto")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            firmware = root / "mus4.ino.bin"
+            espota_tool = root / "espota.py"
+            firmware.write_bytes(b"app")
+            espota_tool.write_text("", encoding="utf-8")
+            automation.args = SimpleNamespace(
+                port=None,
+                input_file=str(firmware),
+                build_path=None,
+                config="config.yaml",
+                ota_host="192.168.4.1",
+                ota_port=3232,
+                ota_password="mus4-debug",
+                espota_tool=str(espota_tool),
+            )
+            automation.build_upload_port_attempts = MagicMock()
+            automation.run_command = MagicMock(return_value=(True, "ok"))
+
+            result = automation.ota_upload()
+
+        self.assertTrue(result)
+        automation.build_upload_port_attempts.assert_not_called()
+        command = automation.run_command.call_args.args[0]
+        self.assertIn(str(espota_tool), command)
+        self.assertIn(str(firmware), command)
+
+    def test_run_treats_ota_as_upload_action(self):
+        automation = make_automation(port="auto")
+        automation.args = SimpleNamespace(
+            list_ports=False,
+            compile=False,
+            upload=False,
+            serial=False,
+            regress_reset=False,
+            regress_count=10,
+            ota=True,
+        )
+        automation.ota_upload = MagicMock(return_value=True)
+        automation.upload = MagicMock()
+        automation.auto_reset = MagicMock()
+        automation.monitor = MagicMock()
+
+        automation.run()
+
+        automation.ota_upload.assert_called_once_with()
+        automation.upload.assert_not_called()
+        automation.auto_reset.assert_not_called()
+        automation.monitor.assert_not_called()
 
 
 if __name__ == "__main__":

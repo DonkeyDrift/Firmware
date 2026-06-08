@@ -419,6 +419,21 @@ def test_web_console_sta_scan_api_uses_async_wifi_scan():
     assert "\\\"channel\\\":" in source
 
 
+def test_web_console_redirects_to_sta_ip_after_successful_wifi_sta_connection():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "async function probeStaConsoleUrl(url)" in source
+    assert "async function redirectToStaConsole(ip)" in source
+    assert "mode:'no-cors'" in source
+    assert "cache:'no-store'" in source
+    assert "await new Promise(resolve=>setTimeout(resolve,2000))" in source
+    assert "location.href=url" in source
+    assert "redirectToStaConsole(j.sta_ip)" in source
+    assert "j.sta_ip&&j.sta_ip!=='0.0.0.0'" in source
+    assert "const url='http://'+ip+'/'" in source
+    assert "STA 已连接，正在跳转到 '+url" in source
+
+
 def test_web_console_sta_save_defers_wifi_reconnect_until_after_http_response():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 

@@ -1,2 +1,0 @@
-default_fqbn: esp32:esp32:dfrobot_firebeetle2_esp32e
-default_port: /dev/ttyS4

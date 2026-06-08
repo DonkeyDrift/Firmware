@@ -4,7 +4,11 @@
       "Bash(git branch:*)",
       "Bash(python:*)",
       "Bash(gh pr:*)",
-      "Bash(~/.arduino15/packages/esp32/tools/xtensa-esp32-elf-gcc/esp-12.2.0_20230208/bin/xtensa-esp32-elf-g++:*)"
+      "Bash(~/.arduino15/packages/esp32/tools/xtensa-esp32-elf-gcc/esp-12.2.0_20230208/bin/xtensa-esp32-elf-g++:*)",
+      "Skill(update-config)",
+      "PowerShell(.\\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost *)",
+      "PowerShell(.\\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost *)",
+      "PowerShell(.\\arduino-cli-wsl.ps1 -c -u -HttpOta -HttpOtaHost *)"
     ]
   }
 }

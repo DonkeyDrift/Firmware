@@ -38,3 +38,8 @@ build_wsl/
 provisioning_system/playwright_tests/
 .arduino_cli_state.json
 
+.superpowers/
+__pycache__/
+WirelessSecrets.h
+ArduFlux.json
+.mus4_ota_target

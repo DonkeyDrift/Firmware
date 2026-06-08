@@ -1,58 +1,60 @@
-# LP-MU-S4 / MUS4
+# LP-MU-S4 / MUS4 Firmware
 
-MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件，当前以 MUS4-v2.3 PCB 为准。固件负责 RC PWM 输入采集、Pilot 上位机串口控制、多模式控制融合、Park/紧急制动、I2C 传感器采集、TUI 状态显示、Wi-Fi/TCP/Web Console、OTA 更新，以及在未启用 Wi-Fi Console 时可选的 BLE Gamepad 输出。
+[中文文档](README.zh-CN.md)
 
-当前固件版本定义在 [`BuildInfo.h`](BuildInfo.h)，发布记录见 [`CHANGELOG.md`](CHANGELOG.md)。
+MUS4 (LP-MU-S4) is an ESP32 + Arduino based low-level control firmware for RC vehicles and robotics platforms. It handles RC PWM input capture, host-side Pilot serial control, multi-mode control blending, Park / emergency braking, I2C sensor sampling, terminal UI output, Wi-Fi/TCP/Web Console, OTA updates, and optional BLE Gamepad output when Wi-Fi Console is disabled.
 
-## 主要功能
+The current main Arduino sketch is [`MUS4_FW.ino`](MUS4_FW.ino). Firmware version metadata is defined in [`BuildInfo.h`](BuildInfo.h), and release notes are maintained in [`CHANGELOG.md`](CHANGELOG.md).
 
-- **RC PWM 输入采集**：CH1-CH6 支持遥控转向、油门、Park、模式、Drift Assist 开关与强度比例。
-- **Pilot 串口控制**：支持 `Throttle:Steering`、序列号和校验和格式的上位机控制协议。
-- **三种驾驶模式**：手动、半自动、全自动，按模式融合 RC 与 Pilot 控制源。
-- **Park / 紧急制动**：安全状态机覆盖油门输出，并联动 LED 指示。
-- **执行器 PWM 输出**：使用 ESP32 `ledc` 驱动转向舵机与电调。
-- **Wi-Fi / TCP / Web Console**：支持无线命令、状态页面、日志、动态曲线和 WebSocket 遥测。
-- **OTA 更新**：支持 ArduinoOTA 与 Web Console HTTP `/update` 上传。
-- **I2C 传感器**：支持 INA219 与 MPU6050 数据采集。
-- **Drift Assist**：基于 IMU 角速度和 CH5/CH6 状态叠加转向补偿。
-- **BLE Gamepad**：仅在未启用 Wi-Fi Console 的编译路径中生效。
+## Features
 
-## 硬件引脚（MUS4-v2.3）
+- **RC PWM input capture**: CH1-CH6 for steering, throttle, Park, mode selection, Drift Assist enable, and Drift Assist ratio.
+- **Pilot serial control**: supports `Throttle:Steering`, sequence-numbered frames, and checksum frames.
+- **Three driving modes**: manual, semi-auto, and full-auto control blending.
+- **Park / emergency braking**: safety state machine that overrides throttle output and drives LED indication.
+- **Actuator PWM output**: ESP32 `ledc` output for steering servo and ESC.
+- **Wi-Fi / TCP / Web Console**: wireless command console, status page, logs, charts, and WebSocket telemetry.
+- **OTA updates**: ArduinoOTA and Web Console HTTP `/update` upload paths.
+- **I2C sensors**: INA219 and MPU6050 sampling.
+- **Drift Assist**: steering compensation based on IMU yaw rate and CH5/CH6 state.
+- **BLE Gamepad mode**: available only when Wi-Fi Console is not enabled at compile time.
 
-权威引脚定义见 [`Doc/Hardware/pin_definitions.md`](Doc/Hardware/pin_definitions.md)。
+## Hardware Pins
 
-| 功能 | GPIO | 说明 |
+Authoritative pin definitions are documented in [`Doc/Hardware/pin_definitions.md`](Doc/Hardware/pin_definitions.md). The current firmware targets the MUS4 v2.4.2 / v2.3 pin layout.
+
+| Function | GPIO | Notes |
 | --- | --- | --- |
-| RC CH1 转向 | 36 | 仅输入 |
-| RC CH2 油门 | 39 | 仅输入 |
-| RC CH3 Park | 34 | 仅输入 |
-| RC CH4 模式 | 26 | PWM 输入 |
-| RC CH5 Drift 开关 | 27 | PWM 输入 |
-| RC CH6 Drift 强度 | 35 | 仅输入 |
-| 转向舵机 | 23 | `ledc` PWM，300Hz / 14bit，1000-2000µs 映射 |
-| 油门电调 | 25 | `ledc` PWM，300Hz / 14bit，1000-2000µs 映射 |
-| 备用 PWM_1 | 32 | 预留输出 |
-| 备用 PWM_2 | 33 | 预留输出 |
-| WS2812B LED | 5 | 模式与紧急停车指示 |
-| UART_SEL | 12 | UART 路由选择 |
-| Serial1 RX | 16 | RS232 / Pilot 输入 |
-| Serial1 TX | 17 | RS232 / Pilot 输出 |
+| RC CH1 Steering | 36 | Input only |
+| RC CH2 Throttle | 39 | Input only |
+| RC CH3 Park | 34 | Input only |
+| RC CH4 Mode | 26 | PWM input |
+| RC CH5 Drift enable | 27 | PWM input |
+| RC CH6 Drift ratio | 35 | Input only |
+| Steering servo | 23 | `ledc` PWM, 300 Hz / 14-bit, 1000-2000 µs mapping |
+| ESC throttle | 25 | `ledc` PWM, 300 Hz / 14-bit, 1000-2000 µs mapping |
+| Spare PWM_1 | 32 | Reserved output |
+| Spare PWM_2 | 33 | Reserved output |
+| WS2812B LED | 5 | Mode and emergency stop indication |
+| UART_SEL | 12 | UART route select |
+| Serial1 RX | 16 | RS232 / Pilot input |
+| Serial1 TX | 17 | RS232 / Pilot output |
 | I2C SDA | 21 | INA219 / MPU6050 |
 | I2C SCL | 22 | INA219 / MPU6050 |
 
-> GPIO 34、35、36、39 是 ESP32 仅输入引脚，不能配置为输出，也没有内部上拉/下拉。
+> GPIO 34, 35, 36, and 39 are ESP32 input-only pins. They cannot be used as outputs and do not provide internal pull-up or pull-down resistors.
 
-## 控制模式
+## Control Modes
 
-| 模式 | ID | 宏定义 | 转向来源 | 油门来源 | LED |
+| Mode | ID | Macro | Steering source | Throttle source | LED |
 | --- | --- | --- | --- | --- | --- |
-| 手动 | 0 | `CAR_MODE_MANUAL` | RC | RC | 绿色 |
-| 半自动 | 1 | `CAR_MODE_SEMI_AUTO` | Pilot | RC | 黄色 |
-| 全自动 | 2 | `CAR_MODE_FULL_AUTO` | Pilot | Pilot | 蓝色 |
+| Manual | 0 | `CAR_MODE_MANUAL` | RC | RC | Green |
+| Semi-auto | 1 | `CAR_MODE_SEMI_AUTO` | Pilot | RC | Yellow |
+| Full-auto | 2 | `CAR_MODE_FULL_AUTO` | Pilot | Pilot | Blue |
 
-## 串口协议
+## Serial Protocol
 
-输入格式：
+Input frames:
 
 ```text
 Throttle:Steering\n
@@ -60,9 +62,9 @@ Throttle:Steering:Seq\n
 Throttle:Steering*XX\n
 ```
 
-其中 `XX` 是两位十六进制校验和。
+`XX` is a two-digit hexadecimal checksum.
 
-响应格式：
+Responses:
 
 ```text
 ACK
@@ -71,199 +73,186 @@ ACK:Seq
 NACK:Seq
 ```
 
-Serial1 状态回传：
+Serial1 telemetry:
 
 ```text
 Txx:Sxx\n
 ```
 
-OTA 窗口打开或 OTA 传输中会暂停 Serial1 遥测。
+Serial1 telemetry is paused while the OTA window is open or an OTA transfer is in progress.
 
-## 快速开始
+## Quick Start
 
-### 依赖
+### Python dependencies
 
 ```bash
 pip install pyyaml pyserial pytest
 ```
 
-还需要安装：
+Firmware builds also require:
 
 - Arduino CLI
 - ESP32 Arduino core
-- 固件依赖库：FastLED、Adafruit INA219、Adafruit MPU6050、AsyncTCP、ESPAsyncWebServer 等
+- Arduino libraries such as FastLED, Adafruit INA219, Adafruit MPU6050, AsyncTCP, and ESPAsyncWebServer
 
-### WSL 加速构建（Windows 推荐）
+The repository includes a local [`libraries/`](libraries/) directory. Build scripts prefer those local Arduino libraries when present.
 
-固件修改后的默认验证方式是 WSL 编译：
+### Windows + WSL accelerated build
+
+This is the preferred validation path after firmware changes:
 
 ```powershell
-.\arduino-cli-wsl.ps1 -Compile
+.\arduino-cli-wsl.ps1 -Compile -Sketch MUS4_FW.ino
 ```
 
-常用命令：
+Common commands:
 
 ```powershell
-# 清理 WSL 构建目录后重新编译
-.\arduino-cli-wsl.ps1 -Compile -Clean
+# Clean the WSL build directory and compile
+.\arduino-cli-wsl.ps1 -Compile -Clean -Sketch MUS4_FW.ino
 
-# 检查 WSL、rsync、arduino-cli 等依赖
+# Check WSL, rsync, arduino-cli, and related dependencies
 .\arduino-cli-wsl.ps1 -Check
 
-# 编译并检查固件大小与分区占用
-.\arduino-cli-wsl.ps1 -Compile -CheckPartition
+# Compile and check firmware size / partition usage
+.\arduino-cli-wsl.ps1 -Compile -CheckPartition -Sketch MUS4_FW.ino
 
-# 编译后通过 Web Console HTTP OTA 上传
-.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.4.1
+# Compile and upload through Web Console HTTP OTA
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.144 -Sketch MUS4_FW.ino
 
-# 使用已有 build_wsl 产物通过 HTTP OTA 上传
-.\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost 192.168.4.1
+# Upload an existing build_wsl artifact through HTTP OTA
+.\arduino-cli-wsl.ps1 -Upload -HttpOta -Sketch MUS4_FW.ino
 ```
 
-HTTP OTA 需要 Web Console 已认证且 Park 锁定，或开发模式允许。目标主机可通过 `-HttpOtaHost` 指定，也可写入 `.mus4_ota_target` 首行。
+HTTP OTA uses the Web Console `/update` endpoint. The device must be authenticated and Park-locked, unless development mode allows the operation. When `-HttpOtaHost` is omitted, the script can read the first non-empty line from `.mus4_ota_target`.
 
-### Arduino CLI 原生命令
+### Arduino CLI wrapper
 
 ```bash
-# 仅编译
-python arduino-cli.py -c
+# Compile only
+python arduino-cli.py -c --sketch MUS4_FW.ino
 
-# 仅上传，默认按 config.yaml 自动检测串口
-python arduino-cli.py -u
+# Upload only; port is auto-detected from config.yaml
+python arduino-cli.py -u --sketch MUS4_FW.ino
 
-# 指定串口上传
-python arduino-cli.py -u --port COM9
+# Upload to a specific serial port
+python arduino-cli.py -u --sketch MUS4_FW.ino --port COM9
 
-# 编译 + 上传
-python arduino-cli.py -cu
+# Compile + upload
+python arduino-cli.py -cu --sketch MUS4_FW.ino
 
-# 编译 + 上传 + 串口监视
-python arduino-cli.py -cus
+# Compile + upload + serial monitor
+python arduino-cli.py -cus --sketch MUS4_FW.ino
 
-# 使用预编译固件上传
-python arduino-cli.py -u -i build/mus4.ino.bin
+# Upload a prebuilt firmware image
+python arduino-cli.py -u -i build/MUS4_FW.ino.bin --sketch MUS4_FW.ino
 
-# 列出检测到的串口
+# List detected serial ports
 python arduino-cli.py --list-ports
 
-# 逐行输出日志，适合 CI
-python arduino-cli.py -cu --no-progress
+# CI-friendly line-by-line logs
+python arduino-cli.py -cu --no-progress --sketch MUS4_FW.ino
 
-# ArduinoOTA 上传
-python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
+# ArduinoOTA upload
+python arduino-cli.py --ota -i build/MUS4_FW.ino.bin --ota-host mus4-ota
 ```
 
-默认配置见 [`config.yaml`](config.yaml)：
-
-- FQBN：`esp32:esp32:esp32:PartitionScheme=min_spiffs`
-- sketch：`mus4.ino`
-- build path：`build`
-- baudrate：`115200`
-- port：`auto`
-
-## 测试
+## Tests
 
 ```bash
-# 运行全部 Python 测试
+# Run all Python tests
 pytest tests/
 
-# 运行单个测试文件
+# Run selected test files
 pytest tests/test_arduino_cli.py
 pytest tests/test_wireless_console_policy.py
 pytest tests/test_firmware_feature_flags.py
 pytest tests/test_train_tub_driver.py
 pytest tests/test_mus4_pilot_infer.py
 
-# 运行单个测试用例
-pytest tests/test_arduino_cli.py -k "test_prefers_explicit_port_when_available"
-pytest tests/test_wireless_console_policy.py -k "test_requires_authentication_and_park_locked_for_ota_open"
-pytest tests/test_firmware_feature_flags.py -k "test_websocket_curve_data_feature_is_enabled"
-
-# 配网代理测试
+# Provisioning agent tests
 python provisioning_system/tests/test_agent.py -v
 ```
 
-`provisioning_system/playwright_tests/` 下存在 Playwright 依赖，但当前 `package.json` 的 `npm test` 是占位脚本并会退出失败；除非先补充有效测试脚本，否则不要把 `npm test` 当作该目录的验证命令。
+`provisioning_system/playwright_tests/` contains Playwright assets, but its current `npm test` script is a placeholder and exits with failure unless a real test script is added.
 
-## 数据采集与 Pilot 工具链
+## Data Collection and Pilot Tools
 
 ```bash
-# 检查 Web Console 导出的 Tub JSON 并生成报告
+# Inspect Web Console Tub JSON and generate a report only
 python tools/train_tub_driver.py <tub.json> --report-only --dry-run
 
-# 训练 GRU baseline，默认排除泄漏字段
+# Train the GRU baseline; leakage-prone fields are excluded by default
 python tools/train_tub_driver.py <tub.json> --out-dir <model_dir> --overwrite
 
-# 模型 Pilot 推理默认 dry-run，不会向车辆发送控制
-python tools/mus4_pilot_infer.py --model-dir <model_dir> --esp32-url http://<设备IP>
+# Pilot inference defaults to dry-run and does not send vehicle control
+python tools/mus4_pilot_infer.py --model-dir <model_dir> --esp32-url http://<device-ip>
 
-# live 模式必须显式确认风险，并指定串口
+# Live mode requires explicit risk acknowledgement and a serial port
 python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mode live --i-understand-risk
 ```
 
-## 代码结构
+## Repository Layout
 
-- [`mus4.ino`](mus4.ino)：主固件入口，包含 setup/loop、RC 中断采集、串口命令、控制融合、Park/紧急制动、Wi-Fi/Web/OTA 等主状态机。
-- [`SharedTypes.h`](SharedTypes.h)：跨模块共享数据结构与状态枚举。
-- [`BuildInfo.h`](BuildInfo.h)：固件名称、版本与构建信息宏。
-- [`TUI.h`](TUI.h) / [`TUI.cpp`](TUI.cpp)：ANSI 终端仪表盘渲染。
-- [`Buzzer.h`](Buzzer.h) / [`Buzzer.cpp`](Buzzer.cpp)：蜂鸣器状态机。
-- [`arduino-cli.py`](arduino-cli.py)：跨平台 Arduino CLI 封装，负责编译、上传、串口检测、监视和 ArduinoOTA。
-- [`arduino-cli-wsl.ps1`](arduino-cli-wsl.ps1)：Windows/WSL 加速构建与 OTA 上传包装脚本。
-- [`wireless_console_policy.py`](wireless_console_policy.py)：Wi-Fi/TCP/Web Console 权限策略的 Python 镜像。
-- [`tools/`](tools)：Tub JSON 训练与 Pilot 推理工具。
-- [`tests/`](tests)：构建工具、权限策略、功能开关、训练工具和 Pilot 推理的 Python 测试。
-- [`examples/`](examples)：I2C、传感器等独立示例 sketch。
-- [`provisioning_system/`](provisioning_system)：独立 Wi-Fi provisioning 与 Linux agent 工具链。
-- [`multi_agent_framework/`](multi_agent_framework)：独立 Python 多智能体框架，不属于 ESP32 固件主链路。
+- [`MUS4_FW.ino`](MUS4_FW.ino): main firmware sketch and runtime state machine.
+- [`SharedTypes.h`](SharedTypes.h): shared data structures and enums.
+- [`BuildInfo.h`](BuildInfo.h): firmware name, version, and build metadata macros.
+- [`TUI.h`](TUI.h) / [`TUI.cpp`](TUI.cpp): ANSI terminal dashboard rendering.
+- [`Buzzer.h`](Buzzer.h) / [`Buzzer.cpp`](Buzzer.cpp): buzzer state machine.
+- [`arduino-cli.py`](arduino-cli.py): cross-platform Arduino CLI wrapper.
+- [`arduino-cli-wsl.ps1`](arduino-cli-wsl.ps1): Windows/WSL accelerated build and OTA wrapper.
+- [`wireless_console_policy.py`](wireless_console_policy.py): Python mirror of Wi-Fi/TCP/Web Console permission policy.
+- [`tools/`](tools/): Tub JSON training and Pilot inference tools.
+- [`tests/`](tests/): Python tests for build tools, policy, feature flags, training, and Pilot inference.
+- [`examples/`](examples/): standalone sensor and I2C example sketches.
+- [`provisioning_system/`](provisioning_system/): independent Wi-Fi provisioning and Linux agent tooling.
+- [`multi_agent_framework/`](multi_agent_framework/): independent Python multi-agent framework, not part of the main ESP32 firmware path.
 
-## 架构概览
+## Runtime Architecture
 
-固件主数据流：
+1. RC receiver PWM input is captured from CH1-CH6 and filtered.
+2. USB `Serial`, `Serial1`, TCP Console, and Web Console receive commands.
+3. Control logic blends RC and Pilot inputs according to the current driving mode.
+4. Drift Assist can add steering compensation when its runtime conditions are met.
+5. Park / emergency braking can override throttle output and update LED indication.
+6. ESP32 `ledc` outputs PWM to the steering servo and ESC.
+7. TUI, I2C sensors, Web charts/logs, WebSocket telemetry, and BLE Gamepad operate as side systems that read current state and publish display or peripheral data.
 
-1. RC 接收机通过 CH1-CH6 PWM 输入触发中断，计算脉宽并滤波。
-2. USB `Serial`、`Serial1`、TCP Console 与 Web Console 接收命令。
-3. 控制逻辑按当前模式融合 RC 与 Pilot 数据，更新 `car_output`。
-4. Drift Assist 在条件满足时基于 IMU 角速度叠加转向补偿。
-5. Park/紧急制动状态机可覆盖油门输出并控制 LED 闪烁。
-6. 输出层通过 `ledc` 产生 PWM，驱动转向舵机与油门电调。
-7. TUI、I2C 传感器、Web 曲线/日志、WebSocket 遥测和 BLE Gamepad 作为旁路功能读取状态并输出显示或外设数据。
+See [`Doc/Arch/architecture.md`](Doc/Arch/architecture.md) for more details.
 
-更详细的设计见 [`Doc/Arch/architecture.md`](Doc/Arch/architecture.md)。
+## Wi-Fi Console, Web Console, and OTA
 
-## Wi-Fi Console、Web Console 与 OTA
+When `ENABLE_WIFI_CONSOLE` is enabled, the firmware starts in AP+STA mode:
 
-当前 `mus4.ino` 定义了 `ENABLE_WIFI_CONSOLE`，并在该路径下启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY`。启用后 ESP32 以 AP+STA 模式启动：
+- AP SSID: `MUS4-DEBUG`
+- TCP Console: port `2323`
+- Web Console / Donkey Console: port `80`
+- WebSocket telemetry: port `81`
+- ArduinoOTA: host `mus4-ota`, port `3232`
 
-- AP SSID：`MUS4-DEBUG`
-- TCP Console：`2323`
-- Web Console：`80`
-- WebSocket 遥测：`81`
-- ArduinoOTA：默认主机名 `mus4-ota`，端口 `3232`
+Wireless command permissions are layered:
 
-无线命令权限分层：
+- `PING`, `STATUS`, `AUTH`, and `WIFI_STA_STATUS` are available without authentication.
+- Control commands, terminal options, log routing, filter debug, and Wi-Fi STA configuration require authentication.
+- Diagnostics, benchmark, regression, and steering calibration commands also require Park lock.
+- `ENABLE_OTA` requires authentication and Park lock. `OTA_STATUS` and `DISABLE_OTA` require authentication.
 
-- `PING`、`STATUS`、`AUTH`、`WIFI_STA_STATUS` 可未认证访问。
-- 控制指令和 `ANSI` / `NOANSI` / `FILTER_DEBUG` / `LOG_WEB` / `LOG_SERIAL` / Wi-Fi STA 配置命令需要认证。
-- `TEST`、`BENCH`、`REGRESS`、转向标定等诊断/维护命令需要认证且 Park 锁定。
-- `ENABLE_OTA` 需要认证且 Park 锁定；`OTA_STATUS` 与 `DISABLE_OTA` 需要认证。
+Policy changes should be mirrored in [`wireless_console_policy.py`](wireless_console_policy.py) and covered by [`tests/test_wireless_console_policy.py`](tests/test_wireless_console_policy.py).
 
-修改无线权限逻辑时，需要同步更新 [`wireless_console_policy.py`](wireless_console_policy.py) 与 [`tests/test_wireless_console_policy.py`](tests/test_wireless_console_policy.py)。
+## Documentation
 
-## 文档索引
+- [`CLAUDE.md`](CLAUDE.md): repository guidance for Claude Code / coding agents.
+- [`CHANGELOG.md`](CHANGELOG.md): release notes.
+- [`Doc/Arch/architecture.md`](Doc/Arch/architecture.md): firmware loop, state machines, and data flow.
+- [`Doc/Hardware/pin_definitions.md`](Doc/Hardware/pin_definitions.md): authoritative MUS4 v2.3 / v2.4.2 pin definitions.
+- [`Doc/Hardware/CONFIG.md`](Doc/Hardware/CONFIG.md): hardware configuration notes.
+- [`Doc/Tools/ArduinoCLI.md`](Doc/Tools/ArduinoCLI.md): `arduino-cli.py` usage.
+- [`Doc/Tools/arduino-cli-wsl_manual.md`](Doc/Tools/arduino-cli-wsl_manual.md): WSL build wrapper manual.
+- [`Doc/Tools/train_tub_driver.md`](Doc/Tools/train_tub_driver.md): Tub JSON reporting and GRU baseline training.
+- [`Doc/Tools/mus4_pilot_infer.md`](Doc/Tools/mus4_pilot_infer.md): Pilot inference controller and safety gates.
+- [`Doc/README/OPERATIONS.md`](Doc/README/OPERATIONS.md): runtime serial commands and data frames.
+- [`Doc/Plan/`](Doc/Plan/): design plans and historical implementation notes.
 
-- [`CLAUDE.md`](CLAUDE.md)：Claude Code 操作本仓库的权威指南。
-- [`CHANGELOG.md`](CHANGELOG.md)：版本发布记录。
-- [`Doc/Arch/architecture.md`](Doc/Arch/architecture.md)：固件主循环、状态机和数据流。
-- [`Doc/Hardware/pin_definitions.md`](Doc/Hardware/pin_definitions.md)：MUS4-v2.3 权威引脚定义。
-- [`Doc/Hardware/CONFIG.md`](Doc/Hardware/CONFIG.md)：硬件配置说明。
-- [`Doc/Tools/ArduinoCLI.md`](Doc/Tools/ArduinoCLI.md)：`arduino-cli.py` 使用说明。
-- [`Doc/Tools/arduino-cli-wsl_manual.md`](Doc/Tools/arduino-cli-wsl_manual.md)：WSL 构建脚本背景与排障。
-- [`Doc/Tools/train_tub_driver.md`](Doc/Tools/train_tub_driver.md)：Tub JSON 报告与 GRU baseline 训练说明。
-- [`Doc/Tools/mus4_pilot_infer.md`](Doc/Tools/mus4_pilot_infer.md)：Pilot 模型推理控制器说明。
-- [`Doc/README/OPERATIONS.md`](Doc/README/OPERATIONS.md)：串口运行时操作命令与数据帧。
-- [`Doc/Plan/`](Doc/Plan/)：设计方案、实施路线和历史方案。
+## Safety Notes
 
-## 安全注意事项
-
-该固件会直接控制舵机与电调。修改输出映射、Park、紧急制动、模式融合或无线控制入口时，必须保留 PWM 限幅、认证/权限校验和失效安全路径。串口、Web Console、TCP Console 输入都应视为不可信边界。
+This firmware directly controls a steering servo and ESC. Changes to output mapping, Park, emergency braking, mode blending, or wireless control entry points must preserve PWM limits, permission checks, and fail-safe behavior. Serial, Web Console, and TCP Console input should always be treated as untrusted input boundaries.

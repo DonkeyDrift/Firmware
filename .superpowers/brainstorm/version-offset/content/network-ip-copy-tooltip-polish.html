@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network IP 复制提示优化</title>
+  <style>
+    body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:24px;background:#101318;color:#e8edf2}
+    h1{font-size:24px;margin:0 0 8px}.subtitle{color:#b7c6d8;line-height:1.6;margin:0 0 18px}.section{background:#171c24;border:1px solid #2b3441;border-radius:14px;padding:16px;margin:16px 0}.mock-row{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}.card{position:relative;background:linear-gradient(135deg,#1c2430,#121821);border:1px solid #344154;border-radius:10px;padding:12px;min-height:92px}.mode{flex:0 0 82px}.park{flex:0 0 82px}.drift{flex:1 1 260px;border-color:#d96bff}.voltage{flex:0 0 82px;border-color:#39d98a}.network{flex:0 0 220px;border-color:#5cc8ff}.head{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em}.value{font-size:24px;font-weight:800;margin-top:4px;white-space:nowrap;overflow:visible;text-overflow:ellipsis}.copy-old{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:4px}.copy-new{cursor:pointer;position:relative}.copy-new:hover{color:#5cc8ff}.copy-new:hover:after{content:'点击复制 IP';position:absolute;left:72px;top:-26px;background:#111820;border:1px solid #5cc8ff;border-radius:8px;padding:4px 8px;color:#dbeafe;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:5}.dot{position:absolute;right:12px;top:12px;width:10px;height:10px;border-radius:50%;background:#39d98a}.tabs{position:absolute;right:28px;top:8px;display:flex;gap:4px}.tabs button{padding:2px 8px;border-radius:999px;border:1px solid #3b4655;background:#222b36;color:#eef;font-size:11px;line-height:1.2}.tabs button.active{background:#5cc8ff;color:#061019;font-weight:800}.gear{position:absolute;right:10px;top:32px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#222b36;border:1px solid #3b4655;color:#eef}.meta{display:grid;grid-template-columns:1fr;gap:3px;margin-top:8px;font-size:12px}.meta b{color:#8fa1b5;font-size:11px;letter-spacing:.08em;text-transform:uppercase}.meta span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:700;color:#e8edf2}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px}.note{color:#b7c6d8;line-height:1.55}code{color:#93c5fd}
+  </style>
+</head>
+<body>
+  <h1>Network IP 复制提示优化</h1>
+  <p class="subtitle">按你的反馈：去掉 IP 下方虚线；悬停提示改为自定义浮层并向右偏移，避免遮挡 IP。</p>
+
+  <div class="cards">
+    <section class="section">
+      <h2>当前：虚线 + 原生 title</h2>
+      <div class="mock-row">
+        <div class="card network"><div class="tabs"><button>AP</button><button class="active">STA</button></div><div class="gear">⚙</div><div class="head">Network</div><div class="value copy-old" title="点击复制 IP">192.168.3.144</div><div class="meta"><b>SSID</b><span>Home WiFi</span></div><span class="dot"></span></div>
+      </div>
+      <p class="note">虚线会增加视觉噪声；浏览器原生 title 的位置不可控，可能遮挡 IP。</p>
+    </section>
+
+    <section class="section">
+      <h2>优化后：无虚线 + 右移提示</h2>
+      <div class="mock-row">
+        <div class="card network"><div class="tabs"><button>AP</button><button class="active">STA</button></div><div class="gear">⚙</div><div class="head">Network</div><div class="value copy-new">192.168.3.144</div><div class="meta"><b>SSID</b><span>Home WiFi</span></div><span class="dot"></span></div>
+      </div>
+      <p class="note">鼠标移到 IP 上方可看到右移后的提示标签。IP 本身不再有下划线，仅通过 hover 变蓝和鼠标手势表达可点击。</p>
+    </section>
+  </div>
+
+  <section class="section">
+    <h2>实现口径</h2>
+    <ul class="note">
+      <li>移除 <code>.copyValue</code> 中的 <code>text-decoration</code>、<code>text-decoration-style</code>、<code>text-underline-offset</code>。</li>
+      <li>移除 <code>networkValue</code> 的原生 <code>title</code> 属性，避免浏览器默认提示不可控。</li>
+      <li>新增 <code>.copyValue:hover:after</code> 自定义提示，内容为 <code>点击复制 IP</code>。</li>
+      <li>提示使用 <code>left:72px; top:-26px</code>，比 IP 起点更靠右，避免遮挡主值。</li>
+      <li>复制成功/失败的右下角 toast 保持不变。</li>
+    </ul>
+  </section>
+
+  <p class="subtitle">请把鼠标移到“优化后”的 IP 上方查看提示。如果符合预期，请回复“确认”。</p>
+</body>
+</html>

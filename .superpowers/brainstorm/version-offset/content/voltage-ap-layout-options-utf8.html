@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VOLTAGE 卡片位置调整方案</title>
+  <style>
+    body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:24px;background:#101318;color:#e8edf2}
+    h1{font-size:24px;margin:0 0 8px}p{color:#b7c6d8;line-height:1.6}.mockup,.card{background:#171c24;border:1px solid #2b3441;border-radius:12px;padding:16px;margin:14px 0}.mockup-header{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:stretch}.tile{background:#1c2430;border:1px solid #344154;border-radius:10px;padding:12px;min-width:74px;text-align:center}.drift{border-color:#d96bff;min-width:170px}.voltage{border:2px solid #39d98a}.ap{border:2px solid #5cc8ff}.options{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}.card h2{font-size:18px;margin:0 0 8px}.badge{display:inline-block;background:#263244;color:#93c5fd;border-radius:999px;padding:3px 9px;font-size:12px;margin-bottom:8px}.recommended{border-color:#39d98a;box-shadow:0 0 0 1px rgba(57,217,138,.25)}
+  </style>
+</head>
+<body>
+  <h1>VOLTAGE 卡片位置调整方案</h1>
+  <p>目标：把 Voltage 放到 AP 左边，并让它紧挨 Drift。下面是当前布局与 3 个可选方案，建议选择 A。</p>
+
+  <section class="mockup">
+    <div class="mockup-header">当前布局</div>
+    <div class="row">
+      <div class="tile">Mode</div>
+      <div class="tile">Park</div>
+      <div class="tile drift">Drift</div>
+      <div class="tile ap">AP</div>
+      <div class="tile">STA</div>
+      <div class="tile voltage">Voltage</div>
+    </div>
+  </section>
+
+  <div class="options">
+    <section class="card recommended">
+      <span class="badge">推荐</span>
+      <h2>A. 仅调整 DOM 顺序</h2>
+      <div class="row">
+        <div class="tile">Mode</div><div class="tile">Park</div><div class="tile drift">Drift</div><div class="tile voltage">Voltage</div><div class="tile ap">AP</div><div class="tile">STA</div>
+      </div>
+      <p>顺序改为 Mode / Park / Drift / Voltage / AP / STA。最符合“Voltage 在 AP 左边，挨着 Drift”，改动最小。</p>
+    </section>
+
+    <section class="card">
+      <h2>B. DOM 顺序 + flex 固定权重</h2>
+      <div class="row">
+        <div class="tile">Mode</div><div class="tile">Park</div><div class="tile drift">Drift</div><div class="tile voltage">Voltage</div><div class="tile ap">AP</div><div class="tile">STA</div>
+      </div>
+      <p>同时给 Voltage/AP/STA 明确 flex 宽度，减少换行差异；但会扩大 CSS 调整范围。</p>
+    </section>
+
+    <section class="card">
+      <h2>C. CSS order 覆盖</h2>
+      <div class="row">
+        <div class="tile">Mode</div><div class="tile">Park</div><div class="tile drift">Drift</div><div class="tile voltage">Voltage</div><div class="tile ap">AP</div><div class="tile">STA</div>
+      </div>
+      <p>不移动 HTML，只用 CSS 改视觉顺序；可行但源码阅读顺序与显示顺序不一致，不推荐。</p>
+    </section>
+  </div>
+
+  <p>请回到终端回复选择：A / B / C。若你没有额外要求，我将按 A 继续设计确认。</p>
+</body>
+</html>

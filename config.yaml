@@ -1,0 +1,32 @@
+default:
+  arduino_cli: "arduino-cli"
+  fqbn: "esp32:esp32:esp32:PartitionScheme=min_spiffs"
+  # port: "/dev/ttyACM1" # for linux
+  port: "auto" # 自动检索并匹配当前开发板串口
+  baudrate: 115200
+  sketch_path: "MUS4_FW.ino"
+  build_path: "build"
+  libraries_path: "libraries"
+
+serial_detection:
+  enabled: true
+  description_keywords: ["ESP32", "USB Serial", "USB-SERIAL", "UART", "CP210", "CH340", "FTDI"]
+  manufacturer_keywords: ["Espressif", "Silicon Labs", "wch", "FTDI"]
+  hwid_keywords: ["VID:PID=10C4:EA60", "VID:PID=1A86:55D2", "VID:PID=0403:6001", "VID:PID=303A:"]
+  preferred_description_keywords: ["SERIAL-A"] # 双串口板可改成 SERIAL-B
+  preferred_manufacturer_keywords: []
+  preferred_hwid_keywords: []
+  vid_pid: []
+  preferred_vid_pid: []
+
+logging:
+  file: "ArduinoCLI.log"
+  level: "INFO"  # DEBUG, INFO, WARN, ERROR
+
+reset:
+  enable: true
+  delay_ms: 200
+  method: "dtr_rts"
+  boot: "run"
+  toolchain: "arduino-cli"
+  command: ""

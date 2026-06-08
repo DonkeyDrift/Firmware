@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AP/STA 合并卡片设计 v2</title>
+  <style>
+    body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:24px;background:#101318;color:#e8edf2}
+    h1{font-size:24px;margin:0 0 8px}.subtitle{color:#b7c6d8;line-height:1.6;margin:0 0 18px}.section{background:#171c24;border:1px solid #2b3441;border-radius:14px;padding:16px;margin:16px 0}.mock-row{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}.tile,.network{background:linear-gradient(135deg,#1c2430,#121821);border:1px solid #344154;border-radius:10px;padding:12px;min-width:84px}.tile.drift{border-color:#d96bff;min-width:170px}.tile.voltage{border-color:#39d98a}.network{position:relative;border-color:#5cc8ff;min-width:220px;flex:1}.tabs{position:absolute;left:10px;top:8px;display:flex;gap:4px}.tab{font-size:11px;padding:2px 8px;border-radius:999px;background:#263244;color:#8fa1b5}.tab.active{background:#5cc8ff;color:#061019;font-weight:800}.gear{position:absolute;right:10px;top:8px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#222b36;border:1px solid #3b4655;color:#eef}.head{margin-top:24px;color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em}.value{font-size:22px;font-weight:800;margin-top:4px}.sub{color:#b7c6d8;font-size:12px;margin-top:4px;line-height:1.5}.meta{display:grid;grid-template-columns:auto 1fr;gap:3px 8px;margin-top:7px;font-size:12px}.meta b{color:#8fa1b5}.meta span{color:#e8edf2;overflow-wrap:anywhere}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}.card{background:#111820;border:1px solid #2b3441;border-radius:12px;padding:14px}.card h2{font-size:17px;margin:0 0 8px}.badge{display:inline-block;background:#263244;color:#93c5fd;border-radius:999px;padding:3px 9px;font-size:12px;margin-bottom:8px}.recommended{border-color:#39d98a;box-shadow:0 0 0 1px rgba(57,217,138,.25)}p,li{color:#b7c6d8;line-height:1.55}code{color:#93c5fd}
+  </style>
+</head>
+<body>
+  <h1>AP/STA 合并卡片设计 v2</h1>
+  <p class="subtitle">已按你的反馈更新：默认自动选择；AP 和 STA 标签页都同时显示 SSID 与 IP。</p>
+
+  <section class="section">
+    <h2>状态卡片行预览</h2>
+    <div class="mock-row">
+      <div class="tile">Mode<br><strong>RC</strong></div>
+      <div class="tile">Park<br><strong>LOCKED</strong></div>
+      <div class="tile drift">Drift<br><strong>ARMED</strong></div>
+      <div class="tile voltage">Voltage<br><strong>12.10V</strong></div>
+      <div class="network">
+        <div class="tabs"><span class="tab">AP</span><span class="tab active">STA</span></div>
+        <div class="gear">⚙</div>
+        <div class="head">Network</div>
+        <div class="value">192.168.3.144</div>
+        <div class="sub">STA connected</div>
+        <div class="meta"><b>SSID</b><span>Home-Lab-WiFi</span><b>IP</b><span>192.168.3.144</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cards">
+    <section class="card recommended">
+      <span class="badge">推荐方案</span>
+      <h2>单 Network 卡 + AP/STA 标签页</h2>
+      <p>删除独立 AP/STA 两张卡，新增一张 <code>networkCard</code>。左上角是 AP/STA 标签，右上角保留 STA 配置齿轮。</p>
+      <ul>
+        <li>默认：STA connected 时自动选 STA，否则选 AP。</li>
+        <li>用户点击标签后，本页面会保持用户选择，不被自动刷新覆盖。</li>
+        <li>AP 页显示 AP SSID + AP IP + client 数。</li>
+        <li>STA 页显示 STA SSID + STA IP + connected/pending/disabled。</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>AP 标签页内容</h2>
+      <div class="network">
+        <div class="tabs"><span class="tab active">AP</span><span class="tab">STA</span></div>
+        <div class="gear">⚙</div>
+        <div class="head">Network</div>
+        <div class="value">192.168.4.1</div>
+        <div class="sub">clients 0</div>
+        <div class="meta"><b>SSID</b><span>MUS4-DEBUG</span><b>IP</b><span>192.168.4.1</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>STA 标签页内容</h2>
+      <div class="network">
+        <div class="tabs"><span class="tab">AP</span><span class="tab active">STA</span></div>
+        <div class="gear">⚙</div>
+        <div class="head">Network</div>
+        <div class="value">192.168.3.144</div>
+        <div class="sub">connected</div>
+        <div class="meta"><b>SSID</b><span>Home-Lab-WiFi</span><b>IP</b><span>192.168.3.144</span></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="section">
+    <h2>需要你确认的最后一点</h2>
+    <p>STA 配置齿轮是否按上图放在合并 Network 卡的右上角？如果同意，我会把设计方案写入 <code>Doc/Plan/</code>。</p>
+  </section>
+</body>
+</html>

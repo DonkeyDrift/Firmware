@@ -60,6 +60,38 @@ def make_automation(port="auto", serial_detection_cfg=None):
     return automation
 
 
+class TestSketchDiscovery(unittest.TestCase):
+    def make_resolver(self, root):
+        automation = ARDUINO_CLI.ArduinoAutomation.__new__(ARDUINO_CLI.ArduinoAutomation)
+        automation.logger = MagicMock()
+        automation.config_path = str(root / "config.yaml")
+        return automation
+
+    def test_falls_back_to_single_root_sketch_when_configured_sketch_is_missing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            (root / "MUS4_FW.ino").write_text("", encoding="utf-8")
+            automation = self.make_resolver(root)
+
+            selected = automation.resolve_sketch_path("mus4.ino")
+
+        self.assertEqual(pathlib.Path(selected).name, "MUS4_FW.ino")
+        automation.logger.warning.assert_called()
+
+    def test_rejects_multiple_root_sketches_when_configured_sketch_is_missing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            (root / "MUS4_FW.ino").write_text("", encoding="utf-8")
+            (root / "other.ino").write_text("", encoding="utf-8")
+            automation = self.make_resolver(root)
+
+            with self.assertRaises(SystemExit) as raised:
+                automation.resolve_sketch_path("mus4.ino")
+
+        self.assertEqual(raised.exception.code, 3)
+        automation.logger.error.assert_called()
+
+
 class TestCompileCommand(unittest.TestCase):
     def test_compile_uses_local_libraries_when_directory_exists(self):
         automation = make_automation()

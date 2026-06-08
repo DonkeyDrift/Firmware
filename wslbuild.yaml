@@ -9,7 +9,7 @@ distro: DKC
 fqbn: esp32:esp32:esp32:PartitionScheme=min_spiffs
 
 # sketch 文件路径（不设置则自动探测根目录下的 .ino）
-sketch: mus4.ino
+sketch: MUS4_FW.ino
 
 # 项目内 Arduino 库目录；存在时编译会追加 --libraries 优先使用本地库
 libraries_path: libraries

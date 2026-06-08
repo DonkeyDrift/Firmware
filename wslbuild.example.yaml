@@ -9,7 +9,7 @@ distro: DKC
 fqbn: esp32:esp32:esp32:PartitionScheme=min_spiffs
 
 # sketch 文件路径（不设置则自动探测根目录下的 .ino）
-sketch: mus4.ino
+sketch: MUS4_FW.ino
 
 # WSL 端工作目录（编译时的工作路径，默认 ~/arduino-build/<项目名>）
 # work_dir: ~/arduino-build/mus4

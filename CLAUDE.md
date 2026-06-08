@@ -4,13 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件，当前以 MUS4-v2.3 PCB 为准。固件负责 RC PWM 输入采集、Pilot 上位机串口控制、多模式控制融合、Park/紧急制动、I2C 传感器采集、TUI 状态显示、Wi-Fi/TCP/Web Console、OTA 更新，以及在未启用 Wi-Fi Console 时可选的 BLE Gamepad 输出。
+MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件，当前固件源码以根目录 `MUS4_FW.ino` 为主 sketch。固件负责 RC PWM 输入采集、Pilot 上位机串口控制、多模式控制融合、Park/紧急制动、I2C 传感器采集、TUI 状态显示、Wi-Fi/TCP/Web Console、OTA 更新，以及在未启用 Wi-Fi Console 时可选的 BLE Gamepad 输出。
 
-根目录同时包含两类主线代码：
-- Arduino/C++ 固件：主 sketch 为 `mus4.ino`，公共类型与外设辅助模块也在根目录。
+根目录包含三类主线代码：
+- Arduino/C++ 固件：`MUS4_FW.ino`、`SharedTypes.h`、`TUI.*`、`Buzzer.*`、`BuildInfo.h`。
 - 构建与烧录工具：`arduino-cli.py` 与 `arduino-cli-wsl.ps1` 负责编译、上传、串口检测、OTA 上传和 WSL 加速构建。
+- Python 工具与测试：无线权限策略镜像、Tub JSON 训练工具、Pilot 推理工具及 pytest 测试。
 
-主要依赖包括 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050、WebServer、ArduinoOTA、AsyncTCP、ESPAsyncWebServer，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。根目录 `libraries/` 存放随仓库携带的 Arduino 库，`arduino-cli.py` 会在该目录存在时通过 `--libraries` 优先使用本地库。
+主要 Arduino 依赖包括 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050、WebServer、ArduinoOTA、AsyncTCP、ESPAsyncWebServer，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。根目录 `libraries/` 存放随仓库携带的 Arduino 库，`arduino-cli.py` 与 WSL 脚本在该目录存在时会优先使用本地库。
 
 ## Commands
 
@@ -24,95 +25,97 @@ pip install pyyaml pyserial pytest
 
 项目未发现专用 Python lint/format 配置；修改 Python 工具脚本或策略镜像后，至少运行相关 `pytest`。
 
-### Arduino CLI 构建、上传、监视
-
-```bash
-# 仅编译
-python arduino-cli.py -c
-
-# 仅上传，默认按 config.yaml 自动检测串口
-python arduino-cli.py -u
-
-# 指定串口上传
-python arduino-cli.py -u --port COM9
-
-# 编译 + 上传
-python arduino-cli.py -cu
-
-# 编译 + 上传 + 串口监视
-python arduino-cli.py -cus
-
-# 使用预编译固件上传
-python arduino-cli.py -u -i build/mus4.ino.bin
-
-# 指定构建输出目录
-python arduino-cli.py -c --build-path build
-
-# 列出检测到的串口
-python arduino-cli.py --list-ports
-
-# 逐行输出日志，适合重定向或 CI 日志
-python arduino-cli.py -cu --no-progress
-
-# ArduinoOTA 上传，默认端口 3232，密码默认 mus4-debug
-python arduino-cli.py --ota -i build/mus4.ino.bin --ota-host mus4-ota
-```
-
-常用参数：
-- `--config config.yaml`：指定构建配置文件。
-- `--fqbn esp32:esp32:esp32`：覆盖开发板 FQBN。
-- `--sketch mus4.ino`：覆盖 sketch 路径。
-- `--baud 115200`：覆盖串口波特率。
-- `--auto-reset` / `--no-auto-reset`：控制串口监视前复位。
-- `--regress-reset --regress-count 10`：运行复位回归测试。
-- `--ota-host` / `--ota-port` / `--ota-password` / `--espota-tool`：覆盖 ArduinoOTA 上传目标与工具路径。
-
 ### Windows + WSL 加速构建
 
 固件编译优先使用 WSL 脚本；项目当前优先使用 OTA 上传，不要在编译通过后自动新开 PowerShell 串口上传或串口监视，除非用户明确要求。
 
+> 当前仓库主 sketch 已重命名为 `MUS4_FW.ino`。若 `config.yaml` 或 `wslbuild.yaml` 仍指向旧的 `mus4.ino`，运行构建命令时显式传入 `-Sketch MUS4_FW.ino` 或 `--sketch MUS4_FW.ino`。
+
 ```powershell
 # 仅编译；这是固件修改后的默认验证命令
-.\arduino-cli-wsl.ps1 -Compile
+.\arduino-cli-wsl.ps1 -Compile -Sketch MUS4_FW.ino
 
 # 清理 WSL 构建目录后重新编译
-.\arduino-cli-wsl.ps1 -Compile -Clean
+.\arduino-cli-wsl.ps1 -Compile -Clean -Sketch MUS4_FW.ino
 
 # 构建在 /mnt/c 上而不是同步到 WSL ext4，适合快速排查同步问题
-.\arduino-cli-wsl.ps1 -Compile -IoMode mnt
+.\arduino-cli-wsl.ps1 -Compile -IoMode mnt -Sketch MUS4_FW.ino
 
 # 检查 WSL、rsync、arduino-cli 等依赖
 .\arduino-cli-wsl.ps1 -Check
 
 # 编译并检查固件大小与分区占用
-.\arduino-cli-wsl.ps1 -Compile -CheckPartition
+.\arduino-cli-wsl.ps1 -Compile -CheckPartition -Sketch MUS4_FW.ino
 
 # 编译后通过 ArduinoOTA 上传；上传前需先在设备 Web/TCP Console 中打开 OTA 窗口
-.\arduino-cli-wsl.ps1 -Compile -Upload -Ota -OtaHost <设备IP或主机名>
+.\arduino-cli-wsl.ps1 -Compile -Upload -Ota -OtaHost <设备IP或主机名> -Sketch MUS4_FW.ino
 
 # 使用已有 build_wsl 产物通过 ArduinoOTA 上传
-.\arduino-cli-wsl.ps1 -Upload -Ota -OtaHost <设备IP或主机名>
+.\arduino-cli-wsl.ps1 -Upload -Ota -OtaHost <设备IP或主机名> -Sketch MUS4_FW.ino
 
 # 编译后通过 Web Console 的 HTTP /update 端点上传
-.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP或主机名>
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP或主机名> -Sketch MUS4_FW.ino
 
 # 当前调试目标可按 .mus4_ota_target 首行；显式传入可避免被旧目标覆盖
-.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.144
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.144 -Sketch MUS4_FW.ino
 
 # 使用已有 build_wsl 产物通过 HTTP OTA 上传；未传主机时读取 .mus4_ota_target 首行
-.\arduino-cli-wsl.ps1 -Upload -HttpOta
+.\arduino-cli-wsl.ps1 -Upload -HttpOta -Sketch MUS4_FW.ino
 
 # 仅当用户明确要求串口上传时使用已有 build_wsl 产物
-.\arduino-cli-wsl.ps1 -Upload
+.\arduino-cli-wsl.ps1 -Upload -Sketch MUS4_FW.ino
 
 # 仅当用户明确要求串口监视时使用
-.\arduino-cli-wsl.ps1 -Upload -Serial
+.\arduino-cli-wsl.ps1 -Upload -Serial -Sketch MUS4_FW.ino
 
 # 指定串口会透传给 arduino-cli.py
-.\arduino-cli-wsl.ps1 -Upload -ExtraArgs "--port COM9"
+.\arduino-cli-wsl.ps1 -Upload -Sketch MUS4_FW.ino -ExtraArgs "--port COM9"
 ```
 
-WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。HTTP OTA 使用设备 Web Console 的 `/update` 端点，需要 Web Console 已认证且 Park 锁定，或开发模式允许；目标主机可通过 `-HttpOtaHost` 指定，或写入项目根目录 `.mus4_ota_target` 的首行。当前调试优先使用 `.mus4_ota_target` 中的目标；截至 2026-06-05 当前目标为 `192.168.3.144`，如需改用 AP 默认地址再显式传入 `192.168.4.1`。
+WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。HTTP OTA 使用设备 Web Console 的 `/update` 端点，需要 Web Console 已认证且 Park 锁定，或开发模式允许；目标主机可通过 `-HttpOtaHost` 指定，或写入项目根目录 `.mus4_ota_target` 的首行。当前调试优先使用 `.mus4_ota_target` 中的目标；截至 2026-06-08 当前目标为 `192.168.3.144`，如需改用 AP 默认地址再显式传入 `192.168.4.1`。
+
+### Arduino CLI 构建、上传、监视
+
+```bash
+# 仅编译
+python arduino-cli.py -c --sketch MUS4_FW.ino
+
+# 仅上传，默认按 config.yaml 自动检测串口
+python arduino-cli.py -u --sketch MUS4_FW.ino
+
+# 指定串口上传
+python arduino-cli.py -u --sketch MUS4_FW.ino --port COM9
+
+# 编译 + 上传
+python arduino-cli.py -cu --sketch MUS4_FW.ino
+
+# 编译 + 上传 + 串口监视
+python arduino-cli.py -cus --sketch MUS4_FW.ino
+
+# 使用预编译固件上传
+python arduino-cli.py -u -i build/MUS4_FW.ino.bin --sketch MUS4_FW.ino
+
+# 指定构建输出目录
+python arduino-cli.py -c --build-path build --sketch MUS4_FW.ino
+
+# 列出检测到的串口
+python arduino-cli.py --list-ports
+
+# 逐行输出日志，适合重定向或 CI 日志
+python arduino-cli.py -cu --no-progress --sketch MUS4_FW.ino
+
+# ArduinoOTA 上传，默认端口 3232，密码默认 mus4-debug
+python arduino-cli.py --ota -i build/MUS4_FW.ino.bin --ota-host mus4-ota
+```
+
+常用参数：
+- `--config config.yaml`：指定构建配置文件。
+- `--fqbn esp32:esp32:esp32`：覆盖开发板 FQBN。
+- `--sketch MUS4_FW.ino`：覆盖 sketch 路径；当前建议显式传入。
+- `--baud 115200`：覆盖串口波特率。
+- `--auto-reset` / `--no-auto-reset`：控制串口监视前复位。
+- `--regress-reset --regress-count 10`：运行复位回归测试。
+- `--ota-host` / `--ota-port` / `--ota-password` / `--espota-tool`：覆盖 ArduinoOTA 上传目标与工具路径。
 
 ### Python 测试
 
@@ -177,15 +180,15 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 
 ## Configuration
 
-- `config.yaml`：`arduino-cli.py` 的主配置，包含 `arduino_cli`、`fqbn`、`port`、`baudrate`、`sketch_path`、`build_path`、串口自动检测与日志配置。
+- `config.yaml`：`arduino-cli.py` 的主配置，包含 `arduino_cli`、`fqbn`、`port`、`baudrate`、`sketch_path`、`build_path`、串口自动检测与日志配置；若仍指向旧 `mus4.ino`，使用命令行 `--sketch MUS4_FW.ino` 覆盖。
 - `sketch.yaml`：Arduino CLI 项目级默认配置，当前默认 FQBN 为 `esp32:esp32:esp32:PartitionScheme=min_spiffs`，默认端口为 `/dev/ttyS4`。
 - `wslbuild.yaml`（若存在）：`arduino-cli-wsl.ps1` 会读取其中的 `distro`、`sketch`、`fqbn`、`work_dir`、`io_mode`、`sync_libs`、`extra_sync_args` 等覆盖项；命令行参数优先级最高。
 - `.mus4_ota_target`（若存在）：HTTP OTA 默认目标主机列表，脚本读取首个非空首行。
-- `WirelessSecrets.example.h`：Wi-Fi STA 凭据模板；本地 `WirelessSecrets.h` 可被 `mus4.ino` 自动包含，但可能含真实凭据，提交前必须检查且通常不应纳入提交。
+- `WirelessSecrets.example.h`：Wi-Fi STA 凭据模板；本地 `WirelessSecrets.h` 可被 `MUS4_FW.ino` 自动包含，但可能含真实凭据，提交前必须检查且通常不应纳入提交。
 
 当前 `config.yaml` 默认：
 - FQBN：`esp32:esp32:esp32:PartitionScheme=min_spiffs`
-- sketch：`mus4.ino`
+- sketch：可能仍为旧 `mus4.ino`；当前源码文件为 `MUS4_FW.ino`
 - build path：`build`
 - baudrate：`115200`
 - port：`auto`
@@ -211,8 +214,8 @@ Python 测试集中在 `tests/`：
 
 ### 固件应用层
 
-`mus4.ino` 是主状态机，关键数据流是：
-1. RC 接收机通过 CH1-CH6 PWM 输入触发中断，计算脉宽并滤波；CH5/CH6 当前用于 Drift Assist 开关与强度比例。
+`MUS4_FW.ino` 是主状态机，关键数据流是：
+1. RC 接收机通过 CH1-CH6 PWM 输入触发中断或 MCPWM 捕获路径，计算脉宽并滤波；CH5/CH6 当前用于 Drift Assist 开关与强度比例。
 2. USB `Serial`、`Serial1`、TCP Console 与 Web Console 接收命令，解析 `Throttle:Steering`、序列号与校验和格式。
 3. 控制逻辑按模式融合 RC 与 Pilot 数据，更新 `car_output`，Drift Assist 可在条件满足时叠加转向补偿。
 4. Park/紧急制动状态机可覆盖油门输出并控制 LED 闪烁；OTA 窗口或 OTA 传输期间会暂停 Serial1 遥测。
@@ -224,6 +227,7 @@ Python 测试集中在 `tests/`：
 - `SharedTypes.h`：跨模块共享的数据结构与状态枚举，例如 `SensorData`、`ControlData`。
 - `TUI.h` / `TUI.cpp`：ANSI 终端仪表盘渲染，支持降级模式和增量刷新。
 - `Buzzer.h` / `Buzzer.cpp`：蜂鸣器状态机，硬件支持时使用。
+- `BuildInfo.h`：固件名称、版本和构建时间宏。
 - `wireless_console_policy.py`：Wi-Fi/TCP/Web Console 权限策略的 Python 镜像，用于在桌面测试中覆盖认证、Park 锁定、OTA 窗口、STA 状态、日志脱敏和行缓冲行为。
 
 ### 数据采集与 Pilot 工具链
@@ -234,7 +238,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 ### 辅助子系统
 
-- `examples/`：I2C、传感器等独立示例 sketch。
+- `examples/`：I2C、传感器、智能配网等独立示例 sketch。
 - `multi_agent_framework/`：独立 Python 多智能体框架代码，不属于 ESP32 固件主链路。
 - `provisioning_system/`：ESP32 Wi-Fi provisioning 与 Linux agent 相关工具，独立于 MUS4 主固件构建流程；ESP32 AP/Web Server 通过 UART 把 Wi-Fi 凭据发给 Linux agent，agent 使用 NetworkManager/nmcli 连接目标网络并回传结果。
 
@@ -242,7 +246,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 ### 版本与发布记录
 
-当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.6.0`。README 中部分硬件与路径描述可能滞后，硬件细节以 `mus4.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
+当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.6.0`。README 中部分硬件与路径描述可能滞后，硬件细节以 `MUS4_FW.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
 
 ### 控制模式
 
@@ -266,7 +270,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 状态回传：
 - Serial1 输出 `Txx:Sxx\n`；OTA 窗口打开或 OTA 进行中时暂停。
 
-### 当前 v2.3 引脚
+### 当前 v2.4.2 / v2.3 引脚
 
 | 功能 | GPIO | 说明 |
 | --- | --- | --- |
@@ -289,15 +293,15 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 GPIO 34、35、36、39 是 ESP32 仅输入引脚，不能配置为输出，也没有内部上拉/下拉。
 
-README 中仍包含旧版引脚和旧路径；以 `mus4.ino`、`Doc/Hardware/pin_definitions.md` 和本文件为准。
+README 中部分历史描述可能滞后；以 `MUS4_FW.ino`、`Doc/Hardware/pin_definitions.md` 和本文件为准。
 
 ### Wi-Fi Console、Web Console 与 OTA
 
-`mus4.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`，并在该路径下启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY`。启用后 ESP32 以 AP+STA 模式启动：AP SSID 为 `MUS4-DEBUG`，TCP 控制台端口为 `2323`，Web Console/Donkey Console 端口为 `80`，WebSocket 遥测端口为 `81`，ArduinoOTA 默认主机名为 `mus4-ota`、端口 `3232`。
+`MUS4_FW.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`，并在该路径下启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY`。启用后 ESP32 以 AP+STA 模式启动：AP SSID 为 `MUS4-DEBUG`，TCP 控制台端口为 `2323`，Web Console/Donkey Console 端口为 `80`，WebSocket 遥测端口为 `81`，ArduinoOTA 默认主机名为 `mus4-ota`、端口 `3232`。
 
 无线命令权限分层：`PING`、`STATUS`、`AUTH`、`WIFI_STA_STATUS` 可未认证访问；控制指令和 `ANSI`/`NOANSI`/`FILTER_DEBUG`/`LOG_WEB`/`LOG_SERIAL`/Wi-Fi STA 配置命令需要认证；`TEST`、`BENCH`、`REGRESS`、转向标定等诊断/维护命令还要求 Park 锁定；`ENABLE_OTA` 要求认证且 Park 锁定，`OTA_STATUS` 与 `DISABLE_OTA` 要求认证。修改这部分逻辑时，同步更新 `wireless_console_policy.py` 与 `tests/test_wireless_console_policy.py`。
 
-Web UI 的 HTML/CSS/JS 目前内嵌在 `mus4.ino` 的 `WIFI_WEB_CONSOLE_HTML` 中，页面品牌已显示为 `Donkey Console`。修改标题、顶部 DEV/OTA 区、状态卡片、串口日志、Tub JSON 或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
+Web UI 的 HTML/CSS/JS 目前内嵌在 `MUS4_FW.ino` 的 `WIFI_WEB_CONSOLE_HTML` 中，页面品牌已显示为 `Donkey Console`。修改标题、顶部 DEV/OTA 区、状态卡片、串口日志、Tub JSON 或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
 
 ### BLE Gamepad Mode
 
@@ -309,22 +313,22 @@ Web UI 的 HTML/CSS/JS 目前内嵌在 `mus4.ino` 的 `WIFI_WEB_CONSOLE_HTML` �
 
 ### Drift Assist 与转向标定
 
-`mus4.ino` 当前包含漂移辅助编译开关与参数：`DRIFT_ASSIST_ENABLED`、增益、阈值、最大补偿和平滑/衰减系数。相关逻辑依赖 IMU 角速度与 CH3/CH5/CH6 通道状态，修改时同时检查 Park/解锁语义，避免与安全状态机冲突。
+`MUS4_FW.ino` 当前包含漂移辅助编译开关与参数：`DRIFT_ASSIST_ENABLED`、增益、阈值、最大补偿和平滑/衰减系数。相关逻辑依赖 IMU 角速度与 CH3/CH5/CH6 通道状态，修改时同时检查 Park/解锁语义，避免与安全状态机冲突。
 
 转向标定状态存储在 Preferences 中，相关命令受无线权限策略保护。修改标定命令、持久化键或转向映射后，同时检查 `wireless_console_policy.py` 和运行时串口命令列表。
 
 ## Safety-Critical Editing Notes
 
 - 该固件会直接控制舵机与电调；修改输出映射、Park、紧急制动、模式融合或无线控制入口时，必须保留 PWM 限幅和失效安全路径。
-- 当前执行器输出使用 `ledcAttachChannel(..., 300, 14, ...)`，PWM 常量按 300Hz/14bit、1000-2000µs 计算；部分旧文档仍写 50Hz，改输出参数时以 `mus4.ino` 为准并同步文档。
+- 当前执行器输出使用 `ledcAttachChannel(..., 300, 14, ...)`，PWM 常量按 300Hz/14bit、1000-2000µs 计算；部分旧文档仍写 50Hz，改输出参数时以 `MUS4_FW.ino` 为准并同步文档。
 - 中断处理函数必须保留 `IRAM_ATTR`，与中断共享的数据继续使用 `volatile` 或等价保护。
 - 串口、Web Console、TCP Console 输入都视为不可信边界；控制命令必须经过认证/权限和范围校验后才能影响输出。
 - `ENABLE_DIAGNOSTIC_COMMANDS` 与 `ENABLE_BOOT_STEERING_SELF_TEST` 默认应保持注释状态；`tests/test_firmware_feature_flags.py` 会保护这一点。
 
 ## Documentation Map
 
-- `Doc/Arch/architecture.md`：固件主循环、状态机和数据流。
-- `Doc/Hardware/pin_definitions.md`：MUS4-v2.3 权威引脚定义。
+- `Doc/Arch/architecture.md`：固件主循环、状态机和数据流；部分频率或旧路径可能滞后，引用前对照源码。
+- `Doc/Hardware/pin_definitions.md`：MUS4-v2.3 / v2.4.2 权威引脚定义。
 - `Doc/Hardware/CONFIG.md`：硬件配置说明。
 - `Doc/Tools/ArduinoCLI.md`：`arduino-cli.py` 使用说明。
 - `Doc/Tools/arduino-cli-wsl_manual.md`：WSL 构建脚本背景与排障。
@@ -333,7 +337,7 @@ Web UI 的 HTML/CSS/JS 目前内嵌在 `mus4.ino` 的 `WIFI_WEB_CONSOLE_HTML` �
 - `Doc/README/OPERATIONS.md`：串口运行时操作命令与数据帧。
 - `provisioning_system/docs/deployment_and_testing.md`：独立配网系统的 ESP32 固件、Linux agent 和测试部署说明。
 - `Doc/Plan/`：方案、设计方案、实施路线和历史实施方案目录；新增方案类内容应写入此目录，使用清晰的中文文件名，使用前需对照当前代码验证。
-- `README.md`：项目早期介绍，部分构建命令、硬件引脚和文档路径已滞后；引用前必须对照 `mus4.ino`、`Doc/Hardware/pin_definitions.md`、`Doc/Arch/architecture.md` 和本文件验证。
+- `README.md`：项目介绍与快速开始，部分构建命令、硬件引脚和文档路径可能滞后；引用前必须对照 `MUS4_FW.ino`、`Doc/Hardware/pin_definitions.md`、`Doc/Arch/architecture.md` 和本文件验证。
 - `AGENTS.md`：其他代理工具的历史指南，包含旧版本号、MiniClaw 专属身份指令和外部工具流程；Claude Code 操作本仓库时不要继承其中的代理身份或工具专属规则，优先遵循本文件、源码和当前项目文档。
 
 ## Git Conventions

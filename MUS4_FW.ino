@@ -1,26 +1,26 @@
 //=============================================================
 /* 
 [Note]
-1. 针对MUS4-v2.4.2 PCB 调整了部分引脚定义
-    - CH1_PIN 36 // 接收机pwm输入CH1通道
-    - CH2_PIN 39 // 接收机pwm输入CH2通道
-    - CH3_PIN 34 // 接收机pwm输入CH3通道
-    - CH4_PIN 26 // 接收机pwm输入CH4通道
-    - CH5_PIN 27 // 接收机pwm输入CH5通道
-    - CH6_PIN 35 // 接收机pwm输入CH6通道
-    - CH1_ST 23 // CH1转向舵机
-    - CH2_TH 25 // CH2油门电调
-    - PWM_1 32 // PWM输出1号通道
-    - PWM_2 33 // PWM输出2号通道
+1. Some pin definitions were adjusted for the MUS4-v2.4.2 PCB.
+    - CH1_PIN 36 // Receiver PWM input CH1
+    - CH2_PIN 39 // Receiver PWM input CH2
+    - CH3_PIN 34 // Receiver PWM input CH3
+    - CH4_PIN 26 // Receiver PWM input CH4
+    - CH5_PIN 27 // Receiver PWM input CH5
+    - CH6_PIN 35 // Receiver PWM input CH6
+    - CH1_ST 23 // CH1 steering servo
+    - CH2_TH 25 // CH2 throttle ESC
+    - PWM_1 32 // PWM output channel 1
+    - PWM_2 33 // PWM output channel 2
 
-2. 为测试接收机，屏蔽了模式选择和停车功能【注意】
+2. Mode selection and parking functions were disabled for receiver testing. [Note]
 
 [Experience]
-1. 固件程序下载速率为115200
-2. 串口协议：T:S\n
-  T代表Throttle
-  S代表Steering
-  结尾为"\n
+1. Firmware upload baud rate is 115200.
+2. Serial protocol: T:S\n
+  T means Throttle
+  S means Steering
+  Ends with "\n
 */
 
 #define ENABLE_WIFI_CONSOLE
@@ -94,18 +94,18 @@ Adafruit_INA219 ina219;
 
 // #define DEBUG // Uncomment to enable debugging output
 
-#define CH1_PIN 36 // 接收机pwm输入CH1通道
-#define CH2_PIN 39 // 接收机pwm输入CH2通道
-#define CH3_PIN 34 // 接收机pwm输入CH3通道
-#define CH4_PIN 26 // 接收机pwm输入CH4通道
-#define CH5_PIN 27 // 接收机pwm输入CH5通道
-#define CH6_PIN 35 // 接收机pwm输入CH6通道
+#define CH1_PIN 36 // Receiver PWM input CH1
+#define CH2_PIN 39 // Receiver PWM input CH2
+#define CH3_PIN 34 // Receiver PWM input CH3
+#define CH4_PIN 26 // Receiver PWM input CH4
+#define CH5_PIN 27 // Receiver PWM input CH5
+#define CH6_PIN 35 // Receiver PWM input CH6
 
-#define STEERING_PIN 23 // CH1转向舵机
-#define THROTTLE_PIN 25 // CH2油门电调
+#define STEERING_PIN 23 // CH1 steering servo
+#define THROTTLE_PIN 25 // CH2 throttle ESC
 
-#define PWM_1 32 // PWM输出1号通道
-#define PWM_2 33 // PWM输出2号通道
+#define PWM_1 32 // PWM output channel 1
+#define PWM_2 33 // PWM output channel 2
 
 #define LED_PIN 5
 #define NUM_LEDS 1
@@ -117,7 +117,7 @@ Adafruit_INA219 ina219;
 #define RX_1_PIN 16
 #define TX_1_PIN 17
 // #define RX_1_PIN 19
-// #define TX_1_PIN 18      // MU02 无法联通，统一切 PIN 16, 17
+// #define TX_1_PIN 18      // MU02 cannot connect; use pins 16 and 17 consistently.
 #define BAUD_RATE_1 115200
 #define UART_SEL 12
 
@@ -133,26 +133,26 @@ Adafruit_INA219 ina219;
 #define CH_DRIFT 4       // index of pwm_value[]
 #define CH_DRIFT_SCALE 5 // index of pwm_value[]
 
-#define CAR_MODE_MANUAL 0    // 0为遥控模式
-#define CAR_MODE_SEMI_AUTO 1 // 1为自动方向和手动油门模式
-#define CAR_MODE_FULL_AUTO 2 // 2为自动驾驶模式
+#define CAR_MODE_MANUAL 0    // 0: RC manual mode
+#define CAR_MODE_SEMI_AUTO 1 // 1: Pilot steering with manual throttle
+#define CAR_MODE_FULL_AUTO 2 // 2: autonomous driving mode
 #define MODE_PWM_MANUAL_MAX 1250
 #define MODE_PWM_FULL_AUTO_MIN 1750
 
-#define PARK_LOCKED true     // 锁定状态
-#define PARK_UNLOCKED false  // 解锁状态
+#define PARK_LOCKED true     // Locked state
+#define PARK_UNLOCKED false  // Unlocked state
 
 volatile uint16_t pwm_value[RC_CHANNEL_COUNT] = {0};
 volatile unsigned long rise_time[RC_CHANNEL_COUNT] = {0};
 volatile unsigned long last_valid_time[RC_CHANNEL_COUNT] = {0};
-#define RC_SIGNAL_TIMEOUT 1000000UL  // RC信号超时时间 (µs)
-#define RC_PWM_MIN 800   // 最小有效PWM (µs)
-#define RC_PWM_MAX 2200  // 最大有效PWM (µs)
+#define RC_SIGNAL_TIMEOUT 1000000UL  // RC signal timeout (µs)
+#define RC_PWM_MIN 800   // Minimum valid PWM (µs)
+#define RC_PWM_MAX 2200  // Maximum valid PWM (µs)
 #define ENABLE_RC_MCPWM_CAPTURE 0
 #define RC_MCPWM_CAPTURE_RESOLUTION_HZ 1000000
 #define RC_MCPWM_CAPTURE_GROUP_ID 0
 
-#define PWM_FILTER_SIZE 5  // 滑动窗口中值滤波器大小 (5-7)
+#define PWM_FILTER_SIZE 5  // Sliding-window median filter size (5-7)
 uint16_t pwm_filter_buf[RC_CHANNEL_COUNT][PWM_FILTER_SIZE] = {{0}};
 uint8_t pwm_filter_idx[RC_CHANNEL_COUNT] = {0};
 bool pwm_filter_initialized[RC_CHANNEL_COUNT] = {false};
@@ -163,7 +163,7 @@ uint8_t aux_candidate_count[RC_CHANNEL_COUNT] = {0};
 bool aux_stable_initialized[RC_CHANNEL_COUNT] = {false};
 uint16_t primary_smooth_pwm[RC_CHANNEL_COUNT] = {0};
 bool primary_smooth_initialized[RC_CHANNEL_COUNT] = {false};
-bool filterDebugEnabled = false;          // 调试输出开关
+bool filterDebugEnabled = false;          // Debug output switch
 
 const int Channels[RC_CHANNEL_COUNT] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN, CH5_PIN, CH6_PIN};
 
@@ -174,19 +174,19 @@ static void setMus4LogTargetWeb();
 
 CRGB leds[NUM_LEDS]; // Define the array of leds
 
-// 终端控制宏
-#define CLEAR_SCREEN "\033[2J"         // 清屏
-#define CURSOR_HOME "\033[H"           // 光标回到 home 位置
-#define CURSOR_UP(n) "\033[" #n "A"    // 光标上移 n 行
-#define CURSOR_DOWN(n) "\033[" #n "B"  // 光标下移 n 行
-#define CURSOR_RIGHT(n) "\033[" #n "C" // 光标右移 n 列
-#define CURSOR_LEFT(n) "\033[" #n "D"  // 光标左移 n 列
-#define SAVE_CURSOR "\033[s"           // 保存光标位置
-#define RESTORE_CURSOR "\033[u"        // 恢复光标位置
-#define HIDE_CURSOR "\033[?25l"        // 隐藏光标
-#define SHOW_CURSOR "\033[?25h"        // 显示光标
+// Terminal control macros
+#define CLEAR_SCREEN "\033[2J"         // Clear screen
+#define CURSOR_HOME "\033[H"           // Move cursor to home position
+#define CURSOR_UP(n) "\033[" #n "A"    // Move cursor up n rows
+#define CURSOR_DOWN(n) "\033[" #n "B"  // Move cursor down n rows
+#define CURSOR_RIGHT(n) "\033[" #n "C" // Move cursor right n columns
+#define CURSOR_LEFT(n) "\033[" #n "D"  // Move cursor left n columns
+#define SAVE_CURSOR "\033[s"           // Save cursor position
+#define RESTORE_CURSOR "\033[u"        // Restore cursor position
+#define HIDE_CURSOR "\033[?25l"        // Hide cursor
+#define SHOW_CURSOR "\033[?25h"        // Show cursor
 
-// 颜色宏
+// Color macros
 #define COLOR_RESET "\033[0m"
 #define COLOR_RED "\033[31m"
 #define COLOR_GREEN "\033[32m"
@@ -196,31 +196,31 @@ CRGB leds[NUM_LEDS]; // Define the array of leds
 #define COLOR_CYAN "\033[36m"
 #define COLOR_WHITE "\033[37m"
 
-// 输出控制参数
-#define SENSOR_UPDATE_INTERVAL 2     // 传感器数据更新间隔（毫秒）- ~60Hz
-#define RC_DATA_UPDATE_INTERVAL 2    // RC数据更新间隔（毫秒）- ~60Hz
-#define RC_FILTER_UPDATE_INTERVAL 2   // RC滤波更新间隔（毫秒）- ~125Hz，平衡响应和稳定
-#define UI_UPDATE_INTERVAL 2         // UI更新间隔（毫秒）- 60Hz丝滑体验
+// Output control parameters
+#define SENSOR_UPDATE_INTERVAL 2     // Sensor data update interval (ms) - ~60Hz
+#define RC_DATA_UPDATE_INTERVAL 2    // RC data update interval (ms) - ~60Hz
+#define RC_FILTER_UPDATE_INTERVAL 2   // RC filter update interval (ms) - ~125Hz, balances response and stability
+#define UI_UPDATE_INTERVAL 2         // UI update interval (ms) - smooth 60Hz experience
 
-// 波形图参数
-#define WAVE_WIDTH 20                 // 波形图宽度 (reduced for performance)
-#define WAVE_HEIGHT 6                 // 波形图高度 (reduced for performance)
+// Waveform parameters
+#define WAVE_WIDTH 20                 // Waveform width (reduced for performance)
+#define WAVE_HEIGHT 6                 // Waveform height (reduced for performance)
 
-// 新增全局变量
+// New global variables
 unsigned long lastSensorUpdate = 0;
 unsigned long lastRCDataUpdate = 0;
 unsigned long lastRCFilterUpdate = 0;
 unsigned long lastUIUpdate = 0;
-unsigned long lastWaveUpdate = 0;     // 波形刷新独立计时
-const unsigned long WAVE_UPDATE_INTERVAL = 250; // 4Hz刷新率
+unsigned long lastWaveUpdate = 0;     // Independent waveform refresh timer
+const unsigned long WAVE_UPDATE_INTERVAL = 250; // 4Hz refresh rate
 bool toggleActive = false;
 CRGB toggleColor1, toggleColor2;
 unsigned long toggleTime = 0;
-unsigned long toggleInterval = 250; // LED切换间隔为250ms
+unsigned long toggleInterval = 250; // LED toggle interval is 250 ms
 bool degradeMode = false;
 uint32_t degradeReason = 0;
 bool ansiEnabled = true;
-bool ansiDetected = false;            // 自动检测ANSI支持状态
+bool ansiDetected = false;            // Auto-detected ANSI support state
 bool uiInitialized = false;
 unsigned long uiIntervalCurrent = UI_UPDATE_INTERVAL;
 const unsigned long uiIntervalMin = 100;
@@ -423,18 +423,18 @@ int lastOutTh = -1000, lastOutSt = -1000;
 unsigned long lastSensorsPrint = 0;
 String lastINAStr = "";
 String lastMPUStr = "";
-int lastWaveTh[WAVE_WIDTH] = {0};     // 缓存上一帧波形用于脏矩形
-int lastWaveSt[WAVE_WIDTH] = {0};     // 缓存上一帧波形用于脏矩形
-bool forceRedraw = false;             // 强制重绘标志
-int lastSeq = -1;                     // 记录收到的最后序号
+int lastWaveTh[WAVE_WIDTH] = {0};     // Cache the previous waveform frame for dirty rectangles
+int lastWaveSt[WAVE_WIDTH] = {0};     // Cache the previous waveform frame for dirty rectangles
+bool forceRedraw = false;             // Force redraw flag
+int lastSeq = -1;                     // Last received sequence number
 
-// 优化的插入排序中值滤波 (O(n^2)但对于n=5非常快且稳定)
+// Optimized insertion-sort median filter (O(n^2), but very fast and stable for n=5)
 static uint16_t medianFilter(uint16_t* buf, int size) {
-    uint16_t temp[8]; // 最大支持8个元素
-    // 复制数据
+    uint16_t temp[8]; // Supports up to 8 elements
+    // Copy data
     for (int i = 0; i < size; i++) temp[i] = buf[i];
     
-    // 插入排序
+    // Insertion sort
     for (int i = 1; i < size; i++) {
         uint16_t key = temp[i];
         int j = i - 1;
@@ -445,7 +445,7 @@ static uint16_t medianFilter(uint16_t* buf, int size) {
         temp[j + 1] = key;
     }
     
-    // 返回中值
+    // Return the median value
     return temp[size / 2];
 }
 
@@ -523,30 +523,30 @@ static bool runFilterTests()
     mus4LogLine("test", "Running Filter Tests...");
     bool passed = true;
     
-    // 模拟缓冲区
+    // Simulated buffer
     uint16_t testBuf[PWM_FILTER_SIZE];
     for(int i=0; i<PWM_FILTER_SIZE; i++) testBuf[i] = 1500;
     
-    // Test 1: 稳态测试
+    // Test 1: steady-state test
     uint16_t out = medianFilter(testBuf, PWM_FILTER_SIZE);
     if (out != 1500) { mus4Logf("test", "Filter Test 1 Failed: Expected 1500, got %d", out); passed = false; }
     
-    // Test 2: 单点尖峰抑制 (2000us 突变)
-    testBuf[2] = 2000; // 中间突变
+    // Test 2: single-sample spike suppression (2000us jump)
+    testBuf[2] = 2000; // Middle sample jumps
     out = medianFilter(testBuf, PWM_FILTER_SIZE);
     if (out != 1500) { mus4Logf("test", "Filter Test 2 Failed: Spike not suppressed, got %d", out); passed = false; }
-    testBuf[2] = 1500; // 恢复
+    testBuf[2] = 1500; // Restore
     
-    // Test 3: 双点尖峰 (连续两个异常值，对于5点窗口仍应被抑制)
+    // Test 3: double spike (two consecutive outliers should still be suppressed by a 5-sample window)
     testBuf[1] = 2000;
     testBuf[2] = 2000;
     out = medianFilter(testBuf, PWM_FILTER_SIZE);
     if (out != 1500) { mus4Logf("test", "Filter Test 3 Failed: Double spike not suppressed, got %d", out); passed = false; }
     
-    // Test 4: 阶跃响应 (多数变为新值)
+    // Test 4: step response (majority changes to the new value)
     testBuf[0] = 1600;
     testBuf[1] = 1600;
-    testBuf[2] = 1600; // 3/5 变为 1600
+    testBuf[2] = 1600; // 3/5 changed to 1600
     out = medianFilter(testBuf, PWM_FILTER_SIZE);
     if (out != 1600) { mus4Logf("test", "Filter Test 4 Failed: Step response failed, got %d", out); passed = false; }
 
@@ -610,10 +610,10 @@ static bool runBenchmarks()
 #endif
 struct struct_message
 {
-    int throttle; // 油门值
-    int steering; // 转向值
-    int mode;     // 驾驶模式，0为遥控模式，1为自动方向和手动油门模式，2为自动驾驶模式
-    bool park;    // 停车状态，0为停车，1为起步
+    int throttle; // Throttle value
+    int steering; // Steering value
+    int mode;     // Driving mode: 0 RC manual, 1 Pilot steering with manual throttle, 2 autonomous driving
+    bool park;    // Park state: 0 parked, 1 started
 };
 
 struct struct_message esp_now_data = {0, 0, 0, PARK_LOCKED}; // Initialize the structure at declaration
@@ -621,18 +621,18 @@ struct struct_message rc_data = {0, 0, 0, PARK_LOCKED};      // Initialize the s
 struct struct_message pilot_data = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
 struct struct_message car_output = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
 
-// 300Hz PWM输出参数 (适用于舵机和电调)
-// 频率 = 80MHz / (prescale * resolution)
+// 300Hz PWM output parameters (for servo and ESC)
+// Frequency = 80MHz / (prescale * resolution)
 // 300Hz = 80000000 / (prescale * 16384) → prescale ≈ 16
-// 脉宽计算: count = (pulse_us / period_us) * 2^14
-// 周期 = 1000000/300 = 3333.33µs
-const int PWM_PERIOD_US = 3333;  // 300Hz周期 (µs)
+// Pulse-width calculation: count = (pulse_us / period_us) * 2^14
+// Period = 1000000/300 = 3333.33µs
+const int PWM_PERIOD_US = 3333;  // 300Hz period (µs)
 const int PWM_MIN_V = 4915;      // 1000µs @ 300Hz (1000/3333.33×16384 ≈ 4915)
 const int PWM_MAX_V = 9830;      // 2000µs @ 300Hz (2000/3333.33×16384 ≈ 9830)
 const int MOTOR_MID_V = 7372;    // 1500µs @ 300Hz
-const int MOTOR_RANGE_V = 2458; // ±500µs范围
+const int MOTOR_RANGE_V = 2458; // ±500µs range
 const int SERVO_MID_V = 7372;    // 1500µs @ 300Hz
-const int SERVO_RANGE_V = 2458; // ±500µs范围
+const int SERVO_RANGE_V = 2458; // ±500µs range
 const int MOTOR_OFFSET_V = 1;
 const int SERVO_OFFSET_V = -1;
 
@@ -659,12 +659,12 @@ static bool runRegression()
 }
 #endif
 
-// 波形图数据
+// Waveform data
 int throttleWave[WAVE_WIDTH] = {0};
 int steeringWave[WAVE_WIDTH] = {0};
 int waveIndex = 0;
 
-// 传感器数据存储
+// Sensor data storage
 SensorData ina219Data = {0}, mpu6050Data = {0};
 uint8_t g_mpuCandidateAddress = 0;
 uint8_t g_mpuWhoAmIValue = 0;
@@ -679,9 +679,9 @@ enum EmergencyStopState
     EST_DONE
 };
 EmergencyStopState emergencyStopState = EST_IDLE;
-unsigned long emergencyStopStartTime = 0;                 // 标志是否准备刹车
-const unsigned long EMERGENCY_STOP_READY_DURATION = 500;  // 刹车准备时间100ms
-const unsigned long EMERGENCY_STOP_BRAKE_DURATION = 1500; // 刹车持续时间1500ms
+unsigned long emergencyStopStartTime = 0;                 // Indicates whether braking is being prepared
+const unsigned long EMERGENCY_STOP_READY_DURATION = 500;  // Brake preparation time: 500ms
+const unsigned long EMERGENCY_STOP_BRAKE_DURATION = 1500; // Braking duration: 1500ms
 
 // Park Control Variables
 unsigned long parkBtnPressStartTime = 0;
@@ -723,42 +723,42 @@ bool safe_mode_active = false;
 bool is_history_initialized = false;
 
 // --- Drift Assist Constants & Globals ---
-#define DRIFT_ASSIST_ENABLED     1        // 全局编译启用漂移辅助
-#define DRIFT_ASSIST_GAIN        25.0f    // 反打增益系数 (gyroZ rad/s -> 补偿量 ±100)
-#define DRIFT_ASSIST_THRESHOLD   1.2f     // 侧滑触发阈值 rad/s，低于此值不介入
-#define DRIFT_ASSIST_MAX_COMP    70       // 最大补偿角度 (±70)，防止过度反打
-#define DRIFT_ASSIST_SMOOTH      0.25f    // 补偿量一阶平滑系数，避免输出抖动
-#define DRIFT_ASSIST_DECAY       0.85f    // 未触发时补偿量衰减系数
+#define DRIFT_ASSIST_ENABLED     1        // Globally enable Drift Assist at compile time
+#define DRIFT_ASSIST_GAIN        25.0f    // Counter-steer gain (gyroZ rad/s -> compensation ±100)
+#define DRIFT_ASSIST_THRESHOLD   1.2f     // Drift trigger threshold in rad/s; no intervention below this value
+#define DRIFT_ASSIST_MAX_COMP    70       // Maximum compensation angle (±70), prevents excessive counter-steer
+#define DRIFT_ASSIST_SMOOTH      0.25f    // First-order smoothing factor for compensation, avoids output jitter
+#define DRIFT_ASSIST_DECAY       0.85f    // Compensation decay factor when not triggered
 
-bool drift_assist_enabled = false;   // 用户是否开启辅助
-bool drift_assist_active = false;    // 当前辅助是否正在介入
-float drift_compensation = 0.0f;     // 当前补偿量（平滑后的最终值）
-float gyro_z_filtered = 0.0f;        // 经过滤波的 gyroZ 值
-float drift_assist_scale = 1.0f;     // CH6 漂移辅助强度比例
+bool drift_assist_enabled = false;   // Whether the user has enabled assist
+bool drift_assist_active = false;    // Whether assist is currently intervening
+float drift_compensation = 0.0f;     // Current compensation value (final smoothed value)
+float gyro_z_filtered = 0.0f;        // Filtered gyroZ value
+float drift_assist_scale = 1.0f;     // CH6 Drift Assist strength ratio
 // ------------------------------------------------------
 
-// 修改setLEDColor函数
+// Modified setLEDColor function
 void setLEDColor(CRGB targetColor)
 {
     if (toggleActive)
     {
-        toggleActive = false; // 关闭切换模式
-        toggleTime = 0;       // 重置切换时间
+        toggleActive = false; // Disable toggle mode
+        toggleTime = 0;       // Reset toggle time
     }
     if (leds[0] != targetColor)
     {
         leds[0] = targetColor;
-        FastLED.show(); // 不一致时才更新显示
+        FastLED.show(); // Update display only when the color differs
     }
 }
 
-// 新增setLEDToggle函数
+// Added setLEDToggle function
 void setLEDToggle(CRGB color1, CRGB color2)
 {
     toggleColor1 = color1;
     toggleColor2 = color2;
     toggleActive = true;
-    toggleTime = 0; // 确保首次切换立即执行
+    toggleTime = 0; // Ensure the first toggle runs immediately
 }
 
 void scanLEDToggle()
@@ -810,7 +810,7 @@ static uint8_t calcChecksum(const char* s, int n)
 
 static bool processLine(const String& line, int* throttle, int* steering, int* seq)
 {
-    // 如果是命令
+    // Handle local commands
     if (line.equalsIgnoreCase("NOANSI")) { ansiEnabled = false; tui.setAnsiEnabled(false); tui.forceRedraw(); return false; }
     if (line.equalsIgnoreCase("ANSI")) { ansiEnabled = true; tui.setAnsiEnabled(true); tui.forceRedraw(); return false; }
     if (line.equalsIgnoreCase("FILTER_DEBUG")) {
@@ -843,7 +843,7 @@ static bool processLine(const String& line, int* throttle, int* steering, int* s
             uint8_t got = calcChecksum(buf, blen);
             if (want != got) return false;
             
-            // 尝试解析SEQ: T:S:SEQ
+            // Try to parse SEQ: T:S:SEQ
             int col2 = payload.lastIndexOf(':');
             int col1 = payload.indexOf(':');
             if (col2 > col1 && col1 > 0) {
@@ -855,7 +855,7 @@ static bool processLine(const String& line, int* throttle, int* steering, int* s
         }
     }
     
-    // 无校验，尝试解析 T:S:SEQ
+    // No checksum; try to parse T:S:SEQ
     int col2 = line.lastIndexOf(':');
     int col1 = line.indexOf(':');
     if (col2 > col1 && col1 > 0) {
@@ -3130,10 +3130,10 @@ static bool setupRcMcpwmCapture()
 }
 #endif
 
-int User_throttle = 0;  // RC遥控器发来的用户油门值
-int User_steering = 0;  // RC遥控器发来的用户转向值
-int Pilot_throttle = 0; // 上位机发来的油门值
-int Pilot_steering = 0; // 上位机发来的转向值
+int User_throttle = 0;  // User throttle value from the RC transmitter
+int User_steering = 0;  // User steering value from the RC transmitter
+int Pilot_throttle = 0; // Throttle value from the host computer
+int Pilot_steering = 0; // Steering value from the host computer
 
 // RC calibration defaults moved to top of file (must precede function definitions for Arduino preprocessor compatibility)
 
@@ -3142,7 +3142,7 @@ unsigned long counter;
 
 void emergencyStop()
 {
-    // 如果停车信号已解除，重置状态机
+    // If the park signal has been released, reset the state machine
     if (car_output.park == 0 && emergencyStopState == EST_DONE)
     {
         emergencyStopState = EST_IDLE;
@@ -3187,7 +3187,7 @@ void emergencyStop()
         break;
 
     case EST_DONE:
-        // 刹车完成，油门归零
+        // Braking is complete; reset throttle to zero
         car_output.throttle = 0;
         break;
     }
@@ -3279,10 +3279,10 @@ bool parseAndValidateCommand(String cmd, int* throttle, int* steering)
     int t = throttleStr.toInt();
     int s = steeringStr.toInt();
 
-    // 校验范围：-100 ~ 100
+    // Validate range: -100 to 100
     if (t < -100 || t > 100 || s < -100 || s > 100)
     {
-        // 只有当不是测试命令时才打印错误，避免污染输出
+        // Print errors only when this is not a test command, to avoid polluting output
         // Serial.print("[CMD ERROR] Out of range: T=");
         // Serial.print(t);
         // Serial.print(" S=");
@@ -3295,7 +3295,7 @@ bool parseAndValidateCommand(String cmd, int* throttle, int* steering)
     return true;
 }
 
-void mode_change(bool modeValid) // 根据遥控器的mode值，切换驾驶模式
+void mode_change(bool modeValid) // Switch driving mode according to the RC mode value
 {
     if (!modeValid) {
         return;
@@ -3304,15 +3304,15 @@ void mode_change(bool modeValid) // 根据遥控器的mode值，切换驾驶模�
     rc_data.mode = pwm_filtered[CH_MODE];
     if (rc_data.mode <= MODE_PWM_MANUAL_MAX)
     {
-        car_output.mode = CAR_MODE_MANUAL; // 0为遥控模式
+        car_output.mode = CAR_MODE_MANUAL; // 0: RC manual mode
     }
     else if (rc_data.mode >= MODE_PWM_FULL_AUTO_MIN)
     {
-        car_output.mode = CAR_MODE_FULL_AUTO; // 2为自动驾驶模式
+        car_output.mode = CAR_MODE_FULL_AUTO; // 2: autonomous driving mode
     }
     else
     {
-        car_output.mode = CAR_MODE_SEMI_AUTO; // 1为自动方向和手动油门模式
+        car_output.mode = CAR_MODE_SEMI_AUTO; // 1: Pilot steering with manual throttle
     }
 
     if (car_output.mode != lastCarMode)
@@ -3470,21 +3470,21 @@ void printLastI2CScanSummary()
 
 void read_ina219()
 {
-    // 读取INA219数据
+    // Read INA219 data
     float shuntvoltage = ina219.getShuntVoltage_mV();
     float busvoltage = ina219.getBusVoltage_V();
     float current_mA = ina219.getCurrent_mA();
     float power_mW = ina219.getPower_mW();
     float loadvoltage = busvoltage + (shuntvoltage / 1000);
     
-    // 检查数据有效性
+    // Check data validity
     if (current_mA == 0 && busvoltage == 0 && power_mW == 0)
     {
         ina219Data.valid = false;
         return;
     }
     
-    // 存储数据到全局变量
+    // Store data in global variables
     ina219Data.readCount++;
     ina219Data.lastReadTime = millis();
     ina219Data.busVoltage = busvoltage;
@@ -3513,10 +3513,10 @@ void setup_ina219()
 
     mus4LogLine("ina219", "Sensor initialized successfully!");
 
-    // 使用默认校准（32V, 2A范围）
-    // 如需更高精度，可以取消注释以下任一行：
-    // ina219.setCalibration_32V_1A();  // 32V, 1A范围（更高精度）
-    // ina219.setCalibration_16V_400mA(); // 16V, 400mA范围（最高精度）
+    // Use default calibration (32V, 2A range)
+    // For higher precision, uncomment either line below:
+    // ina219.setCalibration_32V_1A();  // 32V, 1A range (higher precision)
+    // ina219.setCalibration_16V_400mA(); // 16V, 400mA range (highest precision)
 
     mus4LogLine("ina219", "Calibration: 32V, 2A range (default)");
     mus4LogLine("ina219", "Setup complete, ready for data acquisition");
@@ -3533,7 +3533,7 @@ void read_mpu6050()
         return;
     }
     
-    // 存储数据到全局变量
+    // Store data in global variables
     mpu6050Data.readCount++;
     mpu6050Data.lastReadTime = millis();
     mpu6050Data.accelX = a.acceleration.x;
@@ -3710,7 +3710,7 @@ void setup_mpu6050()
         mus4Logf("mpu6050", "WHO_AM_I = 0x%02X", g_mpuWhoAmIValue);
     }
 
-    // 对已初始化地址做一次WHO_AM_I确认，避免总线干扰导致误识别
+    // Confirm WHO_AM_I once for the initialized address to avoid misidentification caused by bus interference
     uint8_t whoAmI = 0;
     if (I2CReadRegister8(activeAddress, 0x75, &whoAmI))
     {
@@ -3950,54 +3950,56 @@ int process_steering_signal(int raw_pwm) {
 }
 
 // --- Drift Assist Logic ---
-// 输入: driver_steering - 驾驶员原始转向输入 (-100~100)
-// 输出: 叠加了漂移补偿后的最终转向值 (-100~100)
+// Input: driver_steering - raw driver steering input (-100~100)
+// Output: final steering value after adding drift compensation (-100~100)
 int apply_drift_assist(int driver_steering) {
 #if DRIFT_ASSIST_ENABLED
-    // 仅在手动模式且开启漂移辅助时生效
+    // Only active in manual mode when Drift Assist is enabled
     if (car_output.mode != CAR_MODE_MANUAL || !drift_assist_enabled) {
         drift_assist_active = false;
         drift_compensation = 0.0f;
         return driver_steering;
     }
 
-    // 1. 对 gyroZ 做一阶低通滤波，消除传感器噪声
+    // 1. Apply a first-order low-pass filter to gyroZ to remove sensor noise
     gyro_z_filtered = gyro_z_filtered * (1.0f - DRIFT_ASSIST_SMOOTH) +
                       mpu6050Data.gyroZ * DRIFT_ASSIST_SMOOTH;
 
-    // 2. 判断是否触发侧滑
+    // 2. Determine whether drift is triggered
     float abs_gyro = fabs(gyro_z_filtered);
     if (abs_gyro > DRIFT_ASSIST_THRESHOLD) {
-        // 3. 计算反打补偿量：负号实现反打（顺时针滑移->gyro负->补偿正->向右打？不对，需要对齐物理方向）
-        // 用户定义: 尾部顺时针滑移 gyroZ 为负 -> 需要向左反打 (<-1439 -> 负值)
-        // 因此: gyroZ 负 -> 补偿量负 -> 向左反打
-        //       gyroZ 正 -> 补偿量正 -> 向右反打
-        // 所以 compensation 应该与 gyroZ 同号？不对，需要再次仔细分析：
-        // 尾部顺时针滑移(甩尾向右) -> 车身向右转过度 -> 需要向左反打(转向值减小/变负)
-        // 用户定义: 尾部顺时针滑移 gyroZ 为负值
-        // 所以: gyroZ 负 -> 补偿量负 -> 向左反打
-        // 结论: compensation = gyroZ * GAIN (同号)
-        // 等等，我再重新看用户的定义：
-        // "当尾部顺时针滑移时数值为负，逆时针滑移时数值为正"
-        // "当遥控器端信号小于1439时车轮向左，大于1439时车轮向右"
-        // 映射到 -100~100: -100 左转，+100 右转
-        // 尾部顺时针滑移(甩尾向右/过度转向右转) -> 向左反打 -> 转向叠加负值
-        // 此时 gyroZ 为负 -> 补偿量应该也是负
-        // 所以 compensation = gyroZ * GAIN
-        // 让我先按照这个逻辑实现，实车调试时再调整符号
+        // 3. Calculate counter-steer compensation. A negative sign would invert direction
+        // (clockwise slide -> negative gyro -> positive compensation -> steer right?),
+        // but the physical direction must be aligned first.
+        // User definition: clockwise rear slide gives negative gyroZ -> counter-steer left is needed (<1439 -> negative value).
+        // Therefore: negative gyroZ -> negative compensation -> counter-steer left.
+        //            positive gyroZ -> positive compensation -> counter-steer right.
+        // So should compensation have the same sign as gyroZ? Re-check carefully:
+        // Clockwise rear slide (rear swings right) -> vehicle over-rotates right -> needs left counter-steer (steering value decreases / becomes negative).
+        // User definition: clockwise rear slide gives negative gyroZ.
+        // Therefore: negative gyroZ -> negative compensation -> counter-steer left.
+        // Conclusion: compensation = gyroZ * GAIN (same sign).
+        // Re-checking the user definitions:
+        // "Value is negative when the rear slides clockwise, positive when it slides counterclockwise."
+        // "At the RC transmitter, signal below 1439 steers wheels left, above 1439 steers wheels right."
+        // Mapped to -100~100: -100 left, +100 right.
+        // Clockwise rear slide (rear swings right / oversteers right) -> counter-steer left -> add a negative steering value.
+        // At this moment gyroZ is negative -> compensation should also be negative.
+        // Therefore compensation = gyroZ * GAIN.
+        // Implement this logic first; adjust the sign during real-vehicle tuning if needed.
         float raw_comp = gyro_z_filtered * DRIFT_ASSIST_GAIN * drift_assist_scale;
 
-        // 4. 补偿量限幅
+        // 4. Clamp compensation
         float effectiveMaxComp = min(DRIFT_ASSIST_MAX_COMP * drift_assist_scale, 100.0f);
         raw_comp = constrain(raw_comp, -effectiveMaxComp, effectiveMaxComp);
 
-        // 5. 对补偿量做平滑输出
+        // 5. Smooth compensation output
         drift_compensation = drift_compensation * (1.0f - DRIFT_ASSIST_SMOOTH) +
                              raw_comp * DRIFT_ASSIST_SMOOTH;
 
         drift_assist_active = true;
     } else {
-        // 未达到阈值，补偿量逐渐衰减到 0
+        // Below threshold; gradually decay compensation to 0
         drift_compensation *= DRIFT_ASSIST_DECAY;
         if (fabs(drift_compensation) < 0.5f) {
             drift_compensation = 0.0f;
@@ -4007,7 +4009,7 @@ int apply_drift_assist(int driver_steering) {
         }
     }
 
-    // 6. 叠加补偿量到驾驶员原始输入，并限幅
+    // 6. Add compensation to the raw driver input and clamp the result
     int final_steering = driver_steering + (int)drift_compensation;
     final_steering = constrain(final_steering, -100, 100);
 
@@ -4142,10 +4144,10 @@ void setup()
         if (i == CH_MODE && rcMcpwmCaptureActive) continue;
 #endif
         if (Channels[i] == 26) {
-            // GPIO 26 支持内部下拉电阻
+            // GPIO 26 supports the internal pull-down resistor
             pinMode(Channels[i], INPUT_PULLDOWN);
         } else {
-            // GPIO27保持普通输入；GPIO34/35/36/39为仅输入且无内部上下拉
+            // Keep GPIO27 as a normal input; GPIO34/35/36/39 are input-only and have no internal pull-up/down
             pinMode(Channels[i], INPUT);
         }
         attachInterrupt(digitalPinToInterrupt(Channels[i]), isr_functions[i], CHANGE);
@@ -4157,8 +4159,8 @@ void setup()
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
     FastLED.setBrightness(BRIGHTNESS);
 
-    // 替换原有直接设置颜色的方式
-    setLEDColor(CRGB::Blue); // 使用新函数设置初始颜色
+    // Replace the previous direct color-setting method
+    setLEDColor(CRGB::Blue); // Set the initial color with the new function
 
     // Initialize Park State (Default Locked)
     rc_data.park = PARK_LOCKED; 
@@ -4191,7 +4193,7 @@ void loop()
       updateWifiOta();
     #endif
 
-    // RC信号读取：检查超时和有效性，应用滑动平均滤波（带更新间隔控制）
+    // RC signal readout: check timeout and validity, then apply moving-average filtering (with update interval control)
     unsigned long nowUs = micros();
     uint16_t pwmSnapshot[RC_CHANNEL_COUNT];
     unsigned long lastValidSnapshot[RC_CHANNEL_COUNT];
@@ -4209,7 +4211,7 @@ void loop()
     bool driftScaleValid = (nowUs - lastValidSnapshot[CH_DRIFT_SCALE]) < RC_SIGNAL_TIMEOUT;
 
     if (millis() - lastRCFilterUpdate >= RC_FILTER_UPDATE_INTERVAL) {
-        // 改进的滤波：滑动窗口中值滤波 (Size=5)
+        // Improved filtering: sliding-window median filter (Size=5)
         auto filterPWM = [&](int ch, uint16_t raw, bool valid) -> uint16_t {
             if (!valid) {
                 if (isAuxiliaryRcChannel(ch)) return stabilizeAuxiliaryPWM(ch, pwm_filtered[ch], false);
@@ -4217,8 +4219,8 @@ void loop()
                 return 1500;
             }
 
-            // 边界保护：检查是否在合理 PWM 范围内 (800-2200us)
-            // 如果超出范围，视为噪声丢弃（不更新缓冲区，直接返回上一次滤波值）
+            // Boundary protection: check whether the PWM is within a reasonable range (800-2200us)
+            // If out of range, treat it as noise and discard it (do not update the buffer; return the previous filtered value)
             if (raw < RC_PWM_MIN || raw > RC_PWM_MAX) {
                 if (isAuxiliaryRcChannel(ch)) return stabilizeAuxiliaryPWM(ch, pwm_filtered[ch], false);
                 if (isPrimaryRcChannel(ch)) return smoothPrimaryPWM(ch, pwm_filtered[ch], false);
@@ -4235,11 +4237,11 @@ void loop()
             pwm_filter_buf[ch][idx] = raw;
             pwm_filter_idx[ch] = (idx + 1) % PWM_FILTER_SIZE;
 
-            // 纯中值滤波：确保输出为窗口内排序后的中间值
+            // Pure median filtering: ensure the output is the middle value after sorting the window
             uint16_t median = medianFilter(pwm_filter_buf[ch], PWM_FILTER_SIZE);
             uint16_t filtered = isAuxiliaryRcChannel(ch) ? stabilizeAuxiliaryPWM(ch, median, true) : smoothPrimaryPWM(ch, median, true);
 
-            // 调试输出
+            // Debug output
             if (filterDebugEnabled && ch == CH_THROTTLE) {
                  mus4Logf("filter", "F_DBG: ch=%d, raw=%d, med=%d, out=%d", ch, raw, median, filtered);
             }
@@ -4247,7 +4249,7 @@ void loop()
             return filtered;
         };
 
-        // 对所有通道应用滤波
+        // Apply filtering to all channels
         for (int i = 0; i < RC_CHANNEL_COUNT; i++) {
             bool valid = (nowUs - lastValidSnapshot[i]) < RC_SIGNAL_TIMEOUT;
             pwm_filtered[i] = filterPWM(i, pwmSnapshot[i], valid);
@@ -4255,19 +4257,19 @@ void loop()
         lastRCFilterUpdate = millis();
     }
 
-    // 信号有效时更新rc_data，否则保持默认值（中立位置）
+    // Update rc_data when the signal is valid; otherwise keep defaults (neutral position)
     if (steeringValid) {
         rc_data.steering = pwm_filtered[CH_STEERING];
     } else {
-        rc_data.steering = RC_STEERING_MID; // 超时后使用中值
+        rc_data.steering = RC_STEERING_MID; // Use the midpoint after timeout
     }
     if (throttleValid) {
         rc_data.throttle = pwm_filtered[CH_THROTTLE];
     } else {
-        rc_data.throttle = RC_THROTTLE_MID; // 超时后使用中值
+        rc_data.throttle = RC_THROTTLE_MID; // Use the midpoint after timeout
     }
 
-    // Park、Mode、Drift通道也做类似处理
+    // Apply similar handling to the Park, Mode, and Drift channels
     if (!parkValid && !aux_stable_initialized[CH_PARK]) pwm_filtered[CH_PARK] = 1500;
     if (!driftValid && !aux_stable_initialized[CH_DRIFT]) pwm_filtered[CH_DRIFT] = 1000;
     if (!driftScaleValid && !aux_stable_initialized[CH_DRIFT_SCALE]) pwm_filtered[CH_DRIFT_SCALE] = 1500;
@@ -4352,7 +4354,7 @@ void loop()
         } else {
             car_output.steering = map(rc_data.steering, RC_STEERING_MIN, RC_STEERING_MAX, -100, 100);
         }
-        // 漂移辅助：仅在手动模式下叠加反打补偿
+        // Drift Assist: add counter-steer compensation only in manual mode
         car_output.steering = apply_drift_assist(car_output.steering);
     }
 

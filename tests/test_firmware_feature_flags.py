@@ -419,6 +419,21 @@ def test_web_console_sta_scan_api_uses_async_wifi_scan():
     assert "\\\"channel\\\":" in source
 
 
+def test_web_console_stops_ap_after_successful_wifi_sta_connection():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS" in source
+    assert "bool wifiApStopPending" in source
+    assert "scheduleWifiApStopAfterStaConnected()" in source
+    assert "stopWifiApAfterStaConnected()" in source
+    assert "wifiCaptiveDnsServer.stop()" in source
+    assert "WiFi.softAPdisconnect(true)" in source
+    assert "WiFi.mode(WIFI_STA)" in source
+    assert "AP stopped after STA connected" in source
+    assert "wifiApStopPending && (long)(millis() - wifiApStopDeadlineMs) >= 0" in source
+    assert "delay(WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS)" not in source
+
+
 def test_web_console_redirects_to_sta_ip_after_successful_wifi_sta_connection():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 

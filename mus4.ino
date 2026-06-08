@@ -265,6 +265,7 @@ const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;
 const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;
 const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;
 const unsigned long WIFI_STA_APPLY_DELAY_MS = 800;
+const unsigned long WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS = 3000;
 const char* WIFI_OTA_HOSTNAME = "mus4-ota";
 const char* WIFI_OTA_PASSWORD = "mus4-debug";
 const uint16_t WIFI_OTA_PORT = 3232;
@@ -332,6 +333,7 @@ char wifiStaLastError[24] = {0};
 char wifiStaLastErrorMessage[128] = {0};
 bool wifiStaApplyPending = false;
 bool wifiApRestartPending = false;
+bool wifiApStopPending = false;
 bool wifiOtaStarted = false;
 bool wifiOtaWindowOpen = false;
 bool wifiOtaInProgress = false;
@@ -369,6 +371,7 @@ unsigned long lastWifiConsoleStartAttemptMs = 0;
 unsigned long wifiStaConnectStartMs = 0;
 unsigned long wifiStaApplyDeadlineMs = 0;
 unsigned long wifiApRestartDeadlineMs = 0;
+unsigned long wifiApStopDeadlineMs = 0;
 unsigned long wifiOtaDeadlineMs = 0;
 unsigned long lastWifiWebDataSampleMs = 0;
 uint32_t wifiWebLogSeq = 0;
@@ -1361,7 +1364,23 @@ static void scheduleWifiStaApply()
 static void scheduleWifiApRestart()
 {
     wifiApRestartPending = true;
+    wifiApStopPending = false;
     wifiApRestartDeadlineMs = millis() + WIFI_STA_APPLY_DELAY_MS;
+}
+
+static void scheduleWifiApStopAfterStaConnected()
+{
+    wifiApStopPending = true;
+    wifiApStopDeadlineMs = millis() + WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS;
+}
+
+static void stopWifiApAfterStaConnected()
+{
+    wifiApStopPending = false;
+    wifiCaptiveDnsServer.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    mus4LogLine("wifi", "AP stopped after STA connected");
 }
 
 static bool restartWifiAp()
@@ -1384,6 +1403,7 @@ static bool restartWifiAp()
         return false;
     }
     wifiCaptiveDnsServer.start(53, "*", WiFi.softAPIP());
+    wifiConsoleStarted = true;
     mus4Logf("wifi", "AP restarted ssid=%s IP: %s", wifiApSsid, WiFi.softAPIP().toString().c_str());
     return true;
 }
@@ -2819,6 +2839,9 @@ static void updateWifiWebConsole()
     if (wifiApRestartPending && (long)(millis() - wifiApRestartDeadlineMs) >= 0) {
         restartWifiAp();
     }
+    if (wifiApStopPending && (long)(millis() - wifiApStopDeadlineMs) >= 0) {
+        stopWifiApAfterStaConnected();
+    }
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
     stageStart = millis();
     updateWifiWebSocket();
@@ -2834,6 +2857,7 @@ static void setupWifiConsole()
     wifiStaTimedOut = false;
     wifiStaConnecting = false;
     wifiApRestartPending = false;
+    wifiApStopPending = false;
     clearWifiStaLastError();
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
@@ -2877,6 +2901,7 @@ static void updateWifiSta()
             wifiStaConnecting = false;
             clearWifiStaLastError();
             mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
+            scheduleWifiApStopAfterStaConnected();
         }
         return;
     }

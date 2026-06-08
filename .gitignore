@@ -28,6 +28,7 @@ Temporary Items
 build
 settings.json
 node_modules/
+.superpowers/
 
 # Log files
 *.log
@@ -38,4 +39,11 @@ build_wsl/
 provisioning_system/playwright_tests/
 .arduino_cli_state.json
 
-.superpowers/brainstorm/1211-1780583760/content/web-console-ui-flex-030-font-original.html
+.tmp_serial_state_test.json
+tests/__pycache__/
+__pycache__/
+WirelessSecrets.h
+
+# Local OTA target configuration
+.mus4_ota_target
+ArduFlux.json

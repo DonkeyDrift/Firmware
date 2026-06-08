@@ -22,9 +22,12 @@ import yaml
 import shutil
 import threading
 import itertools
+import glob
 import serial
 import shlex
 import select
+import re
+from typing import Optional
 from serial.tools import list_ports
 
 # 配置日志
@@ -70,38 +73,201 @@ def setup_logging(log_file, level_name):
     return logging.getLogger("ArduinoCLI")
 
 class Spinner:
-    """命令行加载动画"""
-    def __init__(self, message="Processing... ", delay=0.15):
-        self.spinner = itertools.cycle(['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'])
+    """命令行加载动画，支持动态更新后缀文本（用于进度条等）"""
+    def __init__(self, message="Processing... ", delay=0.15, enable_progress=True):
+        self.spinner = itertools.cycle(['|', '/', '-', '\\'])
         self.delay = delay
         self.busy = False
+        self.message = message
+        self.suffix = ""
+        # 不严格要求 isatty()，兼容 PowerShell 等环境
+        self.enable_progress = enable_progress
+        if not sys.stdout.isatty() and os.environ.get("TERM") == "dumb":
+            self.enable_progress = False
         self._screen_lock = threading.Lock()
-        sys.stdout.write(message)
+        if not self.enable_progress:
+            # 非交互环境或关闭进度时，直接打印消息
+            sys.stdout.write(message + "\n")
+            sys.stdout.flush()
+
+    def update_suffix(self, text):
+        """更新后缀显示文本（如进度条）"""
+        with self._screen_lock:
+            self.suffix = text
+            if self.enable_progress and self.busy:
+                # 有进度条时立即渲染，避免卡顿；有进度条时后台线程会停止定时刷新，避免双重渲染
+                self._render()
+
+    def _render(self):
+        """渲染当前状态到终端（使用 \r 整行覆盖）"""
+        if not self.enable_progress:
+            return
+        # 有进度条时完全禁用旋转字符，仅保留进度条的推进作为动效，避免闪烁
+        if self.suffix:
+            line = f"\r  {self.message} {self.suffix}"
+        else:
+            spinner_char = next(self.spinner)
+            line = f"\r{spinner_char} {self.message}"
+        # 清除行尾残留字符
+        line += "\033[K"
+        sys.stdout.write(line)
         sys.stdout.flush()
 
     def spinner_task(self):
         while self.busy:
             with self._screen_lock:
-                sys.stdout.write(next(self.spinner))
-                sys.stdout.flush()
+                # 有进度条时跳过定时重绘，完全由 update_suffix 驱动刷新，避免双重渲染导致的闪烁
+                if not self.suffix:
+                    self._render()
             time.sleep(self.delay)
-            with self._screen_lock:
-                sys.stdout.write('\b')
-                sys.stdout.flush()
 
     def __enter__(self):
         self.busy = True
-        threading.Thread(target=self.spinner_task).start()
+        if self.enable_progress:
+            threading.Thread(target=self.spinner_task, daemon=True).start()
+        return self
 
     def __exit__(self, exception, value, tb):
         self.busy = False
         time.sleep(self.delay)
         with self._screen_lock:
-            if exception:
-                sys.stdout.write('FAILED\n')
+            if self.enable_progress:
+                # 清除进度行，显示最终结果
+                line = f"\r✅ {self.message}"
+                if exception:
+                    line = f"\r❌ {self.message}"
+                line += "\033[K\n"
+                sys.stdout.write(line)
             else:
-                sys.stdout.write('DONE\n')
+                if exception:
+                    sys.stdout.write('FAILED\n')
+                else:
+                    sys.stdout.write('DONE\n')
             sys.stdout.flush()
+
+
+def _espota_version_key(path):
+    version = os.path.basename(os.path.dirname(os.path.dirname(path)))
+    parts = re.findall(r'\d+|[A-Za-z]+', version)
+    key = []
+    for part in parts:
+        if part.isdigit():
+            key.append((1, int(part)))
+        else:
+            key.append((0, part.lower()))
+    return key
+
+
+def find_espota_tool(explicit_path=None, env=None, home=None, local_appdata=None):
+    env = env if env is not None else os.environ
+    candidates = []
+
+    if explicit_path:
+        return explicit_path if os.path.exists(explicit_path) else None
+
+    env_path = env.get("ESPOTA_PY", "") if env else ""
+    if env_path:
+        return env_path if os.path.exists(env_path) else None
+
+    if local_appdata is None:
+        local_appdata = env.get("LOCALAPPDATA", "") if env else ""
+    if local_appdata:
+        pattern = os.path.join(local_appdata, "Arduino15", "packages", "esp32", "hardware", "esp32", "*", "tools", "espota.py")
+        candidates.extend(glob.glob(pattern))
+
+    if home is None:
+        home = os.path.expanduser("~")
+    if home:
+        pattern = os.path.join(home, ".arduino15", "packages", "esp32", "hardware", "esp32", "*", "tools", "espota.py")
+        candidates.extend(glob.glob(pattern))
+
+    candidates = [path for path in candidates if os.path.exists(path)]
+    if not candidates:
+        return None
+    return sorted(candidates, key=_espota_version_key, reverse=True)[0]
+
+
+def build_espota_command(python_exe, espota_tool, host, port, password, bin_path):
+    return [
+        python_exe,
+        espota_tool,
+        "-i", host,
+        "-p", str(port),
+        "-a", password,
+        "-f", bin_path,
+        "--progress",
+    ]
+
+
+def format_progress_bar(percent: float) -> str:
+    percent = max(0.0, min(100.0, percent))
+    bar_length = 20
+    filled = int(percent / 100 * bar_length)
+    bar = "[" + "=" * filled + " " * (bar_length - filled) + "]"
+    return f"{bar} {percent:.1f}%"
+
+
+def parse_progress_line(line: str) -> Optional[str]:
+    """
+    解析上传过程中的固件写入进度行，返回格式化后的进度字符串
+    无法识别或非写入阶段则返回 None
+
+    核心识别信号：包含百分比数字（兼容方括号进度条、Writing at 原始格式）
+    黑名单：仅过滤擦除、校验、压缩等其他阶段的进度，避免闪烁
+    """
+    if not line:
+        return None
+
+    # 黑名单：仅过滤真正的非写入阶段关键字（写入相关的 Writing / Wrote 等不过滤）
+    exclude_keywords = ("Eras", "Verif", "Hash", "Compress", "Check", "CRC", "Leaving", "Reset")
+    for kw in exclude_keywords:
+        if kw in line:
+            return None
+
+    percent = None
+
+    # 匹配模式1: 带小数点的百分比格式，如 " 15.2%"（esptool 格式）
+    match = re.search(r'(\d+\.\d+)\s*%', line)
+    if match:
+        try:
+            percent = float(match.group(1))
+        except (ValueError, IndexError):
+            pass
+
+    # 匹配模式2: 整数百分比，如 "(5 %)"、"50%"
+    if percent is None:
+        match = re.search(r'(\d+)\s*%', line)
+        if match:
+            try:
+                percent = float(match.group(1))
+            except (ValueError, IndexError):
+                pass
+
+    if percent is not None:
+        return format_progress_bar(percent)
+
+    return None
+
+
+def parse_espota_progress_line(line: str) -> Optional[str]:
+    if not line or "upload" not in line.lower():
+        return None
+
+    match = re.search(r'(\d+(?:\.\d+)?)\s*%', line)
+    if not match:
+        return None
+
+    try:
+        return format_progress_bar(float(match.group(1)))
+    except ValueError:
+        return None
+
+
+def split_progress_chunks(text: str):
+    for chunk in re.split(r'[\r\n]+', text):
+        if chunk:
+            yield chunk
+
 
 class ArduinoAutomation:
     DEFAULT_DESCRIPTION_KEYWORDS = [
@@ -142,8 +308,10 @@ class ArduinoAutomation:
         self.fqbn = args.fqbn or self.config.get('default', {}).get('fqbn', 'esp32:esp32:esp32')
         self.port = args.port or self.config.get('default', {}).get('port', '')
         self.baud = args.baud or self.config.get('default', {}).get('baudrate', 115200)
-        self.sketch = args.sketch or self.config.get('default', {}).get('sketch_path', '')
-        
+        configured_sketch = args.sketch or self.config.get('default', {}).get('sketch_path', '')
+        self.sketch = self.resolve_sketch_path(configured_sketch)
+        self.libraries_path = self.config.get('default', {}).get('libraries_path', 'libraries')
+
         reset_cfg = self.config.get('reset', {})
         self.reset_enabled = args.auto_reset if args.auto_reset is not None else reset_cfg.get('enable', True)
         self.reset_delay_ms = args.reset_delay or reset_cfg.get('delay_ms', 200)
@@ -155,15 +323,48 @@ class ArduinoAutomation:
         self.serial_detection_enabled = self.serial_detection_cfg.get('enabled', True)
         self.serial_state_file = self._resolve_serial_state_file()
 
-        # 转换 sketch 路径为绝对路径
-        if not os.path.isabs(self.sketch):
-            base_dir = os.path.dirname(os.path.abspath(config_path))
-            self.sketch = os.path.join(base_dir, self.sketch)
-            
         # 检测操作系统
         self.os_type = platform.system()
         self.validate_environment()
         self.log_reset_interfaces()
+
+    def _config_base_dir(self):
+        return os.path.dirname(os.path.abspath(self.config_path))
+
+    def resolve_sketch_path(self, sketch):
+        base_dir = self._config_base_dir()
+        sketch = str(sketch or "").strip()
+        if sketch:
+            sketch_path = sketch if os.path.isabs(sketch) else os.path.join(base_dir, sketch)
+            if os.path.exists(sketch_path):
+                return sketch_path
+            self.logger.warning(f"配置中的 Sketch 文件不存在: {sketch_path}，尝试自动搜索 .ino 文件")
+
+        candidates = []
+        for name in os.listdir(base_dir):
+            path = os.path.join(base_dir, name)
+            if os.path.isfile(path) and name.lower().endswith(".ino"):
+                candidates.append(path)
+
+        if len(candidates) == 1:
+            selected = candidates[0]
+            self.logger.warning(f"已自动选择根目录唯一 Sketch 文件: {selected}")
+            return selected
+
+        if not candidates:
+            self.logger.error(f"在项目根目录未找到 .ino 文件，请通过 --sketch 显式指定。")
+        else:
+            choices = "\n".join(f"  - {os.path.basename(path)}" for path in sorted(candidates))
+            self.logger.error(f"根目录存在多个 .ino 文件，无法自动选择，请通过 --sketch 显式指定：\n{choices}")
+        sys.exit(3)
+
+    def resolve_local_libraries_path(self):
+        libraries_path = str(self.libraries_path or "").strip()
+        if not libraries_path:
+            return None
+        if not os.path.isabs(libraries_path):
+            libraries_path = os.path.join(self._config_base_dir(), libraries_path)
+        return libraries_path if os.path.isdir(libraries_path) else None
 
     def _resolve_serial_state_file(self):
         configured = self.serial_detection_cfg.get("state_file", self.DEFAULT_STATE_FILE)
@@ -414,10 +615,8 @@ class ArduinoAutomation:
             if len(best) == 1:
                 score, reasons, port = best[0]
                 return port, f"自动匹配命中 {port['device']} (score={score}, {', '.join(reasons)})"
-            best.sort(key=lambda item: item[2]["device"].lower())
-            score, reasons, port = best[0]
-            self.logger.warning(f"检测到多个同分候选串口，自动选择 {port['device']}")
-            return port, f"自动匹配命中 {port['device']} (score={score}, {', '.join(reasons)})"
+            devices = ", ".join(item[2]["device"] for item in best)
+            return None, f"检测到多个同分候选串口: {devices}，请显式指定端口"
 
         if len(ports) == 1:
             port = ports[0]
@@ -550,64 +749,135 @@ class ArduinoAutomation:
             if handler not in root_logger.handlers:
                 root_logger.addHandler(handler)
 
-    def run_command(self, cmd, timeout=None, message="Processing... "):
+    def run_command(self, cmd, timeout=None, message="Processing... ", enable_progress=True, progress_parser=None):
         self.logger.debug(f"执行命令: {' '.join(cmd)}")
         start_time = time.time()
-        
-        # Determine if we should use spinner (only if not verbose debugging)
-        use_spinner = self.logger.getEffectiveLevel() >= logging.INFO
-        
+
+        # 判断是否启用进度条：非verbose + 启用进度 + 没传--no-progress
+        # 注意：不严格要求 isatty()，因为 PowerShell 等环境下 isatty() 会返回 False 但实际支持 ANSI
+        use_progress = enable_progress
+        use_progress = use_progress and self.logger.getEffectiveLevel() >= logging.INFO
+        use_progress = use_progress and not (hasattr(self.args, 'no_progress') and self.args.no_progress)
+        # 如果显式传了 --no-progress 或 stdout 明显是文件/管道，再关闭
+        if not sys.stdout.isatty() and os.environ.get("TERM") == "dumb":
+            use_progress = False
+
         try:
-            if use_spinner:
-                spinner = Spinner(message, delay=0.15)
-                spinner.busy = True
-                t = threading.Thread(target=spinner.spinner_task)
-                t.start()
-                
-            result = subprocess.run(
-                cmd, 
-                check=True, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE, 
+            spinner = None
+            if self.logger.getEffectiveLevel() >= logging.INFO:
+                spinner = Spinner(message, delay=0.15, enable_progress=use_progress)
+                spinner.__enter__()
+
+            if progress_parser is None:
+                progress_parser = parse_progress_line
+
+            # 使用 Popen 逐行读取输出，以便实时解析进度
+            # esptool/arduino-cli 会把进度输出到 stderr，所以必须捕获 stderr
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # 合并 stdout 和 stderr，保证输出顺序
                 text=True,
                 encoding='utf-8',
                 errors='replace',
-                timeout=timeout
+                bufsize=1,
+                universal_newlines=True
             )
-            
-            if use_spinner:
-                spinner.busy = False
-                t.join()
-                sys.stdout.write(' Done\n')
-                sys.stdout.flush()
+
+            stdout_lines = []
+            # 只显示最后一个（最大的）固件写入阶段的进度，前面的 bootloader/分区表等小阶段静默
+            # ESP32 app 固件起始地址为 0x10000，是最后且最大的写入段
+            show_progress = False
+            LAST_STAGE_ADDR = 0x10000  # ESP32 app 固件起始地址
+            pending_output = ""
+
+            def handle_output_chunk(line):
+                nonlocal show_progress
+                stdout_lines.append(line)
+
+                if not line:
+                    return
+
+                # 阶段识别：检测到 Writing at 0x... 行时判断是否是最后一个大段
+                if use_progress and "Writing at 0x" in line:
+                    match = re.search(r'Writing at 0x([0-9a-fA-F]+)', line)
+                    if match:
+                        try:
+                            addr = int(match.group(1), 16)
+                            show_progress = addr >= LAST_STAGE_ADDR
+                        except ValueError:
+                            pass
+
+                # 尝试解析为进度行
+                progress_text = None
+                if use_progress and (show_progress or progress_parser is not parse_progress_line):
+                    progress_text = progress_parser(line)
+
+                if progress_text and spinner:
+                    # 是进度行，更新 spinner 后缀，spinner 自己负责渲染，不清行
+                    spinner.update_suffix(progress_text)
+                else:
+                    # 普通输出行：不再触发清行，避免进度条"闪没"
+                    # 普通中间行（Writing at 0x... 等）静默吞掉，不干扰进度条显示
+                    is_important = "error" in line.lower() or "fail" in line.lower() or "warning" in line.lower()
+                    if self.logger.getEffectiveLevel() <= logging.DEBUG:
+                        # debug 模式打印全部输出
+                        sys.stdout.write("\r\033[K" + line + "\n")
+                        if spinner:
+                            spinner._render()
+                    elif is_important:
+                        # 重要信息：清行打印，打印后立即重绘进度条，避免进度条消失
+                        sys.stdout.write("\r\033[K" + line + "\n")
+                        if spinner:
+                            spinner._render()
+                    sys.stdout.flush()
+
+            while True:
+                char = process.stdout.read(1)
+                if char == "" and process.poll() is not None:
+                    break
+                if char == "":
+                    continue
+                if char in "\r\n":
+                    for line in split_progress_chunks(pending_output):
+                        handle_output_chunk(line)
+                    pending_output = ""
+                else:
+                    pending_output += char
+
+            for line in split_progress_chunks(pending_output):
+                handle_output_chunk(line)
+
+            # 等待进程结束
+            returncode = process.wait(timeout=timeout)
+            stdout_full = "\n".join(stdout_lines)
+
+            if returncode != 0:
+                raise subprocess.CalledProcessError(returncode, cmd, output=stdout_full, stderr="")
+
+            if spinner:
+                spinner.__exit__(None, None, None)
 
             duration = time.time() - start_time
             self.logger.info(f"命令执行成功 (耗时 {duration:.2f}s)")
-            self.logger.debug(f"输出:\n{result.stdout}")
-            return True, result.stdout
+            self.logger.debug(f"输出:\n{stdout_full}")
+            return True, stdout_full
+
         except subprocess.CalledProcessError as e:
-            if use_spinner:
-                spinner.busy = False
-                t.join()
-                sys.stdout.write(' Failed\n')
-                sys.stdout.flush()
+            if spinner:
+                spinner.__exit__(type(e), e, None)
             self.logger.error(f"命令执行失败 (退出码 {e.returncode})")
-            self.logger.error(f"错误输出:\n{e.stderr}")
-            return False, e.stderr
+            self.logger.error(f"错误输出:\n{e.stdout}")
+            return False, e.stdout
         except subprocess.TimeoutExpired:
-            if use_spinner:
-                spinner.busy = False
-                t.join()
-                sys.stdout.write(' Timeout\n')
-                sys.stdout.flush()
+            process.kill()
+            if spinner:
+                spinner.__exit__(type(e), e, None)
             self.logger.error(f"命令执行超时 ({timeout}s)")
             return False, "Timeout"
         except Exception as e:
-            if use_spinner:
-                spinner.busy = False
-                t.join()
-                sys.stdout.write(' Error\n')
-                sys.stdout.flush()
+            if spinner:
+                spinner.__exit__(type(e), e, None)
             self.logger.error(f"未知错误: {e}")
             return False, str(e)
 
@@ -630,7 +900,12 @@ class ArduinoAutomation:
                 build_path = os.path.join(base_dir, build_path)
             cmd.extend(["--build-path", build_path, "--output-dir", build_path])
             self.logger.info(f"构建输出目录: {build_path}")
-        
+
+        local_libraries_path = self.resolve_local_libraries_path()
+        if local_libraries_path:
+            cmd.extend(["--libraries", local_libraries_path])
+            self.logger.info(f"本地库优先路径: {local_libraries_path}")
+
         cmd.append(self.sketch)
         success, _ = self.run_command(cmd, message="正在编译... ")
         if not success:
@@ -638,9 +913,25 @@ class ArduinoAutomation:
             sys.exit(10)
         return True
 
+    def normalize_precompiled_input_file(self, input_file):
+        lower = os.path.basename(input_file).lower()
+        suffixes = (".bootloader.bin", ".partitions.bin", ".merged.bin")
+        if not lower.endswith(suffixes):
+            return input_file
+
+        directory = os.path.dirname(input_file) or "."
+        stem = os.path.basename(input_file)
+        for suffix in (".bootloader.bin", ".partitions.bin", ".merged.bin"):
+            if stem.lower().endswith(suffix):
+                candidate = os.path.join(directory, stem[:-len(suffix)] + ".bin")
+                if os.path.exists(candidate):
+                    self.logger.warning(f"指定文件是烧录分片，自动改用主固件: {candidate}")
+                    return candidate
+        return input_file
+
     def build_upload_command(self, port):
         if self.args and getattr(self.args, 'input_file', None):
-            input_file = self.args.input_file
+            input_file = self.normalize_precompiled_input_file(self.args.input_file)
             if not os.path.exists(input_file):
                 self.logger.error(f"指定的固件文件不存在: {input_file}")
                 sys.exit(14)
@@ -664,6 +955,41 @@ class ArduinoAutomation:
 
         cmd.append(self.sketch)
         return cmd
+
+    def ota_upload(self):
+        if not self.args or not getattr(self.args, 'input_file', None):
+            self.logger.error("OTA 上传需要通过 --input-file 指定固件 .bin 文件")
+            sys.exit(15)
+
+        input_file = self.normalize_precompiled_input_file(self.args.input_file)
+        if not os.path.exists(input_file):
+            self.logger.error(f"指定的固件文件不存在: {input_file}")
+            sys.exit(14)
+
+        host = getattr(self.args, 'ota_host', None)
+        if not host:
+            self.logger.error("OTA 上传需要指定 --ota-host")
+            sys.exit(15)
+
+        port = getattr(self.args, 'ota_port', None) or 3232
+        password = getattr(self.args, 'ota_password', None) or ""
+        espota_tool = find_espota_tool(getattr(self.args, 'espota_tool', None))
+        if not espota_tool:
+            self.logger.error("找不到 espota.py，请使用 --espota-tool 指定路径或设置 ESPOTA_PY")
+            sys.exit(15)
+
+        cmd = build_espota_command(sys.executable, espota_tool, host, port, password, input_file)
+        success, output = self.run_command(
+            cmd,
+            message="正在 OTA 上传... ",
+            progress_parser=parse_espota_progress_line,
+        )
+        if success:
+            return True
+
+        if output:
+            self.logger.error(f"OTA 上传失败:\n{output}")
+        sys.exit(12)
 
     def upload(self):
         port_attempts, error = self.build_upload_port_attempts()
@@ -871,12 +1197,12 @@ class ArduinoAutomation:
 
         if self.args.list_ports:
             self.list_available_ports()
-            if not (self.args.compile or self.args.upload or self.args.serial or self.args.regress_reset):
+            if not (self.args.compile or self.args.upload or self.args.serial or self.args.regress_reset or self.args.ota):
                 return
-        
+
         # 如果没有指定任何操作，默认显示帮助
-        if not (self.args.compile or self.args.upload or self.args.serial or self.args.regress_reset):
-            self.logger.warning("未指定任何操作。请使用 -c, -u, -s 参数。")
+        if not (self.args.compile or self.args.upload or self.args.serial or self.args.regress_reset or self.args.ota):
+            self.logger.warning("未指定任何操作。请使用 -c, -u, -s, --ota 参数。")
             return
 
         # 1. 编译
@@ -884,9 +1210,12 @@ class ArduinoAutomation:
             self.compile()
 
         # 2. 上传 (如果只指定上传，也会执行；如果指定了编译+上传，编译失败会终止)
-        if self.args.upload:
-            self.upload()
-            self.auto_reset()
+        if self.args.upload or self.args.ota:
+            if self.args.ota:
+                self.ota_upload()
+            else:
+                self.upload()
+                self.auto_reset()
 
         # 3. 监控
         if self.args.serial:
@@ -924,7 +1253,25 @@ class ArduinoAutomation:
             self.reset_enabled = False
             self.logger.warning("自动复位达标失败，已回退到手动模式")
 
+def setup_signal_handlers():
+    """设置信号处理器，确保中断时恢复终端状态"""
+    def handle_sigint(signum, frame):
+        # 恢复光标和终端状态
+        sys.stdout.write("\033[?25h\n")
+        sys.stdout.flush()
+        sys.exit(1)
+
+    try:
+        import signal
+        signal.signal(signal.SIGINT, handle_sigint)
+        signal.signal(signal.SIGTERM, handle_sigint)
+    except (ValueError, ImportError):
+        # Windows 下部分信号不支持，忽略
+        pass
+
+
 def main():
+    setup_signal_handlers()
     parser = argparse.ArgumentParser(description="Arduino 项目自动化构建脚本")
     
     # 操作标志
@@ -950,7 +1297,13 @@ def main():
     parser.add_argument('--regress-count', dest='regress_count', type=int, default=10, help='回归测试次数')
     parser.add_argument('--input-file', '-i', dest='input_file', help='指定预编译的固件文件(.bin)路径，用于WSL交叉编译场景')
     parser.add_argument('--build-path', dest='build_path', help='指定构建输出目录(用于编译时指定输出位置)')
+    parser.add_argument('--ota', dest='ota', action='store_true', help='使用 ArduinoOTA 通过网络上传固件')
+    parser.add_argument('--ota-host', dest='ota_host', help='ArduinoOTA 目标主机或 IP')
+    parser.add_argument('--ota-port', dest='ota_port', type=int, default=3232, help='ArduinoOTA 目标端口')
+    parser.add_argument('--ota-password', dest='ota_password', default='mus4-debug', help='ArduinoOTA 密码')
+    parser.add_argument('--espota-tool', dest='espota_tool', help='espota.py 工具路径')
     parser.add_argument('--list-ports', dest='list_ports', action='store_true', help='列出当前检测到的串口设备')
+    parser.add_argument('--no-progress', dest='no_progress', action='store_true', help='关闭单行进度条刷新，逐行输出所有日志')
     parser.set_defaults(auto_reset=None)
     
     args = parser.parse_args()
@@ -961,7 +1314,7 @@ def main():
     
     # 初始化日志 (先加载配置以获取日志路径)
     # 这里为了简化，先读取一次配置或使用默认
-    log_file = os.path.join(script_dir, "mus4/ArduinoCLI.log")
+    log_file = os.path.join(script_dir, "ArduinoCLI.log")
     try:
         with open(config_path, 'r') as f:
             cfg = yaml.safe_load(f)

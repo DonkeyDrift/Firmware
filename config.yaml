@@ -1,11 +1,12 @@
 default:
   arduino_cli: "arduino-cli"
-  fqbn: "esp32:esp32:esp32"
+  fqbn: "esp32:esp32:esp32:PartitionScheme=min_spiffs"
   # port: "/dev/ttyACM1" # for linux
   port: "auto" # 自动检索并匹配当前开发板串口
   baudrate: 115200
-  sketch_path: "mus4/mus4.ino"
+  sketch_path: "MUS4_FW.ino"
   build_path: "build"
+  libraries_path: "libraries"
 
 serial_detection:
   enabled: true
@@ -19,7 +20,7 @@ serial_detection:
   preferred_vid_pid: []
 
 logging:
-  file: "mus4/ArduinoCLI.log"
+  file: "ArduinoCLI.log"
   level: "INFO"  # DEBUG, INFO, WARN, ERROR
 
 reset:

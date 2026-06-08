@@ -308,7 +308,8 @@ class ArduinoAutomation:
         self.fqbn = args.fqbn or self.config.get('default', {}).get('fqbn', 'esp32:esp32:esp32')
         self.port = args.port or self.config.get('default', {}).get('port', '')
         self.baud = args.baud or self.config.get('default', {}).get('baudrate', 115200)
-        self.sketch = args.sketch or self.config.get('default', {}).get('sketch_path', '')
+        configured_sketch = args.sketch or self.config.get('default', {}).get('sketch_path', '')
+        self.sketch = self.resolve_sketch_path(configured_sketch)
         self.libraries_path = self.config.get('default', {}).get('libraries_path', 'libraries')
 
         reset_cfg = self.config.get('reset', {})
@@ -322,11 +323,6 @@ class ArduinoAutomation:
         self.serial_detection_enabled = self.serial_detection_cfg.get('enabled', True)
         self.serial_state_file = self._resolve_serial_state_file()
 
-        # 转换 sketch 路径为绝对路径
-        if not os.path.isabs(self.sketch):
-            base_dir = os.path.dirname(os.path.abspath(config_path))
-            self.sketch = os.path.join(base_dir, self.sketch)
-            
         # 检测操作系统
         self.os_type = platform.system()
         self.validate_environment()
@@ -334,6 +330,33 @@ class ArduinoAutomation:
 
     def _config_base_dir(self):
         return os.path.dirname(os.path.abspath(self.config_path))
+
+    def resolve_sketch_path(self, sketch):
+        base_dir = self._config_base_dir()
+        sketch = str(sketch or "").strip()
+        if sketch:
+            sketch_path = sketch if os.path.isabs(sketch) else os.path.join(base_dir, sketch)
+            if os.path.exists(sketch_path):
+                return sketch_path
+            self.logger.warning(f"配置中的 Sketch 文件不存在: {sketch_path}，尝试自动搜索 .ino 文件")
+
+        candidates = []
+        for name in os.listdir(base_dir):
+            path = os.path.join(base_dir, name)
+            if os.path.isfile(path) and name.lower().endswith(".ino"):
+                candidates.append(path)
+
+        if len(candidates) == 1:
+            selected = candidates[0]
+            self.logger.warning(f"已自动选择根目录唯一 Sketch 文件: {selected}")
+            return selected
+
+        if not candidates:
+            self.logger.error(f"在项目根目录未找到 .ino 文件，请通过 --sketch 显式指定。")
+        else:
+            choices = "\n".join(f"  - {os.path.basename(path)}" for path in sorted(candidates))
+            self.logger.error(f"根目录存在多个 .ino 文件，无法自动选择，请通过 --sketch 显式指定：\n{choices}")
+        sys.exit(3)
 
     def resolve_local_libraries_path(self):
         libraries_path = str(self.libraries_path or "").strip()

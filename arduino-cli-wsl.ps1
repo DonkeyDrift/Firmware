@@ -667,37 +667,102 @@ function Get-DefaultWslDistro {
 
 <#
 .SYNOPSIS
+    将 sketch 文件转为相对项目根目录的路径
+#>
+function Get-RelativeSketchPath {
+    param(
+        [Parameter(Mandatory=$true)][System.IO.FileInfo]$File,
+        [Parameter(Mandatory=$true)][string]$Root
+    )
+
+    return $File.FullName.Substring($Root.Length).TrimStart('\', '/').Replace('\', '/')
+}
+
+<#
+.SYNOPSIS
+    从候选 sketch 中选择一个；交互式终端可主动询问，非交互环境要求显式指定
+#>
+function Select-SketchCandidate {
+    param(
+        [Parameter(Mandatory=$true)][System.IO.FileInfo[]]$Candidates,
+        [Parameter(Mandatory=$true)][string]$Root,
+        [Parameter(Mandatory=$true)][string]$Message
+    )
+
+    if ($Candidates.Count -eq 1) {
+        return Get-RelativeSketchPath -File $Candidates[0] -Root $Root
+    }
+
+    Write-Host $Message -ForegroundColor Yellow
+    for ($i = 0; $i -lt $Candidates.Count; $i++) {
+        $relative = Get-RelativeSketchPath -File $Candidates[$i] -Root $Root
+        Write-Host "  [$($i + 1)] $relative"
+    }
+
+    if (-not [Environment]::UserInteractive -or [Console]::IsInputRedirected) {
+        Write-Error "非交互环境无法主动选择 sketch，请重新运行并通过 -Sketch 显式指定。"
+        exit 1
+    }
+
+    while ($true) {
+        $choice = Read-Host "请选择 sketch 编号"
+        $index = 0
+        if ([int]::TryParse($choice, [ref]$index) -and $index -ge 1 -and $index -le $Candidates.Count) {
+            return Get-RelativeSketchPath -File $Candidates[$index - 1] -Root $Root
+        }
+        Write-Host "无效选择，请输入 1-$($Candidates.Count) 之间的数字。" -ForegroundColor Yellow
+    }
+}
+
+<#
+.SYNOPSIS
     探测项目中的 sketch 文件路径
-    优先选择项目根目录下的 .ino 文件（排除 examples、provisioning_system 等子目录）
+    优先选择项目根目录下的 .ino 文件，再搜索常见源码目录并排除依赖与构建产物
 #>
 function Find-SketchFile {
     param([string]$Root)
 
-    # 第一步：优先查找根目录下的 .ino 文件
-    $rootInos = Get-ChildItem -Path $Root -Filter "*.ino" -File
-    if ($rootInos.Count -eq 1) {
-        return $rootInos[0].Name
-    }
-    if ($rootInos.Count -gt 1) {
-        Write-Host "根目录下存在多个 .ino 文件，请通过 -Sketch 参数指定：" -ForegroundColor Yellow
-        $rootInos | ForEach-Object { Write-Host "  - $($_.Name)" }
-        exit 1
+    $rootInos = @(Get-ChildItem -Path $Root -Filter "*.ino" -File)
+    if ($rootInos.Count -gt 0) {
+        return Select-SketchCandidate -Candidates $rootInos -Root $Root -Message "根目录下存在多个 .ino 文件，请选择主 sketch："
     }
 
-    # 第二步：根目录下没有，再递归查找
-    $inoFiles = Get-ChildItem -Path $Root -Filter "*.ino" -Recurse -File
+    $excludedDirs = @('libraries', 'build', 'build_wsl', '.git', '.claude', '.qoder', '.trae', '.pytest_cache')
+    $inoFiles = @(Get-ChildItem -Path $Root -Filter "*.ino" -Recurse -File | Where-Object {
+        $relative = $_.FullName.Substring($Root.Length).TrimStart('\', '/')
+        $firstSegment = ($relative -split '[\\/]')[0]
+        $excludedDirs -notcontains $firstSegment
+    })
+
     if ($inoFiles.Count -eq 0) {
         Write-Error "在项目目录 $Root 下未找到任何 .ino 文件，请通过 -Sketch 参数显式指定。"
         exit 1
     }
-    if ($inoFiles.Count -eq 1) {
-        $relative = $inoFiles[0].FullName.Substring($Root.Length).TrimStart('\', '/')
-        return $relative.Replace('\', '/')
+
+    return Select-SketchCandidate -Candidates $inoFiles -Root $Root -Message "找到多个 .ino 文件，请选择主 sketch："
+}
+
+<#
+.SYNOPSIS
+    解析 sketch 路径；配置指向失效文件时自动回退到探测逻辑
+#>
+function Resolve-SketchFile {
+    param(
+        [Parameter(Mandatory=$true)][string]$Root,
+        [string]$Sketch
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($Sketch)) {
+        $candidate = if ([System.IO.Path]::IsPathRooted($Sketch)) { $Sketch } else { Join-Path $Root $Sketch }
+        if (Test-Path $candidate -PathType Leaf) {
+            return $Sketch.Replace('\', '/')
+        }
+        Write-Warning "配置中的 sketch 不存在: $Sketch，尝试自动搜索 .ino 文件。"
     }
 
-    Write-Host "找到多个 .ino 文件，请通过 -Sketch 参数指定：" -ForegroundColor Yellow
-    $inoFiles | ForEach-Object { Write-Host "  - $($_.FullName.Substring($Root.Length).TrimStart('\','/'))" }
-    exit 1
+    $resolved = Find-SketchFile -Root $Root
+    Write-Warning "已自动选择 sketch: $resolved"
+    return $resolved
 }
 
 <#
@@ -1066,13 +1131,11 @@ if ([string]::IsNullOrWhiteSpace($Distro)) {
 $script:WslDistro = $Distro
 Write-Verbose "Using WSL distro: $Distro"
 
-# Sketch 路径：优先参数，其次配置文件，其次自动探测
+# Sketch 路径：优先参数，其次配置文件，其次自动探测；配置失效时自动回退
 if ([string]::IsNullOrWhiteSpace($Sketch) -and $projectConfig["sketch"]) {
     $Sketch = $projectConfig["sketch"]
 }
-if ([string]::IsNullOrWhiteSpace($Sketch)) {
-    $Sketch = Find-SketchFile -Root $ProjectRoot
-}
+$Sketch = Resolve-SketchFile -Root $ProjectRoot -Sketch $Sketch
 $SketchPath = $Sketch.Replace('\', '/')
 Write-Verbose "Using sketch: $SketchPath"
 

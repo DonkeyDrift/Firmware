@@ -23,6 +23,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "Sensors.cpp",
     PROJECT_ROOT / "GamepadMode.h",
     PROJECT_ROOT / "GamepadMode.cpp",
+    PROJECT_ROOT / "RcFilter.h",
+    PROJECT_ROOT / "RcFilter.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.cpp",
@@ -268,6 +270,20 @@ def test_firmware_entrypoints_remain_in_main_sketch():
 
     assert len(re.findall(r"^void\s+setup\s*\(", source, re.MULTILINE)) == 1
     assert len(re.findall(r"^void\s+loop\s*\(", source, re.MULTILINE)) == 1
+
+
+
+def test_rc_filter_helpers_remain_available_after_module_split():
+    source = firmware_source_text()
+
+    for symbol in [
+        "uint16_t medianFilter(uint16_t* buf, int size)",
+        "bool isAuxiliaryRcChannel(int ch)",
+        "bool isPrimaryRcChannel(int ch)",
+        "uint16_t smoothPrimaryPWM(int ch, uint16_t value, bool valid)",
+        "uint16_t stabilizeAuxiliaryPWM(int ch, uint16_t value, bool valid)",
+    ]:
+        assert symbol in source
 
 
 

@@ -19,6 +19,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "Mus4Log.cpp",
     PROJECT_ROOT / "SteeringCalibration.h",
     PROJECT_ROOT / "SteeringCalibration.cpp",
+    PROJECT_ROOT / "Sensors.h",
+    PROJECT_ROOT / "Sensors.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.cpp",
@@ -264,6 +266,22 @@ def test_firmware_entrypoints_remain_in_main_sketch():
 
     assert len(re.findall(r"^void\s+setup\s*\(", source, re.MULTILINE)) == 1
     assert len(re.findall(r"^void\s+loop\s*\(", source, re.MULTILINE)) == 1
+
+
+
+def test_sensor_helpers_remain_available_after_module_split():
+    source = firmware_source_text()
+
+    for symbol in [
+        "void printLastI2CScanSummary()",
+        "void read_ina219()",
+        "void setup_ina219()",
+        "void read_mpu6050()",
+        "void scanI2CBus()",
+        "bool tryInitMPU6050OnCurrentBus(uint8_t *activeAddress, int maxRetriesPerAddress)",
+        "void setup_mpu6050()",
+    ]:
+        assert symbol in source
 
 
 

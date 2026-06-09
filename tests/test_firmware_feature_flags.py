@@ -29,6 +29,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "CommandParser.cpp",
     PROJECT_ROOT / "DriftAssist.h",
     PROJECT_ROOT / "DriftAssist.cpp",
+    PROJECT_ROOT / "SteeringControl.h",
+    PROJECT_ROOT / "SteeringControl.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.cpp",
@@ -312,6 +314,23 @@ def test_drift_assist_helpers_remain_available_after_module_split():
         "int apply_drift_assist(int driver_steering)",
         "car_output.mode != CAR_MODE_MANUAL || !drift_assist_enabled",
         "constrain(final_steering, -100, 100)",
+    ]:
+        assert symbol in source
+
+
+def test_steering_control_helpers_remain_available_after_module_split():
+    source = firmware_source_text()
+
+    for symbol in [
+        "struct PIDConfig",
+        "struct PIDState",
+        "void reset_steering_filter()",
+        "int process_steering_signal(int raw_pwm)",
+        "constrain((int)pid_state.current_smooth_output, -100, 100)",
+        "safe_mode_active = true",
+        "mus4LogLine(\"steering\", \"ALARM: Steering Sensor Fault! Safe Mode Activated.\")",
+        "void run_steering_tests()",
+        "Starting Steering Signal Processing Unit Tests (PID Enabled)",
     ]:
         assert symbol in source
 

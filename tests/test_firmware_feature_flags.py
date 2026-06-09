@@ -250,14 +250,13 @@ def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
 def test_wifi_sta_to_sta_handoff_keeps_ap_as_transition_page():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "WIFI_STA_HANDOFF_AP_KEEP_MS" in source
-    assert "120000UL" in source
+    assert "WIFI_STA_HANDOFF_AP_KEEP_MS" not in source
+    assert "WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS" not in source
     assert "bool wifiStaHandoffActive" in source
     assert "char wifiStaHandoffTargetSsid" in source
     assert "static void startWifiStaHandoff" in source
     assert "static void finishWifiStaHandoff" in source
     assert "static void clearWifiStaHandoff" in source
-    assert "wifiStaHandoffActive ? WIFI_STA_HANDOFF_AP_KEEP_MS : WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS" in source
     assert "restartWifiAp()" in re.search(
         r"static void startWifiStaHandoff.*?\n\}",
         source,
@@ -442,7 +441,7 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
     assert 'id="staNotice"' in source
     assert "注意只能连接2.4G WiFi" in source
     assert "staNotice.textContent='正在连接'" in source
-    assert "staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 3 秒后关闭'" in source
+    assert "staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 保持开启，可继续通过 AP 配置'" in source
     assert "staNotice.textContent='连接失败'" in source
     assert ">连接</button>" in source
     assert ">保存并连接</button>" not in source
@@ -527,30 +526,17 @@ def test_web_console_sta_scan_api_uses_async_wifi_scan():
     assert "\\\"channel\\\":" in source
 
 
-def test_web_console_stops_ap_three_seconds_after_successful_wifi_sta_connection():
+def test_web_console_keeps_ap_running_after_successful_wifi_sta_connection():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "const unsigned long WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS = 3000;" in source
-    assert "bool wifiApStopPending" in source
-    assert "scheduleWifiApStopAfterStaConnected()" in source
-    assert "stopWifiApAfterStaConnected()" in source
+    assert "WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS" not in source
+    assert "wifiApStopPending" not in source
+    assert "scheduleWifiApStopAfterStaConnected" not in source
+    assert "stopWifiApAfterStaConnected" not in source
+    assert "AP stopped after STA connected" not in source
     assert "wifiCaptiveDnsServer.stop()" in source
     assert "WiFi.softAPdisconnect(true)" in source
-    assert "WiFi.mode(WIFI_STA)" in source
-    assert "AP stopped after STA connected" in source
-    assert "wifiApStopPending && (long)(millis() - wifiApStopDeadlineMs) >= 0" in source
-    assert "delay(WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS)" not in source
-
-    stop_body = re.search(
-        r"static void stopWifiApAfterStaConnected\(\)\s*\{(?P<body>.*?)\n\}",
-        source,
-        re.DOTALL,
-    ).group("body")
-    assert "WiFi.status() != WL_CONNECTED" in stop_body
-    assert "WiFi.localIP() == IPAddress(0, 0, 0, 0)" in stop_body
-    assert "AP stop skipped: STA not ready" in stop_body
-    assert stop_body.index("WiFi.status() != WL_CONNECTED") < stop_body.index("WiFi.softAPdisconnect(true)")
-    assert stop_body.index("WiFi.localIP() == IPAddress(0, 0, 0, 0)") < stop_body.index("WiFi.softAPdisconnect(true)")
+    assert "WiFi.mode(WIFI_STA)" not in source
 
     update_sta_body = re.search(
         r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
@@ -558,7 +544,8 @@ def test_web_console_stops_ap_three_seconds_after_successful_wifi_sta_connection
         re.DOTALL,
     ).group("body")
     connected_branch = update_sta_body.split("if (status == WL_CONNECTED)", 1)[1].split("if (wifiStaConnected)", 1)[0]
-    assert "scheduleWifiApStopAfterStaConnected()" in connected_branch
+    assert "finishWifiStaHandoff()" in connected_branch
+    assert "scheduleWifiApStopAfterStaConnected" not in connected_branch
     assert "WiFi.softAP(" not in connected_branch
     assert "restartWifiAp()" not in connected_branch
     assert "scheduleWifiApRestart()" not in connected_branch
@@ -573,10 +560,9 @@ def test_web_console_keeps_ap_available_when_wifi_sta_connection_fails():
         source,
         re.DOTALL,
     ).group("body")
-    assert "wifiApStopPending = false" in failure_body
+    assert "wifiApStopPending" not in source
     assert "保留本轮连接的首个失败原因" in failure_body
     assert "if (wifiStaLastError[0] != 0) return" in failure_body
-    assert failure_body.index("wifiApStopPending = false") < failure_body.index("if (wifiStaLastError[0] != 0) return")
     assert "wifiStaConnecting = false" in failure_body
     assert "wifiStaConnected = false" in failure_body
 
@@ -642,12 +628,12 @@ def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
     assert save_body.index("setTimeout(resolve,1000)") < save_body.index("waitWifiStaConnectionResult()")
     assert "showCommandError(t)" not in save_body
     assert "await refreshStatus();cmd.value=''" in wait_body
-    assert "STA 已连接，IP：'+j.sta_ip+'，AP 将在约 3 秒后关闭" in wait_body
-    assert "AP 可能已关闭，STA 可能已连接" in wait_body
-    assert "showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'AP 可能已关闭，STA 可能已连接。请切回车辆连接的 Wi-Fi 后手动打开 STA IP。'})" in wait_body
+    assert "STA 已连接，IP：'+j.sta_ip+'，AP 保持开启，可继续通过 AP 配置" in wait_body
+    assert "AP 可能已关闭，STA 可能已连接" not in wait_body
+    assert "showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'AP 可能已关闭" not in wait_body
     assert "Date.now()+17000" not in wait_body
     assert "Date.now()+22000" in wait_body
-    assert wait_body.index("staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 3 秒后关闭'") < wait_body.index("await refreshStatus();cmd.value=''")
+    assert wait_body.index("staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 保持开启，可继续通过 AP 配置'") < wait_body.index("await refreshStatus();cmd.value=''")
 
 
 def test_wifi_mdns_lifecycle_follows_sta_connection():
@@ -663,18 +649,13 @@ def test_wifi_mdns_lifecycle_follows_sta_connection():
         source,
         re.DOTALL,
     ).group("body")
-    stop_ap_body = re.search(
-        r"static void stopWifiApAfterStaConnected\(\)\s*\{(?P<body>.*?)\n\}",
-        source,
-        re.DOTALL,
-    ).group("body")
     connected_branch = update_sta_body.split("if (status == WL_CONNECTED)", 1)[1].split("if (wifiStaConnected)", 1)[0]
     disconnected_branch = update_sta_body.split("if (wifiStaConnected)", 1)[1].split("if (!wifiStaConnecting)", 1)[0]
 
     assert "stopWifiMdnsIfNeeded()" in apply_body
     assert "startWifiMdnsIfNeeded()" in connected_branch
     assert "stopWifiMdnsIfNeeded()" in disconnected_branch
-    assert "stopWifiMdnsIfNeeded()" not in stop_ap_body
+    assert "stopWifiApAfterStaConnected" not in source
 
 
 def test_wifi_console_applies_sta_after_console_is_ready():
@@ -731,8 +712,7 @@ def test_restart_wifi_ap_restores_web_console_servers_after_sta_disconnect():
     disconnected_branch = update_sta_body.split("if (wifiStaConnected)", 1)[1].split("if (!wifiStaConnecting)", 1)[0]
 
     assert "restartWifiAp()" in disconnected_branch
-    assert "wifiApStopPending = false" in restart_body
-    assert restart_body.index("wifiApStopPending = false") < restart_body.index("WiFi.softAPdisconnect(true)")
+    assert "wifiApStopPending" not in source
     assert "WiFi.softAP(" in restart_body
     assert "wifiCaptiveDnsServer.start(53, \"*\", WiFi.softAPIP())" in restart_body
     assert "wifiConsoleServer.begin()" in restart_body

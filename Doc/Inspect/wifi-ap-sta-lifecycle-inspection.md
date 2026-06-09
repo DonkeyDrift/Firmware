@@ -2,14 +2,14 @@
 
 ## 结论
 
-当前固件的 Wi-Fi Console 采用“开机先提供调试 AP，同时可尝试连接 STA；STA 成功后延时关闭 AP；STA 断开后恢复 AP”的生命周期设计。
+当前固件的 Wi-Fi Console 采用“开机先提供调试 AP，同时可尝试连接 STA；STA 成功后 AP 继续常驻；STA 断开后确保 AP 恢复可用”的生命周期设计。
 
 核心体验目标是：
 
-1. 用户始终可以通过调试 AP 进入 Donkey Console 完成初始配置。
-2. STA 连接成功后，前端在 AP 关闭前读取到 STA IP，并跳转到 `http://<sta_ip>/`。
+1. 用户始终可以通过调试 AP 进入 Donkey Console 完成初始配置和后续维护。
+2. STA 连接成功后，前端读取到 STA IP，可跳转到 `http://<sta_ip>/`，同时 AP 仍保持开启，用户也能继续通过 `http://192.168.4.1/` 查看状态和调整配置。
 3. STA 连接失败、超时或配置错误时，AP 不关闭，用户可以继续在 AP 页面里修正配置。
-4. STA 运行中断开后，固件恢复 AP、DNS、TCP Console 和 Web Console，让用户重新进入设备。
+4. STA 运行中断开后，固件确保 AP、DNS、TCP Console 和 Web Console 可用，让用户重新进入设备。
 
 相关主逻辑集中在 `MUS4_FW.ino` 的 Wi-Fi Console 编译路径中。
 
@@ -35,8 +35,8 @@
 | `wifiStaTimedOut` | 最近一次 STA 连接是否超时。 |
 | `wifiStaLastError` / `wifiStaLastErrorMessage` | 最近一次 STA 失败原因，供 API 和前端展示。 |
 | `wifiStaApplyPending` | Web/API 保存配置后，延时触发 `WiFi.begin()`。 |
-| `wifiApStopPending` | STA 成功后，延时关闭 AP。 |
 | `wifiApRestartPending` | AP SSID 修改后，延时重启 AP。 |
+| `wifiStaHandoffActive` | STA 到 STA 切换交接提示是否处于活动状态。 |
 
 ## 开机启动流程
 
@@ -66,7 +66,8 @@ flowchart TD
 
 - SoftAP 在 `WiFi.softAP()` 前先调用 `configureWifiSoftApNetwork()`，显式固定为 `192.168.4.1/24`。
 - Wi-Fi 模式使用 `WIFI_AP_STA`，因此开机阶段 AP 与 STA 可并行存在。
-- 如果已有 STA 配置，固件会先启动 DNS、TCP Console 和 Web Console，再调用 `applyWifiStaCredentials()` 尝试接入外部 Wi-Fi，避免 STA 极快连接时 AP 关闭倒计时早于页面/API 就绪。
+- 如果已有 STA 配置，固件会先启动 DNS、TCP Console 和 Web Console，再调用 `applyWifiStaCredentials()` 尝试接入外部 Wi-Fi。
+- STA 连接成功后 AP 不会自动关闭，便于用户持续通过 `http://192.168.4.1/` 查看状态、修改 Wi-Fi 和进行维护。
 - 如果 AP 启动失败，`wifiConsoleStarted=false`，后续 `updateWifiConsole()` 会按 `WIFI_CONSOLE_RETRY_INTERVAL_MS` 周期重试。
 
 ## SoftAP 网络配置
@@ -147,29 +148,18 @@ if (wifiStaApplyPending && (long)(millis() - wifiStaApplyDeadlineMs) >= 0) {
 2. `wifiStaTimedOut=false`。
 3. `wifiStaConnecting=false`。
 4. 清空 `wifiStaLastError`。
-5. 日志输出 STA IP。
-6. 调用 `scheduleWifiApStopAfterStaConnected()`。
+5. 启动或刷新 STA 侧 mDNS。
+6. 日志输出 STA IP。
+7. 如果处于 STA 到 STA 切换交接流程，记录新 STA IP。
 
-AP 不会立刻关闭，而是设置：
+AP 在 STA 成功后保持开启，不再调度 `softAPdisconnect(true)` 或切换到纯 `WIFI_STA`。这样用户可同时使用两个入口：
 
-```cpp
-wifiApStopPending = true;
-wifiApStopDeadlineMs = millis() + WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS;
+```text
+http://192.168.4.1/      # AP 侧固定维护入口
+http://<sta_ip>/         # STA 局域网入口
 ```
 
-当前 `WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS = 3000`。这 3 秒窗口用于让 Web 前端从 `/api/wifi-sta` 读到 `sta_ip`，并跳转到 STA 地址。
-
-到达 deadline 后，`updateWifiConsole()` 调用 `stopWifiApAfterStaConnected()`：
-
-1. `wifiApStopPending=false`。
-2. 复核 `WiFi.status() == WL_CONNECTED` 且 `WiFi.localIP()` 不是 `0.0.0.0`。
-3. 如果 STA 已不可靠，输出 `AP stop skipped: STA not ready` 并保留 AP。
-4. 如果 STA 仍可靠，停止 Captive DNS。
-5. `WiFi.softAPdisconnect(true)` 关闭 SoftAP。
-6. `WiFi.mode(WIFI_STA)` 切换为纯 STA。
-7. 输出日志 `AP stopped after STA connected`。
-
-这个复核用于处理“STA 短暂连接成功后又立即断开”的边界，避免旧的 AP 关闭计划让用户失去配置入口。
+该设计牺牲少量 Wi-Fi 资源占用，换取更稳定的可发现性和可维护性。
 
 ## STA 到 STA 切换交接流程
 
@@ -187,7 +177,7 @@ wifiApStopDeadlineMs = millis() + WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS;
 2. 保存 `wifiStaHandoffTargetSsid`、`wifiStaHandoffApSsid`。
 3. 延时执行新的 `WiFi.begin()`。
 4. 新 STA 成功后记录 `wifiStaHandoffStaIp`。
-5. AP 保留时间从普通 3 秒延长到 `WIFI_STA_HANDOFF_AP_KEEP_MS = 120000 ms`。
+5. AP 已经常驻，因此交接期间不需要额外延长 AP 保留时间。
 
 前端提示用户：
 
@@ -209,13 +199,7 @@ STA 连接失败由 `setWifiStaLastError()` 统一收敛。触发条件包括：
 | `WL_CONNECT_FAILED` | `auth_failed` | STA 认证失败，请检查 Wi-Fi 密码。 |
 | 超过 `WIFI_STA_CONNECT_TIMEOUT_MS` | `timeout` | STA 连接超时，请检查 SSID、密码与路由器信号。 |
 
-失败入口第一行会执行：
-
-```cpp
-wifiApStopPending = false;
-```
-
-这点很关键：如果 STA 实际没有成功，不能继续执行之前可能遗留的 AP 关闭计划。失败后 AP 保持开启，前端可以继续通过 `192.168.4.1` 修正配置。
+STA 失败不会关闭 AP。由于 AP 常驻，前端可以继续通过 `192.168.4.1` 修正配置。
 
 `setWifiStaLastError()` 会保留本轮连接的首个失败原因，避免后续瞬态状态覆盖更有诊断价值的根因。新一轮 `applyWifiStaCredentials()` 会先清空旧错误。
 
@@ -229,18 +213,17 @@ wifiApStopPending = false;
 
 `restartWifiAp()` 不只是重新打开 SoftAP，还会恢复完整无线入口：
 
-1. 取消旧的 `wifiApStopPending`，确保“恢复 AP”不会被旧关闭计划覆盖。
-2. 停止 Captive DNS。
-3. `WiFi.softAPdisconnect(true)` 清理旧 AP。
-4. 延时 100 ms；这是同步阻塞调用，后续如需进一步降低主循环抖动，应单独设计非阻塞 AP 重启状态机。
-5. `WiFi.mode(WIFI_AP_STA)`。
-6. 重新 `configureWifiSoftApNetwork()`。
-7. `WiFi.softAP(...)`。
-8. 重新启动 Captive DNS。
-9. `wifiConsoleServer.begin()`。
-10. `wifiConsoleServer.setNoDelay(true)`。
-11. `wifiWebServer.begin()`。
-12. `wifiConsoleStarted=true`。
+1. 停止 Captive DNS。
+2. `WiFi.softAPdisconnect(true)` 清理旧 AP。
+3. 延时 100 ms；这是同步阻塞调用，后续如需进一步降低主循环抖动，应单独设计非阻塞 AP 重启状态机。
+4. `WiFi.mode(WIFI_AP_STA)`。
+5. 重新 `configureWifiSoftApNetwork()`。
+6. `WiFi.softAP(...)`。
+7. 重新启动 Captive DNS。
+8. `wifiConsoleServer.begin()`。
+9. `wifiConsoleServer.setNoDelay(true)`。
+10. `wifiWebServer.begin()`。
+11. `wifiConsoleStarted=true`。
 
 因此 STA 断开后，AP 恢复目标不是“SSID 可见”而已，而是 `http://192.168.4.1/`、TCP Console 与 Captive Portal 都应重新可用。
 
@@ -293,7 +276,7 @@ j.connected && j.sta_ip && j.sta_ip !== '0.0.0.0'
 
 成功后前端会：
 
-1. 显示：`STA 已连接，IP：<ip>，AP 将在约 3 秒后关闭`。
+1. 显示：`STA 已连接，IP：<ip>，AP 保持开启，可继续通过 AP 配置`。
 2. 调用 `refreshStatus()` 更新状态卡片。
 3. 清空命令输入框。
 4. 调用 `redirectToStaConsole(j.sta_ip)`。
@@ -306,16 +289,11 @@ const url = 'http://' + ip + '/';
 setTimeout(() => { location.href = url }, 100);
 ```
 
-这样做的原因是：AP 关闭窗口只有 3 秒，前端的首要任务是尽快离开 `192.168.4.1`，跳到设备的 STA IP。任何额外探测都有可能被浏览器、路由、跨网段策略或 AP 关闭时序拖慢。
+这样做的原因是：STA IP 是局域网主入口，跳转可让用户直接进入同网段 Console；AP 同时常驻，用户仍可随时回到 `http://192.168.4.1/` 查看状态和重新配置。
 
 ### 前端网络断开容错
 
-如果 `/api/wifi-sta` 短暂请求失败，前端不会立刻判定 STA 失败，而是记录 `miss` 次数：
-
-- 少于 2 次：等待 500 ms 后继续轮询。
-- 达到 2 次：提示“AP 可能已关闭，STA 可能已连接”，让用户切回车辆所在 Wi-Fi 后手动打开 STA IP。
-
-这用于避免把“AP 因 STA 成功而关闭”误判成“STA 连接失败”。
+如果 `/api/wifi-sta` 短暂请求失败，前端等待 500 ms 后继续轮询，不再把 AP 断开作为预期成功路径。AP 常驻后，请求失败更可能是浏览器网络切换、设备重连或临时链路问题。
 
 ## mDNS AP 名称固定入口
 
@@ -352,10 +330,10 @@ mDNS 跟随 STA，而不是跟随 AP：
 3. `startWifiMdnsIfNeeded()` 会复核 `WL_CONNECTED` 和有效 STA IP，然后把 AP 名称转为小写 hostname 并执行：
    - `MDNS.begin(wifiMdnsHostText().c_str())`
    - `MDNS.addService("http", "tcp", WIFI_WEB_CONSOLE_PORT)`
-4. AP 因 STA 成功而关闭时，不停止 mDNS。
-5. STA 运行中断开时，调用 `stopWifiMdnsIfNeeded()`，然后恢复 AP。
+4. AP 常驻，STA 成功不会触发 AP 关闭，也不会停止 mDNS。
+5. STA 运行中断开时，调用 `stopWifiMdnsIfNeeded()`，然后确保 AP 恢复可用。
 
-因此，AP 关闭后，只要 STA 仍在线且客户端网络支持 mDNS，用户仍可打开：
+因此，只要 STA 仍在线且客户端网络支持 mDNS，用户可打开：
 
 ```text
 http://<AP名称小写>.local/
@@ -480,11 +458,11 @@ sequenceDiagram
     AP->>STA: applyWifiStaCredentials()
     STA->>R: WiFi.begin(ssid,password)
     R-->>STA: 分配 STA IP
-    STA->>AP: scheduleWifiApStopAfterStaConnected()
+    STA->>AP: 标记 connected=true，AP 保持开启
     U->>AP: GET /api/wifi-sta
     AP-->>U: connected=true, sta_ip=<ip>
     U->>U: location.href=http://<ip>/
-    AP->>AP: 3 秒后 softAPdisconnect(true)
+    U->>AP: 仍可打开 http://192.168.4.1/
 ```
 
 ### 2. Web 页面配置 STA 成功
@@ -502,11 +480,11 @@ sequenceDiagram
     AP->>STA: applyWifiStaCredentials()
     STA->>R: 连接外部 Wi-Fi
     R-->>STA: DHCP 分配 IP
-    STA->>AP: 标记 connected=true 并调度 AP 关闭
+    STA->>AP: 标记 connected=true，AP 保持开启
     U->>AP: 轮询 /api/wifi-sta
     AP-->>U: sta_ip=<ip>
     U->>U: 100 ms 后跳转 http://<ip>/
-    AP->>AP: 3 秒后关闭 AP
+    U->>AP: 可继续通过 http://192.168.4.1/ 配置
 ```
 
 ### 3. STA 连接失败
@@ -522,7 +500,7 @@ sequenceDiagram
     AP->>STA: WiFi.begin()
     STA-->>AP: WL_CONNECT_FAILED / WL_NO_SSID_AVAIL / timeout
     AP->>AP: setWifiStaLastError()
-    AP->>AP: wifiApStopPending=false
+    AP->>AP: AP 保持可用
     U->>AP: GET /api/wifi-sta
     AP-->>U: last_error + last_error_message
     U->>U: 显示失败弹窗，AP 保持可用
@@ -571,24 +549,23 @@ curl.exe --resolve www.msftconnecttest.com:80:192.168.4.1 -v http://www.msftconn
 
 优先检查：
 
-1. `WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS` 是否为 3000。
-2. `/api/wifi-sta` 是否在 AP 关闭前返回 `connected=true` 和有效 `sta_ip`。
-3. 前端 `redirectToStaConsole()` 是否仍有额外 probe 或长延时，`waitWifiStaConnectionResult()` 是否仍有约 22 秒等待窗口。
-4. 浏览器当前电脑是否已连接到 STA 所在局域网；如果电脑仍只连 MUS4 AP，AP 关闭后无法访问 STA IP。
+1. `/api/wifi-sta` 是否返回 `connected=true` 和有效 `sta_ip`。
+2. 前端 `redirectToStaConsole()` 是否仍有额外 probe 或长延时，`waitWifiStaConnectionResult()` 是否仍有约 22 秒等待窗口。
+3. 浏览器当前电脑是否已连接到 STA 所在局域网；如果电脑仍只连 MUS4 AP，可以继续使用 `http://192.168.4.1/` 查看状态和配置。
 
-### STA 失败但 AP 被关闭
+### STA 失败但 AP 不可访问
 
 优先检查：
 
-1. `setWifiStaLastError()` 是否执行 `wifiApStopPending=false`。
-2. 是否存在旧的 AP stop pending 没有被失败路径取消。
-3. 日志中是否先出现 `STA connected IP` 后又失败；如果是，说明曾经短暂成功，应按 STA 断开恢复 AP 路径排查。
+1. `setupWifiConsole()` 或 `restartWifiAp()` 是否执行到了 `wifiWebServer.begin()`。
+2. SoftAP 是否仍固定在 `192.168.4.1/24`。
+3. 客户端是否仍连接设备 AP，且拿到 `192.168.4.x` 地址。
 
 ## 当前设计边界
 
 1. Captive Portal 只能尽量提高自动弹窗概率，不能保证所有平台、所有多网卡场景都弹出 `192.168.4.1`。
-2. STA 成功后的 AP 关闭是延时 3 秒，不是等浏览器确认跳转成功后再关闭。
-3. 前端知道 STA IP 后直接跳转，不保证用户电脑一定已经接入同一 STA 网络。
+2. STA 成功后 AP 常驻，会占用一个 SoftAP 信道和少量系统资源；这是为了保留稳定维护入口。
+3. 前端知道 STA IP 后直接跳转，不保证用户电脑一定已经接入同一 STA 网络；用户仍可回到 AP 页面查看状态。
 4. `WIFI_STA_CLEAR` 只清除配置并禁用 STA，不主动断开当前 STA 或切换 Wi-Fi 模式。
 5. AP 最大客户端数当前为 1，调试时应避免多个设备同时抢占 AP。
 
@@ -597,5 +574,5 @@ curl.exe --resolve www.msftconnecttest.com:80:192.168.4.1 -v http://www.msftconn
 1. 修改 AP/STA 生命周期时，同步更新 `tests/test_firmware_feature_flags.py` 的源码断言。
 2. 修改无线权限策略时，同步更新 `wireless_console_policy.py` 和 `tests/test_wireless_console_policy.py`。
 3. 修改 Captive Portal 路径时，保持 `/api/` 未知路径返回 JSON 404，避免 API 调试被 HTML 重定向吞掉。
-4. 修改 STA 成功关闭 AP 的延时时，需要同时检查前端提示文案、跳转逻辑和实机时序。
+4. 修改 STA 成功后的 AP 常驻策略时，需要同时检查前端提示文案、跳转逻辑和实机时序。
 5. 修改 HTTP OTA 或 Web Console 安全门控时，必须保留认证和 Park Locked / 开发模式约束。

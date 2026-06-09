@@ -1353,6 +1353,7 @@ static void startWifiMdnsIfNeeded()
     mus4Logf("wifi", "mDNS started: %s.local", wifiMdnsHostText().c_str());
 }
 
+static bool ensureWifiApAvailable();
 static bool restartWifiAp();
 
 static void stopWifiMdnsIfNeeded()
@@ -1386,7 +1387,7 @@ static void startWifiStaHandoff(const String& targetSsid)
     snprintf(wifiStaHandoffApSsid, sizeof(wifiStaHandoffApSsid), "%s", wifiApSsid);
     wifiStaHandoffStaIp[0] = 0;
     wifiStaHandoffStartedMs = millis();
-    restartWifiAp();
+    ensureWifiApAvailable();
     mus4Logf("wifi", "STA handoff started target=%s", wifiStaHandoffTargetSsid);
 }
 
@@ -1461,13 +1462,19 @@ static bool configureWifiSoftApNetwork()
     return WiFi.softAPConfig(apIp, apIp, subnet);
 }
 
-static bool restartWifiAp()
+static bool startWifiConsoleServices(const char* logPrefix)
 {
-    wifiApRestartPending = false;
-    wifiCaptiveDnsServer.stop();
-    WiFi.softAPdisconnect(true);
-    delay(100);
-    WiFi.mode(WIFI_AP_STA);
+    wifiCaptiveDnsServer.start(53, "*", WiFi.softAPIP());
+    wifiConsoleServer.begin();
+    wifiConsoleServer.setNoDelay(true);
+    wifiWebServer.begin();
+    wifiConsoleStarted = true;
+    mus4Logf("wifi", "%s ssid=%s IP: %s", logPrefix, wifiApSsid, WiFi.softAPIP().toString().c_str());
+    return true;
+}
+
+static bool startWifiApServices(const char* logPrefix)
+{
     configureWifiSoftApNetwork();
     bool started = WiFi.softAP(
         wifiApSsid,
@@ -1478,16 +1485,29 @@ static bool restartWifiAp()
     );
     if (!started) {
         wifiConsoleStarted = false;
-        mus4LogLine("wifi", "AP restart failed");
+        mus4Logf("wifi", "%s failed", logPrefix);
         return false;
     }
-    wifiCaptiveDnsServer.start(53, "*", WiFi.softAPIP());
-    wifiConsoleServer.begin();
-    wifiConsoleServer.setNoDelay(true);
-    wifiWebServer.begin();
-    wifiConsoleStarted = true;
-    mus4Logf("wifi", "AP restarted ssid=%s IP: %s", wifiApSsid, WiFi.softAPIP().toString().c_str());
-    return true;
+    return startWifiConsoleServices(logPrefix);
+}
+
+static bool ensureWifiApAvailable()
+{
+    wifiApRestartPending = false;
+    if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
+        return startWifiApServices("AP ensured");
+    }
+    return startWifiConsoleServices("AP ensured");
+}
+
+static bool restartWifiAp()
+{
+    wifiApRestartPending = false;
+    wifiCaptiveDnsServer.stop();
+    WiFi.softAPdisconnect(true);
+    delay(100);
+    WiFi.mode(WIFI_AP_STA);
+    return startWifiApServices("AP restarted");
 }
 
 static void printWifiStaStatus(Print& out)
@@ -3020,24 +3040,10 @@ static void setupWifiConsole()
     delay(100);
     WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);
-    configureWifiSoftApNetwork();
-    bool started = WiFi.softAP(
-        wifiApSsid,
-        WIFI_CONSOLE_AP_PASSWORD,
-        WIFI_CONSOLE_CHANNEL,
-        false,
-        WIFI_CONSOLE_MAX_CLIENTS
-    );
-    if (!started) {
-        wifiConsoleStarted = false;
-        mus4LogLine("wifi", "AP start failed");
+    setupWifiWebConsole();
+    if (!startWifiApServices("AP started")) {
         return;
     }
-    wifiCaptiveDnsServer.start(53, "*", WiFi.softAPIP());
-    wifiConsoleServer.begin();
-    wifiConsoleServer.setNoDelay(true);
-    setupWifiWebConsole();
-    wifiConsoleStarted = true;
     mus4Logf("wifi", "AP %s IP: %s Port: %u Web: %u", wifiApSsid, WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT);
     if (wifiStaConfigured) {
         applyWifiStaCredentials();
@@ -3067,7 +3073,7 @@ static void updateWifiSta()
         wifiStaConnected = false;
         stopWifiMdnsIfNeeded();
         mus4LogLine("wifi", "STA disconnected");
-        restartWifiAp();
+        ensureWifiApAvailable();
     }
     if (!wifiStaConnecting) return;
     if (status == WL_NO_SSID_AVAIL) {

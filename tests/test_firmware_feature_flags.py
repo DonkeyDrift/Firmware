@@ -257,11 +257,13 @@ def test_wifi_sta_to_sta_handoff_keeps_ap_as_transition_page():
     assert "static void startWifiStaHandoff" in source
     assert "static void finishWifiStaHandoff" in source
     assert "static void clearWifiStaHandoff" in source
-    assert "restartWifiAp()" in re.search(
+    handoff_body = re.search(
         r"static void startWifiStaHandoff.*?\n\}",
         source,
         re.DOTALL,
     ).group(0)
+    assert "ensureWifiApAvailable()" in handoff_body
+    assert "restartWifiAp()" not in handoff_body
     assert "body.set('source',location.hostname==='192.168.4.1'?'ap':'sta')" in source
     assert "wifiWebServer.arg(\"source\")" in source
     assert "startWifiStaHandoff(ssid)" in source
@@ -534,8 +536,13 @@ def test_web_console_keeps_ap_running_after_successful_wifi_sta_connection():
     assert "scheduleWifiApStopAfterStaConnected" not in source
     assert "stopWifiApAfterStaConnected" not in source
     assert "AP stopped after STA connected" not in source
-    assert "wifiCaptiveDnsServer.stop()" in source
-    assert "WiFi.softAPdisconnect(true)" in source
+    restart_body = re.search(
+        r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "wifiCaptiveDnsServer.stop()" in restart_body
+    assert "WiFi.softAPdisconnect(true)" in restart_body
     assert "WiFi.mode(WIFI_STA)" not in source
 
     update_sta_body = re.search(
@@ -666,10 +673,17 @@ def test_wifi_console_applies_sta_after_console_is_ready():
         source,
         re.DOTALL,
     ).group("body")
-    assert setup_body.index("wifiCaptiveDnsServer.start(53, \"*\", WiFi.softAPIP())") < setup_body.index("wifiConsoleServer.begin()")
-    assert setup_body.index("wifiConsoleServer.begin()") < setup_body.index("setupWifiWebConsole()")
-    assert setup_body.index("setupWifiWebConsole()") < setup_body.index("wifiConsoleStarted = true")
-    assert setup_body.index("wifiConsoleStarted = true") < setup_body.index("applyWifiStaCredentials()")
+    console_services_body = re.search(
+        r"static bool startWifiConsoleServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "setupWifiWebConsole()" in setup_body
+    assert setup_body.index("setupWifiWebConsole()") < setup_body.index("startWifiApServices(\"AP started\")")
+    assert console_services_body.index("wifiCaptiveDnsServer.start(53, \"*\", WiFi.softAPIP())") < console_services_body.index("wifiConsoleServer.begin()")
+    assert console_services_body.index("wifiConsoleServer.begin()") < console_services_body.index("wifiWebServer.begin()")
+    assert console_services_body.index("wifiWebServer.begin()") < console_services_body.index("wifiConsoleStarted = true")
+    assert setup_body.index("startWifiApServices(\"AP started\")") < setup_body.index("applyWifiStaCredentials()")
 
 
 def test_wifi_softap_uses_explicit_ipv4_gateway_configuration():
@@ -690,17 +704,22 @@ def test_wifi_softap_uses_explicit_ipv4_gateway_configuration():
     assert "IPAddress apIp(192, 168, 4, 1)" in source
     assert "IPAddress subnet(255, 255, 255, 0)" in source
     assert "WiFi.softAPConfig(apIp, apIp, subnet)" in source
-    assert "configureWifiSoftApNetwork()" in restart_body
-    assert restart_body.index("configureWifiSoftApNetwork()") < restart_body.index("WiFi.softAP(")
-    assert "configureWifiSoftApNetwork()" in setup_body
-    assert setup_body.index("configureWifiSoftApNetwork()") < setup_body.index("WiFi.softAP(")
+    start_services_body = re.search(
+        r"static bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "configureWifiSoftApNetwork()" in start_services_body
+    assert start_services_body.index("configureWifiSoftApNetwork()") < start_services_body.index("WiFi.softAP(")
+    assert "startWifiApServices(\"AP restarted\")" in restart_body
+    assert "startWifiApServices(\"AP started\")" in setup_body
 
 
-def test_restart_wifi_ap_restores_web_console_servers_after_sta_disconnect():
+def test_sta_disconnect_keeps_soft_ap_clients_connected_and_services_available():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    restart_body = re.search(
-        r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
+    ensure_body = re.search(
+        r"static bool ensureWifiApAvailable\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -711,14 +730,34 @@ def test_restart_wifi_ap_restores_web_console_servers_after_sta_disconnect():
     ).group("body")
     disconnected_branch = update_sta_body.split("if (wifiStaConnected)", 1)[1].split("if (!wifiStaConnecting)", 1)[0]
 
-    assert "restartWifiAp()" in disconnected_branch
+    assert "ensureWifiApAvailable()" in disconnected_branch
+    assert "restartWifiAp()" not in disconnected_branch
+    assert "WiFi.softAPdisconnect(true)" not in disconnected_branch
+    start_services_body = re.search(
+        r"static bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
     assert "wifiApStopPending" not in source
-    assert "WiFi.softAP(" in restart_body
-    assert "wifiCaptiveDnsServer.start(53, \"*\", WiFi.softAPIP())" in restart_body
-    assert "wifiConsoleServer.begin()" in restart_body
-    assert "wifiConsoleServer.setNoDelay(true)" in restart_body
-    assert "wifiWebServer.begin()" in restart_body
-    assert "wifiConsoleStarted = true" in restart_body
+    console_services_body = re.search(
+        r"static bool startWifiConsoleServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "startWifiApServices(\"AP ensured\")" in ensure_body
+    assert "startWifiConsoleServices(\"AP ensured\")" in ensure_body
+    assert "WiFi.softAPIP() == IPAddress(0, 0, 0, 0)" in ensure_body
+    assert "WiFi.softAPdisconnect(true)" not in ensure_body
+    assert "WiFi.mode(WIFI_OFF)" not in ensure_body
+    assert "WiFi.softAP(" not in ensure_body
+    assert "WiFi.softAP(" in start_services_body
+    assert "wifiCaptiveDnsServer.start(53, \"*\", WiFi.softAPIP())" in console_services_body
+    assert "wifiConsoleServer.begin()" in console_services_body
+    assert "wifiConsoleServer.setNoDelay(true)" in console_services_body
+    assert "wifiWebServer.begin()" in console_services_body
+    assert "wifiConsoleStarted = true" in console_services_body
 
 
 def test_runtime_sta_disconnect_does_not_reset_soft_ap():
@@ -769,6 +808,41 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
     assert "wifiStaApplyPending = false" in runtime_clear_body
     assert "clearWifiStaLastError()" in runtime_clear_body
     assert "WiFi.disconnect(true, true)" in setup_body
+
+
+def test_soft_ap_disconnect_is_limited_to_explicit_ap_restart():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    restart_body = re.search(
+        r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    setup_body = re.search(
+        r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    apply_body = re.search(
+        r"static void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    update_sta_body = re.search(
+        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    assert source.count("WiFi.softAPdisconnect(true)") == 1
+    assert "WiFi.softAPdisconnect(true)" in restart_body
+    assert "WiFi.softAPdisconnect(true)" not in setup_body
+    assert "WiFi.softAPdisconnect(true)" not in apply_body
+    assert "WiFi.softAPdisconnect(true)" not in update_sta_body
+    assert "WiFi.mode(WIFI_OFF)" not in restart_body
+    assert "WiFi.mode(WIFI_OFF)" not in apply_body
+    assert "WiFi.mode(WIFI_OFF)" not in update_sta_body
+    assert "WiFi.mode(WIFI_STA)" not in source
 
 
 def test_web_console_handles_common_captive_portal_probes_locally():

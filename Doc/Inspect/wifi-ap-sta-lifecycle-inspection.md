@@ -80,10 +80,12 @@ IPAddress subnet(255, 255, 255, 0);
 WiFi.softAPConfig(apIp, apIp, subnet);
 ```
 
-该函数在两个位置调用：
+该函数由 `startWifiApServices()` 统一调用，覆盖两个需要真正启动或重建 SoftAP 的场景：
 
-1. `setupWifiConsole()`：首次开机启动 AP 前。
-2. `restartWifiAp()`：STA 断开后恢复 AP 前。
+1. `setupWifiConsole()`：首次开机启动 AP。
+2. `restartWifiAp()`：AP SSID 修改后显式重建 AP。
+
+STA 运行中断开时优先走 `ensureWifiApAvailable()`，只恢复服务，不主动断开已有 AP 客户端；只有发现 SoftAP IP 异常为 `0.0.0.0` 时才重新调用 `startWifiApServices()`。
 
 这样可以避免 SoftAP 恢复后 IP/Gateway 漂移，确保用户始终通过：
 
@@ -173,7 +175,7 @@ http://<sta_ip>/         # STA 局域网入口
 
 触发后固件进入 `wifiStaHandoffActive`：
 
-1. 调用 `restartWifiAp()`，临时恢复或保持调试 AP。
+1. 调用 `ensureWifiApAvailable()`，只确保 AP 服务可用，不主动断开已连接的 AP 客户端。
 2. 保存 `wifiStaHandoffTargetSsid`、`wifiStaHandoffApSsid`。
 3. 延时执行新的 `WiFi.begin()`。
 4. 新 STA 成功后记录 `wifiStaHandoffStaIp`。
@@ -208,24 +210,25 @@ STA 失败不会关闭 AP。由于 AP 常驻，前端可以继续通过 `192.168
 如果之前 `wifiStaConnected=true`，但后续 `WiFi.status()` 不再是 `WL_CONNECTED`，`updateWifiSta()` 会执行：
 
 1. `wifiStaConnected=false`。
-2. 输出 `STA disconnected` 日志。
-3. 调用 `restartWifiAp()`。
+2. 停止 STA 侧 mDNS。
+3. 输出 `STA disconnected` 日志。
+4. 调用 `ensureWifiApAvailable()`。
 
-`restartWifiAp()` 不只是重新打开 SoftAP，还会恢复完整无线入口：
+`ensureWifiApAvailable()` 不会调用 `WiFi.softAPdisconnect(true)`，也不会切换到 `WIFI_OFF` 或纯 `WIFI_STA`。它只复用 `startWifiApServices()` 重新确认 SoftAP、Captive DNS、TCP Console 和 Web Console 已启动，从而避免运行中 STA 断开时把仍连接在 AP 上的用户踢下线。
 
-1. 停止 Captive DNS。
-2. `WiFi.softAPdisconnect(true)` 清理旧 AP。
-3. 延时 100 ms；这是同步阻塞调用，后续如需进一步降低主循环抖动，应单独设计非阻塞 AP 重启状态机。
-4. `WiFi.mode(WIFI_AP_STA)`。
-5. 重新 `configureWifiSoftApNetwork()`。
-6. `WiFi.softAP(...)`。
-7. 重新启动 Captive DNS。
-8. `wifiConsoleServer.begin()`。
-9. `wifiConsoleServer.setNoDelay(true)`。
-10. `wifiWebServer.begin()`。
-11. `wifiConsoleStarted=true`。
+`startWifiApServices()` 会执行：
 
-因此 STA 断开后，AP 恢复目标不是“SSID 可见”而已，而是 `http://192.168.4.1/`、TCP Console 与 Captive Portal 都应重新可用。
+1. `configureWifiSoftApNetwork()`，保持 SoftAP 固定 `192.168.4.1/24`。
+2. `WiFi.softAP(...)`。
+3. 重新启动 Captive DNS。
+4. `wifiConsoleServer.begin()`。
+5. `wifiConsoleServer.setNoDelay(true)`。
+6. `wifiWebServer.begin()`。
+7. `wifiConsoleStarted=true`。
+
+`restartWifiAp()` 仍保留给 AP SSID 修改等明确需要重建 SoftAP 的路径使用；只有这类显式 AP 重启路径才允许调用 `WiFi.softAPdisconnect(true)`。
+
+因此 STA 断开后，AP 保持目标不是“重新断开再打开”，而是在不踢掉 AP 客户端的前提下确保 `http://192.168.4.1/`、TCP Console 与 Captive Portal 都可用。
 
 ## Captive Portal 交互逻辑
 
@@ -515,10 +518,10 @@ sequenceDiagram
     participant U as 用户
 
     STA-->>STA: WiFi.status()!=WL_CONNECTED
-    STA->>AP: restartWifiAp()
-    AP->>AP: WiFi.mode(WIFI_AP_STA)
-    AP->>AP: softAP + DNS + TCP Console + WebServer begin
-    U->>AP: 连接 MUS4-DEBUG
+    STA->>AP: ensureWifiApAvailable()
+    AP->>AP: 不调用 softAPdisconnect，保持 AP 客户端在线
+    AP->>AP: DNS + TCP Console + WebServer begin
+    U->>AP: 保持或连接 MUS4-DEBUG
     U->>AP: 打开 http://192.168.4.1/
 ```
 
@@ -528,11 +531,11 @@ sequenceDiagram
 
 优先检查：
 
-1. `restartWifiAp()` 是否执行到了 `wifiWebServer.begin()`。
-2. SoftAP 是否重新调用了 `configureWifiSoftApNetwork()`。
+1. `ensureWifiApAvailable()` 或 `restartWifiAp()` 是否执行到了 `wifiWebServer.begin()`。
+2. SoftAP 是否仍固定为 `192.168.4.1/24`。
 3. 客户端是否拿到了 `192.168.4.x` 地址。
 4. 浏览器是否仍在访问旧 STA IP 或 HTTPS 缓存地址。
-5. 设备串口日志是否有 `AP restarted ssid=... IP: 192.168.4.1`。
+5. 设备串口日志是否有 `AP ensured ssid=... IP: 192.168.4.1` 或 `AP restarted ssid=... IP: 192.168.4.1`。
 
 ### Windows 弹出 MSN / Microsoft 页面
 
@@ -557,7 +560,7 @@ curl.exe --resolve www.msftconnecttest.com:80:192.168.4.1 -v http://www.msftconn
 
 优先检查：
 
-1. `setupWifiConsole()` 或 `restartWifiAp()` 是否执行到了 `wifiWebServer.begin()`。
+1. `setupWifiConsole()`、`ensureWifiApAvailable()` 或 `restartWifiAp()` 是否执行到了 `wifiWebServer.begin()`。
 2. SoftAP 是否仍固定在 `192.168.4.1/24`。
 3. 客户端是否仍连接设备 AP，且拿到 `192.168.4.x` 地址。
 

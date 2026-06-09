@@ -89,6 +89,89 @@ def test_web_console_has_help_floating_modal():
     assert "Serial Log：查看设备日志和命令反馈" in source
     assert "Tub JSON：记录并下载遥测样本" in source
     assert "OTA / DEV：固件更新与开发模式开关" in source
+    assert "Status Cards: view mode, Park, OTA, and connection status" in source
+
+
+def test_web_console_has_language_floating_menu_above_help_fab():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert 'id="langFab"' in source
+    assert 'class="langFab"' in source
+    assert 'id="langMenu"' in source
+    assert 'class="langMenu"' in source
+    assert "🌐" in source
+    assert "toggleLanguageMenu" in source
+    assert "setLanguage('zh')" in source
+    assert "setLanguage('en')" in source
+    assert source.index('id="langFab"') < source.index('id="helpFab"')
+    assert ".langFab" in source
+    assert ".langMenu" in source
+
+
+def test_web_console_language_selection_uses_local_storage_and_i18n_dictionary():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "mus4.ui.lang" in source
+    assert "localStorage.getItem" in source
+    assert "localStorage.setItem" in source
+    assert "const I18N" in source
+    assert "zh:" in source
+    assert "en:" in source
+    assert "function applyLanguage" in source
+    assert "function setLanguage" in source
+    assert "document.documentElement.lang" in source
+    assert "return lang==='en'?'en':'zh'" in source
+
+
+def test_web_console_static_core_copy_is_marked_for_i18n():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "data-i18n=" in source
+    assert "data-i18n-placeholder=" in source
+    assert "data-i18n-aria=" in source
+    assert 'data-i18n="state.mode"' in source
+    assert 'data-i18n="state.park"' in source
+    assert 'data-i18n="state.drift"' in source
+    assert 'data-i18n="state.voltage"' in source
+    assert 'data-i18n="state.network"' in source
+    assert 'data-i18n="help.title"' in source
+
+
+def test_web_console_english_dictionary_covers_core_interface_copy():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "Language" in source
+    assert "Status Cards" in source
+    assert "Network" in source
+    assert "Diagnostics" in source
+    assert "Serial Log" in source
+    assert "Tub JSON" in source
+    assert "OTA / DEV" in source
+    assert "Send" in source
+    assert "Clear" in source
+    assert "Pause" in source
+    assert "Resume" in source
+    assert "Fullscreen" in source
+    assert "Split" in source
+    assert "Copy IP" in source
+    assert "STA connection failed" in source
+
+
+def test_web_console_dynamic_visible_copy_uses_current_language():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "function t(" in source
+    assert "function refreshDynamicLabels" in source
+    assert "pauseBtn" in source
+    assert "chartBtn" in source
+    assert "chartFullscreenBtn" in source
+    assert "textContent=logPaused?t('button.resume'):t('button.pause')" in source
+    assert "textContent=document.fullscreenElement===chartPanel?t('button.split'):t('button.fullscreen')" in source
+    assert "showToast(t('toast.copyFailed')" in source
+    assert "explainCommandError" in source
+    assert "PARK_REQUIRED" in source
+    assert "AUTH_REQUIRED" in source
+    assert "UNAUTHORIZED" in source
 
 
 def test_diagnostic_code_is_not_built_by_default():
@@ -161,9 +244,9 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert 'id="networkMdnsValue"' not in source
     assert 'id="networkIpValue"' not in source
     assert 'id="networkSub"' not in source
-    assert '<b>SSID</b><span id="networkSsidValue">--</span>' in source
+    assert '<b data-i18n="state.ssid">SSID</b><span id="networkSsidValue">--</span>' in source
     assert '<b>LAN</b><span id="networkMdnsValue" onclick="openNetworkLanUrl()">--</span>' not in source
-    assert '<b>REMAIN</b><span id="voltageSub">battery</span>' in source
+    assert '<b data-i18n="state.remain">REMAIN</b><span id="voltageSub">battery</span>' in source
     assert 'onclick="event.stopPropagation();openNetworkSettings()"' in source
     assert '<button class="gear" onclick="event.stopPropagation();openWifiStaModal()">' not in source
     assert 'ap_ssid=\\"%s\\"' in source
@@ -179,7 +262,7 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert "LAN 名称不可用，请使用 STA IP" not in source
     assert "v.toFixed(1)+'V'" in source
     assert "if(!isNaN(v)&&v>=5)" in source
-    assert "voltageValue.textContent='未连接'" in source
+    assert "voltageValue.textContent=t('voltage.disconnected')" in source
     assert "if(!isNaN(v)&&v>0)" not in source
     assert "v.toFixed(2)+'V'" not in source
 
@@ -327,20 +410,25 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}}" not in source
     assert "@media(min-width:900px){.grid{grid-template-columns:1fr 2fr}.wide{grid-column:1/-1}}" not in source
     assert '.chartControls{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}.chartTools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}' in source
-    assert '<div class="chartControls"><button onclick="toggleChart()" id="chartBtn">暂停</button><button onclick="clearChart()">清空</button><button onclick="toggleChartFullscreen()" id="chartFullscreenBtn">全屏</button><div class="chartTools"><button onclick="ts()">Tub Start</button><button onclick="te()">Tub Stop</button><button onclick="td()">Tub JSON</button></div></div>' in source
-    assert "document.getElementById('chartBtn').textContent=chartPaused?'绘制':'暂停'" in source
-    assert "document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?'分屏':'全屏'" in source
+    assert 'onclick="toggleChart()" id="chartBtn" data-i18n="button.pause"' in source
+    assert 'onclick="clearChart()" data-i18n="button.clear"' in source
+    assert 'onclick="toggleChartFullscreen()" id="chartFullscreenBtn" data-i18n="button.fullscreen"' in source
+    assert 'onclick="ts()" data-i18n="button.tubStart"' in source
+    assert 'onclick="te()" data-i18n="button.tubStop"' in source
+    assert 'onclick="td()" data-i18n="button.tubJson"' in source
+    assert "document.getElementById('chartBtn').textContent=chartPaused?t('button.draw'):t('button.pause')" in source
+    assert "document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?t('button.split'):t('button.fullscreen')" in source
     assert '<button onclick="clearChart()">清空曲线</button>' not in source
     assert '<button onclick="toggleChart()" id="chartBtn">暂停曲线</button>' not in source
     assert "'暂停曲线'" not in source
     assert "'继续曲线'" not in source
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
-    assert '<a href="/update" target="_blank" class="otaLink"><button class="otaButton">OTA</button></a><label class="toggleSwitch"' in source
-    assert '<input id="cmd"><button onclick="sendCmd()">发送</button><button onclick="clearLog()">清空</button><button onclick="togglePause()" id="pauseBtn">暂停</button>' in source
+    assert '<a href="/update" target="_blank" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
+    assert '<input id="cmd"><button onclick="sendCmd()" data-i18n="button.send">发送</button><button onclick="clearLog()" data-i18n="button.clear">清空</button><button onclick="togglePause()" id="pauseBtn" data-i18n="button.pause">暂停</button>' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
-    assert "document.getElementById('pauseBtn').textContent=logPaused?'继续':'暂停'" in source
+    assert "document.getElementById('pauseBtn').textContent=logPaused?t('button.resume'):t('button.pause')" in source
     assert '>暂停日志</button>' not in source
     assert "'继续日志'" not in source
     assert "'暂停日志'" not in source
@@ -394,9 +482,9 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
 
     assert 'id="rcFold" class="fold"' in source
     assert 'id="statusFold" class="fold"' in source
-    assert '<span class="foldIcon">▸</span>RC Channels' in source
-    assert '<span class="foldIcon">▸</span>STATUS Details' in source
-    assert 'aria-expanded="false"><span class="foldIcon">▸</span>RC Channels' in source
+    assert '<span class="foldIcon">▸</span><span data-i18n="panel.rcChannels">RC Channels</span>' in source
+    assert '<span class="foldIcon">▸</span><span data-i18n="panel.statusDetails">STATUS Details</span>' in source
+    assert 'aria-expanded="false"><span class="foldIcon">▸</span><span data-i18n="panel.rcChannels">RC Channels</span>' in source
     assert '.fold:not(.open) .foldBody{display:none}' in source
     assert diagnostics_panel in source
     assert source.index(state_panel) < source.index(chart_panel)
@@ -430,9 +518,9 @@ def test_web_console_status_details_use_responsive_columns():
 def test_web_console_explains_auth_and_park_rejections():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "function explainCommandError(t)" in source
-    assert "请将 CH3/Park 切到锁定状态后重试" in source
-    assert "请先 AUTH，或开启 DEV MODE 后重试" in source
+    assert "function explainCommandError(text)" in source
+    assert "'error.parkRequired':'当前操作需要 Park Locked。请将 CH3/Park 切到锁定状态后重试。'" in source
+    assert "'error.authRequired':'当前操作需要授权。请先 AUTH，或开启 DEV MODE 后重试。'" in source
     assert "请先 AUTH，或开启 DEBUG MODE 后重试" not in source
     assert "alert(msg)" in source
 
@@ -501,7 +589,7 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
     assert "staSavedPasswordKnown=false" in select_body
     assert "updateStaPasswordEye()" in select_body
     assert '<label for="staSsid">SSID</label>' in source
-    assert '<label for="staPassword">密码</label>' in source
+    assert '<label for="staPassword" data-i18n="wifi.passwordLabel">密码</label>' in source
     assert 'id="staPasswordEye"' in source
     assert 'onclick="toggleStaPasswordVisibility()"' in source
     assert "onmousedown=\"showStaPassword()\"" not in source

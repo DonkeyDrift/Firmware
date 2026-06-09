@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "FirmwareConfig.h"
 
 // Sensor Data Structure
 struct SensorData {
@@ -24,10 +25,3 @@ struct ControlData {
     bool park;
 };
 
-// Application Constants
-#define CAR_MODE_MANUAL 0
-#define CAR_MODE_SEMI_AUTO 1
-#define CAR_MODE_FULL_AUTO 2
-
-#define WAVE_WIDTH 20
-#define WAVE_HEIGHT 6

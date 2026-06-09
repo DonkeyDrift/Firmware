@@ -6,6 +6,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 MUS4_SKETCH = PROJECT_ROOT / "MUS4_FW.ino"
 FIRMWARE_SOURCE_PATHS = [
     MUS4_SKETCH,
+    PROJECT_ROOT / "FirmwareConfig.h",
     PROJECT_ROOT / "WebConsoleAssets.h",
     PROJECT_ROOT / "StringPrint.h",
     PROJECT_ROOT / "JsonUtil.h",
@@ -225,6 +226,32 @@ def test_diagnostic_code_is_not_built_by_default():
 
     assert re.search(r"^//\s*#define\s+ENABLE_DIAGNOSTIC_COMMANDS\b", source, re.MULTILINE)
     assert re.search(r"^//\s*#define\s+ENABLE_BOOT_STEERING_SELF_TEST\b", source, re.MULTILINE)
+
+
+
+def test_firmware_config_centralizes_core_compile_time_defaults():
+    config = (PROJECT_ROOT / "FirmwareConfig.h").read_text(encoding="utf-8")
+    sketch = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert '#include "FirmwareConfig.h"' in sketch
+    assert re.search(r"^#define\s+ENABLE_WIFI_CONSOLE\b", config, re.MULTILINE)
+    assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", config, re.MULTILINE)
+    assert "#define CH1_PIN 36" in config
+    assert "#define THROTTLE_PIN 25" in config
+    assert "#define RC_CHANNEL_COUNT 6" in config
+    assert "#define CAR_MODE_MANUAL 0" in config
+    assert "#define CAR_MODE_SEMI_AUTO 1" in config
+    assert "#define CAR_MODE_FULL_AUTO 2" in config
+    assert "#define PWM_FILTER_SIZE 5" in config
+    assert "#define I2C_SPEED 400000L" in config
+    assert "#define UI_UPDATE_INTERVAL 2" in config
+    assert "#define WAVE_WIDTH 20" in config
+    assert "#define WAVE_HEIGHT 6" in config
+    assert "#define CAR_MODE_MANUAL" not in (PROJECT_ROOT / "SharedTypes.h").read_text(encoding="utf-8")
+    assert "#define WAVE_WIDTH" not in (PROJECT_ROOT / "SharedTypes.h").read_text(encoding="utf-8")
+    assert "#define ENABLE_WIFI_CONSOLE" not in sketch
+    assert "#define CH1_PIN 36" not in sketch
+    assert "#define PWM_FILTER_SIZE 5" not in sketch
 
 
 

@@ -297,11 +297,13 @@ README 中部分历史描述可能滞后；以 `MUS4_FW.ino`、`Doc/Hardware/pin
 
 ### Wi-Fi Console、Web Console 与 OTA
 
-`MUS4_FW.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`，并在该路径下启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY`。启用后 ESP32 以 AP+STA 模式启动：AP SSID 为 `MUS4-DEBUG`，TCP 控制台端口为 `2323`，Web Console/Donkey Console 端口为 `80`，WebSocket 遥测端口为 `81`，ArduinoOTA 默认主机名为 `mus4-ota`、端口 `3232`。
+`MUS4_FW.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`，并在该路径下启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY`。启用后 ESP32 以 AP+STA 模式启动：默认 AP SSID 为 `MUS4-DEBUG`（可通过 Web Console 持久化修改），TCP 控制台端口为 `2323`，Web Console/Donkey Console 端口为 `80`，WebSocket 遥测端口为 `81`，ArduinoOTA 默认主机名为 `mus4-ota`、端口 `3232`。
 
 无线命令权限分层：`PING`、`STATUS`、`AUTH`、`WIFI_STA_STATUS` 可未认证访问；控制指令和 `ANSI`/`NOANSI`/`FILTER_DEBUG`/`LOG_WEB`/`LOG_SERIAL`/Wi-Fi STA 配置命令需要认证；`TEST`、`BENCH`、`REGRESS`、转向标定等诊断/维护命令还要求 Park 锁定；`ENABLE_OTA` 要求认证且 Park 锁定，`OTA_STATUS` 与 `DISABLE_OTA` 要求认证。修改这部分逻辑时，同步更新 `wireless_console_policy.py` 与 `tests/test_wireless_console_policy.py`。
 
-Web UI 的 HTML/CSS/JS 目前内嵌在 `MUS4_FW.ino` 的 `WIFI_WEB_CONSOLE_HTML` 中，页面品牌已显示为 `Donkey Console`。修改标题、顶部 DEV/OTA 区、状态卡片、串口日志、Tub JSON 或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
+AP 常驻作为调试和 STA 切换兜底入口：设备连接 STA 后仍保留 AP；通过 STA 页面切换到新 SSID 时，当前 STA 页面可能断开，应回到 AP 默认地址 `http://192.168.4.1/` 查看新 STA 状态。固件会按当前 AP 名称生成小写 mDNS 主机名并发布 Web Console（例如 `http://mus4-debug.local/`），但 Web UI 网络面板不再提供 `.local` 入口；`.local` 不可用时以页面显示的 STA IP 为准。
+
+Web UI 的 HTML/CSS/JS 目前内嵌在 `MUS4_FW.ino` 的 `WIFI_WEB_CONSOLE_HTML` 中，页面品牌已显示为 `Donkey Console`。修改标题、顶部 DEV/OTA 区、Network 面板、Diagnostics 面板、状态卡片、串口日志、Tub JSON 或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
 
 ### BLE Gamepad Mode
 

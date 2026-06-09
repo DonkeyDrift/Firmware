@@ -303,8 +303,15 @@ def test_command_parser_helpers_remain_available_after_module_split():
         "bool parsePilotCommandLine(const String& line, int* throttle, int* steering, int* seq)",
         "bool processLine(const String& line, int* throttle, int* steering, int* seq)",
         "bool parseAndValidateCommand(String cmd, int* throttle, int* steering)",
+        "bool runUnitTests()",
+        "20:-20:255",
     ]:
         assert symbol in source
+
+    parser_source = (PROJECT_ROOT / "CommandParser.cpp").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    assert "bool runUnitTests()" in parser_source
+    assert "static bool runUnitTests()" not in sketch_source
 
 
 def test_drift_assist_helpers_remain_available_after_module_split():

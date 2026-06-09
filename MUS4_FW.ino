@@ -302,30 +302,6 @@ bool forceRedraw = false;             // Force redraw flag
 int lastSeq = -1;                     // Last received sequence number
 
 #ifdef ENABLE_DIAGNOSTIC_COMMANDS
-static int testsTotal = 0;
-static int testsPassed = 0;
-static bool runUnitTests()
-{
-    testsTotal = 0; testsPassed = 0;
-    int t,s,seq;
-    // Basic format
-    testsTotal++; if (processLine(String("0:0"), &t,&s,&seq) && t==0 && s==0 && seq==-1) testsPassed++;
-    testsTotal++; if (!processLine(String("200:0"), &t,&s,&seq)) testsPassed++;
-    // Checksum format
-    char payload1[] = "10:-10";
-    uint8_t cs1 = calcChecksum(payload1, sizeof(payload1)-1);
-    char line1[32]; snprintf(line1, sizeof(line1), "%s*%02X", payload1, cs1);
-    testsTotal++; if (processLine(String(line1), &t,&s,&seq) && t==10 && s==-10 && seq==-1) testsPassed++;
-    // Seq format
-    testsTotal++; if (processLine(String("50:50:100"), &t,&s,&seq) && t==50 && s==50 && seq==100) testsPassed++;
-    // Seq + Checksum
-    char payload2[] = "20:-20:255";
-    uint8_t cs2 = calcChecksum(payload2, sizeof(payload2)-1);
-    char line2[32]; snprintf(line2, sizeof(line2), "%s*%02X", payload2, cs2);
-    testsTotal++; if (processLine(String(line2), &t,&s,&seq) && t==20 && s==-20 && seq==255) testsPassed++;
-    
-    return testsPassed*100/testsTotal >= 85;
-}
 static bool runBenchmarks()
 {
     unsigned long ts = millis();

@@ -86,3 +86,30 @@ bool parseAndValidateCommand(String cmd, int* throttle, int* steering)
     *steering = s;
     return true;
 }
+
+#ifdef ENABLE_DIAGNOSTIC_COMMANDS
+bool runUnitTests()
+{
+    int testsTotal = 0;
+    int testsPassed = 0;
+    int t, s, seq;
+
+    // Basic format
+    testsTotal++; if (parsePilotCommandLine(String("0:0"), &t, &s, &seq) && t == 0 && s == 0 && seq == -1) testsPassed++;
+    testsTotal++; if (!parsePilotCommandLine(String("200:0"), &t, &s, &seq)) testsPassed++;
+    // Checksum format
+    char payload1[] = "10:-10";
+    uint8_t cs1 = calcChecksum(payload1, sizeof(payload1)-1);
+    char line1[32]; snprintf(line1, sizeof(line1), "%s*%02X", payload1, cs1);
+    testsTotal++; if (parsePilotCommandLine(String(line1), &t, &s, &seq) && t == 10 && s == -10 && seq == -1) testsPassed++;
+    // Seq format
+    testsTotal++; if (parsePilotCommandLine(String("50:50:100"), &t, &s, &seq) && t == 50 && s == 50 && seq == 100) testsPassed++;
+    // Seq + Checksum
+    char payload2[] = "20:-20:255";
+    uint8_t cs2 = calcChecksum(payload2, sizeof(payload2)-1);
+    char line2[32]; snprintf(line2, sizeof(line2), "%s*%02X", payload2, cs2);
+    testsTotal++; if (parsePilotCommandLine(String(line2), &t, &s, &seq) && t == 20 && s == -20 && seq == 255) testsPassed++;
+
+    return testsPassed * 100 / testsTotal >= 85;
+}
+#endif

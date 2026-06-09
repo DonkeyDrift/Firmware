@@ -15,6 +15,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "I2CBusTools.cpp",
     PROJECT_ROOT / "LedStatus.h",
     PROJECT_ROOT / "LedStatus.cpp",
+    PROJECT_ROOT / "Mus4Log.h",
+    PROJECT_ROOT / "Mus4Log.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.cpp",
@@ -260,6 +262,18 @@ def test_firmware_entrypoints_remain_in_main_sketch():
 
     assert len(re.findall(r"^void\s+setup\s*\(", source, re.MULTILINE)) == 1
     assert len(re.findall(r"^void\s+loop\s*\(", source, re.MULTILINE)) == 1
+
+
+
+def test_log_bridge_remains_available_after_module_split():
+    source = firmware_source_text()
+
+    assert "void mus4SetWebLogSink(Mus4LogSink sink)" in source
+    assert "void setMus4LogTargetWeb()" in source
+    assert "void mus4LogLine(const char* source, const String& line)" in source
+    assert "void mus4Logf(const char* source, const char* fmt, ...)" in source
+    assert "extern uint8_t mus4LogTarget" in source
+    assert "mus4SetWebLogSink(appendWifiWebLog)" in source
 
 
 

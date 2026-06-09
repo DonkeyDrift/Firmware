@@ -51,6 +51,7 @@
 #include "JsonUtil.h"
 #include "I2CBusTools.h"
 #include "LedStatus.h"
+#include "Mus4Log.h"
 
 #include "Buzzer.h"
 // #include "test_runner.h"
@@ -61,7 +62,6 @@ Buzzer buzzer(BUZZER_PIN);
 int lastCarMode = -1;
 bool lastParkState = false;
 
-uint8_t mus4LogTarget = MUS4_LOG_TARGET;
 #ifdef ENABLE_GAMEPAD_MODE
   #include <BleGamepad.h>
   BleGamepad bleGamepad("Gamepad MU02", "Espressif", 100);
@@ -88,9 +88,6 @@ bool filterDebugEnabled = false;          // Debug output switch
 const int Channels[RC_CHANNEL_COUNT] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN, CH5_PIN, CH6_PIN};
 
 bool parseAndValidateCommand(String cmd, int* throttle, int* steering);
-static void mus4LogLine(const char* source, const String& line);
-static void mus4Logf(const char* source, const char* fmt, ...);
-static void setMus4LogTargetWeb();
 
 CRGB leds[NUM_LEDS]; // Define the array of leds
 
@@ -1513,36 +1510,6 @@ static bool processWifiStaConfigCommand(const String& line, Print& out)
 }
 #endif
 
-static void setMus4LogTargetWeb()
-{
-#if defined(ENABLE_WIFI_CONSOLE)
-    mus4LogTarget = MUS4_LOG_TARGET_WEB;
-#else
-    mus4LogTarget = MUS4_LOG_TARGET_SERIAL;
-#endif
-}
-
-static void mus4LogLine(const char* source, const String& line)
-{
-#if defined(ENABLE_WIFI_CONSOLE)
-    if (mus4LogTarget == MUS4_LOG_TARGET_WEB) {
-        appendWifiWebLog(source, line);
-        return;
-    }
-#endif
-    Serial.println("[" + String(source) + "] " + line);
-}
-
-static void mus4Logf(const char* source, const char* fmt, ...)
-{
-    char buf[192];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    mus4LogLine(source, String(buf));
-}
-
 #ifdef ENABLE_WIFI_CONSOLE
 static void sampleWifiWebData()
 {
@@ -2721,6 +2688,7 @@ static void updateWifiWebConsole()
 
 static void setupWifiConsole()
 {
+    mus4SetWebLogSink(appendWifiWebLog);
     lastWifiConsoleStartAttemptMs = millis();
     wifiStaConnected = false;
     wifiStaTimedOut = false;

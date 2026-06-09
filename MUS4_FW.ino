@@ -57,6 +57,7 @@
 #include "GamepadMode.h"
 #include "RcFilter.h"
 #include "CommandParser.h"
+#include "DriftAssist.h"
 
 #include "Buzzer.h"
 // #include "test_runner.h"
@@ -503,21 +504,6 @@ int steering_error_count = 0;
 int valid_signal_count = 0; // New: Counter for valid signals to exit safe mode
 bool safe_mode_active = false;
 bool is_history_initialized = false;
-
-// --- Drift Assist Constants & Globals ---
-#define DRIFT_ASSIST_ENABLED     1        // Globally enable Drift Assist at compile time
-#define DRIFT_ASSIST_GAIN        25.0f    // Counter-steer gain (gyroZ rad/s -> compensation ±100)
-#define DRIFT_ASSIST_THRESHOLD   1.2f     // Drift trigger threshold in rad/s; no intervention below this value
-#define DRIFT_ASSIST_MAX_COMP    70       // Maximum compensation angle (±70), prevents excessive counter-steer
-#define DRIFT_ASSIST_SMOOTH      0.25f    // First-order smoothing factor for compensation, avoids output jitter
-#define DRIFT_ASSIST_DECAY       0.85f    // Compensation decay factor when not triggered
-
-bool drift_assist_enabled = false;   // Whether the user has enabled assist
-bool drift_assist_active = false;    // Whether assist is currently intervening
-float drift_compensation = 0.0f;     // Current compensation value (final smoothed value)
-float gyro_z_filtered = 0.0f;        // Filtered gyroZ value
-float drift_assist_scale = 1.0f;     // CH6 Drift Assist strength ratio
-// ------------------------------------------------------
 
 static void notifyDegrade()
 {
@@ -2841,25 +2827,6 @@ void mode_change(bool modeValid) // Switch driving mode according to the RC mode
     }
 }
 
-void update_drift_assist_control(bool driftValid, bool driftScaleValid)
-{
-    if (driftScaleValid) {
-        uint16_t scalePwm = constrain(pwm_filtered[CH_DRIFT_SCALE], 1000, 2000);
-        drift_assist_scale = (scalePwm - 1000) / 500.0f;
-    } else {
-        drift_assist_scale = 1.0f;
-    }
-
-    bool enabled = driftValid && pwm_filtered[CH_DRIFT] > 1500;
-    if (!enabled) {
-        drift_assist_active = false;
-        drift_compensation = 0.0f;
-        gyro_z_filtered = 0.0f;
-    }
-    drift_assist_enabled = enabled;
-}
-
-
 // --- Steering Signal Processing Logic ---
 
 void reset_steering_filter() {
@@ -2995,78 +2962,6 @@ int process_steering_signal(int raw_pwm) {
     }
 
     return final_steering;
-}
-
-// --- Drift Assist Logic ---
-// Input: driver_steering - raw driver steering input (-100~100)
-// Output: final steering value after adding drift compensation (-100~100)
-int apply_drift_assist(int driver_steering) {
-#if DRIFT_ASSIST_ENABLED
-    // Only active in manual mode when Drift Assist is enabled
-    if (car_output.mode != CAR_MODE_MANUAL || !drift_assist_enabled) {
-        drift_assist_active = false;
-        drift_compensation = 0.0f;
-        return driver_steering;
-    }
-
-    // 1. Apply a first-order low-pass filter to gyroZ to remove sensor noise
-    gyro_z_filtered = gyro_z_filtered * (1.0f - DRIFT_ASSIST_SMOOTH) +
-                      mpu6050Data.gyroZ * DRIFT_ASSIST_SMOOTH;
-
-    // 2. Determine whether drift is triggered
-    float abs_gyro = fabs(gyro_z_filtered);
-    if (abs_gyro > DRIFT_ASSIST_THRESHOLD) {
-        // 3. Calculate counter-steer compensation. A negative sign would invert direction
-        // (clockwise slide -> negative gyro -> positive compensation -> steer right?),
-        // but the physical direction must be aligned first.
-        // User definition: clockwise rear slide gives negative gyroZ -> counter-steer left is needed (<1439 -> negative value).
-        // Therefore: negative gyroZ -> negative compensation -> counter-steer left.
-        //            positive gyroZ -> positive compensation -> counter-steer right.
-        // So should compensation have the same sign as gyroZ? Re-check carefully:
-        // Clockwise rear slide (rear swings right) -> vehicle over-rotates right -> needs left counter-steer (steering value decreases / becomes negative).
-        // User definition: clockwise rear slide gives negative gyroZ.
-        // Therefore: negative gyroZ -> negative compensation -> counter-steer left.
-        // Conclusion: compensation = gyroZ * GAIN (same sign).
-        // Re-checking the user definitions:
-        // "Value is negative when the rear slides clockwise, positive when it slides counterclockwise."
-        // "At the RC transmitter, signal below 1439 steers wheels left, above 1439 steers wheels right."
-        // Mapped to -100~100: -100 left, +100 right.
-        // Clockwise rear slide (rear swings right / oversteers right) -> counter-steer left -> add a negative steering value.
-        // At this moment gyroZ is negative -> compensation should also be negative.
-        // Therefore compensation = gyroZ * GAIN.
-        // Implement this logic first; adjust the sign during real-vehicle tuning if needed.
-        float raw_comp = gyro_z_filtered * DRIFT_ASSIST_GAIN * drift_assist_scale;
-
-        // 4. Clamp compensation
-        float effectiveMaxComp = min(DRIFT_ASSIST_MAX_COMP * drift_assist_scale, 100.0f);
-        raw_comp = constrain(raw_comp, -effectiveMaxComp, effectiveMaxComp);
-
-        // 5. Smooth compensation output
-        drift_compensation = drift_compensation * (1.0f - DRIFT_ASSIST_SMOOTH) +
-                             raw_comp * DRIFT_ASSIST_SMOOTH;
-
-        drift_assist_active = true;
-    } else {
-        // Below threshold; gradually decay compensation to 0
-        drift_compensation *= DRIFT_ASSIST_DECAY;
-        if (fabs(drift_compensation) < 0.5f) {
-            drift_compensation = 0.0f;
-            drift_assist_active = false;
-        } else {
-            drift_assist_active = true;
-        }
-    }
-
-    // 6. Add compensation to the raw driver input and clamp the result
-    int final_steering = driver_steering + (int)drift_compensation;
-    final_steering = constrain(final_steering, -100, 100);
-
-    return final_steering;
-#else
-    drift_assist_active = false;
-    drift_compensation = 0.0f;
-    return driver_steering;
-#endif
 }
 
 #ifdef ENABLE_BOOT_STEERING_SELF_TEST

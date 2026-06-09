@@ -27,6 +27,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "RcFilter.cpp",
     PROJECT_ROOT / "CommandParser.h",
     PROJECT_ROOT / "CommandParser.cpp",
+    PROJECT_ROOT / "DriftAssist.h",
+    PROJECT_ROOT / "DriftAssist.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.cpp",
@@ -297,6 +299,19 @@ def test_command_parser_helpers_remain_available_after_module_split():
         "bool parsePilotCommandLine(const String& line, int* throttle, int* steering, int* seq)",
         "bool processLine(const String& line, int* throttle, int* steering, int* seq)",
         "bool parseAndValidateCommand(String cmd, int* throttle, int* steering)",
+    ]:
+        assert symbol in source
+
+
+def test_drift_assist_helpers_remain_available_after_module_split():
+    source = firmware_source_text()
+
+    for symbol in [
+        "#define DRIFT_ASSIST_ENABLED     1",
+        "void update_drift_assist_control(bool driftValid, bool driftScaleValid)",
+        "int apply_drift_assist(int driver_steering)",
+        "car_output.mode != CAR_MODE_MANUAL || !drift_assist_enabled",
+        "constrain(final_steering, -100, 100)",
     ]:
         assert symbol in source
 

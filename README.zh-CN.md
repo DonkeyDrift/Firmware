@@ -240,6 +240,8 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 - WebSocket 遥测：端口 `81`
 - ArduinoOTA：主机名 `mus4-ota`，端口 `3232`
 
+调试 AP 默认可用。如果已经配置 STA 凭据，固件会先启动 DNS、TCP Console 和 Web Console，再尝试连接 STA。STA 连接成功并取得有效 IP 后，AP 会在约 3 秒后关闭，Web UI 会尝试跳转到 `http://<sta_ip>/`。如果 STA 连接失败、超时或运行中断开，AP 会保持或恢复，用户可通过 `http://192.168.4.1/` 重新配置。
+
 无线命令权限分层：
 
 - `PING`、`STATUS`、`AUTH`、`WIFI_STA_STATUS` 可未认证访问。

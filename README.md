@@ -240,6 +240,8 @@ When `ENABLE_WIFI_CONSOLE` is enabled, the firmware starts in AP+STA mode:
 - WebSocket telemetry: port `81`
 - ArduinoOTA: host `mus4-ota`, port `3232`
 
+The debug AP is available by default. If STA credentials are configured, the firmware starts the DNS, TCP, and Web Console services first, then attempts STA connection. After STA connects and receives a valid IP, the AP is closed after about 3 seconds and the Web UI tries to jump to `http://<sta_ip>/`. If STA connection fails, times out, or later disconnects, the AP is kept or restored so the device can be reconfigured through `http://192.168.4.1/`.
+
 Wireless command permissions are layered:
 
 - `PING`, `STATUS`, `AUTH`, and `WIFI_STA_STATUS` are available without authentication.

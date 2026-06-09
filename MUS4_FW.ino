@@ -1333,6 +1333,7 @@ static void clearWifiStaRuntimeStateWithoutDisconnect()
 static void setWifiStaLastError(const char* code, const char* message, bool timedOut)
 {
     wifiApStopPending = false;
+    // 保留本轮连接的首个失败原因，避免后续瞬态状态覆盖更有诊断价值的根因。
     if (wifiStaLastError[0] != 0) return;
     snprintf(wifiStaLastError, sizeof(wifiStaLastError), "%s", code);
     snprintf(wifiStaLastErrorMessage, sizeof(wifiStaLastErrorMessage), "%s", message);
@@ -1385,6 +1386,12 @@ static bool configureWifiSoftApNetwork()
 static void stopWifiApAfterStaConnected()
 {
     wifiApStopPending = false;
+    // 关闭 AP 前复核 STA，避免短暂连接后断开导致用户失去配置入口。
+    if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
+        wifiStaConnected = false;
+        mus4LogLine("wifi", "AP stop skipped: STA not ready");
+        return;
+    }
     wifiCaptiveDnsServer.stop();
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
@@ -1394,6 +1401,7 @@ static void stopWifiApAfterStaConnected()
 static bool restartWifiAp()
 {
     wifiApRestartPending = false;
+    wifiApStopPending = false;
     wifiCaptiveDnsServer.stop();
     WiFi.softAPdisconnect(true);
     delay(100);
@@ -2031,7 +2039,7 @@ function closeWifiStaFailureModal(){wifiStaFailureModal.classList.remove('show')
 function showWifiStaFailureModal(j){const ssid=(j&&j.ssid)||staSsid.value.trim()||'--',reason=(j&&j.last_error_message)||'STA 连接失败，请检查 SSID、密码与路由器状态。';wifiStaFailureText.textContent='SSID：'+ssid+'\n原因：'+reason+'\n建议：检查 SSID、密码、路由器距离后重新保存。';wifiStaFailureModal.classList.add('show')}
 async function probeStaConsoleUrl(url){try{await fetch(url,{mode:'no-cors',cache:'no-store'});return true}catch(e){return false}}
 async function redirectToStaConsole(ip){const url='http://'+ip+'/';staNotice.textContent='STA 已连接，IP：'+ip+'，正在跳转到 '+url;showToast('STA 已连接，正在跳转到 '+url,true);setTimeout(()=>{location.href=url},100);return true}
-async function waitWifiStaConnectionResult(){const deadline=Date.now()+17000;let miss=0;while(Date.now()<deadline){let j=null;try{j=await refreshWifiSta(false)}catch(e){j=null}if(!j){miss++;if(miss>=2){staNotice.textContent='AP 可能已关闭，STA 可能已连接';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'AP 可能已关闭，STA 可能已连接。请切回车辆连接的 Wi-Fi 后手动打开 STA IP。'});return false}await new Promise(resolve=>setTimeout(resolve,500));continue}miss=0;if(j&&j.connected){staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 3 秒后关闭';await refreshStatus();cmd.value='';if(j.sta_ip&&j.sta_ip!=='0.0.0.0'){await redirectToStaConsole(j.sta_ip)}closeWifiStaModal();return true}if(j&&(j.last_error||j.timed_out)){staNotice.textContent='连接失败';showWifiStaFailureModal(j);return false}await new Promise(resolve=>setTimeout(resolve,1000))}staNotice.textContent='连接失败';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'STA 连接超时，请检查 SSID、密码与路由器信号。'});return false}
+async function waitWifiStaConnectionResult(){const deadline=Date.now()+22000;let miss=0;while(Date.now()<deadline){let j=null;try{j=await refreshWifiSta(false)}catch(e){j=null}if(!j){miss++;if(miss>=2){staNotice.textContent='AP 可能已关闭，STA 可能已连接';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'AP 可能已关闭，STA 可能已连接。请切回车辆连接的 Wi-Fi 后手动打开 STA IP。'});return false}await new Promise(resolve=>setTimeout(resolve,500));continue}miss=0;if(j&&j.connected){staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 3 秒后关闭';await refreshStatus();cmd.value='';if(j.sta_ip&&j.sta_ip!=='0.0.0.0'){await redirectToStaConsole(j.sta_ip)}closeWifiStaModal();return true}if(j&&(j.last_error||j.timed_out)){staNotice.textContent='连接失败';showWifiStaFailureModal(j);return false}await new Promise(resolve=>setTimeout(resolve,1000))}staNotice.textContent='连接失败';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'STA 连接超时，请检查 SSID、密码与路由器信号。'});return false}
 async function saveWifiSta(){try{closeWifiScanPopover();staNotice.textContent='正在连接';const body=new URLSearchParams();body.set('ssid',staSsid.value.trim());if(!staPasswordDirty&&(staPasswordPlaceholder||staSavedPasswordKnown))body.set('keep_password','1');else body.set('password',staPassword.value);const r=await fetch('/api/wifi-sta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok){const t=await r.text();staNotice.textContent='连接失败';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:t});throw new Error(t)}staPassword.value='';staPasswordPlaceholder=false;staPasswordDirty=false;staPasswordVisible=false;staSavedPassword='';staSavedPasswordKnown=false;updateStaPasswordEye();await refreshWifiSta(true);refreshStatus();await new Promise(resolve=>setTimeout(resolve,1000));await waitWifiStaConnectionResult()}catch(e){line('wifi sta save error: '+e)}}
 async function clearWifiSta(){if(!confirm('确认清除并禁用 STA 配置？'))return;try{closeWifiScanPopover();const r=await fetch('/api/wifi-sta/clear',{method:'POST'});if(!r.ok){const t=await r.text();showCommandError(t);throw new Error(t)}staPassword.value='';staPasswordPlaceholder=false;staPasswordDirty=false;staPasswordVisible=false;staSavedPassword='';staSavedPasswordKnown=false;updateStaPasswordEye();await refreshWifiSta(true);refreshStatus();closeWifiStaModal()}catch(e){line('wifi sta clear error: '+e)}}
 async function quick(v){cmd.value=v;await sendCmd()}
@@ -2934,14 +2942,14 @@ static void setupWifiConsole()
         return;
     }
     wifiCaptiveDnsServer.start(53, "*", WiFi.softAPIP());
-    if (wifiStaConfigured) {
-        applyWifiStaCredentials();
-    }
     wifiConsoleServer.begin();
     wifiConsoleServer.setNoDelay(true);
     setupWifiWebConsole();
     wifiConsoleStarted = true;
     mus4Logf("wifi", "AP %s IP: %s Port: %u Web: %u", wifiApSsid, WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT);
+    if (wifiStaConfigured) {
+        applyWifiStaCredentials();
+    }
 }
 
 static void updateWifiSta()

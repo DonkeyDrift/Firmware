@@ -25,6 +25,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "GamepadMode.cpp",
     PROJECT_ROOT / "RcFilter.h",
     PROJECT_ROOT / "RcFilter.cpp",
+    PROJECT_ROOT / "CommandParser.h",
+    PROJECT_ROOT / "CommandParser.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.cpp",
@@ -282,6 +284,19 @@ def test_rc_filter_helpers_remain_available_after_module_split():
         "bool isPrimaryRcChannel(int ch)",
         "uint16_t smoothPrimaryPWM(int ch, uint16_t value, bool valid)",
         "uint16_t stabilizeAuxiliaryPWM(int ch, uint16_t value, bool valid)",
+    ]:
+        assert symbol in source
+
+
+def test_command_parser_helpers_remain_available_after_module_split():
+    source = firmware_source_text()
+
+    for symbol in [
+        "uint8_t parseHex2(const char* s)",
+        "uint8_t calcChecksum(const char* s, int n)",
+        "bool parsePilotCommandLine(const String& line, int* throttle, int* steering, int* seq)",
+        "bool processLine(const String& line, int* throttle, int* steering, int* seq)",
+        "bool parseAndValidateCommand(String cmd, int* throttle, int* steering)",
     ]:
         assert symbol in source
 

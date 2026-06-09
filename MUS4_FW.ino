@@ -1326,22 +1326,29 @@ static bool copyWifiStaPassword(const String& password)
     return true;
 }
 
+static String wifiMdnsHostText()
+{
+    String host = String(wifiApSsid);
+    host.toLowerCase();
+    return host;
+}
+
 static String wifiMdnsUrlText()
 {
-    return String("http://") + wifiApSsid + ".local/";
+    return String("http://") + wifiMdnsHostText() + ".local/";
 }
 
 static void startWifiMdnsIfNeeded()
 {
     if (wifiMdnsStarted) return;
     if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) return;
-    if (!MDNS.begin(wifiApSsid)) {
+    if (!MDNS.begin(wifiMdnsHostText().c_str())) {
         mus4LogLine("wifi", "mDNS start failed");
         return;
     }
     MDNS.addService("http", "tcp", WIFI_WEB_CONSOLE_PORT);
     wifiMdnsStarted = true;
-    mus4Logf("wifi", "mDNS started: %s.local", wifiApSsid);
+    mus4Logf("wifi", "mDNS started: %s.local", wifiMdnsHostText().c_str());
 }
 
 static void stopWifiMdnsIfNeeded()
@@ -1784,7 +1791,7 @@ static void printWirelessStatus(Print& out)
         wifiStaConnected ? 1 : 0,
         wifiStaSsid,
         wifiStaIpText().c_str(),
-        wifiApSsid,
+        wifiMdnsHostText().c_str(),
         wifiMdnsUrlText().c_str(),
         wifiMdnsStarted ? 1 : 0);
 }
@@ -2302,7 +2309,7 @@ static String wifiStaJson()
     response += ",\"sta_ip\":";
     appendJsonString(response, wifiStaIpText().c_str());
     response += ",\"mdns_host\":";
-    appendJsonString(response, wifiApSsid);
+    appendJsonString(response, wifiMdnsHostText().c_str());
     response += ",\"mdns_url\":";
     appendJsonString(response, wifiMdnsUrlText().c_str());
     response += ",\"mdns_started\":";

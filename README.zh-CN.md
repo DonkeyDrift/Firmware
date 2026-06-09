@@ -240,7 +240,7 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 - WebSocket 遥测：端口 `81`
 - ArduinoOTA：主机名 `mus4-ota`，端口 `3232`
 
-调试 AP 默认可用。如果已经配置 STA 凭据，固件会先启动 DNS、TCP Console 和 Web Console，再尝试连接 STA。STA 连接成功并取得有效 IP 后，AP 会在约 3 秒后关闭，Web UI 会尝试跳转到 `http://<sta_ip>/`。固件还会通过 mDNS 发布 Web Console，局域网入口为 `http://<AP名称>.local/`；默认 AP 名称可通过 `http://MUS4-DEBUG.local/` 打开，前提是客户端和网络支持 mDNS。如果 `.local` 无法解析，请使用页面显示的 STA IP。为保证 hostname 合法，AP 名称限制为字母、数字和短横线，且不能以短横线开头或结尾。如果 STA 连接失败、超时或运行中断开，AP 会保持或恢复，用户可通过 `http://192.168.4.1/` 重新配置。
+调试 AP 默认可用。如果已经配置 STA 凭据，固件会先启动 DNS、TCP Console 和 Web Console，再尝试连接 STA。STA 连接成功并取得有效 IP 后，AP 会在约 3 秒后关闭，Web UI 会尝试跳转到 `http://<sta_ip>/`。固件还会通过 mDNS 发布 Web Console，局域网入口为 `http://<AP名称小写>.local/`；例如 AP 名称 `MUS4-DEBUG` 会发布为 `http://mus4-debug.local/`，前提是客户端和网络支持 mDNS。如果 `.local` 无法解析，请使用页面显示的 STA IP。为保证 hostname 合法，AP 名称限制为字母、数字和短横线，且不能以短横线开头或结尾。如果 STA 连接失败、超时或运行中断开，AP 会保持或恢复，用户可通过 `http://192.168.4.1/` 重新配置。
 
 无线命令权限分层：
 

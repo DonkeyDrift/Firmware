@@ -293,13 +293,13 @@ setTimeout(() => { location.href = url }, 100);
 STA 连接成功并取得有效 IP 后，固件会把 Web Console 发布为：
 
 ```text
-http://<AP名称>.local/
+http://<AP名称小写>.local/
 ```
 
 默认 AP 名称为 `MUS4-DEBUG`，因此默认局域网入口是：
 
 ```text
-http://MUS4-DEBUG.local/
+http://mus4-debug.local/
 ```
 
 ### 名称规则
@@ -310,6 +310,8 @@ http://MUS4-DEBUG.local/
 - 长度仍为 `1..32` 字符。
 - 不能以 `-` 开头或结尾。
 
+AP SSID 会保留用户输入的大小写用于显示和 AP 广播，但 mDNS hostname 会统一转为小写。例如 AP 名称 `MU04` 会发布为 `mu04.local`。
+
 如果旧 NVS 中保存了中文、空格、下划线或其他非法 AP 名称，固件加载时会回退到默认 `MUS4-DEBUG`。
 
 ### mDNS 生命周期
@@ -318,8 +320,8 @@ mDNS 跟随 STA，而不是跟随 AP：
 
 1. `applyWifiStaCredentials()` 开始新一轮 STA 连接前，会先停止旧 mDNS。
 2. `updateWifiSta()` 首次检测到 STA connected 后，调用 `startWifiMdnsIfNeeded()`。
-3. `startWifiMdnsIfNeeded()` 会复核 `WL_CONNECTED` 和有效 STA IP，然后执行：
-   - `MDNS.begin(wifiApSsid)`
+3. `startWifiMdnsIfNeeded()` 会复核 `WL_CONNECTED` 和有效 STA IP，然后把 AP 名称转为小写 hostname 并执行：
+   - `MDNS.begin(wifiMdnsHostText().c_str())`
    - `MDNS.addService("http", "tcp", WIFI_WEB_CONSOLE_PORT)`
 4. AP 因 STA 成功而关闭时，不停止 mDNS。
 5. STA 运行中断开时，调用 `stopWifiMdnsIfNeeded()`，然后恢复 AP。
@@ -327,7 +329,7 @@ mDNS 跟随 STA，而不是跟随 AP：
 因此，AP 关闭后，只要 STA 仍在线且客户端网络支持 mDNS，用户仍可打开：
 
 ```text
-http://<AP名称>.local/
+http://<AP名称小写>.local/
 ```
 
 ### API 字段
@@ -335,15 +337,15 @@ http://<AP名称>.local/
 `/api/status` 会输出：
 
 ```text
-mdns_host="MUS4-DEBUG" mdns_url=http://MUS4-DEBUG.local/ mdns_started=1
+mdns_host="mus4-debug" mdns_url=http://mus4-debug.local/ mdns_started=1
 ```
 
 `/api/wifi-sta` 会输出：
 
 ```json
 {
-  "mdns_host": "MUS4-DEBUG",
-  "mdns_url": "http://MUS4-DEBUG.local/",
+  "mdns_host": "mus4-debug",
+  "mdns_url": "http://mus4-debug.local/",
   "mdns_started": true
 }
 ```
@@ -415,8 +417,8 @@ MUS4-STA-192.168.3.144
   "password_len": 8,
   "ap_ip": "192.168.4.1",
   "sta_ip": "192.168.3.144",
-  "mdns_host": "MUS4-DEBUG",
-  "mdns_url": "http://MUS4-DEBUG.local/",
+  "mdns_host": "mus4-debug",
+  "mdns_url": "http://mus4-debug.local/",
   "mdns_started": true
 }
 ```

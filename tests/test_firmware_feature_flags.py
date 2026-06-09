@@ -211,8 +211,9 @@ def test_web_console_exposes_ap_name_mdns_lan_console_entry():
     assert "bool wifiMdnsStarted" in source
     assert "static void startWifiMdnsIfNeeded()" in source
     assert "static void stopWifiMdnsIfNeeded()" in source
+    assert "static String wifiMdnsHostText()" in source
     assert "static String wifiMdnsUrlText()" in source
-    assert "MDNS.begin(wifiApSsid)" in source
+    assert "MDNS.begin(wifiMdnsHostText().c_str())" in source
     assert 'MDNS.addService("http", "tcp", WIFI_WEB_CONSOLE_PORT)' in source
     assert "ESP.getEfuseMac" not in source
 
@@ -234,13 +235,16 @@ def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
     assert "mdns_host=\\\"%s\\\"" in status_body
     assert "mdns_url=%s" in status_body
     assert "mdns_started=%d" in status_body
+    assert "wifiMdnsHostText().c_str()" in status_body
     assert "wifiMdnsUrlText().c_str()" in status_body
     assert "wifiMdnsStarted ? 1 : 0" in status_body
     assert "\\\"mdns_host\\\"" in sta_json_body
     assert "\\\"mdns_url\\\"" in sta_json_body
     assert "\\\"mdns_started\\\"" in sta_json_body
+    assert "wifiMdnsHostText().c_str()" in sta_json_body
     assert "wifiMdnsUrlText().c_str()" in sta_json_body
-    assert "String(\"http://\") + wifiApSsid + \".local/\"" in source
+    assert "host.toLowerCase()" in source
+    assert "String(\"http://\") + wifiMdnsHostText() + \".local/\"" in source
 
 
 def test_web_console_header_ota_button_and_log_area_are_compact():

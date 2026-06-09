@@ -302,55 +302,6 @@ bool forceRedraw = false;             // Force redraw flag
 int lastSeq = -1;                     // Last received sequence number
 
 #ifdef ENABLE_DIAGNOSTIC_COMMANDS
-static bool runFilterTests()
-{
-    mus4LogLine("test", "Running Filter Tests...");
-    bool passed = true;
-    
-    // Simulated buffer
-    uint16_t testBuf[PWM_FILTER_SIZE];
-    for(int i=0; i<PWM_FILTER_SIZE; i++) testBuf[i] = 1500;
-    
-    // Test 1: steady-state test
-    uint16_t out = medianFilter(testBuf, PWM_FILTER_SIZE);
-    if (out != 1500) { mus4Logf("test", "Filter Test 1 Failed: Expected 1500, got %d", out); passed = false; }
-    
-    // Test 2: single-sample spike suppression (2000us jump)
-    testBuf[2] = 2000; // Middle sample jumps
-    out = medianFilter(testBuf, PWM_FILTER_SIZE);
-    if (out != 1500) { mus4Logf("test", "Filter Test 2 Failed: Spike not suppressed, got %d", out); passed = false; }
-    testBuf[2] = 1500; // Restore
-    
-    // Test 3: double spike (two consecutive outliers should still be suppressed by a 5-sample window)
-    testBuf[1] = 2000;
-    testBuf[2] = 2000;
-    out = medianFilter(testBuf, PWM_FILTER_SIZE);
-    if (out != 1500) { mus4Logf("test", "Filter Test 3 Failed: Double spike not suppressed, got %d", out); passed = false; }
-    
-    // Test 4: step response (majority changes to the new value)
-    testBuf[0] = 1600;
-    testBuf[1] = 1600;
-    testBuf[2] = 1600; // 3/5 changed to 1600
-    out = medianFilter(testBuf, PWM_FILTER_SIZE);
-    if (out != 1600) { mus4Logf("test", "Filter Test 4 Failed: Step response failed, got %d", out); passed = false; }
-
-    primary_smooth_initialized[CH_STEERING] = false;
-    uint16_t smooth = smoothPrimaryPWM(CH_STEERING, 1500, true);
-    smooth = smoothPrimaryPWM(CH_STEERING, 1504, true);
-    if (smooth != 1500) { mus4Logf("test", "Filter Test 5 Failed: deadband got %d", smooth); passed = false; }
-
-    smooth = smoothPrimaryPWM(CH_STEERING, 1540, true);
-    if (smooth <= 1500 || smooth >= 1540) { mus4Logf("test", "Filter Test 6 Failed: smoothing got %d", smooth); passed = false; }
-
-    smooth = smoothPrimaryPWM(CH_STEERING, 1650, true);
-    if (smooth != 1650) { mus4Logf("test", "Filter Test 7 Failed: passthrough got %d", smooth); passed = false; }
-    primary_smooth_initialized[CH_STEERING] = false;
-    primary_smooth_pwm[CH_STEERING] = 0;
-
-    if (passed) mus4LogLine("test", "Filter Tests Passed!");
-    return passed;
-}
-
 static int testsTotal = 0;
 static int testsPassed = 0;
 static bool runUnitTests()

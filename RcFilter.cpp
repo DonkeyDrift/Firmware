@@ -1,6 +1,7 @@
 #include "RcFilter.h"
 
 #include "FirmwareConfig.h"
+#include "Mus4Log.h"
 
 extern uint16_t aux_stable_pwm[];
 extern uint16_t aux_candidate_pwm[];
@@ -97,3 +98,53 @@ uint16_t stabilizeAuxiliaryPWM(int ch, uint16_t value, bool valid)
 
     return aux_stable_pwm[ch];
 }
+
+#ifdef ENABLE_DIAGNOSTIC_COMMANDS
+bool runFilterTests()
+{
+    mus4LogLine("test", "Running Filter Tests...");
+    bool passed = true;
+
+    uint16_t testBuf[PWM_FILTER_SIZE];
+    for(int i=0; i<PWM_FILTER_SIZE; i++) testBuf[i] = 1500;
+
+    // 测试 1：稳态输入应保持中位数。
+    uint16_t out = medianFilter(testBuf, PWM_FILTER_SIZE);
+    if (out != 1500) { mus4Logf("test", "Filter Test 1 Failed: Expected 1500, got %d", out); passed = false; }
+
+    // 测试 2：单点 2000us 毛刺应被抑制。
+    testBuf[2] = 2000;
+    out = medianFilter(testBuf, PWM_FILTER_SIZE);
+    if (out != 1500) { mus4Logf("test", "Filter Test 2 Failed: Spike not suppressed, got %d", out); passed = false; }
+    testBuf[2] = 1500;
+
+    // 测试 3：5 点窗口中的两个离群点仍应被抑制。
+    testBuf[1] = 2000;
+    testBuf[2] = 2000;
+    out = medianFilter(testBuf, PWM_FILTER_SIZE);
+    if (out != 1500) { mus4Logf("test", "Filter Test 3 Failed: Double spike not suppressed, got %d", out); passed = false; }
+
+    // 测试 4：多数样本切换后应跟随新值。
+    testBuf[0] = 1600;
+    testBuf[1] = 1600;
+    testBuf[2] = 1600;
+    out = medianFilter(testBuf, PWM_FILTER_SIZE);
+    if (out != 1600) { mus4Logf("test", "Filter Test 4 Failed: Step response failed, got %d", out); passed = false; }
+
+    primary_smooth_initialized[CH_STEERING] = false;
+    uint16_t smooth = smoothPrimaryPWM(CH_STEERING, 1500, true);
+    smooth = smoothPrimaryPWM(CH_STEERING, 1504, true);
+    if (smooth != 1500) { mus4Logf("test", "Filter Test 5 Failed: deadband got %d", smooth); passed = false; }
+
+    smooth = smoothPrimaryPWM(CH_STEERING, 1540, true);
+    if (smooth <= 1500 || smooth >= 1540) { mus4Logf("test", "Filter Test 6 Failed: smoothing got %d", smooth); passed = false; }
+
+    smooth = smoothPrimaryPWM(CH_STEERING, 1650, true);
+    if (smooth != 1650) { mus4Logf("test", "Filter Test 7 Failed: passthrough got %d", smooth); passed = false; }
+    primary_smooth_initialized[CH_STEERING] = false;
+    primary_smooth_pwm[CH_STEERING] = 0;
+
+    if (passed) mus4LogLine("test", "Filter Tests Passed!");
+    return passed;
+}
+#endif

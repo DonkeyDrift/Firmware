@@ -288,6 +288,8 @@ def test_rc_filter_helpers_remain_available_after_module_split():
         "bool isPrimaryRcChannel(int ch)",
         "uint16_t smoothPrimaryPWM(int ch, uint16_t value, bool valid)",
         "uint16_t stabilizeAuxiliaryPWM(int ch, uint16_t value, bool valid)",
+        "bool runFilterTests()",
+        "Running Filter Tests...",
     ]:
         assert symbol in source
 

@@ -57,7 +57,7 @@ pip install pyyaml pyserial pytest
 .\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP或主机名> -Sketch MUS4_FW.ino
 
 # 当前调试目标可按 .mus4_ota_target 首行；显式传入可避免被旧目标覆盖
-.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.144 -Sketch MUS4_FW.ino
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.157 -Sketch MUS4_FW.ino
 
 # 使用已有 build_wsl 产物通过 HTTP OTA 上传；未传主机时读取 .mus4_ota_target 首行
 .\arduino-cli-wsl.ps1 -Upload -HttpOta -Sketch MUS4_FW.ino
@@ -72,7 +72,7 @@ pip install pyyaml pyserial pytest
 .\arduino-cli-wsl.ps1 -Upload -Sketch MUS4_FW.ino -ExtraArgs "--port COM9"
 ```
 
-WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。HTTP OTA 使用设备 Web Console 的 `/update` 端点，需要 Web Console 已认证且 Park 锁定，或开发模式允许；目标主机可通过 `-HttpOtaHost` 指定，或写入项目根目录 `.mus4_ota_target` 的首行。当前调试优先使用 `.mus4_ota_target` 中的目标；截至 2026-06-08 当前目标为 `192.168.3.144`，如需改用 AP 默认地址再显式传入 `192.168.4.1`。
+WSL 脚本默认 `IoMode=native`：先把源码同步到 WSL 原生文件系统编译，再在 `build_wsl/` 生成并回传 `.bin` / `.elf` 产物。HTTP OTA 使用设备 Web Console 的 `/update` 端点，需要 Web Console 已认证且 Park 锁定，或开发模式允许；目标主机可通过 `-HttpOtaHost` 指定，或写入项目根目录 `.mus4_ota_target` 的首行。当前调试优先使用 `.mus4_ota_target` 中的目标；截至 2026-06-10 当前目标为 `192.168.3.157`，如需改用 AP 默认地址再显式传入 `192.168.4.1`。
 
 ### Arduino CLI 构建、上传、监视
 

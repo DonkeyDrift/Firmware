@@ -17,6 +17,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "LedStatus.cpp",
     PROJECT_ROOT / "Mus4Log.h",
     PROJECT_ROOT / "Mus4Log.cpp",
+    PROJECT_ROOT / "SteeringCalibration.h",
+    PROJECT_ROOT / "SteeringCalibration.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.cpp",
@@ -262,6 +264,22 @@ def test_firmware_entrypoints_remain_in_main_sketch():
 
     assert len(re.findall(r"^void\s+setup\s*\(", source, re.MULTILINE)) == 1
     assert len(re.findall(r"^void\s+loop\s*\(", source, re.MULTILINE)) == 1
+
+
+
+def test_steering_calibration_remains_available_after_module_split():
+    source = firmware_source_text()
+
+    assert "struct SteeringCalibration" in source
+    assert "enum SteerCalState" in source
+    assert "void loadSteeringCalibration()" in source
+    assert "bool saveSteeringCalibration()" in source
+    assert "void resetSteeringCalibration()" in source
+    assert "int mapSteeringCalibrated(int16_t pwm)" in source
+    assert "bool startSteerCalibration(Print& out)" in source
+    assert "void updateSteerCalibration()" in source
+    assert "MUS4_PREF_STEER_MIN_KEY" in source
+    assert "MUS4_PREF_STEER_CAL_EN_KEY" in source
 
 
 

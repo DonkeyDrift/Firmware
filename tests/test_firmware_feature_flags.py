@@ -63,7 +63,8 @@ def test_websocket_curve_data_feature_is_enabled():
 def test_web_console_keeps_original_ui_and_direct_curve_path():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "Donkey Console" in source
+    assert "DonkeyDrift Console" in source
+    assert "Donkey Console" not in source
     assert "MUS4 Web Console" not in source
     assert "MUS4 Compact Console" not in source
     assert "pendingPoints.push" not in source
@@ -71,6 +72,23 @@ def test_web_console_keeps_original_ui_and_direct_curve_path():
     assert "chartLatencyMs=160" not in source
     assert "ws.send('ping')" not in source
     assert "\"pong\"" not in source
+
+
+def test_web_console_has_help_floating_modal():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert 'id="helpFab"' in source
+    assert 'id="helpOverlay"' in source
+    assert 'id="helpModal"' in source
+    assert 'class="helpClose"' in source
+    assert "function openHelpModal()" in source
+    assert "function closeHelpModal()" in source
+    assert "状态卡片：查看模式、Park、OTA、连接状态" in source
+    assert "Network：查看 AP/STA IP，配置 Wi-Fi" in source
+    assert "Diagnostics：运行测试、回归、维护命令" in source
+    assert "Serial Log：查看设备日志和命令反馈" in source
+    assert "Tub JSON：记录并下载遥测样本" in source
+    assert "OTA / DEV：固件更新与开发模式开关" in source
 
 
 def test_diagnostic_code_is_not_built_by_default():
@@ -894,7 +912,7 @@ def test_web_console_handles_common_captive_portal_probes_locally():
     ).group("body")
     assert "location.replace" in redirect_body
     assert "http-equiv=\\\"refresh\\\"" in redirect_body
-    assert "打开 Donkey Console" in redirect_body
+    assert "打开 DonkeyDrift Console" in redirect_body
     assert "WiFi.softAPIP().toString()" in redirect_body
 
     not_found_body = re.search(

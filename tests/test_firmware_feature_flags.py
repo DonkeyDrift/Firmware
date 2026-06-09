@@ -108,6 +108,18 @@ def test_web_console_has_language_floating_menu_above_help_fab():
     assert ".langMenu" in source
 
 
+def test_web_console_floating_buttons_are_translucent_until_interaction():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert ".helpFab{position:fixed;" in source
+    assert ".langFab{position:fixed;" in source
+    assert ".helpFab{position:fixed;right:18px;bottom:18px;width:46px;height:46px;min-width:0;padding:0;border-radius:50%;background:rgba(" in source
+    assert ".langFab{position:fixed;right:18px;bottom:74px;width:46px;height:46px;min-width:0;padding:0;border-radius:50%;background:rgba(" in source
+    assert ".helpFab:hover,.helpFab:focus-visible" in source
+    assert ".langFab:hover,.langFab:focus-visible" in source
+    assert "box-shadow:0 8px 22px rgba(0,0,0,.22)" in source
+
+
 def test_web_console_language_selection_uses_local_storage_and_i18n_dictionary():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 

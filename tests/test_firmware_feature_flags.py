@@ -247,6 +247,49 @@ def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
     assert "String(\"http://\") + wifiMdnsHostText() + \".local/\"" in source
 
 
+def test_wifi_sta_to_sta_handoff_keeps_ap_as_transition_page():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "WIFI_STA_HANDOFF_AP_KEEP_MS" in source
+    assert "120000UL" in source
+    assert "bool wifiStaHandoffActive" in source
+    assert "char wifiStaHandoffTargetSsid" in source
+    assert "static void startWifiStaHandoff" in source
+    assert "static void finishWifiStaHandoff" in source
+    assert "static void clearWifiStaHandoff" in source
+    assert "wifiStaHandoffActive ? WIFI_STA_HANDOFF_AP_KEEP_MS : WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS" in source
+    assert "restartWifiAp()" in re.search(
+        r"static void startWifiStaHandoff.*?\n\}",
+        source,
+        re.DOTALL,
+    ).group(0)
+    assert "body.set('source',location.hostname==='192.168.4.1'?'ap':'sta')" in source
+    assert "wifiWebServer.arg(\"source\")" in source
+    assert "startWifiStaHandoff(ssid)" in source
+
+
+def test_wifi_sta_handoff_status_api_and_web_prompt_are_present():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    sta_json_body = re.search(
+        r"static String wifiStaJson\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "handoff_active" in sta_json_body
+    assert "handoff_target_ssid" in sta_json_body
+    assert "handoff_sta_ip" in sta_json_body
+    assert "handoff_ap_ssid" in sta_json_body
+    assert "handoff_ap_url" in sta_json_body
+    assert "handoff_mdns_url" in sta_json_body
+    assert "请将电脑/手机切换到 Wi-Fi" in source
+    assert "然后打开" in source
+    assert "http://192.168.4.1/" in source
+    assert "连接设备 AP" in source
+    assert "打开新地址" in source
+    assert "复制 IP" in source
+
+
 def test_web_console_header_ota_button_and_log_area_are_compact():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 

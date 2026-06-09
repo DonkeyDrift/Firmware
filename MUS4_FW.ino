@@ -267,6 +267,7 @@ const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;
 const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;
 const unsigned long WIFI_STA_APPLY_DELAY_MS = 800;
 const unsigned long WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS = 3000;
+const unsigned long WIFI_STA_HANDOFF_AP_KEEP_MS = 120000UL;
 const char* WIFI_OTA_HOSTNAME = "mus4-ota";
 const char* WIFI_OTA_PASSWORD = "mus4-debug";
 const uint16_t WIFI_OTA_PORT = 3232;
@@ -340,6 +341,11 @@ bool wifiOtaStarted = false;
 bool wifiOtaWindowOpen = false;
 bool wifiOtaInProgress = false;
 bool wifiOtaParkGuardActive = false;
+bool wifiStaHandoffActive = false;
+char wifiStaHandoffTargetSsid[WIFI_STA_SSID_MAX_LEN + 1] = {0};
+char wifiStaHandoffStaIp[16] = {0};
+char wifiStaHandoffApSsid[WIFI_AP_SSID_MAX_LEN + 1] = {0};
+unsigned long wifiStaHandoffStartedMs = 0;
 static bool wifiWebUpdateError = false;
 static size_t wifiWebUpdateReceived = 0;
 
@@ -1351,12 +1357,41 @@ static void startWifiMdnsIfNeeded()
     mus4Logf("wifi", "mDNS started: %s.local", wifiMdnsHostText().c_str());
 }
 
+static bool restartWifiAp();
+
 static void stopWifiMdnsIfNeeded()
 {
     if (!wifiMdnsStarted) return;
     MDNS.end();
     wifiMdnsStarted = false;
     mus4LogLine("wifi", "mDNS stopped");
+}
+
+static void clearWifiStaHandoff()
+{
+    wifiStaHandoffActive = false;
+    wifiStaHandoffTargetSsid[0] = 0;
+    wifiStaHandoffStaIp[0] = 0;
+    wifiStaHandoffApSsid[0] = 0;
+    wifiStaHandoffStartedMs = 0;
+}
+
+static void finishWifiStaHandoff()
+{
+    if (!wifiStaHandoffActive) return;
+    snprintf(wifiStaHandoffStaIp, sizeof(wifiStaHandoffStaIp), "%s", WiFi.localIP().toString().c_str());
+    mus4Logf("wifi", "STA handoff ready ssid=%s ip=%s", wifiStaHandoffTargetSsid, wifiStaHandoffStaIp);
+}
+
+static void startWifiStaHandoff(const String& targetSsid)
+{
+    wifiStaHandoffActive = true;
+    targetSsid.toCharArray(wifiStaHandoffTargetSsid, sizeof(wifiStaHandoffTargetSsid));
+    snprintf(wifiStaHandoffApSsid, sizeof(wifiStaHandoffApSsid), "%s", wifiApSsid);
+    wifiStaHandoffStaIp[0] = 0;
+    wifiStaHandoffStartedMs = millis();
+    restartWifiAp();
+    mus4Logf("wifi", "STA handoff started target=%s", wifiStaHandoffTargetSsid);
 }
 
 static void disconnectWifiStaOnly()
@@ -1381,6 +1416,7 @@ static void clearWifiStaRuntimeStateWithoutDisconnect()
     wifiStaConnecting = false;
     clearWifiStaLastError();
     wifiStaApplyPending = false;
+    clearWifiStaHandoff();
 }
 
 static void setWifiStaLastError(const char* code, const char* message, bool timedOut)
@@ -1427,7 +1463,7 @@ static void scheduleWifiApRestart()
 static void scheduleWifiApStopAfterStaConnected()
 {
     wifiApStopPending = true;
-    wifiApStopDeadlineMs = millis() + WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS;
+    wifiApStopDeadlineMs = millis() + (wifiStaHandoffActive ? WIFI_STA_HANDOFF_AP_KEEP_MS : WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS);
 }
 
 static bool configureWifiSoftApNetwork()
@@ -2032,9 +2068,10 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <div id="wifiApModal" class="modal"><div class="dialog"><h2>AP SSID 配置</h2><div class="formRow"><label for="apSsid">SSID</label><div class="inputWithAction"><input id="apSsid" placeholder="AP SSID"></div></div><p id="apNotice">保存后会重启 AP，当前浏览器连接会短暂断开。请连接新的 SSID 后刷新页面。</p><div class="dialogActions"><button onclick="closeWifiApModal()">取消</button><button id="apSaveBtn" onclick="saveWifiAp()">保存并重启 AP</button></div></div></div>
 <div id="wifiStaModal" class="modal"><div class="dialog"><h2>STA Wi-Fi 配置</h2><div class="formRow"><label for="staSsid">SSID</label><div class="inputWithAction"><input id="staSsid" placeholder="STA SSID"><button id="staSsidSearchBtn" class="iconButton" type="button" onclick="openWifiScanPopover(event)">⌕</button><div id="wifiScanPopover" class="scanPopover"><div id="wifiScanStatus" class="muted">扫描中...</div><div id="wifiScanList"></div></div></div></div><div class="formRow"><label for="staPassword">密码</label><div class="inputWithAction"><input id="staPassword" type="password" placeholder="Wi-Fi 密码，留空表示开放网络"><button id="staPasswordEye" class="iconButton" type="button" onclick="toggleStaPasswordVisibility()">👁</button></div></div><p id="staNotice">注意只能连接2.4G WiFi</p><div class="dialogActions"><button onclick="closeWifiStaModal()">取消</button><button onclick="clearWifiSta()">清除</button><button onclick="saveWifiSta()">连接</button></div></div></div>
 <div id="wifiStaFailureModal" class="modal"><div class="dialog"><h2>STA 连接失败</h2><p id="wifiStaFailureText">连接失败。</p><div class="dialogActions"><button onclick="closeWifiStaFailureModal()">知道了</button><button onclick="openWifiStaModal();closeWifiStaFailureModal()">重新配置</button></div></div></div>
+<div id="wifiStaHandoffModal" class="modal"><div class="dialog"><h2>STA 切换提示</h2><p id="wifiStaHandoffText">设备正在切换 Wi-Fi。</p><div class="dialogActions"><button onclick="copyHandoffIp()">复制 IP</button><button onclick="openHandoffUrl()">打开新地址</button><button onclick="closeWifiStaHandoffModal()">知道了</button></div></div></div>
 <div id="toast" class="toast"></div>
 <script>
-const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),devModeCheck=document.getElementById('devModeCheck'),devModeSwitchText=document.getElementById('devModeSwitchText'),devModeModal=document.getElementById('devModeModal'),versionLabel=document.getElementById('versionLabel'),apSsid=document.getElementById('apSsid'),apNotice=document.getElementById('apNotice'),apSaveBtn=document.getElementById('apSaveBtn'),wifiApModal=document.getElementById('wifiApModal'),staSsid=document.getElementById('staSsid'),staPassword=document.getElementById('staPassword'),staPasswordEye=document.getElementById('staPasswordEye'),staNotice=document.getElementById('staNotice'),wifiScanPopover=document.getElementById('wifiScanPopover'),wifiScanStatus=document.getElementById('wifiScanStatus'),wifiScanList=document.getElementById('wifiScanList'),wifiStaModal=document.getElementById('wifiStaModal'),wifiStaFailureModal=document.getElementById('wifiStaFailureModal'),wifiStaFailureText=document.getElementById('wifiStaFailureText'),toast=document.getElementById('toast'),networkCard=document.getElementById('networkCard'),networkApTab=document.getElementById('networkApTab'),networkStaTab=document.getElementById('networkStaTab'),networkValue=document.getElementById('networkValue'),networkSsidValue=document.getElementById('networkSsidValue'),networkMdnsValue=document.getElementById('networkMdnsValue'),voltageCard=document.getElementById('voltageCard'),voltageValue=document.getElementById('voltageValue'),voltageSub=document.getElementById('voltageSub'),chartPanel=document.getElementById('chartPanel'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),thrMeta=document.getElementById('thrMeta'),strMeta=document.getElementById('strMeta'),gzMeta=document.getElementById('gzMeta'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
+const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),devModeCheck=document.getElementById('devModeCheck'),devModeSwitchText=document.getElementById('devModeSwitchText'),devModeModal=document.getElementById('devModeModal'),versionLabel=document.getElementById('versionLabel'),apSsid=document.getElementById('apSsid'),apNotice=document.getElementById('apNotice'),apSaveBtn=document.getElementById('apSaveBtn'),wifiApModal=document.getElementById('wifiApModal'),staSsid=document.getElementById('staSsid'),staPassword=document.getElementById('staPassword'),staPasswordEye=document.getElementById('staPasswordEye'),staNotice=document.getElementById('staNotice'),wifiScanPopover=document.getElementById('wifiScanPopover'),wifiScanStatus=document.getElementById('wifiScanStatus'),wifiScanList=document.getElementById('wifiScanList'),wifiStaModal=document.getElementById('wifiStaModal'),wifiStaFailureModal=document.getElementById('wifiStaFailureModal'),wifiStaFailureText=document.getElementById('wifiStaFailureText'),wifiStaHandoffModal=document.getElementById('wifiStaHandoffModal'),wifiStaHandoffText=document.getElementById('wifiStaHandoffText'),toast=document.getElementById('toast'),networkCard=document.getElementById('networkCard'),networkApTab=document.getElementById('networkApTab'),networkStaTab=document.getElementById('networkStaTab'),networkValue=document.getElementById('networkValue'),networkSsidValue=document.getElementById('networkSsidValue'),networkMdnsValue=document.getElementById('networkMdnsValue'),voltageCard=document.getElementById('voltageCard'),voltageValue=document.getElementById('voltageValue'),voltageSub=document.getElementById('voltageSub'),chartPanel=document.getElementById('chartPanel'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),thrMeta=document.getElementById('thrMeta'),strMeta=document.getElementById('strMeta'),gzMeta=document.getElementById('gzMeta'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
 let lastLogSeq=0,lastDataSeq=0,pointHead=0,pointCount=0,logPaused=false,chartPaused=false,wifiScanTimer=0,wifiScanBusy=false,apSaving=false,staPasswordPlaceholder=false,staPasswordDirty=false,staPasswordVisible=false,staSavedPassword='',staSavedPasswordKnown=false,dataPolling=false,points=new Array(256),scrollOffset=0,lastFrameTime=performance.now(),lastDrawTime=0,smoothedDt=16,dataWs=null,dataWsConnected=false,dataWsReconnectDelay=500,dataWsReconnectTimer=0,dataTransport='poll',screenSaverActive=false,screenSaverStartTime=0,parkLockedAt=0,ch1Samples=[],networkTab='auto',networkTabPinned=false,networkCopyIp='',toastTimer=0,tubRecording=false,tubSamples=[],tubStartedMs=0,tubStoppedMs=0,tubLastSeq=0,gridCanvas=document.createElement('canvas'),gridCtx=gridCanvas.getContext('2d'),gridReady=false,saverTime=0;const TUB_MAX_SAMPLES=12000;const TUB_SCHEMA='mus4.web_data_point.tub.v1';
 function line(t){if(logPaused)return;log.textContent+=t+'\n';if(log.textContent.length>16000)log.textContent=log.textContent.slice(-12000);log.scrollTop=log.scrollHeight}
 function clearLog(){log.textContent=''}
@@ -2083,7 +2120,7 @@ async function saveWifiAp(){if(apSaving)return;try{apSaving=true;apSaveBtn.disab
 function isWifiStaModalOpen(){return wifiStaModal.classList.contains('show')}
 function updateStaPasswordEye(){staPasswordEye.textContent=staPasswordVisible?'🙈':'👁';staPasswordEye.title=staPasswordVisible?'隐藏密码':'显示密码'}
 function renderStaPasswordState(j,force=false){if(!j)return;if(!force&&(document.activeElement===staPassword||staPasswordDirty))return;staPasswordVisible=false;staSavedPassword='';staSavedPasswordKnown=false;if(j.password_set&&Number(j.password_len||0)>0){staPassword.value='*'.repeat(Number(j.password_len||0));staPassword.type='password';staPasswordPlaceholder=true}else{staPassword.value='';staPassword.type='password';staPasswordPlaceholder=false}staPasswordDirty=false;updateStaPasswordEye()}
-async function refreshWifiSta(forceFill=false){try{const r=await fetch('/api/wifi-sta');const j=await r.json();if(forceFill||(!isWifiStaModalOpen()&&document.activeElement!==staSsid))staSsid.value=j.ssid||'';renderStaPasswordState(j,forceFill);return j}catch(e){line('sta config error: '+e);return null}}
+async function refreshWifiSta(forceFill=false){try{const r=await fetch('/api/wifi-sta');const j=await r.json();if(forceFill||(!isWifiStaModalOpen()&&document.activeElement!==staSsid))staSsid.value=j.ssid||'';renderStaPasswordState(j,forceFill);if(j.handoff_active&&j.handoff_sta_ip&&j.handoff_sta_ip!=='0.0.0.0')showWifiStaHandoffModal(j);return j}catch(e){line('sta config error: '+e);return null}}
 function openWifiScanPopover(e){if(e)e.stopPropagation();wifiScanPopover.classList.add('show');refreshWifiScan();if(!wifiScanTimer)wifiScanTimer=setInterval(refreshWifiScan,1000)}
 function closeWifiScanPopover(){wifiScanPopover.classList.remove('show');if(wifiScanTimer){clearInterval(wifiScanTimer);wifiScanTimer=0}wifiScanBusy=false}
 async function refreshWifiScan(){if(wifiScanBusy)return;wifiScanBusy=true;try{const r=await fetch('/api/wifi-sta/scan');const j=await r.json();const nets=(j.networks||[]).sort((a,b)=>(b.rssi||-999)-(a.rssi||-999));wifiScanList.textContent='';if(!nets.length){wifiScanStatus.textContent=j.scanning?'扫描中...':'未扫描到 2.4G WiFi'}else{wifiScanStatus.textContent=j.scanning?'扫描中...':'选择 2.4G WiFi';nets.forEach(n=>{const b=document.createElement('button'),m=document.createElement('span');b.className='scanRow';b.type='button';b.onclick=()=>selectWifiSsid(n.ssid);b.textContent=n.ssid;m.className='scanMeta';m.textContent=(n.rssi||0)+' dBm CH'+(n.channel||'?')+(n.secure?' 🔒':' OPEN');b.appendChild(m);wifiScanList.appendChild(b)})}}catch(e){wifiScanStatus.textContent='扫描失败';line('wifi scan error: '+e)}finally{wifiScanBusy=false}}
@@ -2094,11 +2131,16 @@ async function toggleStaPasswordVisibility(){if(staPasswordVisible){maskStaPassw
 async function openWifiStaModal(){closeWifiScanPopover();staNotice.textContent='注意只能连接2.4G WiFi';await refreshWifiSta(true);wifiStaModal.classList.add('show')}
 function closeWifiStaModal(){closeWifiScanPopover();maskStaPassword();wifiStaModal.classList.remove('show')}
 function closeWifiStaFailureModal(){wifiStaFailureModal.classList.remove('show')}
+function closeWifiStaHandoffModal(){wifiStaHandoffModal.classList.remove('show')}
+function handoffStaUrl(j){const ip=(j&&j.handoff_sta_ip)||'';return ip&&ip!=='0.0.0.0'?'http://'+ip+'/':''}
+function showWifiStaHandoffModal(j){const target=(j&&j.handoff_target_ssid)||staSsid.value.trim()||'--',ap=(j&&j.handoff_ap_ssid)||'--',apUrl=(j&&j.handoff_ap_url)||'http://192.168.4.1/',url=handoffStaUrl(j);wifiStaHandoffText.textContent='请将电脑/手机切换到 Wi-Fi：'+target+'\n然后打开：'+(url||'等待设备获取新 IP')+'\n如果当前页面断开，请连接设备 AP：'+ap+'，再打开 '+apUrl+' 查看新 IP。';wifiStaHandoffModal.classList.add('show')}
+async function copyHandoffIp(){const j=await refreshWifiSta(false),url=handoffStaUrl(j),ip=url.replace(/^http:\/\//,'').replace(/\/$/,'');if(!ip){showToast('新 IP 暂不可用，请先连接设备 AP 查看',false);return}try{if(navigator.clipboard&&navigator.clipboard.writeText)await navigator.clipboard.writeText(ip);else if(!fallbackCopyText(ip))throw new Error('copy failed');showToast('已复制 IP：'+ip,true)}catch(e){showToast('复制失败，请手动选择 IP',false)}}
+async function openHandoffUrl(){const j=await refreshWifiSta(false),url=handoffStaUrl(j);if(!url){showToast('新地址暂不可用，请连接设备 AP 查看',false);return}location.href=url}
 function showWifiStaFailureModal(j){const ssid=(j&&j.ssid)||staSsid.value.trim()||'--',reason=(j&&j.last_error_message)||'STA 连接失败，请检查 SSID、密码与路由器状态。';wifiStaFailureText.textContent='SSID：'+ssid+'\n原因：'+reason+'\n建议：检查 SSID、密码、路由器距离后重新保存。';wifiStaFailureModal.classList.add('show')}
 async function probeStaConsoleUrl(url){try{await fetch(url,{mode:'no-cors',cache:'no-store'});return true}catch(e){return false}}
 async function redirectToStaConsole(ip){const url='http://'+ip+'/';staNotice.textContent='STA 已连接，IP：'+ip+'，正在跳转到 '+url;showToast('STA 已连接，正在跳转到 '+url,true);setTimeout(()=>{location.href=url},100);return true}
-async function waitWifiStaConnectionResult(){const deadline=Date.now()+22000;let miss=0;while(Date.now()<deadline){let j=null;try{j=await refreshWifiSta(false)}catch(e){j=null}if(!j){miss++;if(miss>=2){staNotice.textContent='AP 可能已关闭，STA 可能已连接';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'AP 可能已关闭，STA 可能已连接。请切回车辆连接的 Wi-Fi 后手动打开 STA IP。'});return false}await new Promise(resolve=>setTimeout(resolve,500));continue}miss=0;if(j&&j.connected){staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 3 秒后关闭';await refreshStatus();cmd.value='';if(j.sta_ip&&j.sta_ip!=='0.0.0.0'){await redirectToStaConsole(j.sta_ip)}closeWifiStaModal();return true}if(j&&(j.last_error||j.timed_out)){staNotice.textContent='连接失败';showWifiStaFailureModal(j);return false}await new Promise(resolve=>setTimeout(resolve,1000))}staNotice.textContent='连接失败';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'STA 连接超时，请检查 SSID、密码与路由器信号。'});return false}
-async function saveWifiSta(){try{closeWifiScanPopover();staNotice.textContent='正在连接';const body=new URLSearchParams();body.set('ssid',staSsid.value.trim());if(!staPasswordDirty&&(staPasswordPlaceholder||staSavedPasswordKnown))body.set('keep_password','1');else body.set('password',staPassword.value);const r=await fetch('/api/wifi-sta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok){const t=await r.text();staNotice.textContent='连接失败';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:t});throw new Error(t)}staPassword.value='';staPasswordPlaceholder=false;staPasswordDirty=false;staPasswordVisible=false;staSavedPassword='';staSavedPasswordKnown=false;updateStaPasswordEye();await refreshWifiSta(true);refreshStatus();await new Promise(resolve=>setTimeout(resolve,1000));await waitWifiStaConnectionResult()}catch(e){line('wifi sta save error: '+e)}}
+async function waitWifiStaConnectionResult(){const deadline=Date.now()+22000;let miss=0;while(Date.now()<deadline){let j=null;try{j=await refreshWifiSta(false)}catch(e){j=null}if(!j){miss++;if(miss>=2){staNotice.textContent='AP 可能已关闭，STA 可能已连接';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'AP 可能已关闭，STA 可能已连接。请切回车辆连接的 Wi-Fi 后手动打开 STA IP。'});return false}await new Promise(resolve=>setTimeout(resolve,500));continue}miss=0;if(j&&j.connected){staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 3 秒后关闭';await refreshStatus();cmd.value='';if(j.handoff_active){showWifiStaHandoffModal(j);return true}if(j.sta_ip&&j.sta_ip!=='0.0.0.0'){await redirectToStaConsole(j.sta_ip)}closeWifiStaModal();return true}if(j&&(j.last_error||j.timed_out)){staNotice.textContent='连接失败';showWifiStaFailureModal(j);return false}await new Promise(resolve=>setTimeout(resolve,1000))}staNotice.textContent='连接失败';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'STA 连接超时，请检查 SSID、密码与路由器信号。'});return false}
+async function saveWifiSta(){try{closeWifiScanPopover();staNotice.textContent='正在连接';const body=new URLSearchParams();body.set('ssid',staSsid.value.trim());body.set('source',location.hostname==='192.168.4.1'?'ap':'sta');if(!staPasswordDirty&&(staPasswordPlaceholder||staSavedPasswordKnown))body.set('keep_password','1');else body.set('password',staPassword.value);const r=await fetch('/api/wifi-sta',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok){const t=await r.text();staNotice.textContent='连接失败';showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:t});throw new Error(t)}const saved=await r.json().catch(()=>null);if(saved&&saved.state&&saved.state.handoff_active){showWifiStaHandoffModal(saved.state);staNotice.textContent='设备正在切换 Wi-Fi；如果页面断开，请连接设备 AP 查看新 IP。'}staPassword.value='';staPasswordPlaceholder=false;staPasswordDirty=false;staPasswordVisible=false;staSavedPassword='';staSavedPasswordKnown=false;updateStaPasswordEye();await refreshWifiSta(true);refreshStatus();await new Promise(resolve=>setTimeout(resolve,1000));await waitWifiStaConnectionResult()}catch(e){line('wifi sta save error: '+e)}}
 async function clearWifiSta(){if(!confirm('确认清除并禁用 STA 配置？'))return;try{closeWifiScanPopover();const r=await fetch('/api/wifi-sta/clear',{method:'POST'});if(!r.ok){const t=await r.text();showCommandError(t);throw new Error(t)}staPassword.value='';staPasswordPlaceholder=false;staPasswordDirty=false;staPasswordVisible=false;staSavedPassword='';staSavedPasswordKnown=false;updateStaPasswordEye();await refreshWifiSta(true);refreshStatus();closeWifiStaModal()}catch(e){line('wifi sta clear error: '+e)}}
 async function quick(v){cmd.value=v;await sendCmd()}
 staPassword.addEventListener('input',()=>{if(staPasswordPlaceholder){staPassword.value=staPassword.value.replace(/^\*+/,'');staPasswordPlaceholder=false}staPasswordDirty=true;staSavedPasswordKnown=false});
@@ -2314,6 +2356,18 @@ static String wifiStaJson()
     appendJsonString(response, wifiMdnsUrlText().c_str());
     response += ",\"mdns_started\":";
     response += wifiMdnsStarted ? "true" : "false";
+    response += ",\"handoff_active\":";
+    response += wifiStaHandoffActive ? "true" : "false";
+    response += ",\"handoff_target_ssid\":";
+    appendJsonString(response, wifiStaHandoffTargetSsid);
+    response += ",\"handoff_sta_ip\":";
+    appendJsonString(response, wifiStaHandoffStaIp[0] ? wifiStaHandoffStaIp : wifiStaIpText().c_str());
+    response += ",\"handoff_ap_ssid\":";
+    appendJsonString(response, wifiStaHandoffApSsid[0] ? wifiStaHandoffApSsid : wifiApSsid);
+    response += ",\"handoff_ap_url\":";
+    appendJsonString(response, "http://192.168.4.1/");
+    response += ",\"handoff_mdns_url\":";
+    appendJsonString(response, wifiMdnsUrlText().c_str());
     response += "}";
     return response;
 }
@@ -2424,12 +2478,14 @@ static void handleWifiWebStaSet()
     }
     String ssid = wifiWebServer.arg("ssid");
     String password = wifiWebServer.arg("password");
+    String source = wifiWebServer.arg("source");
     bool keepPassword = wifiWebServer.arg("keep_password") == "1";
     ssid.trim();
     if (ssid.length() == 0 || ssid.length() > WIFI_STA_SSID_MAX_LEN) {
         wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_ssid\"}");
         return;
     }
+    bool staHandoffRequested = wifiStaConnected && source == "sta" && !ssid.equals(WiFi.SSID());
     if (keepPassword) {
         if (!wifiStaPasswordSet) {
             wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_password\"}");
@@ -2448,6 +2504,11 @@ static void handleWifiWebStaSet()
             wifiWebServer.send(500, "application/json", "{\"saved\":false}");
             return;
         }
+    }
+    if (staHandoffRequested) {
+        startWifiStaHandoff(ssid);
+    } else {
+        clearWifiStaHandoff();
     }
     appendWifiWebLog("web", String("wifi sta saved ssid=") + wifiStaSsid + " password=<redacted>");
     wifiWebServer.send(200, "application/json", String("{\"saved\":true,\"applied\":true,\"state\":") + wifiStaJson() + "}");
@@ -3031,6 +3092,7 @@ static void updateWifiSta()
             clearWifiStaLastError();
             startWifiMdnsIfNeeded();
             mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
+            finishWifiStaHandoff();
             scheduleWifiApStopAfterStaConnected();
         }
         return;

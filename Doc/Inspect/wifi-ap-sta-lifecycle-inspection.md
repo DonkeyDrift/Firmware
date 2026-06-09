@@ -100,8 +100,9 @@ http://192.168.4.1/
 
 1. 关闭扫描浮层。
 2. 显示“正在连接”。
-3. POST `/api/wifi-sta`，提交 `ssid`、`password` 或 `keep_password=1`。
-4. 成功后清理密码输入框状态。
+3. POST `/api/wifi-sta`，提交 `ssid`、`password` 或 `keep_password=1`，并附带 `source=ap` 或 `source=sta`。
+4. 如果当前页面来自旧 STA 且目标 SSID 改变，立即提示“当前页面可能断开，请连接设备 AP 查看新 IP”。
+5. 成功后清理密码输入框状态。
 5. 刷新 `/api/wifi-sta` 与 `/api/status`。
 6. 等待 1 秒。
 7. 进入 `waitWifiStaConnectionResult()` 轮询连接结果。
@@ -169,6 +170,34 @@ wifiApStopDeadlineMs = millis() + WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS;
 7. 输出日志 `AP stopped after STA connected`。
 
 这个复核用于处理“STA 短暂连接成功后又立即断开”的边界，避免旧的 AP 关闭计划让用户失去配置入口。
+
+## STA 到 STA 切换交接流程
+
+当用户已经通过旧 STA IP 打开 Web Console，并在页面中切换到另一个 STA SSID 时，设备会离开旧网络，当前浏览器页面一定可能断联。浏览器也不能替用户切换电脑/手机 Wi-Fi，因此固件使用调试 AP 作为交接页面。
+
+触发条件：
+
+1. 固件当前已经 `wifiStaConnected=true`。
+2. `/api/wifi-sta` 请求带有 `source=sta`。
+3. 新保存的 SSID 与当前 `WiFi.SSID()` 不同。
+
+触发后固件进入 `wifiStaHandoffActive`：
+
+1. 调用 `restartWifiAp()`，临时恢复或保持调试 AP。
+2. 保存 `wifiStaHandoffTargetSsid`、`wifiStaHandoffApSsid`。
+3. 延时执行新的 `WiFi.begin()`。
+4. 新 STA 成功后记录 `wifiStaHandoffStaIp`。
+5. AP 保留时间从普通 3 秒延长到 `WIFI_STA_HANDOFF_AP_KEEP_MS = 120000 ms`。
+
+前端提示用户：
+
+```text
+请将电脑/手机切换到 Wi-Fi：<新SSID>
+然后打开：http://<新STA_IP>/
+如果当前页面断开，请连接设备 AP：<AP名称>，再打开 http://192.168.4.1/ 查看新 IP。
+```
+
+如果新 STA 失败，AP 会保持开启，用户继续通过 `http://192.168.4.1/` 修正 SSID 或密码。`.local` 地址仍作为辅助入口，但不作为交接流程的唯一依据。
 
 ## STA 失败与超时路径
 
@@ -419,7 +448,13 @@ MUS4-STA-192.168.3.144
   "sta_ip": "192.168.3.144",
   "mdns_host": "mus4-debug",
   "mdns_url": "http://mus4-debug.local/",
-  "mdns_started": true
+  "mdns_started": true,
+  "handoff_active": false,
+  "handoff_target_ssid": "",
+  "handoff_sta_ip": "0.0.0.0",
+  "handoff_ap_ssid": "MUS4-DEBUG",
+  "handoff_ap_url": "http://192.168.4.1/",
+  "handoff_mdns_url": "http://mus4-debug.local/"
 }
 ```
 
@@ -427,6 +462,8 @@ MUS4-STA-192.168.3.144
 
 - `wifiStaConnected=true`：返回 `WiFi.localIP()`。
 - 否则：返回 `0.0.0.0`。
+
+STA 切换交接期间，`handoff_active=true`、`handoff_target_ssid` 填充目标 SSID、`handoff_sta_ip` 在新 STA 成功后会更新为新 IP、`handoff_ap_ssid` 为设备 AP 名称、`handoff_ap_url` 固定为 `http://192.168.4.1/`、`handoff_mdns_url` 为 `.local` 辅助入口。
 
 ## 时序图
 

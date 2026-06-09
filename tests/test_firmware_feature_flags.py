@@ -334,7 +334,7 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
     assert 'id="staNotice"' in source
     assert "注意只能连接2.4G WiFi" in source
     assert "staNotice.textContent='正在连接'" in source
-    assert "staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 1 秒后关闭'" in source
+    assert "staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 3 秒后关闭'" in source
     assert "staNotice.textContent='连接失败'" in source
     assert ">连接</button>" in source
     assert ">保存并连接</button>" not in source
@@ -419,10 +419,10 @@ def test_web_console_sta_scan_api_uses_async_wifi_scan():
     assert "\\\"channel\\\":" in source
 
 
-def test_web_console_stops_ap_one_second_after_successful_wifi_sta_connection():
+def test_web_console_stops_ap_three_seconds_after_successful_wifi_sta_connection():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "const unsigned long WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS = 1000;" in source
+    assert "const unsigned long WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS = 3000;" in source
     assert "bool wifiApStopPending" in source
     assert "scheduleWifiApStopAfterStaConnected()" in source
     assert "stopWifiApAfterStaConnected()" in source
@@ -467,8 +467,8 @@ def test_web_console_redirects_to_sta_ip_after_successful_wifi_sta_connection():
     assert "mode:'no-cors'" in source
     assert "cache:'no-store'" in source
     assert "await new Promise(resolve=>setTimeout(resolve,2000))" not in source
-    assert "await new Promise(resolve=>setTimeout(resolve,300))" in source
-    assert "location.href=url" in source
+    assert "await new Promise(resolve=>setTimeout(resolve,300))" not in source
+    assert "setTimeout(()=>{location.href=url},100)" in source
     assert "redirectToStaConsole(j.sta_ip)" in source
     assert "j.sta_ip&&j.sta_ip!=='0.0.0.0'" in source
     assert "const url='http://'+ip+'/'" in source
@@ -520,7 +520,10 @@ def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
     assert save_body.index("setTimeout(resolve,1000)") < save_body.index("waitWifiStaConnectionResult()")
     assert "showCommandError(t)" not in save_body
     assert "await refreshStatus();cmd.value=''" in wait_body
-    assert wait_body.index("staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 1 秒后关闭'") < wait_body.index("await refreshStatus();cmd.value=''")
+    assert "STA 已连接，IP：'+j.sta_ip+'，AP 将在约 3 秒后关闭" in wait_body
+    assert "AP 可能已关闭，STA 可能已连接" in wait_body
+    assert "showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'AP 可能已关闭，STA 可能已连接。请切回车辆连接的 Wi-Fi 后手动打开 STA IP。'})" in wait_body
+    assert wait_body.index("staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 3 秒后关闭'") < wait_body.index("await refreshStatus();cmd.value=''")
 
 
 def test_wifi_softap_uses_explicit_ipv4_gateway_configuration():

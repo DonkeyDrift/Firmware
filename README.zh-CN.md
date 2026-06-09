@@ -261,6 +261,7 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 - [`Doc/Tools/train_tub_driver.md`](Doc/Tools/train_tub_driver.md)：Tub JSON 报告与 GRU baseline 训练说明。
 - [`Doc/Tools/mus4_pilot_infer.md`](Doc/Tools/mus4_pilot_infer.md)：Pilot 推理控制器与安全门控说明。
 - [`Doc/README/OPERATIONS.md`](Doc/README/OPERATIONS.md)：运行时串口命令与数据帧。
+- [`Doc/Inspect/wifi-ap-sta-lifecycle-inspection.md`](Doc/Inspect/wifi-ap-sta-lifecycle-inspection.md)：Wi-Fi AP / STA 生命周期、Captive Portal、切换流程与排查说明。
 - [`Doc/Plan/`](Doc/Plan/)：设计方案与历史实施记录。
 
 ## 安全注意事项

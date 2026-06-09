@@ -246,7 +246,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 ### 版本与发布记录
 
-当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.6.0`。README 中部分硬件与路径描述可能滞后，硬件细节以 `MUS4_FW.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
+当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.6.3`。README 中部分硬件与路径描述可能滞后，硬件细节以 `MUS4_FW.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
 
 ### 控制模式
 
@@ -303,7 +303,7 @@ README 中部分历史描述可能滞后；以 `MUS4_FW.ino`、`Doc/Hardware/pin
 
 AP 常驻作为调试和 STA 切换兜底入口：设备连接 STA 后仍保留 AP；通过 STA 页面切换到新 SSID 时，当前 STA 页面可能断开，应回到 AP 默认地址 `http://192.168.4.1/` 查看新 STA 状态。固件会按当前 AP 名称生成小写 mDNS 主机名并发布 Web Console（例如 `http://mus4-debug.local/`），但 Web UI 网络面板不再提供 `.local` 入口；`.local` 不可用时以页面显示的 STA IP 为准。
 
-Web UI 的 HTML/CSS/JS 目前内嵌在 `MUS4_FW.ino` 的 `WIFI_WEB_CONSOLE_HTML` 中，页面品牌已显示为 `DonkeyDrift Console`。修改标题、顶部 DEV/OTA 区、Network 面板、Diagnostics 面板、状态卡片、串口日志、Tub JSON 或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
+Web UI 的 HTML/CSS/JS 目前内嵌在 `MUS4_FW.ino` 的 `WIFI_WEB_CONSOLE_HTML` 中，页面品牌已显示为 `Drifter Console`。修改标题、顶部 DEV/OTA 区、Network 面板、Diagnostics 面板、状态卡片、串口日志、Tub JSON 或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
 
 ### BLE Gamepad Mode
 

@@ -7,6 +7,8 @@ MUS4_SKETCH = PROJECT_ROOT / "MUS4_FW.ino"
 ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
 CONFIG_YAML = PROJECT_ROOT / "config.yaml"
 WSLBUILD_YAML = PROJECT_ROOT / "wslbuild.yaml"
+BUILD_INFO = PROJECT_ROOT / "BuildInfo.h"
+CHANGELOG = PROJECT_ROOT / "CHANGELOG.md"
 SMART_PROVISIONING_SKETCH = PROJECT_ROOT / "examples" / "smart_provisioning" / "smart_provisioning.ino"
 SMART_PROVISIONING_WEB_UI = PROJECT_ROOT / "examples" / "smart_provisioning" / "web_ui.h"
 
@@ -60,10 +62,20 @@ def test_websocket_curve_data_feature_is_enabled():
     assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", source, re.MULTILINE)
 
 
+def test_firmware_version_is_v1_6_3_and_changelog_is_current():
+    build_info = BUILD_INFO.read_text(encoding="utf-8")
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+
+    assert '#define MUS4_FIRMWARE_VERSION "v1.6.3"' in build_info
+    assert "## 2026-06-10 v1.6.3" in changelog
+    assert changelog.index("## 2026-06-10 v1.6.3") < changelog.index("## 2026-06-07 v1.6.0")
+
+
 def test_web_console_keeps_original_ui_and_direct_curve_path():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "DonkeyDrift Console" in source
+    assert "Drifter Console" in source
+    assert "DonkeyDrift Console" not in source
     assert "Donkey Console" not in source
     assert "MUS4 Web Console" not in source
     assert "MUS4 Compact Console" not in source
@@ -92,32 +104,32 @@ def test_web_console_has_help_floating_modal():
     assert "Status Cards: view mode, Park, OTA, and connection status" in source
 
 
-def test_web_console_has_language_floating_menu_above_help_fab():
+def test_web_console_has_collapsed_glow_fab_with_radial_actions():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
+    assert 'id="fabToggle"' in source
+    assert 'class="fabToggle"' in source
+    assert 'id="fabActions"' in source
+    assert 'class="fabActions"' in source
     assert 'id="langFab"' in source
     assert 'class="langFab"' in source
     assert 'id="langMenu"' in source
     assert 'class="langMenu"' in source
+    assert 'id="helpFab"' in source
     assert "🌐" in source
-    assert "toggleLanguageMenu" in source
-    assert "setLanguage('zh')" in source
-    assert "setLanguage('en')" in source
-    assert source.index('id="langFab"') < source.index('id="helpFab"')
-    assert ".langFab" in source
-    assert ".langMenu" in source
-
-
-def test_web_console_floating_buttons_are_translucent_until_interaction():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
-
-    assert ".helpFab{position:fixed;" in source
-    assert ".langFab{position:fixed;" in source
-    assert ".helpFab{position:fixed;right:18px;bottom:18px;width:46px;height:46px;min-width:0;padding:0;border-radius:50%;background:rgba(" in source
-    assert ".langFab{position:fixed;right:18px;bottom:74px;width:46px;height:46px;min-width:0;padding:0;border-radius:50%;background:rgba(" in source
-    assert ".helpFab:hover,.helpFab:focus-visible" in source
-    assert ".langFab:hover,.langFab:focus-visible" in source
-    assert "box-shadow:0 8px 22px rgba(0,0,0,.22)" in source
+    assert "?" in source
+    assert "toggleFabActions" in source
+    assert "collapseFabActions" in source
+    assert "fabActions.classList.toggle('show')" in source
+    assert "fabActions.classList.remove('show')" in source
+    assert "window.addEventListener('scroll',collapseFabActions" in source
+    assert "window.addEventListener('touchmove',collapseFabActions" in source
+    assert ".fabToggle{position:fixed;right:24px;bottom:24px;width:18px;height:18px" in source
+    assert "box-shadow:0 0 18px #5cc8ff,0 0 36px rgba(92,200,255,.55)" in source
+    assert ".fabToggle:hover,.fabToggle:focus-visible,.fabToggle:active{background:#8bdcff;border-color:#8bdcff;" in source
+    assert ".fabActions.show .langFab" in source
+    assert ".fabActions.show .helpFab" in source
+    assert source.index('id="fabToggle"') < source.index('id="fabActions"') < source.index('id="langFab"') < source.index('id="helpFab"')
 
 
 def test_web_console_language_selection_uses_local_storage_and_i18n_dictionary():
@@ -1012,7 +1024,8 @@ def test_web_console_handles_common_captive_portal_probes_locally():
     ).group("body")
     assert "location.replace" in redirect_body
     assert "http-equiv=\\\"refresh\\\"" in redirect_body
-    assert "打开 DonkeyDrift Console" in redirect_body
+    assert "打开 Drifter Console" in redirect_body
+    assert "打开 DonkeyDrift Console" not in redirect_body
     assert "WiFi.softAPIP().toString()" in redirect_body
 
     not_found_body = re.search(

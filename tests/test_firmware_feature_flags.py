@@ -140,10 +140,11 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert 'id="networkApTab"' in source
     assert 'id="networkStaTab"' in source
     assert 'id="networkSsidValue"' in source
-    assert 'id="networkMdnsValue"' in source
+    assert 'id="networkMdnsValue"' not in source
     assert 'id="networkIpValue"' not in source
     assert 'id="networkSub"' not in source
-    assert '<b>SSID</b><span id="networkSsidValue">--</span><b>LAN</b><span id="networkMdnsValue" onclick="openNetworkLanUrl()">--</span>' in source
+    assert '<b>SSID</b><span id="networkSsidValue">--</span>' in source
+    assert '<b>LAN</b><span id="networkMdnsValue" onclick="openNetworkLanUrl()">--</span>' not in source
     assert '<b>REMAIN</b><span id="voltageSub">battery</span>' in source
     assert 'onclick="event.stopPropagation();openNetworkSettings()"' in source
     assert '<button class="gear" onclick="event.stopPropagation();openWifiStaModal()">' not in source
@@ -154,11 +155,10 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert ".netTabs{position:absolute;right:28px;top:8px;" in source
     assert "networkSub.textContent" not in source
     assert "networkIpValue.textContent" not in source
-    assert "networkMdnsValue.textContent" in source
-    assert "openNetworkLanUrl" in source
-    assert "mdns_url" in source
-    assert ".local 打不开时请使用 STA IP" in source
-    assert "LAN 名称不可用，请使用 STA IP" in source
+    assert "networkMdnsValue" not in source
+    assert "openNetworkLanUrl" not in source
+    assert ".local 打不开时请使用 STA IP" not in source
+    assert "LAN 名称不可用，请使用 STA IP" not in source
     assert "v.toFixed(1)+'V'" in source
     assert "if(!isNaN(v)&&v>=5)" in source
     assert "voltageValue.textContent='未连接'" in source

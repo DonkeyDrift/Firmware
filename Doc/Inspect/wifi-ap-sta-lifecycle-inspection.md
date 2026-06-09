@@ -357,7 +357,7 @@ mdns_host="mus4-debug" mdns_url=http://mus4-debug.local/ mdns_started=1
 }
 ```
 
-Web Console 的 Network 卡片会显示 LAN `.local` 入口。点击 LAN 入口会跳转到 `.local` 地址；如果 `.local` 打不开，应使用同一卡片显示的 STA IP。
+Web Console 的 Network 卡片不再显示 LAN `.local` 入口，也不再提供点击跳转 `.local` 的前端功能。`.local` 信息仍保留在状态 API 中，供调试或外部工具读取；页面上优先使用 AP 固定入口和 STA IP。
 
 ### 兼容性限制
 

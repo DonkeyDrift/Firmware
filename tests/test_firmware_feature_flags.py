@@ -10,6 +10,10 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "StringPrint.h",
     PROJECT_ROOT / "JsonUtil.h",
     PROJECT_ROOT / "JsonUtil.cpp",
+    PROJECT_ROOT / "I2CBusTools.h",
+    PROJECT_ROOT / "I2CBusTools.cpp",
+    PROJECT_ROOT / "LedStatus.h",
+    PROJECT_ROOT / "LedStatus.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.cpp",
@@ -229,6 +233,24 @@ def test_firmware_entrypoints_remain_in_main_sketch():
 
     assert len(re.findall(r"^void\s+setup\s*\(", source, re.MULTILINE)) == 1
     assert len(re.findall(r"^void\s+loop\s*\(", source, re.MULTILINE)) == 1
+
+
+
+def test_i2c_and_led_helpers_remain_available_after_module_split():
+    source = firmware_source_text()
+
+    for symbol in [
+        "bool I2CRead(uint8_t Address, uint8_t Register, uint8_t Nbytes, uint8_t *Data)",
+        "uint16_t I2CReadValue(uint8_t addr, uint8_t reg)",
+        "void I2CWriteValue(uint8_t Address, uint8_t Register, uint16_t Data)",
+        "const char *identifyI2CDeviceByAddress(uint8_t address)",
+        "bool I2CReadRegister8(uint8_t address, uint8_t reg, uint8_t *value)",
+        "bool probeMPU6050AtAddress(uint8_t address, uint8_t *whoAmI)",
+        "void setLEDColor(CRGB targetColor)",
+        "void setLEDToggle(CRGB color1, CRGB color2)",
+        "void scanLEDToggle()",
+    ]:
+        assert symbol in source
 
 
 

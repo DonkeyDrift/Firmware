@@ -298,7 +298,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert '<section class="panel" id="serialPanel">' in source
     assert "#serialPanel{display:flex;flex-direction:column}" in source
     assert "#serialPanel .log{flex:0 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
-    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#serialPanel .log{height:calc(20 * 1.35em + 16px)}}" in source
+    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}#serialPanel .log{height:calc(20 * 1.35em + 16px)}}" in source
     assert "canvas{width:100%;height:auto;aspect-ratio:38/13;" in source
     assert "#chartPanel:fullscreen canvas{width:min(100%,calc((100vh - 118px) * 38 / 13));height:auto;max-height:calc(100vh - 118px);aspect-ratio:38/13}" in source
     assert "dataMeta.textContent=transport+' realtime seq='+lastDataSeq+' +'+added" not in source
@@ -369,12 +369,24 @@ def test_web_console_network_ip_click_copies_with_non_blocking_toast():
 def test_web_console_groups_rc_and_status_into_collapsible_sections():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
 
+    state_panel = '<section class="panel wide">'
+    chart_panel = '<section class="panel" id="chartPanel">'
+    serial_panel = '<section class="panel" id="serialPanel">'
+    diagnostics_panel = '<section class="panel wide" id="diagnosticsPanel">'
+
     assert 'id="rcFold" class="fold"' in source
     assert 'id="statusFold" class="fold"' in source
     assert '<span class="foldIcon">▸</span>RC Channels' in source
     assert '<span class="foldIcon">▸</span>STATUS Details' in source
     assert 'aria-expanded="false"><span class="foldIcon">▸</span>RC Channels' in source
     assert '.fold:not(.open) .foldBody{display:none}' in source
+    assert diagnostics_panel in source
+    assert source.index(state_panel) < source.index(chart_panel)
+    assert source.index(chart_panel) < source.index(serial_panel)
+    assert source.index(serial_panel) < source.index(diagnostics_panel)
+    assert source.index(diagnostics_panel) < source.index('id="rcFold" class="fold"')
+    assert source.index('id="rcFold" class="fold"') < source.index('id="statusFold" class="fold"')
+    assert '@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}#serialPanel .log{height:calc(20 * 1.35em + 16px)}}' in source
     assert "function toggleFold(id)" in source
     assert "function renderStatus(t)" in source
     assert "function parseStatusPairs(t)" in source

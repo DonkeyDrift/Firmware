@@ -325,8 +325,8 @@ const int PWM_MIN_V = 4915;      // 1000µs @ 300Hz (1000/3333.33×16384 ≈ 491
 const int PWM_MAX_V = 9830;      // 2000µs @ 300Hz (2000/3333.33×16384 ≈ 9830)
 const int MOTOR_MID_V = 7372;    // 1500µs @ 300Hz
 const int MOTOR_RANGE_V = 2458; // ±500µs range
-const int SERVO_MID_V = 7372;    // 1500µs @ 300Hz
-const int SERVO_RANGE_V = 2458; // ±500µs range
+extern const int SERVO_MID_V = 7372;    // 1500µs @ 300Hz
+extern const int SERVO_RANGE_V = 2458; // ±500µs range
 const int MOTOR_OFFSET_V = 1;
 const int SERVO_OFFSET_V = -1;
 
@@ -343,14 +343,6 @@ static bool runStress()
     return true;
 }
 
-static bool runRegression()
-{
-    int v = map(-100, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
-    int v2 = map(100, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
-    bool ok = (v <= v2);
-    mus4Logf("regress", "REGRESS: ok=%d", ok?1:0);
-    return ok;
-}
 #endif
 
 // Waveform data

@@ -4,6 +4,9 @@
 
 extern TUI tui;
 
+extern const int SERVO_MID_V;
+extern const int SERVO_RANGE_V;
+
 #ifdef ENABLE_DIAGNOSTIC_COMMANDS
 bool runBenchmarks()
 {
@@ -20,5 +23,14 @@ bool runBenchmarks()
     unsigned long score = loops;
     mus4Logf("bench", "BENCH: loops=%lu duration=%lums", score, t1);
     return score > 1;
+}
+
+bool runRegression()
+{
+    int v = map(-100, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
+    int v2 = map(100, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
+    bool ok = (v <= v2);
+    mus4Logf("regress", "REGRESS: ok=%d", ok ? 1 : 0);
+    return ok;
 }
 #endif

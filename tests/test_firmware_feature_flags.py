@@ -355,11 +355,15 @@ def test_diagnostic_helpers_remain_available_after_module_split():
     for symbol in [
         "bool runBenchmarks()",
         "BENCH: loops=%lu duration=%lums",
+        "bool runRegression()",
+        "REGRESS: ok=%d",
     ]:
         assert symbol in source
 
     assert "bool runBenchmarks()" in diagnostics_source
     assert "static bool runBenchmarks()" not in sketch_source
+    assert "bool runRegression()" in diagnostics_source
+    assert "static bool runRegression()" not in sketch_source
 
 
 

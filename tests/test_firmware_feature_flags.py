@@ -4,6 +4,16 @@ import re
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 MUS4_SKETCH = PROJECT_ROOT / "MUS4_FW.ino"
+FIRMWARE_SOURCE_PATHS = [
+    MUS4_SKETCH,
+    PROJECT_ROOT / "WebConsoleAssets.h",
+    PROJECT_ROOT / "StringPrint.h",
+    PROJECT_ROOT / "JsonUtil.h",
+    PROJECT_ROOT / "JsonUtil.cpp",
+    PROJECT_ROOT / "WebConsoleServer.cpp",
+    PROJECT_ROOT / "WirelessConsole.cpp",
+    PROJECT_ROOT / "WifiOta.cpp",
+]
 ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
 CONFIG_YAML = PROJECT_ROOT / "config.yaml"
 WSLBUILD_YAML = PROJECT_ROOT / "wslbuild.yaml"
@@ -11,6 +21,14 @@ BUILD_INFO = PROJECT_ROOT / "BuildInfo.h"
 CHANGELOG = PROJECT_ROOT / "CHANGELOG.md"
 SMART_PROVISIONING_SKETCH = PROJECT_ROOT / "examples" / "smart_provisioning" / "smart_provisioning.ino"
 SMART_PROVISIONING_WEB_UI = PROJECT_ROOT / "examples" / "smart_provisioning" / "web_ui.h"
+
+
+def firmware_source_text():
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in FIRMWARE_SOURCE_PATHS
+        if path.exists()
+    )
 
 
 def test_local_libraries_path_is_configured_for_build_tools():
@@ -57,7 +75,7 @@ def test_smart_provisioning_web_ui_polls_new_ip_and_falls_back_to_mdns():
 
 
 def test_websocket_curve_data_feature_is_enabled():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", source, re.MULTILINE)
 
@@ -72,7 +90,7 @@ def test_firmware_version_is_v1_6_3_and_changelog_is_current():
 
 
 def test_web_console_keeps_original_ui_and_direct_curve_path():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "Drifter Console" in source
     assert "DonkeyDrift Console" not in source
@@ -87,7 +105,7 @@ def test_web_console_keeps_original_ui_and_direct_curve_path():
 
 
 def test_web_console_has_help_floating_modal():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert 'id="helpFab"' in source
     assert 'id="helpOverlay"' in source
@@ -105,7 +123,7 @@ def test_web_console_has_help_floating_modal():
 
 
 def test_web_console_has_collapsed_glow_fab_with_radial_actions():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert 'id="fabToggle"' in source
     assert 'class="fabToggle"' in source
@@ -133,7 +151,7 @@ def test_web_console_has_collapsed_glow_fab_with_radial_actions():
 
 
 def test_web_console_language_selection_uses_local_storage_and_i18n_dictionary():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "mus4.ui.lang" in source
     assert "localStorage.getItem" in source
@@ -148,7 +166,7 @@ def test_web_console_language_selection_uses_local_storage_and_i18n_dictionary()
 
 
 def test_web_console_static_core_copy_is_marked_for_i18n():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "data-i18n=" in source
     assert "data-i18n-placeholder=" in source
@@ -162,7 +180,7 @@ def test_web_console_static_core_copy_is_marked_for_i18n():
 
 
 def test_web_console_english_dictionary_covers_core_interface_copy():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "Language" in source
     assert "Status Cards" in source
@@ -182,7 +200,7 @@ def test_web_console_english_dictionary_covers_core_interface_copy():
 
 
 def test_web_console_dynamic_visible_copy_uses_current_language():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "function t(" in source
     assert "function refreshDynamicLabels" in source
@@ -199,14 +217,48 @@ def test_web_console_dynamic_visible_copy_uses_current_language():
 
 
 def test_diagnostic_code_is_not_built_by_default():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert re.search(r"^//\s*#define\s+ENABLE_DIAGNOSTIC_COMMANDS\b", source, re.MULTILINE)
     assert re.search(r"^//\s*#define\s+ENABLE_BOOT_STEERING_SELF_TEST\b", source, re.MULTILINE)
 
 
-def test_web_console_uses_dev_label_for_development_switch():
+
+def test_firmware_entrypoints_remain_in_main_sketch():
     source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert len(re.findall(r"^void\s+setup\s*\(", source, re.MULTILINE)) == 1
+    assert len(re.findall(r"^void\s+loop\s*\(", source, re.MULTILINE)) == 1
+
+
+
+def test_rc_interrupt_state_keeps_iram_and_volatile_guards():
+    source = firmware_source_text()
+
+    assert re.search(r"^volatile\s+uint16_t\s+pwm_value\[RC_CHANNEL_COUNT\]", source, re.MULTILINE)
+    assert re.search(r"^volatile\s+unsigned\s+long\s+rise_time\[RC_CHANNEL_COUNT\]", source, re.MULTILINE)
+    assert re.search(r"^volatile\s+unsigned\s+long\s+last_valid_time\[RC_CHANNEL_COUNT\]", source, re.MULTILINE)
+    assert "void IRAM_ATTR handle_interrupt" in source
+    assert "void IRAM_ATTR CH1_interrupt()" in source
+    assert "static bool IRAM_ATTR onRcModeCapture" in source
+
+
+
+def test_wireless_ota_and_control_safety_guards_remain_present():
+    source = firmware_source_text()
+
+    assert "bool parseAndValidateCommand(String cmd, int* throttle, int* steering)" in source
+    assert "t < -100 || t > 100 || s < -100 || s > 100" in source
+    assert "isWirelessOtaOpenCommand(line)" in source
+    assert "car_output.park == PARK_LOCKED" in source
+    assert "return !wifiOtaWindowOpen && !wifiOtaInProgress" in source
+    assert "forceWifiOtaParkLocked" in source
+    assert "AUTH:<redacted>" in source
+    assert "WIFI_STA_PASSWORD:<redacted>" in source
+
+
+def test_web_console_uses_dev_label_for_development_switch():
+    source = firmware_source_text()
 
     assert "DEV <b id=\"devModeSwitchText\">OFF</b>" in source
     assert "DEV MODE <b id=\"devModeSwitchText\">OFF</b>" not in source
@@ -215,7 +267,7 @@ def test_web_console_uses_dev_label_for_development_switch():
 
 
 def test_web_console_header_and_state_cards_keep_compact_layout():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert ".headerRow{display:flex;align-items:flex-end;" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
@@ -248,7 +300,7 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
 
 
 def test_web_console_places_voltage_before_combined_network_card():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     drift_index = source.index('id="driftCard"')
     voltage_index = source.index('id="voltageCard"')
@@ -260,7 +312,7 @@ def test_web_console_places_voltage_before_combined_network_card():
 
 
 def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert 'id="networkApTab"' in source
     assert 'id="networkStaTab"' in source
@@ -292,7 +344,7 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
 
 
 def test_web_console_ap_ssid_modal_and_api_are_present():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert 'id="wifiApModal"' in source
     assert 'AP SSID 配置' in source
@@ -314,7 +366,7 @@ def test_web_console_ap_ssid_modal_and_api_are_present():
 
 
 def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "static bool isMdnsSafeHostnameChar(char c)" in source
     assert "static bool isMdnsSafeHostname(const String& value)" in source
@@ -330,7 +382,7 @@ def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
 
 
 def test_web_console_exposes_ap_name_mdns_lan_console_entry():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "#include <ESPmDNS.h>" in source
     assert "bool wifiMdnsStarted" in source
@@ -344,7 +396,7 @@ def test_web_console_exposes_ap_name_mdns_lan_console_entry():
 
 
 def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     status_body = re.search(
         r"static void printWirelessStatus\(Print& out\)\s*\{(?P<body>.*?)\n\}",
@@ -373,7 +425,7 @@ def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
 
 
 def test_wifi_sta_to_sta_handoff_keeps_ap_as_transition_page():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "WIFI_STA_HANDOFF_AP_KEEP_MS" not in source
     assert "WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS" not in source
@@ -395,7 +447,7 @@ def test_wifi_sta_to_sta_handoff_keeps_ap_as_transition_page():
 
 
 def test_wifi_sta_handoff_status_api_and_web_prompt_are_present():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
     sta_json_body = re.search(
         r"static String wifiStaJson\(\)\s*\{(?P<body>.*?)\n\}",
         source,
@@ -417,7 +469,7 @@ def test_wifi_sta_handoff_status_api_and_web_prompt_are_present():
 
 
 def test_web_console_header_ota_button_and_log_area_are_compact():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert source.index('<section class="panel" id="chartPanel">') < source.index('<section class="panel" id="serialPanel">')
     assert '<section class="panel" id="serialPanel">' in source
@@ -474,7 +526,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
 
 
 def test_web_console_network_ip_click_copies_with_non_blocking_toast():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert 'id="networkValue" onclick="copyNetworkIp()"' in source
     assert 'title="点击复制 IP"' not in source
@@ -497,7 +549,7 @@ def test_web_console_network_ip_click_copies_with_non_blocking_toast():
 
 
 def test_web_console_groups_rc_and_status_into_collapsible_sections():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     state_panel = '<section class="panel wide">'
     chart_panel = '<section class="panel" id="chartPanel">'
@@ -524,7 +576,7 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
 
 
 def test_web_console_status_parser_preserves_quoted_values_with_spaces():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "t.trim().split(/\\s+/)" not in source
     assert "while(i<n&&t[i]!==q)" in source
@@ -532,7 +584,7 @@ def test_web_console_status_parser_preserves_quoted_values_with_spaces():
 
 
 def test_web_console_status_details_use_responsive_columns():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert ".statusTable{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));" in source
     assert "@media(max-width:900px){.statusTable{grid-template-columns:repeat(2,minmax(0,1fr))}}" in source
@@ -540,7 +592,7 @@ def test_web_console_status_details_use_responsive_columns():
 
 
 def test_web_console_explains_auth_and_park_rejections():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "function explainCommandError(text)" in source
     assert "'error.parkRequired':'当前操作需要 Park Locked。请将 CH3/Park 切到锁定状态后重试。'" in source
@@ -550,7 +602,7 @@ def test_web_console_explains_auth_and_park_rejections():
 
 
 def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "mus4.web_data_point.tub.v1" in source
     assert "tubRecording" in source
@@ -569,7 +621,7 @@ def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
 
 
 def test_web_console_sta_refresh_does_not_overwrite_open_modal_input():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "function isWifiStaModalOpen()" in source
     assert "async function refreshWifiSta(forceFill=false)" in source
@@ -580,7 +632,7 @@ def test_web_console_sta_refresh_does_not_overwrite_open_modal_input():
 
 
 def test_web_console_sta_settings_support_scan_and_password_visibility():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert 'id="staNotice"' in source
     assert "注意只能连接2.4G WiFi" in source
@@ -638,7 +690,7 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
 
 
 def test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_secret():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "static void handleWifiWebStaPassword()" in source
     assert 'wifiWebServer.on("/api/wifi-sta/password", HTTP_GET, handleWifiWebStaPassword)' in source
@@ -657,7 +709,7 @@ def test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_
 
 
 def test_web_console_sta_scan_api_uses_async_wifi_scan():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "static void handleWifiWebStaScan()" in source
     assert 'wifiWebServer.on("/api/wifi-sta/scan", HTTP_GET, handleWifiWebStaScan)' in source
@@ -671,7 +723,7 @@ def test_web_console_sta_scan_api_uses_async_wifi_scan():
 
 
 def test_web_console_keeps_ap_running_after_successful_wifi_sta_connection():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS" not in source
     assert "wifiApStopPending" not in source
@@ -702,7 +754,7 @@ def test_web_console_keeps_ap_running_after_successful_wifi_sta_connection():
 
 
 def test_web_console_keeps_ap_available_when_wifi_sta_connection_fails():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     failure_body = re.search(
         r"static void setWifiStaLastError\(const char\* code, const char\* message, bool timedOut\)\s*\{(?P<body>.*?)\n\}",
@@ -717,7 +769,7 @@ def test_web_console_keeps_ap_available_when_wifi_sta_connection_fails():
 
 
 def test_web_console_redirects_to_sta_ip_after_successful_wifi_sta_connection():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "async function probeStaConsoleUrl(url)" in source
     assert "async function redirectToStaConsole(ip)" in source
@@ -733,7 +785,7 @@ def test_web_console_redirects_to_sta_ip_after_successful_wifi_sta_connection():
 
 
 def test_web_console_sta_save_defers_wifi_reconnect_until_after_http_response():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     save_body = re.search(
         r"static bool saveWifiStaPreference\(const String& ssid, const String& password\)\s*\{(?P<body>.*?)\n\}",
@@ -754,7 +806,7 @@ def test_web_console_sta_save_defers_wifi_reconnect_until_after_http_response():
 
 
 def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "id=\"wifiStaFailureModal\"" in source
     assert "function showWifiStaFailureModal" in source
@@ -786,7 +838,7 @@ def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
 
 
 def test_wifi_mdns_lifecycle_follows_sta_connection():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     apply_body = re.search(
         r"static void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
@@ -808,7 +860,7 @@ def test_wifi_mdns_lifecycle_follows_sta_connection():
 
 
 def test_wifi_console_applies_sta_after_console_is_ready():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     setup_body = re.search(
         r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
@@ -829,7 +881,7 @@ def test_wifi_console_applies_sta_after_console_is_ready():
 
 
 def test_wifi_softap_uses_explicit_ipv4_gateway_configuration():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     restart_body = re.search(
         r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
@@ -858,7 +910,7 @@ def test_wifi_softap_uses_explicit_ipv4_gateway_configuration():
 
 
 def test_sta_disconnect_keeps_soft_ap_clients_connected_and_services_available():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     ensure_body = re.search(
         r"static bool ensureWifiApAvailable\(\)\s*\{(?P<body>.*?)\n\}",
@@ -903,7 +955,7 @@ def test_sta_disconnect_keeps_soft_ap_clients_connected_and_services_available()
 
 
 def test_runtime_sta_disconnect_does_not_reset_soft_ap():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     disconnect_body = re.search(
         r"static void disconnectWifiStaOnly\(\)\s*\{(?P<body>.*?)\n\}",
@@ -953,7 +1005,7 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
 
 
 def test_soft_ap_disconnect_is_limited_to_explicit_ap_restart():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     restart_body = re.search(
         r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
@@ -988,7 +1040,7 @@ def test_soft_ap_disconnect_is_limited_to_explicit_ap_restart():
 
 
 def test_web_console_handles_common_captive_portal_probes_locally():
-    source = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
 
     assert "#include <DNSServer.h>" in source
     assert "DNSServer wifiCaptiveDnsServer" in source

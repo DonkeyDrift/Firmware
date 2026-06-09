@@ -140,9 +140,10 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert 'id="networkApTab"' in source
     assert 'id="networkStaTab"' in source
     assert 'id="networkSsidValue"' in source
+    assert 'id="networkMdnsValue"' in source
     assert 'id="networkIpValue"' not in source
     assert 'id="networkSub"' not in source
-    assert '<b>SSID</b><span id="networkSsidValue">--</span>' in source
+    assert '<b>SSID</b><span id="networkSsidValue">--</span><b>LAN</b><span id="networkMdnsValue" onclick="openNetworkLanUrl()">--</span>' in source
     assert '<b>REMAIN</b><span id="voltageSub">battery</span>' in source
     assert 'onclick="event.stopPropagation();openNetworkSettings()"' in source
     assert '<button class="gear" onclick="event.stopPropagation();openWifiStaModal()">' not in source
@@ -153,6 +154,11 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert ".netTabs{position:absolute;right:28px;top:8px;" in source
     assert "networkSub.textContent" not in source
     assert "networkIpValue.textContent" not in source
+    assert "networkMdnsValue.textContent" in source
+    assert "openNetworkLanUrl" in source
+    assert "mdns_url" in source
+    assert ".local 打不开时请使用 STA IP" in source
+    assert "LAN 名称不可用，请使用 STA IP" in source
     assert "v.toFixed(1)+'V'" in source
     assert "if(!isNaN(v)&&v>=5)" in source
     assert "voltageValue.textContent='未连接'" in source
@@ -180,6 +186,61 @@ def test_web_console_ap_ssid_modal_and_api_are_present():
     assert 'restartWifiAp()' in source
     assert 'WIFI_CONSOLE_AP_DEFAULT_SSID' in source
     assert 'WIFI_CONSOLE_AP_SSID' not in source
+
+
+def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "static bool isMdnsSafeHostnameChar(char c)" in source
+    assert "static bool isMdnsSafeHostname(const String& value)" in source
+    assert "if (!isMdnsSafeHostname(ssid)) return false;" in source
+    assert "c >= 'A' && c <= 'Z'" in source
+    assert "c >= 'a' && c <= 'z'" in source
+    assert "c >= '0' && c <= '9'" in source
+    assert "c == '-'" in source
+    assert "value[0] == '-'" in source
+    assert "value[value.length() - 1] == '-'" in source
+    assert "SSID 只能使用字母、数字和短横线" in source
+    assert "invalid_ssid" in source
+
+
+def test_web_console_exposes_ap_name_mdns_lan_console_entry():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "#include <ESPmDNS.h>" in source
+    assert "bool wifiMdnsStarted" in source
+    assert "static void startWifiMdnsIfNeeded()" in source
+    assert "static void stopWifiMdnsIfNeeded()" in source
+    assert "static String wifiMdnsUrlText()" in source
+    assert "MDNS.begin(wifiApSsid)" in source
+    assert 'MDNS.addService("http", "tcp", WIFI_WEB_CONSOLE_PORT)' in source
+    assert "ESP.getEfuseMac" not in source
+
+
+def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    status_body = re.search(
+        r"static void printWirelessStatus\(Print& out\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    sta_json_body = re.search(
+        r"static String wifiStaJson\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "mdns_host=\\\"%s\\\"" in status_body
+    assert "mdns_url=%s" in status_body
+    assert "mdns_started=%d" in status_body
+    assert "wifiMdnsUrlText().c_str()" in status_body
+    assert "wifiMdnsStarted ? 1 : 0" in status_body
+    assert "\\\"mdns_host\\\"" in sta_json_body
+    assert "\\\"mdns_url\\\"" in sta_json_body
+    assert "\\\"mdns_started\\\"" in sta_json_body
+    assert "wifiMdnsUrlText().c_str()" in sta_json_body
+    assert "String(\"http://\") + wifiApSsid + \".local/\"" in source
 
 
 def test_web_console_header_ota_button_and_log_area_are_compact():
@@ -540,6 +601,33 @@ def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
     assert "Date.now()+17000" not in wait_body
     assert "Date.now()+22000" in wait_body
     assert wait_body.index("staNotice.textContent='STA 已连接，IP：'+j.sta_ip+'，AP 将在约 3 秒后关闭'") < wait_body.index("await refreshStatus();cmd.value=''")
+
+
+def test_wifi_mdns_lifecycle_follows_sta_connection():
+    source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    apply_body = re.search(
+        r"static void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    update_sta_body = re.search(
+        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    stop_ap_body = re.search(
+        r"static void stopWifiApAfterStaConnected\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    connected_branch = update_sta_body.split("if (status == WL_CONNECTED)", 1)[1].split("if (wifiStaConnected)", 1)[0]
+    disconnected_branch = update_sta_body.split("if (wifiStaConnected)", 1)[1].split("if (!wifiStaConnecting)", 1)[0]
+
+    assert "stopWifiMdnsIfNeeded()" in apply_body
+    assert "startWifiMdnsIfNeeded()" in connected_branch
+    assert "stopWifiMdnsIfNeeded()" in disconnected_branch
+    assert "stopWifiMdnsIfNeeded()" not in stop_ap_body
 
 
 def test_wifi_console_applies_sta_after_console_is_ready():

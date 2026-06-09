@@ -38,6 +38,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
+#include <ESPmDNS.h>
 #include <esp_wifi.h>
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 #include <AsyncTCP.h>
@@ -334,6 +335,7 @@ char wifiStaLastErrorMessage[128] = {0};
 bool wifiStaApplyPending = false;
 bool wifiApRestartPending = false;
 bool wifiApStopPending = false;
+bool wifiMdnsStarted = false;
 bool wifiOtaStarted = false;
 bool wifiOtaWindowOpen = false;
 bool wifiOtaInProgress = false;
@@ -1284,9 +1286,27 @@ static String redactWirelessConsoleLine(const String& line)
     return line;
 }
 
+static bool isMdnsSafeHostnameChar(char c)
+{
+    return (c >= 'A' && c <= 'Z') ||
+        (c >= 'a' && c <= 'z') ||
+        (c >= '0' && c <= '9') ||
+        c == '-';
+}
+
+static bool isMdnsSafeHostname(const String& value)
+{
+    if (value.length() == 0 || value.length() > WIFI_AP_SSID_MAX_LEN) return false;
+    if (value[0] == '-' || value[value.length() - 1] == '-') return false;
+    for (uint8_t i = 0; i < value.length(); i++) {
+        if (!isMdnsSafeHostnameChar(value[i])) return false;
+    }
+    return true;
+}
+
 static bool copyWifiApSsid(const String& ssid)
 {
-    if (ssid.length() == 0 || ssid.length() > WIFI_AP_SSID_MAX_LEN) return false;
+    if (!isMdnsSafeHostname(ssid)) return false;
     ssid.toCharArray(wifiApSsid, sizeof(wifiApSsid));
     return true;
 }
@@ -1304,6 +1324,32 @@ static bool copyWifiStaPassword(const String& password)
     password.toCharArray(wifiStaPassword, sizeof(wifiStaPassword));
     wifiStaPasswordSet = password.length() > 0;
     return true;
+}
+
+static String wifiMdnsUrlText()
+{
+    return String("http://") + wifiApSsid + ".local/";
+}
+
+static void startWifiMdnsIfNeeded()
+{
+    if (wifiMdnsStarted) return;
+    if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) return;
+    if (!MDNS.begin(wifiApSsid)) {
+        mus4LogLine("wifi", "mDNS start failed");
+        return;
+    }
+    MDNS.addService("http", "tcp", WIFI_WEB_CONSOLE_PORT);
+    wifiMdnsStarted = true;
+    mus4Logf("wifi", "mDNS started: %s.local", wifiApSsid);
+}
+
+static void stopWifiMdnsIfNeeded()
+{
+    if (!wifiMdnsStarted) return;
+    MDNS.end();
+    wifiMdnsStarted = false;
+    mus4LogLine("wifi", "mDNS stopped");
 }
 
 static void disconnectWifiStaOnly()
@@ -1346,6 +1392,7 @@ static void setWifiStaLastError(const char* code, const char* message, bool time
 static void applyWifiStaCredentials()
 {
     if (!wifiStaConfigured) return;
+    stopWifiMdnsIfNeeded();
     wifiStaApplyPending = false;
     wifiStaConnected = false;
     wifiStaTimedOut = false;
@@ -1679,7 +1726,7 @@ static void printWifiOtaStatus(Print& out)
 
 static void printWirelessStatus(Print& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s mdns_host=\"%s\" mdns_url=%s mdns_started=%d\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -1736,7 +1783,10 @@ static void printWirelessStatus(Print& out)
         wifiStaConfigured ? 1 : 0,
         wifiStaConnected ? 1 : 0,
         wifiStaSsid,
-        wifiStaIpText().c_str());
+        wifiStaIpText().c_str(),
+        wifiApSsid,
+        wifiMdnsUrlText().c_str(),
+        wifiMdnsStarted ? 1 : 0);
 }
 
 static void closeWifiOtaWindow(const char* reason)
@@ -1956,7 +2006,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <div id="parkCard" class="stateCard"><div class="stateHead">Park</div><div class="stateValue" id="parkValue">--</div><div class="stateSub" id="parkSub">waiting</div><span class="stateDot"></span></div>
 <div id="driftCard" class="stateCard"><div class="stateHead">Drift</div><div class="stateValue" id="driftValue">--</div><div class="stateSub" id="driftSub">waiting</div><div class="driftBar"><i id="driftNeedle"></i></div><span class="stateDot"></span></div>
 <div id="voltageCard" class="stateCard"><div class="stateHead">Voltage</div><div class="stateValue" id="voltageValue">--</div><div class="stateMeta"><b>REMAIN</b><span id="voltageSub">battery</span></div><span class="stateDot"></span></div>
-<div id="networkCard" class="stateCard"><div class="netTabs"><button id="networkApTab" type="button" onclick="setNetworkTab('ap')">AP</button><button id="networkStaTab" type="button" onclick="setNetworkTab('sta')">STA</button></div><button class="gear" onclick="event.stopPropagation();openNetworkSettings()">⚙</button><div class="stateHead">Network</div><div class="stateValue copyValue" id="networkValue" onclick="copyNetworkIp()">--</div><div class="stateMeta"><b>SSID</b><span id="networkSsidValue">--</span></div><span class="stateDot"></span></div>
+<div id="networkCard" class="stateCard"><div class="netTabs"><button id="networkApTab" type="button" onclick="setNetworkTab('ap')">AP</button><button id="networkStaTab" type="button" onclick="setNetworkTab('sta')">STA</button></div><button class="gear" onclick="event.stopPropagation();openNetworkSettings()">⚙</button><div class="stateHead">Network</div><div class="stateValue copyValue" id="networkValue" onclick="copyNetworkIp()">--</div><div class="stateMeta"><b>SSID</b><span id="networkSsidValue">--</span><b>LAN</b><span id="networkMdnsValue" onclick="openNetworkLanUrl()">--</span></div><span class="stateDot"></span></div>
 </div>
 <div id="rcFold" class="fold"><button class="foldHead" onclick="toggleFold('rcFold')" aria-expanded="false"><span class="foldIcon">▸</span>RC Channels</button><div class="foldBody"><div class="rcGrid"><div class="rcCell"><b>CH1 Steering</b><span id="ch1Value">----</span></div><div class="rcCell"><b>CH2 Throttle</b><span id="ch2Value">----</span></div><div class="rcCell"><b>CH3 Park</b><span id="ch3Value">----</span></div><div class="rcCell modeCh"><b>CH4 Mode</b><span id="ch4Value">----</span></div><div class="rcCell"><b>CH5 Drift</b><span id="ch5Value">----</span></div><div class="rcCell"><b>CH6 Scale</b><span id="ch6Value">----</span></div></div></div></div>
 <div id="statusFold" class="fold"><button class="foldHead" onclick="toggleFold('statusFold')" aria-expanded="false"><span class="foldIcon">▸</span>STATUS Details</button><div class="foldBody"><div id="status">loading...</div></div></div>
@@ -1977,7 +2027,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <div id="wifiStaFailureModal" class="modal"><div class="dialog"><h2>STA 连接失败</h2><p id="wifiStaFailureText">连接失败。</p><div class="dialogActions"><button onclick="closeWifiStaFailureModal()">知道了</button><button onclick="openWifiStaModal();closeWifiStaFailureModal()">重新配置</button></div></div></div>
 <div id="toast" class="toast"></div>
 <script>
-const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),devModeCheck=document.getElementById('devModeCheck'),devModeSwitchText=document.getElementById('devModeSwitchText'),devModeModal=document.getElementById('devModeModal'),versionLabel=document.getElementById('versionLabel'),apSsid=document.getElementById('apSsid'),apNotice=document.getElementById('apNotice'),apSaveBtn=document.getElementById('apSaveBtn'),wifiApModal=document.getElementById('wifiApModal'),staSsid=document.getElementById('staSsid'),staPassword=document.getElementById('staPassword'),staPasswordEye=document.getElementById('staPasswordEye'),staNotice=document.getElementById('staNotice'),wifiScanPopover=document.getElementById('wifiScanPopover'),wifiScanStatus=document.getElementById('wifiScanStatus'),wifiScanList=document.getElementById('wifiScanList'),wifiStaModal=document.getElementById('wifiStaModal'),wifiStaFailureModal=document.getElementById('wifiStaFailureModal'),wifiStaFailureText=document.getElementById('wifiStaFailureText'),toast=document.getElementById('toast'),networkCard=document.getElementById('networkCard'),networkApTab=document.getElementById('networkApTab'),networkStaTab=document.getElementById('networkStaTab'),networkValue=document.getElementById('networkValue'),networkSsidValue=document.getElementById('networkSsidValue'),voltageCard=document.getElementById('voltageCard'),voltageValue=document.getElementById('voltageValue'),voltageSub=document.getElementById('voltageSub'),chartPanel=document.getElementById('chartPanel'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),thrMeta=document.getElementById('thrMeta'),strMeta=document.getElementById('strMeta'),gzMeta=document.getElementById('gzMeta'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
+const log=document.getElementById('log'),cmd=document.getElementById('cmd'),statusBox=document.getElementById('status'),devModeCheck=document.getElementById('devModeCheck'),devModeSwitchText=document.getElementById('devModeSwitchText'),devModeModal=document.getElementById('devModeModal'),versionLabel=document.getElementById('versionLabel'),apSsid=document.getElementById('apSsid'),apNotice=document.getElementById('apNotice'),apSaveBtn=document.getElementById('apSaveBtn'),wifiApModal=document.getElementById('wifiApModal'),staSsid=document.getElementById('staSsid'),staPassword=document.getElementById('staPassword'),staPasswordEye=document.getElementById('staPasswordEye'),staNotice=document.getElementById('staNotice'),wifiScanPopover=document.getElementById('wifiScanPopover'),wifiScanStatus=document.getElementById('wifiScanStatus'),wifiScanList=document.getElementById('wifiScanList'),wifiStaModal=document.getElementById('wifiStaModal'),wifiStaFailureModal=document.getElementById('wifiStaFailureModal'),wifiStaFailureText=document.getElementById('wifiStaFailureText'),toast=document.getElementById('toast'),networkCard=document.getElementById('networkCard'),networkApTab=document.getElementById('networkApTab'),networkStaTab=document.getElementById('networkStaTab'),networkValue=document.getElementById('networkValue'),networkSsidValue=document.getElementById('networkSsidValue'),networkMdnsValue=document.getElementById('networkMdnsValue'),voltageCard=document.getElementById('voltageCard'),voltageValue=document.getElementById('voltageValue'),voltageSub=document.getElementById('voltageSub'),chartPanel=document.getElementById('chartPanel'),canvas=document.getElementById('chart'),ctx=canvas.getContext('2d'),thrMeta=document.getElementById('thrMeta'),strMeta=document.getElementById('strMeta'),gzMeta=document.getElementById('gzMeta'),modeCard=document.getElementById('modeCard'),modeValue=document.getElementById('modeValue'),modeSub=document.getElementById('modeSub'),parkCard=document.getElementById('parkCard'),parkValue=document.getElementById('parkValue'),parkSub=document.getElementById('parkSub'),driftCard=document.getElementById('driftCard'),driftValue=document.getElementById('driftValue'),driftSub=document.getElementById('driftSub'),driftNeedle=document.getElementById('driftNeedle'),chValues=[1,2,3,4,5,6].map(n=>document.getElementById('ch'+n+'Value'));
 let lastLogSeq=0,lastDataSeq=0,pointHead=0,pointCount=0,logPaused=false,chartPaused=false,wifiScanTimer=0,wifiScanBusy=false,apSaving=false,staPasswordPlaceholder=false,staPasswordDirty=false,staPasswordVisible=false,staSavedPassword='',staSavedPasswordKnown=false,dataPolling=false,points=new Array(256),scrollOffset=0,lastFrameTime=performance.now(),lastDrawTime=0,smoothedDt=16,dataWs=null,dataWsConnected=false,dataWsReconnectDelay=500,dataWsReconnectTimer=0,dataTransport='poll',screenSaverActive=false,screenSaverStartTime=0,parkLockedAt=0,ch1Samples=[],networkTab='auto',networkTabPinned=false,networkCopyIp='',toastTimer=0,tubRecording=false,tubSamples=[],tubStartedMs=0,tubStoppedMs=0,tubLastSeq=0,gridCanvas=document.createElement('canvas'),gridCtx=gridCanvas.getContext('2d'),gridReady=false,saverTime=0;const TUB_MAX_SAMPLES=12000;const TUB_SCHEMA='mus4.web_data_point.tub.v1';
 function line(t){if(logPaused)return;log.textContent+=t+'\n';if(log.textContent.length>16000)log.textContent=log.textContent.slice(-12000);log.scrollTop=log.scrollHeight}
 function clearLog(){log.textContent=''}
@@ -1997,10 +2047,11 @@ function td(){if(!tubSamples.length)return;const x=tubRecording?(tubSamples[tubS
 function showToast(t,ok=true){toast.textContent=t;toast.style.borderColor=ok?'#39d98a':'#ff6b6b';toast.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.classList.remove('show'),1600)}
 function fallbackCopyText(t){const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.left='-9999px';document.body.appendChild(a);a.focus();a.select();let ok=false;try{ok=document.execCommand('copy')}catch(e){ok=false}a.remove();return ok}
 async function copyNetworkIp(){const ip=networkCopyIp;if(!ip||ip==='--'||ip==='0.0.0.0'||ip==='disabled'){showToast('复制失败，请手动选择 IP',false);return}try{if(navigator.clipboard&&navigator.clipboard.writeText)await navigator.clipboard.writeText(ip);else if(!fallbackCopyText(ip))throw new Error('copy failed');showToast('已复制 IP：'+ip,true)}catch(e){if(fallbackCopyText(ip))showToast('已复制 IP：'+ip,true);else showToast('复制失败，请手动选择 IP',false)}}
+function openNetworkLanUrl(){const s=updateNetworkCard.last||{},url=s.mdns_url||'';if(!url){showToast('LAN 名称不可用，请使用 STA IP',false);return}showToast('.local 打不开时请使用 STA IP',true);location.href=url}
 function setNetworkTab(t){networkTab=t;networkTabPinned=true;updateNetworkCard.last&&updateNetworkCard(updateNetworkCard.last)}
 function selectedNetworkTab(){const s=updateNetworkCard.last||{};return networkTabPinned?networkTab:(s.sta_connected==='1'?'sta':'ap')}
 function openNetworkSettings(){const selected=selectedNetworkTab();selected==='ap'?openWifiApModal():openWifiStaModal()}
-function updateNetworkCard(s){updateNetworkCard.last=s;const ap=s.ap_ip||'--',sta=s.sta_ip||'0.0.0.0',apSsid=s.ap_ssid||'MUS4-DEBUG',staSsid=s.sta_ssid||'--',clients=s.ap_clients||'0',configured=s.sta_configured==='1',staConnected=s.sta_connected==='1',selected=networkTabPinned?networkTab:(staConnected?'sta':'ap');networkApTab.classList.toggle('active',selected==='ap');networkStaTab.classList.toggle('active',selected==='sta');if(selected==='ap'){networkCopyIp=ap;networkValue.textContent=ap;networkSsidValue.textContent=apSsid;networkCard.className='stateCard mode0'}else{networkCopyIp=configured?sta:'';networkValue.textContent=configured?sta:'disabled';networkSsidValue.textContent=configured?staSsid:'--';networkCard.className='stateCard '+(staConnected?'mode0':'driftOff')}if(s.version){versionLabel.textContent=s.version.replace(/^V/,'v')}}
+function updateNetworkCard(s){updateNetworkCard.last=s;const ap=s.ap_ip||'--',sta=s.sta_ip||'0.0.0.0',apSsid=s.ap_ssid||'MUS4-DEBUG',staSsid=s.sta_ssid||'--',mdnsUrl=s.mdns_url||'',configured=s.sta_configured==='1',staConnected=s.sta_connected==='1',selected=networkTabPinned?networkTab:(staConnected?'sta':'ap');networkApTab.classList.toggle('active',selected==='ap');networkStaTab.classList.toggle('active',selected==='sta');networkMdnsValue.textContent=mdnsUrl?mdnsUrl.replace(/^http:\/\//,''):'--';if(selected==='ap'){networkCopyIp=ap;networkValue.textContent=ap;networkSsidValue.textContent=apSsid;networkCard.className='stateCard mode0'}else{networkCopyIp=configured?sta:'';networkValue.textContent=configured?sta:'disabled';networkSsidValue.textContent=configured?staSsid:'--';networkCard.className='stateCard '+(staConnected?'mode0':'driftOff')}if(s.version){versionLabel.textContent=s.version.replace(/^V/,'v')}}
 async function refreshStatus(){try{const r=await fetch('/api/status');const t=await r.text();renderStatus(t);updateNetworkCard(parseStatusText(t))}catch(e){statusBox.textContent='status error: '+e}}
 async function pollLog(){try{const r=await fetch('/api/log?since='+lastLogSeq);const j=await r.json();for(const e of j.entries){lastLogSeq=Math.max(lastLogSeq,e.seq);line('['+e.t+']['+e.src+'] '+e.line)}}catch(e){line('log error: '+e)}}
 function updateState(p){const modes={0:['RC','Manual input'],1:['ASSIST','Pilot steering'],2:['AUTO','Pilot control']},m=modes[p.mode]||['MODE '+p.mode,'unknown'];modeCard.className='stateCard mode'+p.mode;modeValue.textContent=m[0];modeSub.textContent=m[1];parkCard.className='stateCard '+(p.park?'parkLocked':'parkUnlocked');parkValue.textContent=p.park?'LOCKED':'UNLOCKED';parkSub.textContent=p.park?'output guarded':'drive enabled';const de=!!p.de,da=!!p.da,dc=Number(p.dc||0),gzf=Number(p.gzf||0);driftCard.className='stateCard '+(!de?'driftOff':da?'driftActive':'driftArmed');driftValue.textContent=!de?'OFF':da?'ACTIVE':'ARMED';driftSub.textContent='comp='+dc.toFixed(1)+' gzf='+gzf.toFixed(2);driftNeedle.style.left=Math.max(0,Math.min(100,(Math.max(-70,Math.min(70,dc))+70)*100/140))+'%';[p.ch1,p.ch2,p.ch3,p.ch4,p.ch5,p.ch6].forEach((v,i)=>chValues[i].textContent=v??'----');const v=Number(p.vol);if(!isNaN(v)&&v>=5){voltageValue.textContent=v.toFixed(1)+'V';const pct=Math.max(0,Math.min(100,Math.round((v-10.5)/(12.6-10.5)*100)));voltageSub.textContent=pct+'%';voltageCard.className='stateCard '+(pct>30?'mode0':pct>15?'driftArmed':'driftOff')}else{voltageValue.textContent='未连接';voltageSub.textContent='battery';voltageCard.className='stateCard driftOff'}const parkLocked=!!p.park;if(parkLocked){if(parkLockedAt===0)parkLockedAt=performance.now()}else{parkLockedAt=0;if(screenSaverActive)exitScreenSaver()}const now=performance.now();const ch1Val=Number(p.ch1);if(!isNaN(ch1Val)){ch1Samples.push({t:now,v:ch1Val});while(ch1Samples.length>0&&now-ch1Samples[0].t>60000)ch1Samples.shift();if(ch1Samples.length>=2){let minCh1=Infinity,maxCh1=-Infinity;for(const s of ch1Samples){if(s.v<minCh1)minCh1=s.v;if(s.v>maxCh1)maxCh1=s.v}const range=maxCh1-minCh1;console.log('saver: active='+screenSaverActive+' park='+parkLocked+' ch1='+ch1Val+' range='+range.toFixed(1)+' n='+ch1Samples.length);if(!screenSaverActive&&parkLockedAt>0&&now-parkLockedAt>=10000&&range<10){enterScreenSaver()}else if(screenSaverActive&&range>=10){exitScreenSaver()}}else if(screenSaverActive&&ch1Samples.length===1){const last=ch1Samples[0].v;if(Math.abs(ch1Val-last)>=10){console.log('saver: instant exit ch1='+ch1Val+' last='+last);exitScreenSaver()}}}}
@@ -2019,9 +2070,9 @@ function requestDevModeToggle(){if(devModeCheck.checked){setDevMode(false);retur
 function closeDevModeModal(ok){devModeModal.classList.remove('show');if(ok)setDevMode(true)}
 async function setDevMode(v){try{const r=await fetch('/api/devmode',{method:'POST',headers:{'Content-Type':'text/plain'},body:v?'1':'0'});if(!r.ok)throw new Error(await r.text());const j=await r.json();renderDevMode(!!j.enabled);refreshStatus()}catch(e){line('dev mode error: '+e);refreshDevMode()}}
 async function refreshWifiAp(){try{const r=await fetch('/api/wifi-ap');const j=await r.json();apSsid.value=j.ssid||'';return j}catch(e){line('ap config error: '+e);return null}}
-async function openWifiApModal(){apNotice.textContent='保存后会重启 AP，当前浏览器连接会短暂断开。请连接新的 SSID 后刷新页面。';apSaveBtn.disabled=false;apSaveBtn.textContent='保存并重启 AP';await refreshWifiAp();wifiApModal.classList.add('show')}
+async function openWifiApModal(){apNotice.textContent='保存后会重启 AP，当前浏览器连接会短暂断开。SSID 只能使用字母、数字和短横线，且不能以短横线开头或结尾。';apSaveBtn.disabled=false;apSaveBtn.textContent='保存并重启 AP';await refreshWifiAp();wifiApModal.classList.add('show')}
 function closeWifiApModal(){if(apSaving)return;wifiApModal.classList.remove('show')}
-async function saveWifiAp(){if(apSaving)return;try{apSaving=true;apSaveBtn.disabled=true;apSaveBtn.textContent='正在保存...';apNotice.textContent='正在保存';const body=new URLSearchParams();body.set('ssid',apSsid.value.trim());const r=await fetch('/api/wifi-ap',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok){const t=await r.text();showCommandError(t);if(t.includes('invalid_ssid'))apNotice.textContent='SSID 长度需为 1-32 字符。';else apNotice.textContent='保存失败';throw new Error(t)}showToast('AP SSID 已保存，正在重启 AP',true);wifiApModal.classList.remove('show');refreshStatus()}catch(e){line('wifi ap save error: '+e)}finally{apSaving=false;apSaveBtn.disabled=false;apSaveBtn.textContent='保存并重启 AP'}}
+async function saveWifiAp(){if(apSaving)return;try{apSaving=true;apSaveBtn.disabled=true;apSaveBtn.textContent='正在保存...';apNotice.textContent='正在保存';const body=new URLSearchParams();body.set('ssid',apSsid.value.trim());const r=await fetch('/api/wifi-ap',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});if(!r.ok){const t=await r.text();showCommandError(t);if(t.includes('invalid_ssid'))apNotice.textContent='SSID 只能使用字母、数字和短横线，长度需为 1-32 字符，且不能以短横线开头或结尾。';else apNotice.textContent='保存失败';throw new Error(t)}showToast('AP SSID 已保存，正在重启 AP',true);wifiApModal.classList.remove('show');refreshStatus()}catch(e){line('wifi ap save error: '+e)}finally{apSaving=false;apSaveBtn.disabled=false;apSaveBtn.textContent='保存并重启 AP'}}
 function isWifiStaModalOpen(){return wifiStaModal.classList.contains('show')}
 function updateStaPasswordEye(){staPasswordEye.textContent=staPasswordVisible?'🙈':'👁';staPasswordEye.title=staPasswordVisible?'隐藏密码':'显示密码'}
 function renderStaPasswordState(j,force=false){if(!j)return;if(!force&&(document.activeElement===staPassword||staPasswordDirty))return;staPasswordVisible=false;staSavedPassword='';staSavedPasswordKnown=false;if(j.password_set&&Number(j.password_len||0)>0){staPassword.value='*'.repeat(Number(j.password_len||0));staPassword.type='password';staPasswordPlaceholder=true}else{staPassword.value='';staPassword.type='password';staPasswordPlaceholder=false}staPasswordDirty=false;updateStaPasswordEye()}
@@ -2211,7 +2262,7 @@ static void handleWifiWebApSet()
     }
     String ssid = wifiWebServer.arg("ssid");
     ssid.trim();
-    if (ssid.length() == 0 || ssid.length() > WIFI_AP_SSID_MAX_LEN) {
+    if (ssid.length() == 0 || ssid.length() > WIFI_AP_SSID_MAX_LEN || !isMdnsSafeHostname(ssid)) {
         wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_ssid\"}");
         return;
     }
@@ -2250,6 +2301,12 @@ static String wifiStaJson()
     appendJsonString(response, WiFi.softAPIP().toString().c_str());
     response += ",\"sta_ip\":";
     appendJsonString(response, wifiStaIpText().c_str());
+    response += ",\"mdns_host\":";
+    appendJsonString(response, wifiApSsid);
+    response += ",\"mdns_url\":";
+    appendJsonString(response, wifiMdnsUrlText().c_str());
+    response += ",\"mdns_started\":";
+    response += wifiMdnsStarted ? "true" : "false";
     response += "}";
     return response;
 }
@@ -2965,6 +3022,7 @@ static void updateWifiSta()
             wifiStaTimedOut = false;
             wifiStaConnecting = false;
             clearWifiStaLastError();
+            startWifiMdnsIfNeeded();
             mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
             scheduleWifiApStopAfterStaConnected();
         }
@@ -2972,6 +3030,7 @@ static void updateWifiSta()
     }
     if (wifiStaConnected) {
         wifiStaConnected = false;
+        stopWifiMdnsIfNeeded();
         mus4LogLine("wifi", "STA disconnected");
         restartWifiAp();
     }

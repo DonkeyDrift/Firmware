@@ -288,6 +288,79 @@ setTimeout(() => { location.href = url }, 100);
 
 这用于避免把“AP 因 STA 成功而关闭”误判成“STA 连接失败”。
 
+## mDNS AP 名称固定入口
+
+STA 连接成功并取得有效 IP 后，固件会把 Web Console 发布为：
+
+```text
+http://<AP名称>.local/
+```
+
+默认 AP 名称为 `MUS4-DEBUG`，因此默认局域网入口是：
+
+```text
+http://MUS4-DEBUG.local/
+```
+
+### 名称规则
+
+为了让 AP 名称可以直接作为 mDNS hostname，AP SSID 被限制为 mDNS-safe 名称：
+
+- 只能使用 `A-Z`、`a-z`、`0-9` 和 `-`。
+- 长度仍为 `1..32` 字符。
+- 不能以 `-` 开头或结尾。
+
+如果旧 NVS 中保存了中文、空格、下划线或其他非法 AP 名称，固件加载时会回退到默认 `MUS4-DEBUG`。
+
+### mDNS 生命周期
+
+mDNS 跟随 STA，而不是跟随 AP：
+
+1. `applyWifiStaCredentials()` 开始新一轮 STA 连接前，会先停止旧 mDNS。
+2. `updateWifiSta()` 首次检测到 STA connected 后，调用 `startWifiMdnsIfNeeded()`。
+3. `startWifiMdnsIfNeeded()` 会复核 `WL_CONNECTED` 和有效 STA IP，然后执行：
+   - `MDNS.begin(wifiApSsid)`
+   - `MDNS.addService("http", "tcp", WIFI_WEB_CONSOLE_PORT)`
+4. AP 因 STA 成功而关闭时，不停止 mDNS。
+5. STA 运行中断开时，调用 `stopWifiMdnsIfNeeded()`，然后恢复 AP。
+
+因此，AP 关闭后，只要 STA 仍在线且客户端网络支持 mDNS，用户仍可打开：
+
+```text
+http://<AP名称>.local/
+```
+
+### API 字段
+
+`/api/status` 会输出：
+
+```text
+mdns_host="MUS4-DEBUG" mdns_url=http://MUS4-DEBUG.local/ mdns_started=1
+```
+
+`/api/wifi-sta` 会输出：
+
+```json
+{
+  "mdns_host": "MUS4-DEBUG",
+  "mdns_url": "http://MUS4-DEBUG.local/",
+  "mdns_started": true
+}
+```
+
+Web Console 的 Network 卡片会显示 LAN `.local` 入口。点击 LAN 入口会跳转到 `.local` 地址；如果 `.local` 打不开，应使用同一卡片显示的 STA IP。
+
+### 兼容性限制
+
+`.local` 依赖客户端系统、浏览器和路由器对 mDNS / multicast 的支持。macOS 和 iOS 通常支持较好；Windows、Android、企业或校园网络可能受系统设置、路由器 AP isolation、multicast 隔离或安全软件影响。
+
+普通浏览器不能仅凭任意 AP 名称扫描局域网并发现未知设备 IP。本功能的前提是：设备自身在 STA 侧用当前 AP 名称注册 mDNS。若 `.local` 失败，排查顺序是：
+
+1. 确认电脑/手机与 MUS4 STA 在同一局域网。
+2. 先打开 `http://<sta_ip>/` 验证 IP 可达。
+3. 检查路由器是否开启 AP isolation 或 multicast/mDNS 隔离。
+4. 尝试换用支持 mDNS 的系统或浏览器。
+
 ## AP SSID 与 STA IP 的取舍
 
 曾考虑过把 AP SSID 临时改成类似：
@@ -318,6 +391,9 @@ MUS4-STA-192.168.3.144
 - `sta_connected`
 - `sta_ssid`
 - `sta_ip`
+- `mdns_host`
+- `mdns_url`
+- `mdns_started`
 - OTA、WebSocket、HTTP handler 统计等运行信息
 
 前端状态卡片通过解析该文本更新 AP/STA 标签和复制 IP 行为。
@@ -338,7 +414,10 @@ MUS4-STA-192.168.3.144
   "password_set": true,
   "password_len": 8,
   "ap_ip": "192.168.4.1",
-  "sta_ip": "192.168.3.144"
+  "sta_ip": "192.168.3.144",
+  "mdns_host": "MUS4-DEBUG",
+  "mdns_url": "http://MUS4-DEBUG.local/",
+  "mdns_started": true
 }
 ```
 

@@ -59,6 +59,7 @@
 #include "CommandParser.h"
 #include "DriftAssist.h"
 #include "SteeringControl.h"
+#include "Diagnostics.h"
 
 #include "Buzzer.h"
 // #include "test_runner.h"
@@ -301,24 +302,6 @@ int lastWaveSt[WAVE_WIDTH] = {0};     // Cache the previous waveform frame for d
 bool forceRedraw = false;             // Force redraw flag
 int lastSeq = -1;                     // Last received sequence number
 
-#ifdef ENABLE_DIAGNOSTIC_COMMANDS
-static bool runBenchmarks()
-{
-    unsigned long ts = millis();
-    unsigned long loops = 0;
-    unsigned long durStart = millis();
-    while (millis() - durStart < 200)
-    {
-        tui.forceRedraw();
-        tui.render();
-        loops++;
-    }
-    unsigned long t1 = millis() - ts;
-    unsigned long score = loops;
-    mus4Logf("bench", "BENCH: loops=%lu duration=%lums", score, t1);
-    return score > 1;
-}
-#endif
 struct struct_message
 {
     int throttle; // Throttle value

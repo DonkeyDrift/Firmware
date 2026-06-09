@@ -31,6 +31,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "DriftAssist.cpp",
     PROJECT_ROOT / "SteeringControl.h",
     PROJECT_ROOT / "SteeringControl.cpp",
+    PROJECT_ROOT / "Diagnostics.h",
+    PROJECT_ROOT / "Diagnostics.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.cpp",
@@ -342,6 +344,22 @@ def test_steering_control_helpers_remain_available_after_module_split():
         "Starting Steering Signal Processing Unit Tests (PID Enabled)",
     ]:
         assert symbol in source
+
+
+
+def test_diagnostic_helpers_remain_available_after_module_split():
+    source = firmware_source_text()
+    diagnostics_source = (PROJECT_ROOT / "Diagnostics.cpp").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    for symbol in [
+        "bool runBenchmarks()",
+        "BENCH: loops=%lu duration=%lums",
+    ]:
+        assert symbol in source
+
+    assert "bool runBenchmarks()" in diagnostics_source
+    assert "static bool runBenchmarks()" not in sketch_source
 
 
 

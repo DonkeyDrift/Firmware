@@ -3,19 +3,12 @@
 #include "CommandParser.h"
 #include "FirmwareConfig.h"
 #include "Mus4Log.h"
+#include "SharedTypes.h"
 #include "SteeringCalibration.h"
 #include "TUI.h"
 
-struct struct_message
-{
-    int throttle;
-    int steering;
-    int mode;
-    bool park;
-};
-
 extern TUI tui;
-extern struct_message pilot_data;
+extern ControlData pilot_data;
 extern int lastSeq;
 
 extern bool processLine(const String& line, int* throttle, int* steering, int* seq);

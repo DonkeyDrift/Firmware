@@ -336,6 +336,13 @@ def test_command_dispatcher_replaces_command_line_macro_after_module_split():
 
     assert "bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb)" in dispatcher_header
     assert "bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb)" in dispatcher_source
+    assert "extern ControlData pilot_data;" in dispatcher_source
+    assert "struct struct_message" not in dispatcher_source
+    assert "ControlData esp_now_data" in sketch_source
+    assert "ControlData rc_data" in sketch_source
+    assert "ControlData pilot_data" in sketch_source
+    assert "ControlData car_output" in sketch_source
+    assert "struct struct_message" not in sketch_source
     assert "dispatchCommandLine(String(sb.buf), ser, sb);" in source
     assert "#define PROCESS_COMMAND_LINE" not in sketch_source
     assert "PROCESS_COMMAND_LINE" not in sketch_source

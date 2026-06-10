@@ -245,18 +245,10 @@ int lastWaveSt[WAVE_WIDTH] = {0};     // Cache the previous waveform frame for d
 bool forceRedraw = false;             // Force redraw flag
 int lastSeq = -1;                     // Last received sequence number
 
-struct struct_message
-{
-    int throttle; // Throttle value
-    int steering; // Steering value
-    int mode;     // Driving mode: 0 RC manual, 1 Pilot steering with manual throttle, 2 autonomous driving
-    bool park;    // Park state: 0 parked, 1 started
-};
-
-struct struct_message esp_now_data = {0, 0, 0, PARK_LOCKED}; // Initialize the structure at declaration
-struct struct_message rc_data = {0, 0, 0, PARK_LOCKED};      // Initialize the structure at declaration
-struct struct_message pilot_data = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
-struct struct_message car_output = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
+ControlData esp_now_data = {0, 0, 0, PARK_LOCKED}; // Initialize the structure at declaration
+ControlData rc_data = {0, 0, 0, PARK_LOCKED};      // Initialize the structure at declaration
+ControlData pilot_data = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
+ControlData car_output = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
 
 // 300Hz PWM output parameters (for servo and ESC)
 // Frequency = 80MHz / (prescale * resolution)

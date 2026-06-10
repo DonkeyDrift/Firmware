@@ -290,13 +290,6 @@ static bool shouldEmitSerial1Telemetry()
     return !wifiOtaWindowOpen && !wifiOtaInProgress;
 }
 
-static void forceWifiOtaParkLocked()
-{
-    rc_data.park = PARK_LOCKED;
-    car_output.park = PARK_LOCKED;
-    car_output.throttle = 0;
-}
-
 static void keepDevModeOtaWindowActive()
 {
     if (!wifiDevModeEnabled) return;

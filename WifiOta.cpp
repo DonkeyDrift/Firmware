@@ -15,7 +15,15 @@ extern bool wifiOtaParkGuardActive;
 extern bool wifiDevModeEnabled;
 extern unsigned long wifiOtaDeadlineMs;
 extern uint8_t wifiOtaLastProgressPct;
+extern ControlData rc_data;
 extern ControlData car_output;
+
+void forceWifiOtaParkLocked()
+{
+    rc_data.park = PARK_LOCKED;
+    car_output.park = PARK_LOCKED;
+    car_output.throttle = 0;
+}
 
 void closeWifiOtaWindow(const char* reason)
 {

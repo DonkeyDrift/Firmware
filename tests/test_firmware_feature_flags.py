@@ -357,6 +357,8 @@ def test_diagnostic_helpers_remain_available_after_module_split():
         "BENCH: loops=%lu duration=%lums",
         "bool runRegression()",
         "REGRESS: ok=%d",
+        "bool runStress()",
+        "STRESS: errors_delta=%lu",
     ]:
         assert symbol in source
 
@@ -364,6 +366,8 @@ def test_diagnostic_helpers_remain_available_after_module_split():
     assert "static bool runBenchmarks()" not in sketch_source
     assert "bool runRegression()" in diagnostics_source
     assert "static bool runRegression()" not in sketch_source
+    assert "bool runStress()" in diagnostics_source
+    assert "static bool runStress()" not in sketch_source
 
 
 

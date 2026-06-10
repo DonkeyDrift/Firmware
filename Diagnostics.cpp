@@ -7,6 +7,10 @@ extern TUI tui;
 extern const int SERVO_MID_V;
 extern const int SERVO_RANGE_V;
 
+struct SerialBuf { char buf[256]; uint16_t len; uint32_t frames; uint32_t errors; bool overflow; };
+extern SerialBuf serial0Buf;
+extern bool processLine(const String& line, int* throttle, int* steering, int* seq);
+
 #ifdef ENABLE_DIAGNOSTIC_COMMANDS
 bool runBenchmarks()
 {
@@ -32,5 +36,17 @@ bool runRegression()
     bool ok = (v <= v2);
     mus4Logf("regress", "REGRESS: ok=%d", ok ? 1 : 0);
     return ok;
+}
+
+bool runStress()
+{
+    uint32_t errs0 = serial0Buf.errors;
+    for (int i = 0; i < 50; i++)
+    {
+        int tt, ss, seq;
+        processLine(String("999:999"), &tt, &ss, &seq);
+    }
+    mus4Logf("stress", "STRESS: errors_delta=%lu", serial0Buf.errors - errs0);
+    return true;
 }
 #endif

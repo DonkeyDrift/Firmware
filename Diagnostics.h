@@ -6,4 +6,5 @@
 #ifdef ENABLE_DIAGNOSTIC_COMMANDS
 bool runBenchmarks();
 bool runRegression();
+bool runStress();
 #endif

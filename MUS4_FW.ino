@@ -330,21 +330,6 @@ extern const int SERVO_RANGE_V = 2458; // ±500µs range
 const int MOTOR_OFFSET_V = 1;
 const int SERVO_OFFSET_V = -1;
 
-#ifdef ENABLE_DIAGNOSTIC_COMMANDS
-static bool runStress()
-{
-    uint32_t errs0 = serial0Buf.errors;
-    for (int i=0;i<50;i++)
-    {
-        int tt,ss,seq;
-        processLine(String("999:999"), &tt,&ss,&seq);
-    }
-    mus4Logf("stress", "STRESS: errors_delta=%lu", serial0Buf.errors-errs0);
-    return true;
-}
-
-#endif
-
 // Waveform data
 int throttleWave[WAVE_WIDTH] = {0};
 int steeringWave[WAVE_WIDTH] = {0};
@@ -398,7 +383,7 @@ static void evalDegrade()
     }
 }
 
-static bool processLine(const String& line, int* throttle, int* steering, int* seq)
+bool processLine(const String& line, int* throttle, int* steering, int* seq)
 {
     // Handle local commands
     if (line.equalsIgnoreCase("NOANSI")) { ansiEnabled = false; tui.setAnsiEnabled(false); tui.forceRedraw(); return false; }

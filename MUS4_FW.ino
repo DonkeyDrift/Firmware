@@ -375,21 +375,6 @@ static void appendWifiWebLogLines(const char* source, const String& text)
     }
 }
 
-static bool copyWifiStaSsid(const String& ssid)
-{
-    if (ssid.length() == 0 || ssid.length() > WIFI_STA_SSID_MAX_LEN) return false;
-    ssid.toCharArray(wifiStaSsid, sizeof(wifiStaSsid));
-    return true;
-}
-
-static bool copyWifiStaPassword(const String& password)
-{
-    if (password.length() > 0 && (password.length() < WIFI_STA_PASSWORD_MIN_LEN || password.length() > WIFI_STA_PASSWORD_MAX_LEN)) return false;
-    password.toCharArray(wifiStaPassword, sizeof(wifiStaPassword));
-    wifiStaPasswordSet = password.length() > 0;
-    return true;
-}
-
 static void startWifiMdnsIfNeeded()
 {
     if (wifiMdnsStarted) return;

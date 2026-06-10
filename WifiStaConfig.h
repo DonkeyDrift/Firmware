@@ -4,6 +4,8 @@
 #include "FirmwareConfig.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
+bool copyWifiStaSsid(const String& ssid);
+bool copyWifiStaPassword(const String& password);
 void printWifiStaStatus(Print& out);
 bool processWifiStaConfigCommand(const String& line, Print& out);
 #else

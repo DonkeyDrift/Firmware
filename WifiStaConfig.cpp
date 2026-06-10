@@ -3,12 +3,17 @@
 #include <WiFi.h>
 
 #ifdef ENABLE_WIFI_CONSOLE
+static const uint8_t WIFI_STA_CONFIG_SSID_MAX_LEN = 32;
+static const uint8_t WIFI_STA_CONFIG_PASSWORD_MAX_LEN = 63;
+static const uint8_t WIFI_STA_CONFIG_PASSWORD_MIN_LEN = 8;
+
 extern bool wifiStaConfigured;
 extern bool wifiStaConnected;
 extern bool wifiStaTimedOut;
 extern bool wifiStaConnecting;
 extern bool wifiStaPasswordSet;
 extern char wifiStaSsid[];
+extern char wifiStaPassword[];
 extern char wifiStaLastError[];
 extern char wifiStaLastErrorMessage[];
 
@@ -17,6 +22,21 @@ extern bool saveWifiStaSsidPreference(const String& ssid);
 extern bool saveWifiStaPasswordPreference(const String& password);
 extern void applyWifiStaCredentials();
 extern bool clearWifiStaPreference();
+
+bool copyWifiStaSsid(const String& ssid)
+{
+    if (ssid.length() == 0 || ssid.length() > WIFI_STA_CONFIG_SSID_MAX_LEN) return false;
+    ssid.toCharArray(wifiStaSsid, WIFI_STA_CONFIG_SSID_MAX_LEN + 1);
+    return true;
+}
+
+bool copyWifiStaPassword(const String& password)
+{
+    if (password.length() > 0 && (password.length() < WIFI_STA_CONFIG_PASSWORD_MIN_LEN || password.length() > WIFI_STA_CONFIG_PASSWORD_MAX_LEN)) return false;
+    password.toCharArray(wifiStaPassword, WIFI_STA_CONFIG_PASSWORD_MAX_LEN + 1);
+    wifiStaPasswordSet = password.length() > 0;
+    return true;
+}
 
 void printWifiStaStatus(Print& out)
 {

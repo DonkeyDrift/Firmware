@@ -136,7 +136,6 @@ bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf
 static bool shouldEmitSerial1Telemetry();
 #ifdef ENABLE_WIFI_CONSOLE
 static void ensureWifiOtaStarted();
-static void closeWifiOtaWindow(const char* reason);
 #if __has_include("WirelessSecrets.h")
 #include "WirelessSecrets.h"
 #endif
@@ -619,20 +618,6 @@ static void printWirelessStatus(Print& out)
         wifiMdnsHostText().c_str(),
         wifiMdnsUrlText().c_str(),
         wifiMdnsStarted ? 1 : 0);
-}
-
-static void closeWifiOtaWindow(const char* reason)
-{
-    wifiOtaWindowOpen = false;
-    wifiOtaDeadlineMs = 0;
-    wifiOtaInProgress = false;
-    wifiOtaParkGuardActive = false;
-    wifiOtaLastProgressPct = 0;
-    if (wifiOtaStarted) {
-        ArduinoOTA.end();
-        wifiOtaStarted = false;
-    }
-    mus4LogLine("ota", String("closed: ") + reason);
 }
 
 static void setupWifiOtaCallbacks()

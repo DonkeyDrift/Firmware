@@ -1,5 +1,8 @@
 #include "WifiOta.h"
 
+#include <ArduinoOTA.h>
+
+#include "Mus4Log.h"
 #include "SharedTypes.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
@@ -13,6 +16,20 @@ extern bool wifiDevModeEnabled;
 extern unsigned long wifiOtaDeadlineMs;
 extern uint8_t wifiOtaLastProgressPct;
 extern ControlData car_output;
+
+void closeWifiOtaWindow(const char* reason)
+{
+    wifiOtaWindowOpen = false;
+    wifiOtaDeadlineMs = 0;
+    wifiOtaInProgress = false;
+    wifiOtaParkGuardActive = false;
+    wifiOtaLastProgressPct = 0;
+    if (wifiOtaStarted) {
+        ArduinoOTA.end();
+        wifiOtaStarted = false;
+    }
+    mus4LogLine("ota", String("closed: ") + reason);
+}
 
 unsigned long wifiOtaTtlMs()
 {

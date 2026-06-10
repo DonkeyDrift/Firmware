@@ -754,9 +754,12 @@ def test_wifi_ota_status_helpers_are_split_from_sketch():
     assert "#include \"WifiOta.h\"" in sketch_source
     assert "unsigned long wifiOtaTtlMs()" in ota_header
     assert "void printWifiOtaStatus(Print& out)" in ota_header
+    assert "void closeWifiOtaWindow(const char* reason)" in ota_header
     assert re.search(r"^unsigned long\s+wifiOtaTtlMs\s*\(\)", ota_source, re.MULTILINE)
     assert re.search(r"^void\s+printWifiOtaStatus\s*\(Print& out\)", ota_source, re.MULTILINE)
+    assert re.search(r"^void\s+closeWifiOtaWindow\s*\(const char\* reason\)", ota_source, re.MULTILINE)
     assert "static void printWifiOtaStatus" not in sketch_source
+    assert "static void closeWifiOtaWindow" not in sketch_source
     assert "OTA_STATUS started=%d window=%d in_progress=%d ttl_ms=%lu progress=%u park=%d dev_mode=%d park_guard=%d" in ota_source
     assert "if (!wifiOtaWindowOpen) return 0" in ota_source
     assert "WIFI_OTA_WINDOW_MS = 120000UL" in ota_source
@@ -766,7 +769,18 @@ def test_wifi_ota_status_helpers_are_split_from_sketch():
     assert "wifiOtaLastProgressPct" in ota_source
     assert "car_output.park ? 1 : 0" in ota_source
     assert "wifiOtaParkGuardActive ? 1 : 0" in ota_source
+    assert "wifiOtaWindowOpen = false" in ota_source
+    assert "wifiOtaDeadlineMs = 0" in ota_source
+    assert "wifiOtaInProgress = false" in ota_source
+    assert "wifiOtaParkGuardActive = false" in ota_source
+    assert "wifiOtaLastProgressPct = 0" in ota_source
+    assert "ArduinoOTA.end()" in ota_source
+    assert "wifiOtaStarted = false" in ota_source
+    assert "mus4LogLine(\"ota\", String(\"closed: \") + reason)" in ota_source
     assert "printWifiOtaStatus(out)" in source
+    assert "closeWifiOtaWindow(\"LOCAL\")" in source
+    assert "closeWifiOtaWindow(\"USER\")" in source
+    assert "closeWifiOtaWindow(\"TIMEOUT\")" in source
 
 
 def test_wireless_ota_and_control_safety_guards_remain_present():

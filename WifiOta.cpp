@@ -18,11 +18,21 @@ extern uint8_t wifiOtaLastProgressPct;
 extern ControlData rc_data;
 extern ControlData car_output;
 
+extern void ensureWifiOtaStarted();
+
 void forceWifiOtaParkLocked()
 {
     rc_data.park = PARK_LOCKED;
     car_output.park = PARK_LOCKED;
     car_output.throttle = 0;
+}
+
+void keepDevModeOtaWindowActive()
+{
+    if (!wifiDevModeEnabled) return;
+    ensureWifiOtaStarted();
+    wifiOtaWindowOpen = true;
+    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
 }
 
 void closeWifiOtaWindow(const char* reason)

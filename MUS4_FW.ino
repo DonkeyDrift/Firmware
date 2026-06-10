@@ -135,7 +135,7 @@ SerialBuf serial1Buf = {{0},0,0,0,false};
 bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb);
 static bool shouldEmitSerial1Telemetry();
 #ifdef ENABLE_WIFI_CONSOLE
-static void ensureWifiOtaStarted();
+void ensureWifiOtaStarted();
 #if __has_include("WirelessSecrets.h")
 #include "WirelessSecrets.h"
 #endif
@@ -288,14 +288,6 @@ const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
 static bool shouldEmitSerial1Telemetry()
 {
     return !wifiOtaWindowOpen && !wifiOtaInProgress;
-}
-
-static void keepDevModeOtaWindowActive()
-{
-    if (!wifiDevModeEnabled) return;
-    ensureWifiOtaStarted();
-    wifiOtaWindowOpen = true;
-    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
 }
 
 static void loadDevModePreference()
@@ -654,7 +646,7 @@ static void setupWifiOtaCallbacks()
     });
 }
 
-static void ensureWifiOtaStarted()
+void ensureWifiOtaStarted()
 {
     if (wifiOtaStarted) return;
     setupWifiOtaCallbacks();

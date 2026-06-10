@@ -60,6 +60,7 @@
 #include "DriftAssist.h"
 #include "SteeringControl.h"
 #include "Diagnostics.h"
+#include "SerialBufferTypes.h"
 
 #include "Buzzer.h"
 // #include "test_runner.h"
@@ -121,7 +122,6 @@ unsigned long lastUICycleDuration = 0;
 unsigned long sensorTTL = 1000;
 unsigned long rcTTL = 100;
 unsigned long outputTTL = 100;
-struct SerialBuf { char buf[256]; uint16_t len; uint32_t frames; uint32_t errors; bool overflow; };
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
 static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb);

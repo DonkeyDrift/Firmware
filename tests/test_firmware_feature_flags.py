@@ -33,6 +33,7 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "SteeringControl.cpp",
     PROJECT_ROOT / "Diagnostics.h",
     PROJECT_ROOT / "Diagnostics.cpp",
+    PROJECT_ROOT / "SerialBufferTypes.h",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.cpp",
@@ -373,6 +374,20 @@ def test_diagnostic_helpers_remain_available_after_module_split():
     assert "static bool runStress()" not in sketch_source
     assert "void evalDegrade()" in diagnostics_source
     assert "static void evalDegrade()" not in sketch_source
+
+
+def test_serial_buffer_type_is_shared_after_module_split():
+    source = firmware_source_text()
+    serial_buffer_types = (PROJECT_ROOT / "SerialBufferTypes.h").read_text(encoding="utf-8")
+    diagnostics_source = (PROJECT_ROOT / "Diagnostics.cpp").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "struct SerialBuf" in serial_buffer_types
+    assert "char buf[256]" in serial_buffer_types
+    assert "uint32_t errors" in serial_buffer_types
+    assert "#include \"SerialBufferTypes.h\"" in source
+    assert "struct SerialBuf" not in diagnostics_source
+    assert "struct SerialBuf" not in sketch_source
 
 
 

@@ -1,6 +1,7 @@
 #include "Diagnostics.h"
 
 #include "Mus4Log.h"
+#include "SerialBufferTypes.h"
 
 extern TUI tui;
 
@@ -13,7 +14,6 @@ extern unsigned long lastUICycleDuration;
 extern bool degradeMode;
 extern uint32_t degradeReason;
 
-struct SerialBuf { char buf[256]; uint16_t len; uint32_t frames; uint32_t errors; bool overflow; };
 extern SerialBuf serial0Buf;
 extern bool processLine(const String& line, int* throttle, int* steering, int* seq);
 

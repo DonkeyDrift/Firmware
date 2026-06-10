@@ -328,6 +328,28 @@ def test_command_parser_helpers_remain_available_after_module_split():
     assert "bool processLine(const String& line, int* throttle, int* steering, int* seq)" not in sketch_source
 
 
+def test_sketch_drops_legacy_tui_dirty_rectangle_state_after_module_split():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    for symbol in [
+        "cursorDownN",
+        "cursorUpN",
+        "cursorRightN",
+        "cursorLeftN",
+        "lastModePrinted",
+        "lastParkPrinted",
+        "lastCh1",
+        "lastOutTh",
+        "lastSensorsPrint",
+        "lastINAStr",
+        "lastMPUStr",
+        "lastWaveTh",
+        "lastWaveSt",
+        "forceRedraw = false",
+    ]:
+        assert symbol not in sketch_source
+
+
 def test_command_dispatcher_replaces_command_line_macro_after_module_split():
     source = firmware_source_text()
     dispatcher_header = (PROJECT_ROOT / "CommandDispatcher.h").read_text(encoding="utf-8")

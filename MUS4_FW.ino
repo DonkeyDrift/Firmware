@@ -229,20 +229,6 @@ uint8_t wifiWebSocketBinaryPayload[256];
 #endif
 uint8_t wifiOtaLastProgressPct = 0;
 #endif
-static void cursorDownN(int n){ if(ansiEnabled) Serial.printf("\033[%dB", n); }
-static void cursorUpN(int n){ if(ansiEnabled) Serial.printf("\033[%dA", n); }
-static void cursorRightN(int n){ if(ansiEnabled) Serial.printf("\033[%dC", n); }
-static void cursorLeftN(int n){ if(ansiEnabled) Serial.printf("\033[%dD", n); }
-int lastModePrinted = -1;
-bool lastParkPrinted = true;
-int lastCh1 = -1, lastCh2 = -1, lastCh3 = -1, lastCh4 = -1;
-int lastOutTh = -1000, lastOutSt = -1000;
-unsigned long lastSensorsPrint = 0;
-String lastINAStr = "";
-String lastMPUStr = "";
-int lastWaveTh[WAVE_WIDTH] = {0};     // Cache the previous waveform frame for dirty rectangles
-int lastWaveSt[WAVE_WIDTH] = {0};     // Cache the previous waveform frame for dirty rectangles
-bool forceRedraw = false;             // Force redraw flag
 int lastSeq = -1;                     // Last received sequence number
 
 ControlData esp_now_data = {0, 0, 0, PARK_LOCKED}; // Initialize the structure at declaration

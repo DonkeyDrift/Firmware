@@ -803,7 +803,12 @@ def test_wifi_sta_handoff_status_api_and_web_prompt_are_present():
 
 def test_web_console_header_ota_button_and_log_area_are_compact():
     source = firmware_source_text()
+    assets_source = (PROJECT_ROOT / "WebConsoleAssets.h").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
+    assert "static const char WIFI_WEB_UPDATE_HTML[] PROGMEM" in assets_source
+    assert "MUS4 HTTP OTA" in assets_source
+    assert "static const char WIFI_WEB_UPDATE_HTML[] PROGMEM" not in sketch_source
     assert source.index('<section class="panel" id="chartPanel">') < source.index('<section class="panel" id="serialPanel">')
     assert '<section class="panel" id="serialPanel">' in source
     assert "#serialPanel{display:flex;flex-direction:column}" in source

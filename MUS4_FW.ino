@@ -1681,62 +1681,6 @@ static void handleWifiWebData()
     recordWifiWebHandlerDt(startedMs, wifiWebDataMaxDtMs);
 }
 
-static const char WIFI_WEB_UPDATE_HTML[] PROGMEM = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MUS4 OTA Update</title>
-<style>
-body{font-family:system-ui,sans-serif;margin:24px auto;max-width:480px;background:#101318;color:#e8edf2}
-h1{font-size:20px;margin:0 0 16px}
-#drop{border:2px dashed #475569;border-radius:12px;padding:40px 20px;text-align:center;transition:.2s;background:#171c24}
-#drop.dragover{border-color:#5cc8ff;background:#1c2430}
-#progress{width:100%;height:8px;background:#2b3441;border-radius:4px;margin-top:16px;overflow:hidden;display:none}
-#progressBar{height:100%;width:0%;background:#5cc8ff;transition:.2s}
-#status{margin-top:12px;font-size:14px;color:#8fa1b5;min-height:20px}
-button{background:#5cc8ff;color:#0f1419;border:none;padding:10px 20px;border-radius:6px;font-weight:700;cursor:pointer;font-size:14px}
-button:disabled{opacity:.5;cursor:not-allowed}
-.muted{color:#667;font-size:12px;margin-top:12px}
-</style>
-</head>
-<body>
-<h1>MUS4 HTTP OTA</h1>
-<div id="drop">
-<div>拖放固件文件到此处，或 <button onclick="document.getElementById('file').click()">选择文件</button></div>
-<input type="file" id="file" style="display:none" accept=".bin">
-</div>
-<div id="progress"><div id="progressBar"></div></div>
-<div id="status">等待文件...</div>
-<div class="muted">OTA 传输期间车辆会自动 Park Locked。需要认证 + Park 锁定（或开发模式）。</div>
-<script>
-const drop=document.getElementById('drop'),fileInput=document.getElementById('file'),progress=document.getElementById('progress'),bar=document.getElementById('progressBar'),status=document.getElementById('status');
-function setStatus(t,c){status.textContent=t;status.style.color=c||'#8fa1b5'}
-['dragenter','dragover','dragleave','drop'].forEach(e=>{drop.addEventListener(e,ev=>{ev.preventDefault();ev.stopPropagation()})});
-['dragenter','dragover'].forEach(e=>drop.addEventListener(e,()=>drop.classList.add('dragover')));
-['dragleave','drop'].forEach(e=>drop.addEventListener(e,()=>drop.classList.remove('dragover')));
-drop.addEventListener('drop',e=>upload(e.dataTransfer.files[0]));
-fileInput.addEventListener('change',e=>upload(e.target.files[0]));
-async function upload(f){
-  if(!f)return;
-  setStatus('上传中...');
-  progress.style.display='block';bar.style.width='0%';
-  const form=new FormData();form.append('firmware',f);
-  const xhr=new XMLHttpRequest();
-  xhr.upload.addEventListener('progress',e=>{if(e.lengthComputable){bar.style.width=Math.round(e.loaded/e.total*100)+'%'}});
-  xhr.addEventListener('load',()=>{
-    if(xhr.status===200){setStatus('成功: '+xhr.responseText,'#39d98a');setTimeout(()=>location.href='/',3000)}
-    else{setStatus('错误 '+xhr.status+': '+xhr.responseText,'#ff6666')}
-  });
-  xhr.addEventListener('error',()=>setStatus('网络错误','#ff6666'));
-  xhr.open('POST','/update');xhr.send(form);
-}
-</script>
-</body>
-</html>
-)rawliteral";
-
 static void handleWifiWebUpdateGet()
 {
     wifiWebServer.send_P(200, "text/html", WIFI_WEB_UPDATE_HTML);

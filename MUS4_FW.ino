@@ -671,23 +671,6 @@ static void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin)
     mus4LogLine("ota", webDevMode ? "ready: web_dev" : "ready");
 }
 
-static void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb)
-{
-    if (!line.substring(11).equals(WIFI_CONSOLE_AP_PASSWORD)) {
-        out.println("NACK:AUTH_REQUIRED");
-        sb.errors++;
-        return;
-    }
-    wifiOtaParkGuardActive = true;
-    forceWifiOtaParkLocked();
-    ensureWifiOtaStarted();
-    wifiOtaWindowOpen = true;
-    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
-    wifiOtaLastProgressPct = 0;
-    out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.localIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
-    mus4LogLine("ota", "ready: local");
-}
-
 bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
 {
     if (isLocalOtaOpenCommand(line)) {

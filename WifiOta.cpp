@@ -1,11 +1,14 @@
 #include "WifiOta.h"
 
 #include <ArduinoOTA.h>
+#include <WiFi.h>
 
 #include "Mus4Log.h"
 #include "SharedTypes.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
+static const char* WIFI_CONSOLE_AP_PASSWORD = "mus4-debug";
+static const uint16_t WIFI_OTA_PORT = 3232;
 static const unsigned long WIFI_OTA_WINDOW_MS = 120000UL;
 
 extern bool wifiOtaStarted;
@@ -38,6 +41,23 @@ void keepDevModeOtaWindowActive()
 bool shouldEmitSerial1Telemetry()
 {
     return !wifiOtaWindowOpen && !wifiOtaInProgress;
+}
+
+void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb)
+{
+    if (!line.substring(11).equals(WIFI_CONSOLE_AP_PASSWORD)) {
+        out.println("NACK:AUTH_REQUIRED");
+        sb.errors++;
+        return;
+    }
+    wifiOtaParkGuardActive = true;
+    forceWifiOtaParkLocked();
+    ensureWifiOtaStarted();
+    wifiOtaWindowOpen = true;
+    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
+    wifiOtaLastProgressPct = 0;
+    out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.localIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
+    mus4LogLine("ota", "ready: local");
 }
 
 void closeWifiOtaWindow(const char* reason)

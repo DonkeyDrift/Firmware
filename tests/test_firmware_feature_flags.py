@@ -36,6 +36,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "WifiConsoleTypes.h",
     PROJECT_ROOT / "WirelessConsole.h",
     PROJECT_ROOT / "WirelessConsole.cpp",
+    PROJECT_ROOT / "WifiStaConfig.h",
+    PROJECT_ROOT / "WifiStaConfig.cpp",
     PROJECT_ROOT / "DriftAssist.h",
     PROJECT_ROOT / "DriftAssist.cpp",
     PROJECT_ROOT / "SteeringControl.h",
@@ -449,6 +451,39 @@ def test_wifi_console_types_are_split_from_sketch():
     assert "struct WifiScanEntry" not in sketch_source
     assert "struct WebDataPoint" not in sketch_source
     assert "#include \"WifiConsoleTypes.h\"" in source
+
+
+def test_wifi_sta_config_command_entry_is_split_from_sketch():
+    source = firmware_source_text()
+    sta_header = (PROJECT_ROOT / "WifiStaConfig.h").read_text(encoding="utf-8")
+    sta_source = (PROJECT_ROOT / "WifiStaConfig.cpp").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "bool processWifiStaConfigCommand(const String& line, Print& out)" in sta_header
+    assert "bool processWifiStaConfigCommand(const String& line, Print& out)" in sta_source
+    assert "void printWifiStaStatus(Print& out)" in sta_header
+    assert "void printWifiStaStatus(Print& out)" in sta_source
+    assert "#include \"WifiStaConfig.h\"" in sketch_source
+    assert "bool processWifiStaConfigCommand(const String& line, Print& out)" not in sketch_source
+    assert "void printWifiStaStatus(Print& out)" not in sketch_source
+
+    for symbol in [
+        "WIFI_STA configured=%d connected=%d timed_out=%d connecting=%d",
+        "last_error_message=\\\"%s\\\"",
+        "WIFI_STA_STATUS",
+        "WIFI_STA_SSID:",
+        "WIFI_STA_PASSWORD:",
+        "WIFI_STA_APPLY",
+        "WIFI_STA_CLEAR",
+        "WIFI_STA_SSID_SAVED configured=%d",
+        "WIFI_STA_PASSWORD_SAVED password_set=%d",
+        "NACK:WIFI_STA_NOT_CONFIGURED",
+        "WIFI_STA_APPLY_OK ssid=\\\"%s\\\"",
+        "WIFI_STA_CLEARED",
+    ]:
+        assert symbol in sta_source
+
+    assert "processWifiStaConfigCommand(line, out)" in source
 
 
 def test_wireless_command_policy_helpers_are_split_from_sketch():
@@ -1243,7 +1278,7 @@ def test_wifi_mdns_lifecycle_follows_sta_connection():
     source = firmware_source_text()
 
     apply_body = re.search(
-        r"static void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1365,7 +1400,7 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
         re.DOTALL,
     ).group("body")
     apply_body = re.search(
-        r"static void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1375,7 +1410,7 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
         re.DOTALL,
     ).group("body")
     clear_body = re.search(
-        r"static bool clearWifiStaPreference\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool clearWifiStaPreference\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1420,7 +1455,7 @@ def test_soft_ap_disconnect_is_limited_to_explicit_ap_restart():
         re.DOTALL,
     ).group("body")
     apply_body = re.search(
-        r"static void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")

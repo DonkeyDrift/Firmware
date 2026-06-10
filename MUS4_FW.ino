@@ -62,6 +62,7 @@
 #include "SerialLineReader.h"
 #include "WifiConsoleTypes.h"
 #include "WirelessConsole.h"
+#include "WifiStaConfig.h"
 #include "DriftAssist.h"
 #include "SteeringControl.h"
 #include "Diagnostics.h"
@@ -283,10 +284,7 @@ const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
 const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
 
 #ifdef ENABLE_WIFI_CONSOLE
-bool processWifiStaConfigCommand(const String& line, Print& out);
-static String wifiStaIpText();
-#else
-bool processWifiStaConfigCommand(const String& line, Print& out) { return false; }
+String wifiStaIpText();
 #endif
 
 #ifdef ENABLE_WIFI_CONSOLE
@@ -523,7 +521,7 @@ static void setWifiStaLastError(const char* code, const char* message, bool time
     mus4Logf("wifi", "STA failed: %s", code);
 }
 
-static void applyWifiStaCredentials()
+void applyWifiStaCredentials()
 {
     if (!wifiStaConfigured) return;
     stopWifiMdnsIfNeeded();
@@ -605,21 +603,6 @@ static bool restartWifiAp()
     return startWifiApServices("AP restarted");
 }
 
-static void printWifiStaStatus(Print& out)
-{
-    out.printf("WIFI_STA configured=%d connected=%d timed_out=%d connecting=%d ssid=\"%s\" password_set=%d ap_ip=%s sta_ip=%s last_error=\"%s\" last_error_message=\"%s\"\n",
-        wifiStaConfigured ? 1 : 0,
-        wifiStaConnected ? 1 : 0,
-        wifiStaTimedOut ? 1 : 0,
-        wifiStaConnecting ? 1 : 0,
-        wifiStaSsid,
-        wifiStaPasswordSet ? 1 : 0,
-        WiFi.softAPIP().toString().c_str(),
-        wifiStaIpText().c_str(),
-        wifiStaLastError,
-        wifiStaLastErrorMessage);
-}
-
 static void loadWifiApPreference()
 {
     if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) {
@@ -660,7 +643,7 @@ static bool saveWifiStaPreference(const String& ssid, const String& password)
     return true;
 }
 
-static bool saveWifiStaSsidPreference(const String& ssid)
+bool saveWifiStaSsidPreference(const String& ssid)
 {
     if (!copyWifiStaSsid(ssid)) return false;
     if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
@@ -672,7 +655,7 @@ static bool saveWifiStaSsidPreference(const String& ssid)
     return true;
 }
 
-static bool saveWifiStaPasswordPreference(const String& password)
+bool saveWifiStaPasswordPreference(const String& password)
 {
     if (!copyWifiStaPassword(password)) return false;
     if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
@@ -683,7 +666,7 @@ static bool saveWifiStaPasswordPreference(const String& password)
     return true;
 }
 
-static bool clearWifiStaPreference()
+bool clearWifiStaPreference()
 {
     if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
     size_t enabledWritten = mus4Prefs.putBool(MUS4_PREF_STA_ENABLED_KEY, false);
@@ -728,50 +711,6 @@ static void loadWifiStaPreference()
     }
 }
 
-bool processWifiStaConfigCommand(const String& line, Print& out)
-{
-    if (line.equalsIgnoreCase("WIFI_STA_STATUS")) {
-        printWifiStaStatus(out);
-        return true;
-    }
-    if (line.startsWith("WIFI_STA_SSID:")) {
-        String ssid = line.substring(14);
-        ssid.trim();
-        if (!saveWifiStaSsidPreference(ssid)) {
-            out.println("NACK:WIFI_STA_SSID");
-            return true;
-        }
-        out.printf("WIFI_STA_SSID_SAVED configured=%d\n", wifiStaConfigured ? 1 : 0);
-        return true;
-    }
-    if (line.startsWith("WIFI_STA_PASSWORD:")) {
-        String password = line.substring(18);
-        if (!saveWifiStaPasswordPreference(password)) {
-            out.println("NACK:WIFI_STA_PASSWORD");
-            return true;
-        }
-        out.printf("WIFI_STA_PASSWORD_SAVED password_set=%d\n", wifiStaPasswordSet ? 1 : 0);
-        return true;
-    }
-    if (line.equalsIgnoreCase("WIFI_STA_APPLY")) {
-        if (!wifiStaConfigured) {
-            out.println("NACK:WIFI_STA_NOT_CONFIGURED");
-            return true;
-        }
-        applyWifiStaCredentials();
-        out.printf("WIFI_STA_APPLY_OK ssid=\"%s\"\n", wifiStaSsid);
-        return true;
-    }
-    if (line.equalsIgnoreCase("WIFI_STA_CLEAR")) {
-        if (!clearWifiStaPreference()) {
-            out.println("NACK:WIFI_STA_CLEAR");
-            return true;
-        }
-        out.println("WIFI_STA_CLEARED");
-        return true;
-    }
-    return false;
-}
 #endif
 
 #ifdef ENABLE_WIFI_CONSOLE
@@ -806,7 +745,7 @@ static void sampleWifiWebData()
     if (wifiWebDataCount < WIFI_WEB_DATA_CAPACITY) wifiWebDataCount++;
 }
 
-static String wifiStaIpText()
+String wifiStaIpText()
 {
     return wifiStaConnected ? WiFi.localIP().toString() : String("0.0.0.0");
 }

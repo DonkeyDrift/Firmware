@@ -17,7 +17,6 @@ extern char wifiStaPassword[];
 extern char wifiStaLastError[];
 extern char wifiStaLastErrorMessage[];
 
-extern String wifiStaIpText();
 extern bool saveWifiStaSsidPreference(const String& ssid);
 extern bool saveWifiStaPasswordPreference(const String& password);
 extern void applyWifiStaCredentials();
@@ -36,6 +35,11 @@ bool copyWifiStaPassword(const String& password)
     password.toCharArray(wifiStaPassword, WIFI_STA_CONFIG_PASSWORD_MAX_LEN + 1);
     wifiStaPasswordSet = password.length() > 0;
     return true;
+}
+
+String wifiStaIpText()
+{
+    return wifiStaConnected ? WiFi.localIP().toString() : String("0.0.0.0");
 }
 
 void printWifiStaStatus(Print& out)

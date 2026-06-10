@@ -6,6 +6,7 @@
 #ifdef ENABLE_WIFI_CONSOLE
 bool copyWifiStaSsid(const String& ssid);
 bool copyWifiStaPassword(const String& password);
+String wifiStaIpText();
 void printWifiStaStatus(Print& out);
 bool processWifiStaConfigCommand(const String& line, Print& out);
 #else

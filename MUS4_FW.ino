@@ -285,10 +285,6 @@ const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
 const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
 
 #ifdef ENABLE_WIFI_CONSOLE
-String wifiStaIpText();
-#endif
-
-#ifdef ENABLE_WIFI_CONSOLE
 static unsigned long wifiOtaTtlMs()
 {
     if (!wifiOtaWindowOpen) return 0;
@@ -685,11 +681,6 @@ static void sampleWifiWebData()
     point.gyroZFiltered = gyro_z_filtered;
     wifiWebDataHead = (wifiWebDataHead + 1) % WIFI_WEB_DATA_CAPACITY;
     if (wifiWebDataCount < WIFI_WEB_DATA_CAPACITY) wifiWebDataCount++;
-}
-
-String wifiStaIpText()
-{
-    return wifiStaConnected ? WiFi.localIP().toString() : String("0.0.0.0");
 }
 
 static void printWifiOtaStatus(Print& out)

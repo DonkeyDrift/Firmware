@@ -467,11 +467,14 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     assert "void printWifiStaStatus(Print& out)" in sta_source
     assert "bool copyWifiStaSsid(const String& ssid)" in sta_header
     assert "bool copyWifiStaPassword(const String& password)" in sta_header
+    assert "String wifiStaIpText()" in sta_header
     assert "bool copyWifiStaSsid(const String& ssid)" in sta_source
     assert "bool copyWifiStaPassword(const String& password)" in sta_source
+    assert "String wifiStaIpText()" in sta_source
     assert "#include \"WifiStaConfig.h\"" in sketch_source
     assert "bool processWifiStaConfigCommand(const String& line, Print& out)" not in sketch_source
     assert "void printWifiStaStatus(Print& out)" not in sketch_source
+    assert "String wifiStaIpText()" not in sketch_source
     assert "static bool copyWifiStaSsid" not in sketch_source
     assert "static bool copyWifiStaPassword" not in sketch_source
 
@@ -481,6 +484,7 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
         "ssid.length() == 0 || ssid.length() > WIFI_STA_CONFIG_SSID_MAX_LEN",
         "password.length() > 0 && (password.length() < WIFI_STA_CONFIG_PASSWORD_MIN_LEN || password.length() > WIFI_STA_CONFIG_PASSWORD_MAX_LEN)",
         "wifiStaPasswordSet = password.length() > 0",
+        "wifiStaConnected ? WiFi.localIP().toString() : String(\"0.0.0.0\")",
         "WIFI_STA_STATUS",
         "WIFI_STA_SSID:",
         "WIFI_STA_PASSWORD:",

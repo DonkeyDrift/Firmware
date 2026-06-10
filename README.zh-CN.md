@@ -240,6 +240,8 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 - WebSocket 遥测：端口 `81`
 - ArduinoOTA：主机名 `mus4-ota`，端口 `3232`
 
+调试 AP 默认可用并保持常驻。如果已经配置 STA 凭据，固件会先启动 DNS、TCP Console 和 Web Console，再尝试连接 STA。STA 连接成功并取得有效 IP 后，AP 仍保持开启，Web UI 会尝试跳转到 `http://<sta_ip>/`；用户也可以继续连接设备 AP 并打开 `http://192.168.4.1/` 查看状态或修改配置。如果设备已经通过 STA 接入一个 Wi-Fi，并在 Web Console 中切换到另一个 STA SSID，当前页面可能会因为设备离开旧网络而断开；此时请连接设备 AP，打开 `http://192.168.4.1/`，页面会显示新 STA 的 SSID 和 IP；随后将电脑/手机切换到对应 SSID，并打开显示的 `http://<sta_ip>/`。固件还会通过 mDNS 发布 Web Console，局域网入口为 `http://<AP名称小写>.local/`；例如 AP 名称 `MUS4-DEBUG` 会发布为 `http://mus4-debug.local/`，前提是客户端和网络支持 mDNS。如果 `.local` 无法解析，请使用页面显示的 STA IP。为保证 hostname 合法，AP 名称限制为字母、数字和短横线，且不能以短横线开头或结尾。如果 STA 连接失败、超时或运行中断开，AP 会保持或恢复，用户可通过 `http://192.168.4.1/` 重新配置。
+
 无线命令权限分层：
 
 - `PING`、`STATUS`、`AUTH`、`WIFI_STA_STATUS` 可未认证访问。
@@ -261,6 +263,7 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 - [`Doc/Tools/train_tub_driver.md`](Doc/Tools/train_tub_driver.md)：Tub JSON 报告与 GRU baseline 训练说明。
 - [`Doc/Tools/mus4_pilot_infer.md`](Doc/Tools/mus4_pilot_infer.md)：Pilot 推理控制器与安全门控说明。
 - [`Doc/README/OPERATIONS.md`](Doc/README/OPERATIONS.md)：运行时串口命令与数据帧。
+- [`Doc/Inspect/wifi-ap-sta-lifecycle-inspection.md`](Doc/Inspect/wifi-ap-sta-lifecycle-inspection.md)：Wi-Fi AP / STA 生命周期、Captive Portal、切换流程与排查说明。
 - [`Doc/Plan/`](Doc/Plan/)：设计方案与历史实施记录。
 
 ## 安全注意事项

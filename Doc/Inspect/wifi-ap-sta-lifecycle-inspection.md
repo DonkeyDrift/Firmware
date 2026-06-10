@@ -1,0 +1,581 @@
+# Wi-Fi AP / STA 工作、交互与切换逻辑梳理
+
+## 结论
+
+当前固件的 Wi-Fi Console 采用“开机先提供调试 AP，同时可尝试连接 STA；STA 成功后 AP 继续常驻；STA 断开后确保 AP 恢复可用”的生命周期设计。
+
+核心体验目标是：
+
+1. 用户始终可以通过调试 AP 进入 Donkey Console 完成初始配置和后续维护。
+2. STA 连接成功后，前端读取到 STA IP，可跳转到 `http://<sta_ip>/`，同时 AP 仍保持开启，用户也能继续通过 `http://192.168.4.1/` 查看状态和调整配置。
+3. STA 连接失败、超时或配置错误时，AP 不关闭，用户可以继续在 AP 页面里修正配置。
+4. STA 运行中断开后，固件确保 AP、DNS、TCP Console 和 Web Console 可用，让用户重新进入设备。
+
+相关主逻辑集中在 `MUS4_FW.ino` 的 Wi-Fi Console 编译路径中。
+
+## 角色划分
+
+| 角色 | 当前行为 | 主要用途 |
+| --- | --- | --- |
+| SoftAP | 默认 SSID 为 `MUS4-DEBUG`，IP 固定为 `192.168.4.1` | 调试入口、Captive Portal、初始 STA 配置、STA 失败后的恢复入口 |
+| STA | 使用 Preferences 或编译期默认凭据连接外部 2.4G Wi-Fi | 让设备接入用户局域网，支持 Web Console / OTA / 遥测在局域网内访问 |
+| Captive DNS | AP 开启时通配 DNS 到 SoftAP IP | 尽量触发 Windows、iOS/macOS、Android 的自动弹窗 |
+| Web Console | 端口 80，提供 UI、API、HTTP OTA | 用户配置 AP/STA、查看状态、上传固件 |
+| TCP Console | 端口 2323 | 无线命令入口 |
+| WebSocket Telemetry | 端口 81 | Web 前端遥测数据推送 |
+
+## 关键状态变量
+
+| 变量 | 含义 |
+| --- | --- |
+| `wifiConsoleStarted` | AP、TCP Console、Web Console 是否已启动成功。 |
+| `wifiStaConfigured` | 是否存在有效 STA SSID 配置。 |
+| `wifiStaConnecting` | STA 当前是否处于连接尝试中。 |
+| `wifiStaConnected` | 固件认为 STA 当前已连接。 |
+| `wifiStaTimedOut` | 最近一次 STA 连接是否超时。 |
+| `wifiStaLastError` / `wifiStaLastErrorMessage` | 最近一次 STA 失败原因，供 API 和前端展示。 |
+| `wifiStaApplyPending` | Web/API 保存配置后，延时触发 `WiFi.begin()`。 |
+| `wifiApRestartPending` | AP SSID 修改后，延时重启 AP。 |
+| `wifiStaHandoffActive` | STA 到 STA 切换交接提示是否处于活动状态。 |
+
+## 开机启动流程
+
+`setupWifiConsole()` 是 Wi-Fi Console 的开机入口，当前流程如下：
+
+```mermaid
+flowchart TD
+    A[setupWifiConsole] --> B[清理 STA/AP pending 状态]
+    B --> C[WiFi.disconnect true,true]
+    C --> D[WiFi.mode WIFI_OFF]
+    D --> E[WiFi.mode WIFI_AP_STA]
+    E --> F[WiFi.setSleep false]
+    F --> G[configureWifiSoftApNetwork]
+    G --> H[WiFi.softAP]
+    H --> I{AP 启动成功?}
+    I -- 否 --> J[wifiConsoleStarted=false 并等待重试]
+    I -- 是 --> K[启动 Captive DNS]
+    K --> L[启动 TCP Console]
+    L --> M[启动 Web Console / WebSocket]
+    M --> N[wifiConsoleStarted=true]
+    N --> O{已配置 STA?}
+    O -- 是 --> P[applyWifiStaCredentials]
+    O -- 否 --> Q[保持 AP 配置入口]
+```
+
+关键点：
+
+- SoftAP 在 `WiFi.softAP()` 前先调用 `configureWifiSoftApNetwork()`，显式固定为 `192.168.4.1/24`。
+- Wi-Fi 模式使用 `WIFI_AP_STA`，因此开机阶段 AP 与 STA 可并行存在。
+- 如果已有 STA 配置，固件会先启动 DNS、TCP Console 和 Web Console，再调用 `applyWifiStaCredentials()` 尝试接入外部 Wi-Fi。
+- STA 连接成功后 AP 不会自动关闭，便于用户持续通过 `http://192.168.4.1/` 查看状态、修改 Wi-Fi 和进行维护。
+- 如果 AP 启动失败，`wifiConsoleStarted=false`，后续 `updateWifiConsole()` 会按 `WIFI_CONSOLE_RETRY_INTERVAL_MS` 周期重试。
+
+## SoftAP 网络配置
+
+SoftAP 网络由 `configureWifiSoftApNetwork()` 统一配置：
+
+```cpp
+IPAddress apIp(192, 168, 4, 1);
+IPAddress subnet(255, 255, 255, 0);
+WiFi.softAPConfig(apIp, apIp, subnet);
+```
+
+该函数由 `startWifiApServices()` 统一调用，覆盖两个需要真正启动或重建 SoftAP 的场景：
+
+1. `setupWifiConsole()`：首次开机启动 AP。
+2. `restartWifiAp()`：AP SSID 修改后显式重建 AP。
+
+STA 运行中断开时优先走 `ensureWifiApAvailable()`，只恢复服务，不主动断开已有 AP 客户端；只有发现 SoftAP IP 异常为 `0.0.0.0` 时才重新调用 `startWifiApServices()`。
+
+这样可以避免 SoftAP 恢复后 IP/Gateway 漂移，确保用户始终通过：
+
+```text
+http://192.168.4.1/
+```
+
+访问 AP 下的 Donkey Console。
+
+## STA 配置保存与应用流程
+
+### Web 前端入口
+
+用户在 Web Console 的 STA Modal 中填写 SSID/密码并点击“连接”后，前端 `saveWifiSta()` 会：
+
+1. 关闭扫描浮层。
+2. 显示“正在连接”。
+3. POST `/api/wifi-sta`，提交 `ssid`、`password` 或 `keep_password=1`，并附带 `source=ap` 或 `source=sta`。
+4. 如果当前页面来自旧 STA 且目标 SSID 改变，立即提示“当前页面可能断开，请连接设备 AP 查看新 IP”。
+5. 成功后清理密码输入框状态。
+5. 刷新 `/api/wifi-sta` 与 `/api/status`。
+6. 等待 1 秒。
+7. 进入 `waitWifiStaConnectionResult()` 轮询连接结果。
+
+### 后端 API 入口
+
+`handleWifiWebStaSet()` 处理 `/api/wifi-sta`：
+
+1. 要求 Web Console 已认证或处于开发模式。
+2. 校验 SSID 长度。
+3. 校验密码长度，或在 `keep_password=1` 时要求已有保存密码。
+4. 写入 Preferences，并更新运行时 `wifiStaSsid` / `wifiStaPassword`。
+5. 立即返回 JSON：`{"saved":true,"applied":true,"state":...}`。
+6. 调用 `scheduleWifiStaApply()`，延时触发真正的 STA 连接。
+
+这里故意先返回 HTTP 响应，再延时应用 STA，避免请求正在返回时 Wi-Fi 状态切换导致浏览器侧误判保存失败。
+
+### 延时应用
+
+`updateWifiSta()` 每轮检查：
+
+```cpp
+if (wifiStaApplyPending && (long)(millis() - wifiStaApplyDeadlineMs) >= 0) {
+    applyWifiStaCredentials();
+}
+```
+
+`applyWifiStaCredentials()` 做的事情是：
+
+1. 清除 `wifiStaApplyPending`。
+2. 清除旧的连接、超时和错误状态。
+3. 设置 `wifiStaConnecting=true`。
+4. 记录连接开始时间。
+5. 仅断开 STA，不主动关闭 AP。
+6. 调用 `WiFi.begin(wifiStaSsid, wifiStaPassword)`。
+
+## STA 成功路径
+
+`updateWifiSta()` 中，当 `WiFi.status() == WL_CONNECTED` 且此前 `wifiStaConnected=false` 时，固件判定 STA 首次连接成功：
+
+1. `wifiStaConnected=true`。
+2. `wifiStaTimedOut=false`。
+3. `wifiStaConnecting=false`。
+4. 清空 `wifiStaLastError`。
+5. 启动或刷新 STA 侧 mDNS。
+6. 日志输出 STA IP。
+7. 如果处于 STA 到 STA 切换交接流程，记录新 STA IP。
+
+AP 在 STA 成功后保持开启，不再调度 `softAPdisconnect(true)` 或切换到纯 `WIFI_STA`。这样用户可同时使用两个入口：
+
+```text
+http://192.168.4.1/      # AP 侧固定维护入口
+http://<sta_ip>/         # STA 局域网入口
+```
+
+该设计牺牲少量 Wi-Fi 资源占用，换取更稳定的可发现性和可维护性。
+
+## STA 到 STA 切换交接流程
+
+当用户已经通过旧 STA IP 打开 Web Console，并在页面中切换到另一个 STA SSID 时，设备会离开旧网络，当前浏览器页面一定可能断联。浏览器也不能替用户切换电脑/手机 Wi-Fi，因此固件使用调试 AP 作为交接页面。
+
+触发条件：
+
+1. 固件当前已经 `wifiStaConnected=true`。
+2. `/api/wifi-sta` 请求带有 `source=sta`。
+3. 新保存的 SSID 与当前 `WiFi.SSID()` 不同。
+
+触发后固件进入 `wifiStaHandoffActive`：
+
+1. 调用 `ensureWifiApAvailable()`，只确保 AP 服务可用，不主动断开已连接的 AP 客户端。
+2. 保存 `wifiStaHandoffTargetSsid`、`wifiStaHandoffApSsid`。
+3. 延时执行新的 `WiFi.begin()`。
+4. 新 STA 成功后记录 `wifiStaHandoffStaIp`。
+5. AP 已经常驻，因此交接期间不需要额外延长 AP 保留时间。
+
+前端提示用户：
+
+```text
+请将电脑/手机切换到 Wi-Fi：<新SSID>
+然后打开：http://<新STA_IP>/
+如果当前页面断开，请连接设备 AP：<AP名称>，再打开 http://192.168.4.1/ 查看新 IP。
+```
+
+如果新 STA 失败，AP 会保持开启，用户继续通过 `http://192.168.4.1/` 修正 SSID 或密码。`.local` 地址仍作为辅助入口，但不作为交接流程的唯一依据。
+
+## STA 失败与超时路径
+
+STA 连接失败由 `setWifiStaLastError()` 统一收敛。触发条件包括：
+
+| 条件 | 错误码 | 用户提示 |
+| --- | --- | --- |
+| `WL_NO_SSID_AVAIL` | `no_ssid` | 未找到目标 SSID，请检查网络名称或距离。 |
+| `WL_CONNECT_FAILED` | `auth_failed` | STA 认证失败，请检查 Wi-Fi 密码。 |
+| 超过 `WIFI_STA_CONNECT_TIMEOUT_MS` | `timeout` | STA 连接超时，请检查 SSID、密码与路由器信号。 |
+
+STA 失败不会关闭 AP。由于 AP 常驻，前端可以继续通过 `192.168.4.1` 修正配置。
+
+`setWifiStaLastError()` 会保留本轮连接的首个失败原因，避免后续瞬态状态覆盖更有诊断价值的根因。新一轮 `applyWifiStaCredentials()` 会先清空旧错误。
+
+## STA 断开后的 AP 恢复
+
+如果之前 `wifiStaConnected=true`，但后续 `WiFi.status()` 不再是 `WL_CONNECTED`，`updateWifiSta()` 会执行：
+
+1. `wifiStaConnected=false`。
+2. 停止 STA 侧 mDNS。
+3. 输出 `STA disconnected` 日志。
+4. 调用 `ensureWifiApAvailable()`。
+
+`ensureWifiApAvailable()` 不会调用 `WiFi.softAPdisconnect(true)`，也不会切换到 `WIFI_OFF` 或纯 `WIFI_STA`。它只复用 `startWifiApServices()` 重新确认 SoftAP、Captive DNS、TCP Console 和 Web Console 已启动，从而避免运行中 STA 断开时把仍连接在 AP 上的用户踢下线。
+
+`startWifiApServices()` 会执行：
+
+1. `configureWifiSoftApNetwork()`，保持 SoftAP 固定 `192.168.4.1/24`。
+2. `WiFi.softAP(...)`。
+3. 重新启动 Captive DNS。
+4. `wifiConsoleServer.begin()`。
+5. `wifiConsoleServer.setNoDelay(true)`。
+6. `wifiWebServer.begin()`。
+7. `wifiConsoleStarted=true`。
+
+`restartWifiAp()` 仍保留给 AP SSID 修改等明确需要重建 SoftAP 的路径使用；只有这类显式 AP 重启路径才允许调用 `WiFi.softAPdisconnect(true)`。
+
+因此 STA 断开后，AP 保持目标不是“重新断开再打开”，而是在不踢掉 AP 客户端的前提下确保 `http://192.168.4.1/`、TCP Console 与 Captive Portal 都可用。
+
+## Captive Portal 交互逻辑
+
+AP 开启后，固件启动：
+
+```cpp
+wifiCaptiveDnsServer.start(53, "*", WiFi.softAPIP());
+```
+
+这会把经由 MUS4 AP 的 DNS 查询尽量解析到 `192.168.4.1`。WebServer 注册了常见平台探测路径：
+
+| 平台 / 场景 | 路径 | 当前响应 |
+| --- | --- | --- |
+| Windows NCSI | `/connecttest.txt` | 302 到 `http://192.168.4.1/` |
+| Windows NCSI | `/ncsi.txt` | 302 到 `http://192.168.4.1/` |
+| Windows redirect | `/redirect` | HTML meta refresh + JS `location.replace()` + 手动链接 |
+| Apple | `/hotspot-detect.html` | 302 到 AP 根路径 |
+| Apple | `/library/test/success.html` | 302 到 AP 根路径 |
+| Apple | `/success.txt` | 302 到 AP 根路径 |
+| Android | `/generate_204` | 302 到 AP 根路径 |
+| Android | `/gen_204` | 302 到 AP 根路径 |
+| Android | `/mobile/status.php` | 302 到 AP 根路径 |
+| Android | `/connectivity-check.html` | 302 到 AP 根路径 |
+| 其他非 API 路径 | `onNotFound` | 302 到 AP 根路径 |
+| 未知 `/api/` 路径 | `onNotFound` | JSON 404 |
+
+注意：Android 的 204 探测路径不能返回 204，否则系统会认为网络已直连互联网，不会弹出 Portal。
+
+### Windows 多网卡限制
+
+Captive Portal 只能处理“请求确实进入 ESP32 AP”的流量。如果 Windows 同时连接有线网络、VPN 或其他可联网网卡，系统可能把 `msftconnecttest.com` 的 DNS/HTTP 流量走其他接口，最终打开 Microsoft/MSN 页面。此时 ESP32 无法拦截这些请求。
+
+已知可靠做法：
+
+```text
+http://192.168.4.1/
+```
+
+该限制已写入中英文 README。
+
+## 前端 STA 成功跳转逻辑
+
+`waitWifiStaConnectionResult()` 最多等待约 22 秒，持续调用 `/api/wifi-sta`。这个窗口覆盖后端 `WIFI_STA_CONNECT_TIMEOUT_MS = 15000`、`WIFI_STA_APPLY_DELAY_MS = 800`、前端保存后的 1 秒初始等待以及轮询抖动，避免前端先于后端真实失败原因超时。成功条件是：
+
+```js
+j.connected && j.sta_ip && j.sta_ip !== '0.0.0.0'
+```
+
+成功后前端会：
+
+1. 显示：`STA 已连接，IP：<ip>，AP 保持开启，可继续通过 AP 配置`。
+2. 调用 `refreshStatus()` 更新状态卡片。
+3. 清空命令输入框。
+4. 调用 `redirectToStaConsole(j.sta_ip)`。
+5. 关闭 STA Modal。
+
+`redirectToStaConsole(ip)` 不再等待额外 probe，而是在 100 ms 后直接跳转：
+
+```js
+const url = 'http://' + ip + '/';
+setTimeout(() => { location.href = url }, 100);
+```
+
+这样做的原因是：STA IP 是局域网主入口，跳转可让用户直接进入同网段 Console；AP 同时常驻，用户仍可随时回到 `http://192.168.4.1/` 查看状态和重新配置。
+
+### 前端网络断开容错
+
+如果 `/api/wifi-sta` 短暂请求失败，前端等待 500 ms 后继续轮询，不再把 AP 断开作为预期成功路径。AP 常驻后，请求失败更可能是浏览器网络切换、设备重连或临时链路问题。
+
+## mDNS AP 名称固定入口
+
+STA 连接成功并取得有效 IP 后，固件会把 Web Console 发布为：
+
+```text
+http://<AP名称小写>.local/
+```
+
+默认 AP 名称为 `MUS4-DEBUG`，因此默认局域网入口是：
+
+```text
+http://mus4-debug.local/
+```
+
+### 名称规则
+
+为了让 AP 名称可以直接作为 mDNS hostname，AP SSID 被限制为 mDNS-safe 名称：
+
+- 只能使用 `A-Z`、`a-z`、`0-9` 和 `-`。
+- 长度仍为 `1..32` 字符。
+- 不能以 `-` 开头或结尾。
+
+AP SSID 会保留用户输入的大小写用于显示和 AP 广播，但 mDNS hostname 会统一转为小写。例如 AP 名称 `MU04` 会发布为 `mu04.local`。
+
+如果旧 NVS 中保存了中文、空格、下划线或其他非法 AP 名称，固件加载时会回退到默认 `MUS4-DEBUG`。
+
+### mDNS 生命周期
+
+mDNS 跟随 STA，而不是跟随 AP：
+
+1. `applyWifiStaCredentials()` 开始新一轮 STA 连接前，会先停止旧 mDNS。
+2. `updateWifiSta()` 首次检测到 STA connected 后，调用 `startWifiMdnsIfNeeded()`。
+3. `startWifiMdnsIfNeeded()` 会复核 `WL_CONNECTED` 和有效 STA IP，然后把 AP 名称转为小写 hostname 并执行：
+   - `MDNS.begin(wifiMdnsHostText().c_str())`
+   - `MDNS.addService("http", "tcp", WIFI_WEB_CONSOLE_PORT)`
+4. AP 常驻，STA 成功不会触发 AP 关闭，也不会停止 mDNS。
+5. STA 运行中断开时，调用 `stopWifiMdnsIfNeeded()`，然后确保 AP 恢复可用。
+
+因此，只要 STA 仍在线且客户端网络支持 mDNS，用户可打开：
+
+```text
+http://<AP名称小写>.local/
+```
+
+### API 字段
+
+`/api/status` 会输出：
+
+```text
+mdns_host="mus4-debug" mdns_url=http://mus4-debug.local/ mdns_started=1
+```
+
+`/api/wifi-sta` 会输出：
+
+```json
+{
+  "mdns_host": "mus4-debug",
+  "mdns_url": "http://mus4-debug.local/",
+  "mdns_started": true
+}
+```
+
+Web Console 的 Network 卡片不再显示 LAN `.local` 入口，也不再提供点击跳转 `.local` 的前端功能。`.local` 信息仍保留在状态 API 中，供调试或外部工具读取；页面上优先使用 AP 固定入口和 STA IP。
+
+### 兼容性限制
+
+`.local` 依赖客户端系统、浏览器和路由器对 mDNS / multicast 的支持。macOS 和 iOS 通常支持较好；Windows、Android、企业或校园网络可能受系统设置、路由器 AP isolation、multicast 隔离或安全软件影响。
+
+普通浏览器不能仅凭任意 AP 名称扫描局域网并发现未知设备 IP。本功能的前提是：设备自身在 STA 侧用当前 AP 名称注册 mDNS。若 `.local` 失败，排查顺序是：
+
+1. 确认电脑/手机与 MUS4 STA 在同一局域网。
+2. 先打开 `http://<sta_ip>/` 验证 IP 可达。
+3. 检查路由器是否开启 AP isolation 或 multicast/mDNS 隔离。
+4. 尝试换用支持 mDNS 的系统或浏览器。
+
+## AP SSID 与 STA IP 的取舍
+
+曾考虑过把 AP SSID 临时改成类似：
+
+```text
+MUS4-STA-192.168.3.144
+```
+
+当前没有采用，原因是：
+
+1. 改 AP SSID 需要重启 AP，会立即断开当前用户页面。
+2. 断开后用户不一定能看到页面中的 STA IP 提示。
+3. 不同平台对自动切换到 STA 网络的行为不可控。
+4. SoftAP SSID 最大长度有限，IP 后缀会挤占用户自定义 SSID 空间。
+
+当前方案是在原 AP 页面内显示 STA IP，并在 AP 关闭前主动跳转到 STA IP。
+
+## 状态查询接口
+
+### `/api/status`
+
+返回文本状态，由 `printWirelessStatus()` 生成，包含：
+
+- `ap_ssid`
+- `ap_ip`
+- `ap_clients`
+- `sta_configured`
+- `sta_connected`
+- `sta_ssid`
+- `sta_ip`
+- `mdns_host`
+- `mdns_url`
+- `mdns_started`
+- OTA、WebSocket、HTTP handler 统计等运行信息
+
+前端状态卡片通过解析该文本更新 AP/STA 标签和复制 IP 行为。
+
+### `/api/wifi-sta`
+
+返回 JSON，核心字段：
+
+```json
+{
+  "configured": true,
+  "connected": true,
+  "timed_out": false,
+  "connecting": false,
+  "last_error": "",
+  "last_error_message": "",
+  "ssid": "example",
+  "password_set": true,
+  "password_len": 8,
+  "ap_ip": "192.168.4.1",
+  "sta_ip": "192.168.3.144",
+  "mdns_host": "mus4-debug",
+  "mdns_url": "http://mus4-debug.local/",
+  "mdns_started": true,
+  "handoff_active": false,
+  "handoff_target_ssid": "",
+  "handoff_sta_ip": "0.0.0.0",
+  "handoff_ap_ssid": "MUS4-DEBUG",
+  "handoff_ap_url": "http://192.168.4.1/",
+  "handoff_mdns_url": "http://mus4-debug.local/"
+}
+```
+
+其中 `sta_ip` 由 `wifiStaIpText()` 生成：
+
+- `wifiStaConnected=true`：返回 `WiFi.localIP()`。
+- 否则：返回 `0.0.0.0`。
+
+STA 切换交接期间，`handoff_active=true`、`handoff_target_ssid` 填充目标 SSID、`handoff_sta_ip` 在新 STA 成功后会更新为新 IP、`handoff_ap_ssid` 为设备 AP 名称、`handoff_ap_url` 固定为 `http://192.168.4.1/`、`handoff_mdns_url` 为 `.local` 辅助入口。
+
+## 时序图
+
+### 1. 开机已有 STA 配置且连接成功
+
+```mermaid
+sequenceDiagram
+    participant U as 用户浏览器
+    participant AP as MUS4 SoftAP
+    participant STA as MUS4 STA
+    participant R as 路由器
+
+    AP->>AP: 开机启动 192.168.4.1
+    AP->>STA: applyWifiStaCredentials()
+    STA->>R: WiFi.begin(ssid,password)
+    R-->>STA: 分配 STA IP
+    STA->>AP: 标记 connected=true，AP 保持开启
+    U->>AP: GET /api/wifi-sta
+    AP-->>U: connected=true, sta_ip=<ip>
+    U->>U: location.href=http://<ip>/
+    U->>AP: 仍可打开 http://192.168.4.1/
+```
+
+### 2. Web 页面配置 STA 成功
+
+```mermaid
+sequenceDiagram
+    participant U as 用户浏览器
+    participant AP as 192.168.4.1
+    participant STA as MUS4 STA
+    participant R as 路由器
+
+    U->>AP: POST /api/wifi-sta
+    AP-->>U: saved=true, applied=true
+    AP->>AP: scheduleWifiStaApply()
+    AP->>STA: applyWifiStaCredentials()
+    STA->>R: 连接外部 Wi-Fi
+    R-->>STA: DHCP 分配 IP
+    STA->>AP: 标记 connected=true，AP 保持开启
+    U->>AP: 轮询 /api/wifi-sta
+    AP-->>U: sta_ip=<ip>
+    U->>U: 100 ms 后跳转 http://<ip>/
+    U->>AP: 可继续通过 http://192.168.4.1/ 配置
+```
+
+### 3. STA 连接失败
+
+```mermaid
+sequenceDiagram
+    participant U as 用户浏览器
+    participant AP as 192.168.4.1
+    participant STA as MUS4 STA
+
+    U->>AP: POST /api/wifi-sta
+    AP-->>U: saved=true, applied=true
+    AP->>STA: WiFi.begin()
+    STA-->>AP: WL_CONNECT_FAILED / WL_NO_SSID_AVAIL / timeout
+    AP->>AP: setWifiStaLastError()
+    AP->>AP: AP 保持可用
+    U->>AP: GET /api/wifi-sta
+    AP-->>U: last_error + last_error_message
+    U->>U: 显示失败弹窗，AP 保持可用
+```
+
+### 4. STA 运行中断开
+
+```mermaid
+sequenceDiagram
+    participant STA as MUS4 STA
+    participant AP as MUS4 SoftAP
+    participant U as 用户
+
+    STA-->>STA: WiFi.status()!=WL_CONNECTED
+    STA->>AP: ensureWifiApAvailable()
+    AP->>AP: 不调用 softAPdisconnect，保持 AP 客户端在线
+    AP->>AP: DNS + TCP Console + WebServer begin
+    U->>AP: 保持或连接 MUS4-DEBUG
+    U->>AP: 打开 http://192.168.4.1/
+```
+
+## 排查清单
+
+### AP 可见但打不开 `192.168.4.1`
+
+优先检查：
+
+1. `ensureWifiApAvailable()` 或 `restartWifiAp()` 是否执行到了 `wifiWebServer.begin()`。
+2. SoftAP 是否仍固定为 `192.168.4.1/24`。
+3. 客户端是否拿到了 `192.168.4.x` 地址。
+4. 浏览器是否仍在访问旧 STA IP 或 HTTPS 缓存地址。
+5. 设备串口日志是否有 `AP ensured ssid=... IP: 192.168.4.1` 或 `AP restarted ssid=... IP: 192.168.4.1`。
+
+### Windows 弹出 MSN / Microsoft 页面
+
+优先确认请求是否真的进入 ESP32：
+
+```powershell
+curl.exe -v http://192.168.4.1/redirect
+curl.exe --resolve www.msftconnecttest.com:80:192.168.4.1 -v http://www.msftconnecttest.com/redirect
+```
+
+如果这两条能返回 ESP32 的 redirect HTML，但系统自动弹窗仍打开 MSN，说明 Windows 把探测流量走了有线网络或其他网卡。固件侧无法修复，只能手动打开 `http://192.168.4.1/` 或临时禁用其他联网路径。
+
+### STA 已连接但前端提示失败
+
+优先检查：
+
+1. `/api/wifi-sta` 是否返回 `connected=true` 和有效 `sta_ip`。
+2. 前端 `redirectToStaConsole()` 是否仍有额外 probe 或长延时，`waitWifiStaConnectionResult()` 是否仍有约 22 秒等待窗口。
+3. 浏览器当前电脑是否已连接到 STA 所在局域网；如果电脑仍只连 MUS4 AP，可以继续使用 `http://192.168.4.1/` 查看状态和配置。
+
+### STA 失败但 AP 不可访问
+
+优先检查：
+
+1. `setupWifiConsole()`、`ensureWifiApAvailable()` 或 `restartWifiAp()` 是否执行到了 `wifiWebServer.begin()`。
+2. SoftAP 是否仍固定在 `192.168.4.1/24`。
+3. 客户端是否仍连接设备 AP，且拿到 `192.168.4.x` 地址。
+
+## 当前设计边界
+
+1. Captive Portal 只能尽量提高自动弹窗概率，不能保证所有平台、所有多网卡场景都弹出 `192.168.4.1`。
+2. STA 成功后 AP 常驻，会占用一个 SoftAP 信道和少量系统资源；这是为了保留稳定维护入口。
+3. 前端知道 STA IP 后直接跳转，不保证用户电脑一定已经接入同一 STA 网络；用户仍可回到 AP 页面查看状态。
+4. `WIFI_STA_CLEAR` 只清除配置并禁用 STA，不主动断开当前 STA 或切换 Wi-Fi 模式。
+5. AP 最大客户端数当前为 1，调试时应避免多个设备同时抢占 AP。
+
+## 维护建议
+
+1. 修改 AP/STA 生命周期时，同步更新 `tests/test_firmware_feature_flags.py` 的源码断言。
+2. 修改无线权限策略时，同步更新 `wireless_console_policy.py` 和 `tests/test_wireless_console_policy.py`。
+3. 修改 Captive Portal 路径时，保持 `/api/` 未知路径返回 JSON 404，避免 API 调试被 HTML 重定向吞掉。
+4. 修改 STA 成功后的 AP 常驻策略时，需要同时检查前端提示文案、跳转逻辑和实机时序。
+5. 修改 HTTP OTA 或 Web Console 安全门控时，必须保留认证和 Park Locked / 开发模式约束。

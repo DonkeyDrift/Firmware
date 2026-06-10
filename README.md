@@ -240,6 +240,8 @@ When `ENABLE_WIFI_CONSOLE` is enabled, the firmware starts in AP+STA mode:
 - WebSocket telemetry: port `81`
 - ArduinoOTA: host `mus4-ota`, port `3232`
 
+The debug AP is available by default and stays available. If STA credentials are configured, the firmware starts the DNS, TCP, and Web Console services first, then attempts STA connection. After STA connects and receives a valid IP, the AP remains enabled and the Web UI tries to jump to `http://<sta_ip>/`; users can also keep using the device AP and open `http://192.168.4.1/` to inspect status or change configuration. If the device is already reachable through one STA network and the Web Console is used to switch to another STA SSID, the current page may disconnect because the device leaves the old network. In that case, connect to the device AP, open `http://192.168.4.1/`, read the new STA SSID and IP shown on the page, then switch the computer or phone to that SSID and open the displayed `http://<sta_ip>/`. The firmware also publishes the Web Console through mDNS as `http://<ap-name-lowercase>.local/`; for example, AP name `MUS4-DEBUG` is published as `http://mus4-debug.local/` when the client and network support mDNS. If `.local` does not resolve, use the displayed STA IP. To keep this hostname valid, the AP name is limited to letters, digits, and hyphens, and it cannot start or end with a hyphen. If STA connection fails, times out, or later disconnects, the AP is kept or restored so the device can be reconfigured through `http://192.168.4.1/`.
+
 Wireless command permissions are layered:
 
 - `PING`, `STATUS`, `AUTH`, and `WIFI_STA_STATUS` are available without authentication.
@@ -261,6 +263,7 @@ Policy changes should be mirrored in [`wireless_console_policy.py`](wireless_con
 - [`Doc/Tools/train_tub_driver.md`](Doc/Tools/train_tub_driver.md): Tub JSON reporting and GRU baseline training.
 - [`Doc/Tools/mus4_pilot_infer.md`](Doc/Tools/mus4_pilot_infer.md): Pilot inference controller and safety gates.
 - [`Doc/README/OPERATIONS.md`](Doc/README/OPERATIONS.md): runtime serial commands and data frames.
+- [`Doc/Inspect/wifi-ap-sta-lifecycle-inspection.md`](Doc/Inspect/wifi-ap-sta-lifecycle-inspection.md): Wi-Fi AP / STA lifecycle, captive portal, switching flow, and troubleshooting notes.
 - [`Doc/Plan/`](Doc/Plan/): design plans and historical implementation notes.
 
 ## Safety Notes

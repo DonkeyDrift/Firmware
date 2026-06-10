@@ -29,6 +29,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "CommandParser.cpp",
     PROJECT_ROOT / "CommandDispatcher.h",
     PROJECT_ROOT / "CommandDispatcher.cpp",
+    PROJECT_ROOT / "LocalCommands.h",
+    PROJECT_ROOT / "LocalCommands.cpp",
     PROJECT_ROOT / "SerialLineReader.h",
     PROJECT_ROOT / "SerialLineReader.cpp",
     PROJECT_ROOT / "WifiConsoleTypes.h",
@@ -317,9 +319,13 @@ def test_command_parser_helpers_remain_available_after_module_split():
         assert symbol in source
 
     parser_source = (PROJECT_ROOT / "CommandParser.cpp").read_text(encoding="utf-8")
+    local_commands_source = (PROJECT_ROOT / "LocalCommands.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
     assert "bool runUnitTests()" in parser_source
     assert "static bool runUnitTests()" not in sketch_source
+    assert "bool processLine(const String& line, int* throttle, int* steering, int* seq)" in local_commands_source
+    assert "Filter Debug: %s" in local_commands_source
+    assert "bool processLine(const String& line, int* throttle, int* steering, int* seq)" not in sketch_source
 
 
 def test_command_dispatcher_replaces_command_line_macro_after_module_split():

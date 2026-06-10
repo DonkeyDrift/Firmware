@@ -58,6 +58,7 @@
 #include "RcFilter.h"
 #include "CommandParser.h"
 #include "CommandDispatcher.h"
+#include "LocalCommands.h"
 #include "SerialLineReader.h"
 #include "WifiConsoleTypes.h"
 #include "DriftAssist.h"
@@ -302,26 +303,6 @@ bool parkBtnPressed = false;
 bool parkActionTaken = false;
 const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
 const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
-
-bool processLine(const String& line, int* throttle, int* steering, int* seq)
-{
-    // Handle local commands
-    if (line.equalsIgnoreCase("NOANSI")) { ansiEnabled = false; tui.setAnsiEnabled(false); tui.forceRedraw(); return false; }
-    if (line.equalsIgnoreCase("ANSI")) { ansiEnabled = true; tui.setAnsiEnabled(true); tui.forceRedraw(); return false; }
-    if (line.equalsIgnoreCase("FILTER_DEBUG")) {
-        filterDebugEnabled = !filterDebugEnabled;
-        mus4Logf("filter", "Filter Debug: %s", filterDebugEnabled ? "ON" : "OFF");
-        return false;
-    }
-#ifdef ENABLE_DIAGNOSTIC_COMMANDS
-    if (line.equalsIgnoreCase("FILTER_TEST")) {
-        runFilterTests();
-        return false;
-    }
-#endif
-
-    return parsePilotCommandLine(line, throttle, steering, seq);
-}
 
 #ifdef ENABLE_WIFI_CONSOLE
 bool processWifiStaConfigCommand(const String& line, Print& out);

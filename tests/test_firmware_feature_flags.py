@@ -501,6 +501,8 @@ def test_wireless_command_policy_helpers_are_split_from_sketch():
     assert "bool isLocalOtaOpenCommand(const String& line)" in wireless_header
     assert "bool isWifiStaConfigCommand(const String& line)" in wireless_header
     assert "bool isWirelessControlCommand(const String& line)" in wireless_header
+    assert "String redactWirelessConsoleLine(const String& line)" in wireless_header
+    assert "String redactWirelessConsoleLine(const String& line)" in wireless_source
     assert "#include \"WirelessConsole.h\"" in sketch_source
 
     for symbol in [
@@ -510,6 +512,8 @@ def test_wireless_command_policy_helpers_are_split_from_sketch():
         "car_output.park == PARK_LOCKED",
         "line.equalsIgnoreCase(\"FILTER_TEST\")",
         "line.startsWith(\"WIFI_STA_PASSWORD:\")",
+        "AUTH:<redacted>",
+        "WIFI_STA_PASSWORD:<redacted>",
         "return isWirelessControlCommand(line);",
     ]:
         assert symbol in wireless_source
@@ -517,6 +521,7 @@ def test_wireless_command_policy_helpers_are_split_from_sketch():
     assert "static bool isWirelessCommandAllowed" not in sketch_source
     assert "static bool isWirelessControlCommand" not in sketch_source
     assert "static bool isParkLockedWirelessCommand" not in sketch_source
+    assert "static String redactWirelessConsoleLine" not in sketch_source
 
 
 def test_drift_assist_helpers_remain_available_after_module_split():

@@ -374,13 +374,6 @@ static void appendWifiWebLogLines(const char* source, const String& text)
     }
 }
 
-static String redactWirelessConsoleLine(const String& line)
-{
-    if (line.startsWith("AUTH:")) return "AUTH:<redacted>";
-    if (line.startsWith("WIFI_STA_PASSWORD:")) return "WIFI_STA_PASSWORD:<redacted>";
-    return line;
-}
-
 static bool isMdnsSafeHostnameChar(char c)
 {
     return (c >= 'A' && c <= 'Z') ||

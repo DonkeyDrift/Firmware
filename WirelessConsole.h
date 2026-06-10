@@ -14,4 +14,5 @@ bool isWirelessOtaCloseCommand(const String& line);
 bool isWifiStaConfigCommand(const String& line);
 bool isParkLockedWirelessCommand(const String& line);
 bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin);
+String redactWirelessConsoleLine(const String& line);
 #endif

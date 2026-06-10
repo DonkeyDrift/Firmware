@@ -7,6 +7,13 @@ extern bool wifiConsoleAuthenticated;
 extern bool wifiDevModeEnabled;
 extern ControlData car_output;
 
+String redactWirelessConsoleLine(const String& line)
+{
+    if (line.startsWith("AUTH:")) return "AUTH:<redacted>";
+    if (line.startsWith("WIFI_STA_PASSWORD:")) return "WIFI_STA_PASSWORD:<redacted>";
+    return line;
+}
+
 bool isWirelessControlCommand(const String& line)
 {
     int firstColon = line.indexOf(':');

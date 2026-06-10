@@ -63,6 +63,7 @@
 #include "WifiConsoleTypes.h"
 #include "WirelessConsole.h"
 #include "WifiStaConfig.h"
+#include "WifiIdentity.h"
 #include "DriftAssist.h"
 #include "SteeringControl.h"
 #include "Diagnostics.h"
@@ -374,31 +375,6 @@ static void appendWifiWebLogLines(const char* source, const String& text)
     }
 }
 
-static bool isMdnsSafeHostnameChar(char c)
-{
-    return (c >= 'A' && c <= 'Z') ||
-        (c >= 'a' && c <= 'z') ||
-        (c >= '0' && c <= '9') ||
-        c == '-';
-}
-
-static bool isMdnsSafeHostname(const String& value)
-{
-    if (value.length() == 0 || value.length() > WIFI_AP_SSID_MAX_LEN) return false;
-    if (value[0] == '-' || value[value.length() - 1] == '-') return false;
-    for (uint8_t i = 0; i < value.length(); i++) {
-        if (!isMdnsSafeHostnameChar(value[i])) return false;
-    }
-    return true;
-}
-
-static bool copyWifiApSsid(const String& ssid)
-{
-    if (!isMdnsSafeHostname(ssid)) return false;
-    ssid.toCharArray(wifiApSsid, sizeof(wifiApSsid));
-    return true;
-}
-
 static bool copyWifiStaSsid(const String& ssid)
 {
     if (ssid.length() == 0 || ssid.length() > WIFI_STA_SSID_MAX_LEN) return false;
@@ -412,18 +388,6 @@ static bool copyWifiStaPassword(const String& password)
     password.toCharArray(wifiStaPassword, sizeof(wifiStaPassword));
     wifiStaPasswordSet = password.length() > 0;
     return true;
-}
-
-static String wifiMdnsHostText()
-{
-    String host = String(wifiApSsid);
-    host.toLowerCase();
-    return host;
-}
-
-static String wifiMdnsUrlText()
-{
-    return String("http://") + wifiMdnsHostText() + ".local/";
 }
 
 static void startWifiMdnsIfNeeded()

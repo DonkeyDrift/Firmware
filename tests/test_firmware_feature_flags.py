@@ -38,6 +38,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiStaConfig.h",
     PROJECT_ROOT / "WifiStaConfig.cpp",
+    PROJECT_ROOT / "WifiIdentity.h",
+    PROJECT_ROOT / "WifiIdentity.cpp",
     PROJECT_ROOT / "DriftAssist.h",
     PROJECT_ROOT / "DriftAssist.cpp",
     PROJECT_ROOT / "SteeringControl.h",
@@ -804,16 +806,28 @@ def test_web_console_ap_ssid_modal_and_api_are_present():
 
 def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
     source = firmware_source_text()
+    identity_header = (PROJECT_ROOT / "WifiIdentity.h").read_text(encoding="utf-8")
+    identity_source = (PROJECT_ROOT / "WifiIdentity.cpp").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "static bool isMdnsSafeHostnameChar(char c)" in source
-    assert "static bool isMdnsSafeHostname(const String& value)" in source
-    assert "if (!isMdnsSafeHostname(ssid)) return false;" in source
-    assert "c >= 'A' && c <= 'Z'" in source
-    assert "c >= 'a' && c <= 'z'" in source
-    assert "c >= '0' && c <= '9'" in source
-    assert "c == '-'" in source
-    assert "value[0] == '-'" in source
-    assert "value[value.length() - 1] == '-'" in source
+    assert "bool isMdnsSafeHostnameChar(char c)" in identity_header
+    assert "bool isMdnsSafeHostname(const String& value)" in identity_header
+    assert "bool copyWifiApSsid(const String& ssid)" in identity_header
+    assert "String wifiMdnsHostText()" in identity_header
+    assert "String wifiMdnsUrlText()" in identity_header
+    assert "#include \"WifiIdentity.h\"" in sketch_source
+    assert "if (!isMdnsSafeHostname(ssid)) return false;" in identity_source
+    assert "WIFI_IDENTITY_AP_SSID_MAX_LEN = 32" in identity_source
+    assert "c >= 'A' && c <= 'Z'" in identity_source
+    assert "c >= 'a' && c <= 'z'" in identity_source
+    assert "c >= '0' && c <= '9'" in identity_source
+    assert "c == '-'" in identity_source
+    assert "value[0] == '-'" in identity_source
+    assert "value[value.length() - 1] == '-'" in identity_source
+    assert "host.toLowerCase()" in identity_source
+    assert "String(\"http://\") + wifiMdnsHostText() + \".local/\"" in identity_source
+    assert "static bool isMdnsSafeHostname" not in sketch_source
+    assert "static String wifiMdnsHostText" not in sketch_source
     assert "SSID 只能使用字母、数字和短横线" in source
     assert "invalid_ssid" in source
 
@@ -825,8 +839,8 @@ def test_web_console_exposes_ap_name_mdns_lan_console_entry():
     assert "bool wifiMdnsStarted" in source
     assert "static void startWifiMdnsIfNeeded()" in source
     assert "static void stopWifiMdnsIfNeeded()" in source
-    assert "static String wifiMdnsHostText()" in source
-    assert "static String wifiMdnsUrlText()" in source
+    assert "String wifiMdnsHostText()" in source
+    assert "String wifiMdnsUrlText()" in source
     assert "MDNS.begin(wifiMdnsHostText().c_str())" in source
     assert 'MDNS.addService("http", "tcp", WIFI_WEB_CONSOLE_PORT)' in source
     assert "ESP.getEfuseMac" not in source

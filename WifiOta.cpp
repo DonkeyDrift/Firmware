@@ -35,6 +35,11 @@ void keepDevModeOtaWindowActive()
     wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
 }
 
+bool shouldEmitSerial1Telemetry()
+{
+    return !wifiOtaWindowOpen && !wifiOtaInProgress;
+}
+
 void closeWifiOtaWindow(const char* reason)
 {
     wifiOtaWindowOpen = false;

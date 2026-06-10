@@ -133,7 +133,6 @@ unsigned long outputTTL = 100;
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
 bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb);
-static bool shouldEmitSerial1Telemetry();
 #ifdef ENABLE_WIFI_CONSOLE
 void ensureWifiOtaStarted();
 #if __has_include("WirelessSecrets.h")
@@ -285,11 +284,6 @@ const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
 const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
 
 #ifdef ENABLE_WIFI_CONSOLE
-static bool shouldEmitSerial1Telemetry()
-{
-    return !wifiOtaWindowOpen && !wifiOtaInProgress;
-}
-
 static void loadDevModePreference()
 {
     if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) {
@@ -1717,10 +1711,6 @@ bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf
     return false;
 }
 
-static bool shouldEmitSerial1Telemetry()
-{
-    return true;
-}
 #endif
 
 

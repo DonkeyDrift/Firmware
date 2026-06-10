@@ -38,9 +38,12 @@
 - `Diagnostics.h/.cpp`：承载诊断、基准、回归和压力测试相关逻辑。
 - `DriftAssist.h/.cpp`：承载 Drift Assist 控制计算。
 - `SteeringControl.h/.cpp`：承载转向滤波/控制逻辑。
+- `WirelessConsole.h/.cpp`：承载无线命令分类、权限判断和无线日志脱敏 helper。
+- `WifiStaConfig.h/.cpp`：承载 Wi-Fi STA 命令入口、状态输出、SSID/密码复制校验、STA IP 文本、错误状态记录、延迟应用调度，以及 STA SSID/密码持久化保存 helper。
+- `WifiIdentity.h/.cpp`：承载 AP SSID/mDNS hostname 校验、AP SSID 复制、mDNS host/url 文本生成 helper。
 - `SharedTypes.h`：已统一使用 `ControlData`，删除了 `MUS4_FW.ino` 与 `CommandDispatcher.cpp` 中重复的 `struct_message`。
 
-源码断言测试 `tests/test_firmware_feature_flags.py` 已改为聚合读取多个固件源码文件，避免代码从 `MUS4_FW.ino` 迁出后测试误报。
+源码断言测试 `tests/test_firmware_feature_flags.py` 已改为聚合读取多个固件源码文件，避免代码从 `MUS4_FW.ino` 迁出后测试误报。近期无线相关切片均按“先断言、再迁移、再 `pytest tests/`、WSL 编译、HTTP OTA”的闭环验证。
 
 ## 推荐最终模块边界
 
@@ -110,11 +113,15 @@ void loop()
 
 ### 4. Wi-Fi、TCP Console 与 OTA
 
-推荐模块：
+已有/推荐模块：
 
-- `WifiManager.h/.cpp`：AP/STA、mDNS、DNS captive、Wi-Fi 扫描、STA 配置状态。
-- `WifiOta.h/.cpp`：OTA 窗口、TTL、ArduinoOTA callback、HTTP OTA guard。
-- `WirelessConsole.h/.cpp`：TCP Console、认证、权限判断和无线命令调度。
+- `WirelessConsole.h/.cpp`：已承载无线命令分类、权限判断、Park 锁定判断、OTA 命令分类和无线日志脱敏 helper；后续可继续迁入 TCP Console 认证会话和无线命令主分发。
+- `WifiStaConfig.h/.cpp`：已承载 STA 命令入口、状态输出、凭据复制校验、IP 文本、错误状态、延迟应用调度和部分 STA Preferences 保存 helper；后续可继续迁入 STA 清理、加载和连接状态更新逻辑。
+- `WifiIdentity.h/.cpp`：已承载 AP SSID/mDNS hostname 校验、AP SSID 复制和 mDNS host/url 文本生成。
+- `WifiManager.h/.cpp`：后续承载 AP/STA 启停、mDNS 生命周期、DNS captive、Wi-Fi 扫描、STA handoff 和运行态状态机。
+- `WifiOta.h/.cpp`：后续承载 OTA 窗口、TTL、ArduinoOTA callback、HTTP OTA guard。
+- `WebConsoleServer.h/.cpp`：后续承载 HTTP route、API handler、Web 页面入口。
+- `WebTelemetry.h/.cpp`：后续承载 WebSocket telemetry、曲线数据、ring buffer、采样节流。
 
 约束：
 
@@ -163,9 +170,10 @@ void loop()
 
 后续可继续收敛：
 
-- 将无线命令分发中仍残留在 `MUS4_FW.ino` 的权限判断和命令入口迁入 `WirelessConsole`。
-- 将 OTA 维护命令迁入 `WifiOta`。
-- 将 Wi-Fi STA 配置命令迁入 `WifiManager` 或独立 `WifiStaConfig` 模块。
+- 无线命令分类、权限判断和 STA 配置命令入口已迁入 `WirelessConsole` / `WifiStaConfig`。
+- 将无线命令主分发 `processWirelessConsoleLine()` 迁入 `WirelessConsole`，但不要同时改认证、Park guard 或命令响应文本。
+- 将 OTA 维护命令和 OTA 状态输出迁入 `WifiOta`。
+- 将剩余 STA 清理/加载/连接更新逻辑迁入 `WifiStaConfig` 或后续 `WifiManager`。
 
 ### 7. 转向标定、转向控制与 Drift Assist
 
@@ -284,15 +292,22 @@ pytest tests/
 
 ### 阶段 3：无线/Web/OTA 拆分
 
-状态：待继续。
+状态：进行中，已完成一批低风险无线 helper 与 STA 配置切片。
 
-推荐顺序：
+已完成：
 
-1. 抽出 Web route 注册和页面 handler 到 `WebConsoleServer.h/.cpp`。
-2. 抽出 WebSocket telemetry 与曲线数据到 `WebTelemetry.h/.cpp`。
-3. 抽出 OTA 窗口、TTL、HTTP OTA guard 和 ArduinoOTA callback 到 `WifiOta.h/.cpp`。
-4. 抽出 AP/STA、mDNS、DNS captive 和 Wi-Fi 扫描到 `WifiManager.h/.cpp`。
-5. 抽出 TCP Console 认证、权限判断和无线命令分发到 `WirelessConsole.h/.cpp`。
+1. `WirelessConsole.h/.cpp`：无线命令分类、权限判断、Park 锁定判断、OTA 命令分类、日志脱敏。
+2. `WifiStaConfig.h/.cpp`：STA 命令入口、状态输出、SSID/密码复制校验、STA IP 文本、错误状态记录、延迟应用调度、SSID/密码 Preferences 保存。
+3. `WifiIdentity.h/.cpp`：AP SSID/mDNS hostname 校验、AP SSID 复制、mDNS host/url 文本生成。
+
+后续推荐顺序：
+
+1. 继续小步迁移 `WifiStaConfig` 剩余低风险逻辑：`clearWifiStaPreference()`、`loadWifiStaPreference()`、`clearWifiStaRuntimeStateWithoutDisconnect()`；每步都保持 Preferences key 和状态清理行为不变。
+2. 抽出 OTA 状态输出、OTA 本地维护命令和 OTA 窗口 helper 到 `WifiOta.h/.cpp`，但不要同时改 OTA 权限策略。
+3. 抽出 Web route 注册和页面 handler 到 `WebConsoleServer.h/.cpp`。
+4. 抽出 WebSocket telemetry 与曲线数据到 `WebTelemetry.h/.cpp`。
+5. 抽出 AP/STA 启停、mDNS 生命周期、DNS captive、Wi-Fi 扫描和 STA handoff 到 `WifiManager.h/.cpp`。
+6. 最后迁移 TCP Console 认证会话和无线命令主分发到 `WirelessConsole.h/.cpp`。
 
 每个切片都必须同步检查：
 
@@ -361,8 +376,9 @@ pytest tests/
 
 ### 短期
 
-- 保留 `TUI`、`Buzzer`、传感器对象、Web server、Wi-Fi 状态、`ControlData`、`SensorData`、RC `volatile` 数组等主要全局对象在 `MUS4_FW.ino`。
-- 新模块通过参数或 `extern` 访问现有状态。
+- 保留 `TUI`、`Buzzer`、传感器对象、Web server、主要 Wi-Fi runtime 状态、`ControlData`、`SensorData`、RC `volatile` 数组等主要全局对象在 `MUS4_FW.ino`。
+- 新模块通过参数或 `extern` 访问现有状态；当前 `WifiStaConfig`、`WirelessConsole`、`WifiIdentity` 仍使用这种桥接方式。
+- 为避免 Arduino 构建中多翻译单元重复定义，新的 `.cpp` 不直接包含带定义的 `WifiConsoleTypes.h`，必要时使用同值局部常量，并用源码断言保护这些值。
 - 每次迁移只移动一个责任域。
 
 ### 中期
@@ -420,11 +436,13 @@ pytest tests/
 
 ## 下一步建议
 
-当前低风险工具、命令、诊断、传感器和类型收敛已经完成较多。下一阶段建议进入无线/Web/OTA 拆分，但仍保持小步推进：
+当前低风险工具、命令、诊断、传感器、类型收敛，以及一批无线/STA helper 拆分已经完成。下一步建议仍保持无线域小步推进，避免直接进入 Web route 或 OTA guard 大迁移：
 
-1. 先只抽 `WebConsoleServer` 中最薄的 route 注册或页面 handler。
-2. 保持 handler 内部仍调用现有函数，避免同时重写权限逻辑。
-3. 为迁移目标补充源码断言。
-4. 运行完整 pytest、WSL 编译和 HTTP OTA。
-
-如果继续降低风险，也可以先清理 `MUS4_FW.ino` 中确认未使用的旧 TUI 残留变量或 cursor helper，但删除前必须用源码搜索和编译验证确认没有调用点。
+1. 优先继续 `WifiStaConfig` 剩余低风险切片：
+   - `clearWifiStaPreference()`：迁移 STA Preferences 清除入口，保护 `sta_en=false`、移除 `sta_ssid/sta_pass` 和运行态清理调用。
+   - `clearWifiStaRuntimeStateWithoutDisconnect()`：迁移运行态清理 helper，保护不调用 `WiFi.mode` / `WiFi.disconnect`。
+   - `loadWifiStaPreference()`：迁移 STA 配置加载，保护构建默认值、`sta_en=false` 禁用语义和无效配置回退。
+2. 每个切片继续先补 `tests/test_firmware_feature_flags.py` 源码断言，再做机械搬迁。
+3. 每个切片至少运行目标 pytest、`pytest tests/test_firmware_feature_flags.py tests/test_wireless_console_policy.py`、`pytest tests/`、WSL 编译，并在编译成功后 HTTP OTA 到 `192.168.3.157`。
+4. `WifiStaConfig` 收敛后，再考虑 `WifiOta` 的最薄切片，例如 OTA 状态输出或本地维护命令；不要在同一切片中同时修改 OTA 权限策略。
+5. Web route、WebSocket telemetry、AP/STA 启停、DNS captive、RC/ISR、Park/PWM 输出仍应继续后置。

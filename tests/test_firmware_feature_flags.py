@@ -359,6 +359,9 @@ def test_diagnostic_helpers_remain_available_after_module_split():
         "REGRESS: ok=%d",
         "bool runStress()",
         "STRESS: errors_delta=%lu",
+        "void notifyDegrade()",
+        "void evalDegrade()",
+        "DEGRADED MODE ACTIVE",
     ]:
         assert symbol in source
 
@@ -368,6 +371,8 @@ def test_diagnostic_helpers_remain_available_after_module_split():
     assert "static bool runRegression()" not in sketch_source
     assert "bool runStress()" in diagnostics_source
     assert "static bool runStress()" not in sketch_source
+    assert "void evalDegrade()" in diagnostics_source
+    assert "static void evalDegrade()" not in sketch_source
 
 
 

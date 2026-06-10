@@ -361,28 +361,6 @@ bool parkActionTaken = false;
 const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
 const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
 
-static void notifyDegrade()
-{
-    mus4LogLine("system", "DEGRADED MODE ACTIVE");
-}
-
-static void evalDegrade()
-{
-    degradeReason = 0;
-    if (!ina219Data.valid) degradeReason |= 0x01;
-    if (!mpu6050Data.valid) degradeReason |= 0x02;
-    if (lastUICycleDuration > 150) degradeReason |= 0x04;
-    if (degradeReason != 0 && !degradeMode)
-    {
-        degradeMode = true;
-        notifyDegrade();
-    }
-    if (degradeReason == 0 && degradeMode)
-    {
-        degradeMode = false;
-    }
-}
-
 bool processLine(const String& line, int* throttle, int* steering, int* seq)
 {
     // Handle local commands

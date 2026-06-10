@@ -49,6 +49,7 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "SerialBufferTypes.h",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
+    PROJECT_ROOT / "WifiOta.h",
     PROJECT_ROOT / "WifiOta.cpp",
 ]
 ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
@@ -742,6 +743,30 @@ def test_rc_interrupt_state_keeps_iram_and_volatile_guards():
     assert "void IRAM_ATTR CH1_interrupt()" in source
     assert "static bool IRAM_ATTR onRcModeCapture" in source
 
+
+
+def test_wifi_ota_status_helpers_are_split_from_sketch():
+    source = firmware_source_text()
+    ota_header = (PROJECT_ROOT / "WifiOta.h").read_text(encoding="utf-8")
+    ota_source = (PROJECT_ROOT / "WifiOta.cpp").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "#include \"WifiOta.h\"" in sketch_source
+    assert "unsigned long wifiOtaTtlMs()" in ota_header
+    assert "void printWifiOtaStatus(Print& out)" in ota_header
+    assert re.search(r"^unsigned long\s+wifiOtaTtlMs\s*\(\)", ota_source, re.MULTILINE)
+    assert re.search(r"^void\s+printWifiOtaStatus\s*\(Print& out\)", ota_source, re.MULTILINE)
+    assert "static void printWifiOtaStatus" not in sketch_source
+    assert "OTA_STATUS started=%d window=%d in_progress=%d ttl_ms=%lu progress=%u park=%d dev_mode=%d park_guard=%d" in ota_source
+    assert "if (!wifiOtaWindowOpen) return 0" in ota_source
+    assert "WIFI_OTA_WINDOW_MS = 120000UL" in ota_source
+    assert "if (wifiDevModeEnabled) return WIFI_OTA_WINDOW_MS" in ota_source
+    assert "wifiOtaDeadlineMs - now" in ota_source
+    assert "wifiOtaStarted ? 1 : 0" in ota_source
+    assert "wifiOtaLastProgressPct" in ota_source
+    assert "car_output.park ? 1 : 0" in ota_source
+    assert "wifiOtaParkGuardActive ? 1 : 0" in ota_source
+    assert "printWifiOtaStatus(out)" in source
 
 
 def test_wireless_ota_and_control_safety_guards_remain_present():

@@ -64,6 +64,7 @@
 #include "WirelessConsole.h"
 #include "WifiStaConfig.h"
 #include "WifiIdentity.h"
+#include "WifiOta.h"
 #include "DriftAssist.h"
 #include "SteeringControl.h"
 #include "Diagnostics.h"
@@ -285,15 +286,6 @@ const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
 const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
 
 #ifdef ENABLE_WIFI_CONSOLE
-static unsigned long wifiOtaTtlMs()
-{
-    if (!wifiOtaWindowOpen) return 0;
-    if (wifiDevModeEnabled) return WIFI_OTA_WINDOW_MS;
-    unsigned long now = millis();
-    if ((long)(wifiOtaDeadlineMs - now) <= 0) return 0;
-    return wifiOtaDeadlineMs - now;
-}
-
 static bool shouldEmitSerial1Telemetry()
 {
     return !wifiOtaWindowOpen && !wifiOtaInProgress;
@@ -562,19 +554,6 @@ static void sampleWifiWebData()
     point.gyroZFiltered = gyro_z_filtered;
     wifiWebDataHead = (wifiWebDataHead + 1) % WIFI_WEB_DATA_CAPACITY;
     if (wifiWebDataCount < WIFI_WEB_DATA_CAPACITY) wifiWebDataCount++;
-}
-
-static void printWifiOtaStatus(Print& out)
-{
-    out.printf("OTA_STATUS started=%d window=%d in_progress=%d ttl_ms=%lu progress=%u park=%d dev_mode=%d park_guard=%d\n",
-        wifiOtaStarted ? 1 : 0,
-        wifiOtaWindowOpen ? 1 : 0,
-        wifiOtaInProgress ? 1 : 0,
-        wifiOtaTtlMs(),
-        wifiOtaLastProgressPct,
-        car_output.park ? 1 : 0,
-        wifiDevModeEnabled ? 1 : 0,
-        wifiOtaParkGuardActive ? 1 : 0);
 }
 
 static void printWirelessStatus(Print& out)

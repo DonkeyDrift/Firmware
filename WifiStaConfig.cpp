@@ -2,6 +2,8 @@
 
 #include <WiFi.h>
 
+#include "Mus4Log.h"
+
 #ifdef ENABLE_WIFI_CONSOLE
 static const uint8_t WIFI_STA_CONFIG_SSID_MAX_LEN = 32;
 static const uint8_t WIFI_STA_CONFIG_PASSWORD_MAX_LEN = 63;
@@ -40,6 +42,24 @@ bool copyWifiStaPassword(const String& password)
 String wifiStaIpText()
 {
     return wifiStaConnected ? WiFi.localIP().toString() : String("0.0.0.0");
+}
+
+void clearWifiStaLastError()
+{
+    wifiStaLastError[0] = 0;
+    wifiStaLastErrorMessage[0] = 0;
+}
+
+void setWifiStaLastError(const char* code, const char* message, bool timedOut)
+{
+    // 保留本轮连接的首个失败原因，避免后续瞬态状态覆盖更有诊断价值的根因。
+    if (wifiStaLastError[0] != 0) return;
+    snprintf(wifiStaLastError, 24, "%s", code);
+    snprintf(wifiStaLastErrorMessage, 128, "%s", message);
+    wifiStaTimedOut = timedOut;
+    wifiStaConnecting = false;
+    wifiStaConnected = false;
+    mus4Logf("wifi", "STA failed: %s", code);
 }
 
 void printWifiStaStatus(Print& out)

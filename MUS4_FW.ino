@@ -427,12 +427,6 @@ static void disconnectWifiStaOnly()
     esp_wifi_disconnect();
 }
 
-static void clearWifiStaLastError()
-{
-    wifiStaLastError[0] = 0;
-    wifiStaLastErrorMessage[0] = 0;
-}
-
 static void clearWifiStaRuntimeStateWithoutDisconnect()
 {
     wifiStaSsid[0] = 0;
@@ -445,18 +439,6 @@ static void clearWifiStaRuntimeStateWithoutDisconnect()
     clearWifiStaLastError();
     wifiStaApplyPending = false;
     clearWifiStaHandoff();
-}
-
-static void setWifiStaLastError(const char* code, const char* message, bool timedOut)
-{
-    // 保留本轮连接的首个失败原因，避免后续瞬态状态覆盖更有诊断价值的根因。
-    if (wifiStaLastError[0] != 0) return;
-    snprintf(wifiStaLastError, sizeof(wifiStaLastError), "%s", code);
-    snprintf(wifiStaLastErrorMessage, sizeof(wifiStaLastErrorMessage), "%s", message);
-    wifiStaTimedOut = timedOut;
-    wifiStaConnecting = false;
-    wifiStaConnected = false;
-    mus4Logf("wifi", "STA failed: %s", code);
 }
 
 void applyWifiStaCredentials()

@@ -7,6 +7,8 @@
 bool copyWifiStaSsid(const String& ssid);
 bool copyWifiStaPassword(const String& password);
 String wifiStaIpText();
+void clearWifiStaLastError();
+void setWifiStaLastError(const char* code, const char* message, bool timedOut);
 void printWifiStaStatus(Print& out);
 bool processWifiStaConfigCommand(const String& line, Print& out);
 #else

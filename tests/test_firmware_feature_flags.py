@@ -34,6 +34,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "SerialLineReader.h",
     PROJECT_ROOT / "SerialLineReader.cpp",
     PROJECT_ROOT / "WifiConsoleTypes.h",
+    PROJECT_ROOT / "WirelessConsole.h",
+    PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "DriftAssist.h",
     PROJECT_ROOT / "DriftAssist.cpp",
     PROJECT_ROOT / "SteeringControl.h",
@@ -447,6 +449,39 @@ def test_wifi_console_types_are_split_from_sketch():
     assert "struct WifiScanEntry" not in sketch_source
     assert "struct WebDataPoint" not in sketch_source
     assert "#include \"WifiConsoleTypes.h\"" in source
+
+
+def test_wireless_command_policy_helpers_are_split_from_sketch():
+    source = firmware_source_text()
+    wireless_header = (PROJECT_ROOT / "WirelessConsole.h").read_text(encoding="utf-8")
+    wireless_source = (PROJECT_ROOT / "WirelessConsole.cpp").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "enum WirelessCommandOrigin" in wireless_header
+    assert "bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin)" in wireless_header
+    assert "bool isParkLockedWirelessCommand(const String& line)" in wireless_header
+    assert "bool isWirelessOtaOpenCommand(const String& line)" in wireless_header
+    assert "bool isWirelessOtaStatusCommand(const String& line)" in wireless_header
+    assert "bool isWirelessOtaCloseCommand(const String& line)" in wireless_header
+    assert "bool isLocalOtaOpenCommand(const String& line)" in wireless_header
+    assert "bool isWifiStaConfigCommand(const String& line)" in wireless_header
+    assert "bool isWirelessControlCommand(const String& line)" in wireless_header
+    assert "#include \"WirelessConsole.h\"" in sketch_source
+
+    for symbol in [
+        "line.equalsIgnoreCase(\"PING\")",
+        "line.equalsIgnoreCase(\"STATUS\")",
+        "line.startsWith(\"AUTH:\")",
+        "car_output.park == PARK_LOCKED",
+        "line.equalsIgnoreCase(\"FILTER_TEST\")",
+        "line.startsWith(\"WIFI_STA_PASSWORD:\")",
+        "return isWirelessControlCommand(line);",
+    ]:
+        assert symbol in wireless_source
+
+    assert "static bool isWirelessCommandAllowed" not in sketch_source
+    assert "static bool isWirelessControlCommand" not in sketch_source
+    assert "static bool isParkLockedWirelessCommand" not in sketch_source
 
 
 def test_drift_assist_helpers_remain_available_after_module_split():

@@ -75,6 +75,19 @@ void scheduleWifiStaApply()
     wifiStaApplyDeadlineMs = millis() + WIFI_STA_CONFIG_APPLY_DELAY_MS;
 }
 
+bool saveWifiStaPreference(const String& ssid, const String& password)
+{
+    if (!copyWifiStaSsid(ssid) || !copyWifiStaPassword(password)) return false;
+    if (!mus4Prefs.begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = mus4Prefs.putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, true);
+    size_t ssidWritten = mus4Prefs.putString(WIFI_STA_CONFIG_PREF_SSID_KEY, wifiStaSsid);
+    size_t passwordWritten = mus4Prefs.putString(WIFI_STA_CONFIG_PREF_PASSWORD_KEY, wifiStaPassword);
+    mus4Prefs.end();
+    if (enabledWritten == 0 || ssidWritten == 0 || (wifiStaPasswordSet && passwordWritten == 0)) return false;
+    wifiStaConfigured = true;
+    return true;
+}
+
 bool saveWifiStaSsidPreference(const String& ssid)
 {
     if (!copyWifiStaSsid(ssid)) return false;

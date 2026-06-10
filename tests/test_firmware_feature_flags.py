@@ -471,6 +471,7 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     assert "void clearWifiStaLastError()" in sta_header
     assert "void setWifiStaLastError(const char* code, const char* message, bool timedOut)" in sta_header
     assert "void scheduleWifiStaApply()" in sta_header
+    assert "bool saveWifiStaPreference(const String& ssid, const String& password)" in sta_header
     assert "bool saveWifiStaSsidPreference(const String& ssid)" in sta_header
     assert "bool saveWifiStaPasswordPreference(const String& password)" in sta_header
     assert "bool copyWifiStaSsid(const String& ssid)" in sta_source
@@ -479,6 +480,7 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     assert "void clearWifiStaLastError()" in sta_source
     assert "void setWifiStaLastError(const char* code, const char* message, bool timedOut)" in sta_source
     assert "void scheduleWifiStaApply()" in sta_source
+    assert "bool saveWifiStaPreference(const String& ssid, const String& password)" in sta_source
     assert "bool saveWifiStaSsidPreference(const String& ssid)" in sta_source
     assert "bool saveWifiStaPasswordPreference(const String& password)" in sta_source
     assert "#include \"WifiStaConfig.h\"" in sketch_source
@@ -488,6 +490,7 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     assert "static void clearWifiStaLastError" not in sketch_source
     assert "static void setWifiStaLastError" not in sketch_source
     assert "static void scheduleWifiStaApply" not in sketch_source
+    assert "static bool saveWifiStaPreference" not in sketch_source
     assert "bool saveWifiStaSsidPreference(const String& ssid)" not in sketch_source
     assert "bool saveWifiStaPasswordPreference(const String& password)" not in sketch_source
     assert "static bool copyWifiStaSsid" not in sketch_source
@@ -1285,7 +1288,7 @@ def test_web_console_sta_save_defers_wifi_reconnect_until_after_http_response():
     source = firmware_source_text()
 
     save_body = re.search(
-        r"static bool saveWifiStaPreference\(const String& ssid, const String& password\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool saveWifiStaPreference\(const String& ssid, const String& password\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")

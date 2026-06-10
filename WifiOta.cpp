@@ -5,6 +5,7 @@
 
 #include "Mus4Log.h"
 #include "SharedTypes.h"
+#include "WirelessConsole.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
 static const char* WIFI_CONSOLE_AP_PASSWORD = "mus4-debug";
@@ -18,6 +19,8 @@ extern bool wifiOtaParkGuardActive;
 extern bool wifiDevModeEnabled;
 extern unsigned long wifiOtaDeadlineMs;
 extern uint8_t wifiOtaLastProgressPct;
+extern bool wifiConsoleAuthenticated;
+extern SerialBuf wifiConsoleBuf;
 extern ControlData rc_data;
 extern ControlData car_output;
 
@@ -43,6 +46,29 @@ bool shouldEmitSerial1Telemetry()
     return !wifiOtaWindowOpen && !wifiOtaInProgress;
 }
 
+void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin)
+{
+    bool webDevMode = wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB;
+    if (!webDevMode && !wifiConsoleAuthenticated) {
+        out.println("NACK:AUTH_REQUIRED");
+        wifiConsoleBuf.errors++;
+        return;
+    }
+    if (car_output.park != PARK_LOCKED) {
+        out.println("NACK:PARK_REQUIRED");
+        wifiConsoleBuf.errors++;
+        return;
+    }
+    wifiOtaParkGuardActive = true;
+    forceWifiOtaParkLocked();
+    ensureWifiOtaStarted();
+    wifiOtaWindowOpen = true;
+    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
+    wifiOtaLastProgressPct = 0;
+    out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.localIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
+    mus4LogLine("ota", webDevMode ? "ready: web_dev" : "ready");
+}
+
 void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb)
 {
     if (!line.substring(11).equals(WIFI_CONSOLE_AP_PASSWORD)) {
@@ -58,6 +84,24 @@ void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb)
     wifiOtaLastProgressPct = 0;
     out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.localIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
     mus4LogLine("ota", "ready: local");
+}
+
+bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
+{
+    if (isLocalOtaOpenCommand(line)) {
+        openLocalWifiOtaWindow(line, out, sb);
+        return true;
+    }
+    if (isWirelessOtaStatusCommand(line)) {
+        printWifiOtaStatus(out);
+        return true;
+    }
+    if (isWirelessOtaCloseCommand(line)) {
+        closeWifiOtaWindow("LOCAL");
+        out.println("OTA_CLOSED");
+        return true;
+    }
+    return false;
 }
 
 void closeWifiOtaWindow(const char* reason)

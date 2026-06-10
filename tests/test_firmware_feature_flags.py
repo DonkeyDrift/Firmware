@@ -759,6 +759,8 @@ def test_wifi_ota_status_helpers_are_split_from_sketch():
     assert "void keepDevModeOtaWindowActive()" in ota_header
     assert "bool shouldEmitSerial1Telemetry()" in ota_header
     assert "void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb)" in ota_header
+    assert "bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)" in ota_header
+    assert "void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin)" in ota_header
     assert re.search(r"^unsigned long\s+wifiOtaTtlMs\s*\(\)", ota_source, re.MULTILINE)
     assert re.search(r"^void\s+printWifiOtaStatus\s*\(Print& out\)", ota_source, re.MULTILINE)
     assert re.search(r"^void\s+closeWifiOtaWindow\s*\(const char\* reason\)", ota_source, re.MULTILINE)
@@ -766,12 +768,16 @@ def test_wifi_ota_status_helpers_are_split_from_sketch():
     assert re.search(r"^void\s+keepDevModeOtaWindowActive\s*\(\)", ota_source, re.MULTILINE)
     assert re.search(r"^bool\s+shouldEmitSerial1Telemetry\s*\(\)", ota_source, re.MULTILINE)
     assert re.search(r"^void\s+openLocalWifiOtaWindow\s*\(const String& line, Print& out, SerialBuf& sb\)", ota_source, re.MULTILINE)
+    assert re.search(r"^bool\s+processLocalOtaMaintenanceCommand\s*\(const String& line, Print& out, SerialBuf& sb\)", ota_source, re.MULTILINE)
+    assert re.search(r"^void\s+openWifiOtaWindow\s*\(Print& out, WirelessCommandOrigin origin\)", ota_source, re.MULTILINE)
     assert "static void printWifiOtaStatus" not in sketch_source
     assert "static void closeWifiOtaWindow" not in sketch_source
     assert "static void forceWifiOtaParkLocked" not in sketch_source
     assert "static void keepDevModeOtaWindowActive" not in sketch_source
     assert "static bool shouldEmitSerial1Telemetry" not in sketch_source
     assert "static void openLocalWifiOtaWindow" not in sketch_source
+    assert not re.search(r"^bool\s+processLocalOtaMaintenanceCommand\s*\(", sketch_source, re.MULTILINE)
+    assert "static void openWifiOtaWindow" not in sketch_source
     assert "OTA_STATUS started=%d window=%d in_progress=%d ttl_ms=%lu progress=%u park=%d dev_mode=%d park_guard=%d" in ota_source
     assert "if (!wifiOtaWindowOpen) return 0" in ota_source
     assert "WIFI_CONSOLE_AP_PASSWORD = \"mus4-debug\"" in ota_source
@@ -805,6 +811,21 @@ def test_wifi_ota_status_helpers_are_split_from_sketch():
     assert "wifiOtaLastProgressPct = 0" in ota_source
     assert "OTA_READY ip=%s port=%u ttl_ms=%lu" in ota_source
     assert "mus4LogLine(\"ota\", \"ready: local\")" in ota_source
+    assert "isLocalOtaOpenCommand(line)" in ota_source
+    assert "openLocalWifiOtaWindow(line, out, sb)" in ota_source
+    assert "isWirelessOtaStatusCommand(line)" in ota_source
+    assert "printWifiOtaStatus(out)" in ota_source
+    assert "isWirelessOtaCloseCommand(line)" in ota_source
+    assert "closeWifiOtaWindow(\"LOCAL\")" in ota_source
+    assert "out.println(\"OTA_CLOSED\")" in ota_source
+    assert "return false" in ota_source
+    assert "wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB" in ota_source
+    assert "if (!webDevMode && !wifiConsoleAuthenticated)" in ota_source
+    assert "out.println(\"NACK:AUTH_REQUIRED\")" in ota_source
+    assert "if (car_output.park != PARK_LOCKED)" in ota_source
+    assert "out.println(\"NACK:PARK_REQUIRED\")" in ota_source
+    assert "wifiConsoleBuf.errors++" in ota_source
+    assert "mus4LogLine(\"ota\", webDevMode ? \"ready: web_dev\" : \"ready\")" in ota_source
     assert "inline bool shouldEmitSerial1Telemetry() { return true; }" in ota_header
     assert "printWifiOtaStatus(out)" in source
     assert "closeWifiOtaWindow(\"LOCAL\")" in source

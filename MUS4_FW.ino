@@ -132,7 +132,6 @@ unsigned long rcTTL = 100;
 unsigned long outputTTL = 100;
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
-bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb);
 #ifdef ENABLE_WIFI_CONSOLE
 void ensureWifiOtaStarted();
 #if __has_include("WirelessSecrets.h")
@@ -646,47 +645,6 @@ void ensureWifiOtaStarted()
     setupWifiOtaCallbacks();
     ArduinoOTA.begin();
     wifiOtaStarted = true;
-}
-
-static void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin)
-{
-    bool webDevMode = wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB;
-    if (!webDevMode && !wifiConsoleAuthenticated) {
-        out.println("NACK:AUTH_REQUIRED");
-        wifiConsoleBuf.errors++;
-        return;
-    }
-    if (car_output.park != PARK_LOCKED) {
-        out.println("NACK:PARK_REQUIRED");
-        wifiConsoleBuf.errors++;
-        return;
-    }
-    wifiOtaParkGuardActive = true;
-    forceWifiOtaParkLocked();
-    ensureWifiOtaStarted();
-    wifiOtaWindowOpen = true;
-    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
-    wifiOtaLastProgressPct = 0;
-    out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.localIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
-    mus4LogLine("ota", webDevMode ? "ready: web_dev" : "ready");
-}
-
-bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
-{
-    if (isLocalOtaOpenCommand(line)) {
-        openLocalWifiOtaWindow(line, out, sb);
-        return true;
-    }
-    if (isWirelessOtaStatusCommand(line)) {
-        printWifiOtaStatus(out);
-        return true;
-    }
-    if (isWirelessOtaCloseCommand(line)) {
-        closeWifiOtaWindow("LOCAL");
-        out.println("OTA_CLOSED");
-        return true;
-    }
-    return false;
 }
 
 static void updateWifiOta()
@@ -1689,11 +1647,6 @@ static void updateWifiConsole()
     }
 }
 #else
-bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
-{
-    return false;
-}
-
 #endif
 
 

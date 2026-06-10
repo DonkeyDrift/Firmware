@@ -118,13 +118,27 @@ def test_websocket_curve_data_feature_is_enabled():
     assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", source, re.MULTILINE)
 
 
-def test_firmware_version_is_v1_7_2_and_changelog_is_current():
+def test_firmware_version_is_v1_7_3_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.2"' in build_info
-    assert "## 2026-06-10 v1.7.2" in changelog
-    assert changelog.index("## 2026-06-10 v1.7.2") < changelog.index("## 2026-06-07 v1.6.0")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.3"' in build_info
+    assert "## 2026-06-10 v1.7.3" in changelog
+    assert changelog.index("## 2026-06-10 v1.7.3") < changelog.index("## 2026-06-07 v1.6.0")
+
+
+def test_web_console_serial_log_display_is_limited_to_16_lines():
+    source = firmware_source_text()
+
+    assert "#serialPanel .log{flex:0 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(16 * 1.35em + 16px)}" in source
+    assert "#serialPanel .log{height:calc(16 * 1.35em + 16px)}" in source
+
+
+def test_web_console_screen_saver_activates_after_60_seconds():
+    source = firmware_source_text()
+
+    assert "now-parkLockedAt>=60000&&range<10" in source
+    assert "now-parkLockedAt>=10000&&range<10" not in source
 
 
 def test_web_console_keeps_original_ui_and_direct_curve_path():
@@ -1091,8 +1105,8 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert source.index('<section class="panel" id="chartPanel">') < source.index('<section class="panel" id="serialPanel">')
     assert '<section class="panel" id="serialPanel">' in source
     assert "#serialPanel{display:flex;flex-direction:column}" in source
-    assert "#serialPanel .log{flex:0 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
-    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}#serialPanel .log{height:calc(20 * 1.35em + 16px)}}" in source
+    assert "#serialPanel .log{flex:0 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(16 * 1.35em + 16px)}" in source
+    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}#serialPanel .log{height:calc(16 * 1.35em + 16px)}}" in source
     assert "canvas{width:100%;height:auto;aspect-ratio:38/13;" in source
     assert "#chartPanel:fullscreen canvas{width:min(100%,calc((100vh - 118px) * 38 / 13));height:auto;max-height:calc(100vh - 118px);aspect-ratio:38/13}" in source
     assert "dataMeta.textContent=transport+' realtime seq='+lastDataSeq+' +'+added" not in source
@@ -1185,7 +1199,7 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
     assert source.index(serial_panel) < source.index(diagnostics_panel)
     assert source.index(diagnostics_panel) < source.index('id="rcFold" class="fold"')
     assert source.index('id="rcFold" class="fold"') < source.index('id="statusFold" class="fold"')
-    assert '@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}#serialPanel .log{height:calc(20 * 1.35em + 16px)}}' in source
+    assert '@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}#serialPanel .log{height:calc(16 * 1.35em + 16px)}}' in source
     assert "function toggleFold(id)" in source
     assert "function renderStatus(t)" in source
     assert "function parseStatusPairs(t)" in source

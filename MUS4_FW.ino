@@ -57,6 +57,8 @@
 #include "GamepadMode.h"
 #include "RcFilter.h"
 #include "CommandParser.h"
+#include "CommandDispatcher.h"
+#include "SerialLineReader.h"
 #include "DriftAssist.h"
 #include "SteeringControl.h"
 #include "Diagnostics.h"
@@ -124,7 +126,7 @@ unsigned long rcTTL = 100;
 unsigned long outputTTL = 100;
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
-static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb);
+bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb);
 static bool shouldEmitSerial1Telemetry();
 #ifdef ENABLE_WIFI_CONSOLE
 enum WirelessCommandOrigin { WIRELESS_ORIGIN_TCP, WIRELESS_ORIGIN_WEB };
@@ -382,108 +384,11 @@ bool processLine(const String& line, int* throttle, int* steering, int* seq)
 }
 
 #ifdef ENABLE_WIFI_CONSOLE
-static bool processWifiStaConfigCommand(const String& line, Print& out);
+bool processWifiStaConfigCommand(const String& line, Print& out);
 static String wifiStaIpText();
 #else
-static bool processWifiStaConfigCommand(const String& line, Print& out) { return false; }
+bool processWifiStaConfigCommand(const String& line, Print& out) { return false; }
 #endif
-
-#define PROCESS_COMMAND_LINE(line, out, sb) do { \
-    if (processLocalOtaMaintenanceCommand((line), (out), (sb))) { \
-    } else if (processWifiStaConfigCommand((line), (out))) { \
-    } else if ((line).equalsIgnoreCase("LOG_WEB")) { \
-        setMus4LogTargetWeb(); \
-        mus4LogLine("log", mus4LogTarget == MUS4_LOG_TARGET_WEB ? "target=web" : "target=serial wifi_disabled"); \
-        (out).println("ACK:LOG_WEB"); \
-    } else if ((line).equalsIgnoreCase("LOG_SERIAL")) { \
-        mus4LogTarget = MUS4_LOG_TARGET_SERIAL; \
-        mus4LogLine("log", "target=serial"); \
-        (out).println("ACK:LOG_SERIAL"); \
-    } else if ((line).equalsIgnoreCase("STEER_CAL")) { \
-        startSteerCalibration(out); \
-    } else if ((line).equalsIgnoreCase("CAL_SAVE")) { \
-        if (steer_cal_state == STEER_CAL_DONE) { \
-            if (steer_cal.min_pwm < steer_cal.mid_pwm && steer_cal.mid_pwm < steer_cal.max_pwm \
-                && (steer_cal.mid_pwm - steer_cal.min_pwm) > 100 && (steer_cal.max_pwm - steer_cal.mid_pwm) > 100) { \
-                if (saveSteeringCalibration()) { \
-                    steer_cal_state = STEER_CAL_IDLE; \
-                    (out).println("ACK:CAL_SAVED"); \
-                } else { \
-                    (out).println("NACK:CAL_SAVE_FAILED"); \
-                } \
-            } else { \
-                (out).println("NACK:CAL_INVALID_RANGE"); \
-            } \
-        } else { \
-            (out).println("NACK:CAL_NOT_DONE"); \
-        } \
-    } else if ((line).equalsIgnoreCase("CAL_RETRY")) { \
-        if (steer_cal_state == STEER_CAL_DONE) { \
-            steer_cal_state = STEER_CAL_CENTER; \
-            steer_cal_stage_start_ms = millis(); \
-            steer_cal_temp_min = 32767; \
-            steer_cal_temp_max = -32768; \
-            tui.log("[CAL] Retrying center capture..."); \
-            (out).println("ACK:CAL_RETRY"); \
-        } else { \
-            (out).println("NACK:CAL_NOT_DONE"); \
-        } \
-    } else if ((line).equalsIgnoreCase("CAL_ABORT")) { \
-        steer_cal_state = STEER_CAL_IDLE; \
-        loadSteeringCalibration(); \
-        (out).println("ACK:CAL_ABORTED"); \
-    } else if ((line).equalsIgnoreCase("CAL_RESET")) { \
-        resetSteeringCalibration(); \
-        steer_cal_state = STEER_CAL_IDLE; \
-        (out).println("ACK:CAL_RESET"); \
-    } else if ((line).equalsIgnoreCase("CAL_STATUS")) { \
-        printCalStatus(out); \
-    } else { \
-        int t, s, seq; \
-        bool ok = processLine((line), &t, &s, &seq); \
-        if (ok) { \
-            pilot_data.throttle = t; \
-            pilot_data.steering = s; \
-            lastSeq = seq; \
-            if (seq >= 0) (out).printf("ACK:%d\n", seq); \
-            else (out).println("ACK"); \
-            (sb).frames++; \
-        } else { \
-            if (seq >= 0) (out).printf("NACK:%d\n", seq); \
-            else (out).println("NACK"); \
-            (sb).errors++; \
-        } \
-    } \
-} while (false)
-
-static void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)
-{
-    while (ser.available())
-    {
-        int c = ser.read();
-        if (c < 0) break;
-        if (c == '\r') continue;
-        if (c == '\n')
-        {
-            sb.buf[sb.len] = 0;
-            PROCESS_COMMAND_LINE(String(sb.buf), ser, sb);
-            sb.len = 0;
-            sb.overflow = false;
-        }
-        else
-        {
-            if (sb.len < sizeof(sb.buf)-1)
-            {
-                sb.buf[sb.len++] = (char)c;
-            }
-            else
-            {
-                sb.len = 0;
-                sb.overflow = true;
-            }
-        }
-    }
-}
 
 #ifdef ENABLE_WIFI_CONSOLE
 static bool isWirelessControlCommand(const String& line)
@@ -1007,7 +912,7 @@ static void loadWifiStaPreference()
     }
 }
 
-static bool processWifiStaConfigCommand(const String& line, Print& out)
+bool processWifiStaConfigCommand(const String& line, Print& out)
 {
     if (line.equalsIgnoreCase("WIFI_STA_STATUS")) {
         printWifiStaStatus(out);
@@ -1271,7 +1176,7 @@ static void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb
     mus4LogLine("ota", "ready: local");
 }
 
-static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
+bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
 {
     if (isLocalOtaOpenCommand(line)) {
         openLocalWifiOtaWindow(line, out, sb);
@@ -1345,7 +1250,7 @@ static void processWirelessConsoleLine(const String& line, Print& out, WirelessC
     if (processWifiStaConfigCommand(line, out)) {
         return;
     }
-    PROCESS_COMMAND_LINE(line, out, wifiConsoleBuf);
+    dispatchCommandLine(line, out, wifiConsoleBuf);
 }
 
 
@@ -2345,7 +2250,7 @@ static void updateWifiConsole()
     }
 }
 #else
-static bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
+bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
 {
     return false;
 }

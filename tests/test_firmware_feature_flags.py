@@ -27,6 +27,11 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "RcFilter.cpp",
     PROJECT_ROOT / "CommandParser.h",
     PROJECT_ROOT / "CommandParser.cpp",
+    PROJECT_ROOT / "CommandDispatcher.h",
+    PROJECT_ROOT / "CommandDispatcher.cpp",
+    PROJECT_ROOT / "SerialLineReader.h",
+    PROJECT_ROOT / "SerialLineReader.cpp",
+    PROJECT_ROOT / "WifiConsoleTypes.h",
     PROJECT_ROOT / "DriftAssist.h",
     PROJECT_ROOT / "DriftAssist.cpp",
     PROJECT_ROOT / "SteeringControl.h",
@@ -315,6 +320,98 @@ def test_command_parser_helpers_remain_available_after_module_split():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
     assert "bool runUnitTests()" in parser_source
     assert "static bool runUnitTests()" not in sketch_source
+
+
+def test_command_dispatcher_replaces_command_line_macro_after_module_split():
+    source = firmware_source_text()
+    dispatcher_header = (PROJECT_ROOT / "CommandDispatcher.h").read_text(encoding="utf-8")
+    dispatcher_source = (PROJECT_ROOT / "CommandDispatcher.cpp").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb)" in dispatcher_header
+    assert "bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb)" in dispatcher_source
+    assert "dispatchCommandLine(String(sb.buf), ser, sb);" in source
+    assert "#define PROCESS_COMMAND_LINE" not in sketch_source
+    assert "PROCESS_COMMAND_LINE" not in sketch_source
+
+    for symbol in [
+        "ACK:LOG_WEB",
+        "ACK:LOG_SERIAL",
+        "ACK:CAL_SAVED",
+        "NACK:CAL_SAVE_FAILED",
+        "NACK:CAL_INVALID_RANGE",
+        "NACK:CAL_NOT_DONE",
+        "ACK:CAL_RETRY",
+        "ACK:CAL_ABORTED",
+        "ACK:CAL_RESET",
+        "ACK:%d\\n",
+        "NACK:%d\\n",
+    ]:
+        assert symbol in source
+
+
+def test_serial_line_reader_is_split_from_sketch():
+    source = firmware_source_text()
+    reader_header = (PROJECT_ROOT / "SerialLineReader.h").read_text(encoding="utf-8")
+    reader_source = (PROJECT_ROOT / "SerialLineReader.cpp").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)" in reader_header
+    assert "void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)" in reader_source
+    assert "dispatchCommandLine(String(sb.buf), ser, sb);" in reader_source
+    assert "if (c == '\\r') continue;" in reader_source
+    assert "if (c == '\\n')" in reader_source
+    assert "sb.overflow = true;" in reader_source
+    assert "#include \"SerialLineReader.h\"" in sketch_source
+    assert "readSerialBuf(Serial, serial0Buf);" in sketch_source
+    assert "readSerialBuf(Serial1, serial1Buf);" in sketch_source
+    assert "static void readSerialBuf" not in sketch_source
+    assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in sketch_source
+    assert "#include \"SerialLineReader.h\"" in source
+
+
+def test_wifi_console_types_are_split_from_sketch():
+    source = firmware_source_text()
+    wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    for symbol in [
+        "const char* WIFI_CONSOLE_AP_DEFAULT_SSID = \"MUS4-DEBUG\";",
+        "const char* WIFI_CONSOLE_AP_PASSWORD = \"mus4-debug\";",
+        "const uint16_t WIFI_CONSOLE_PORT = 2323;",
+        "const uint16_t WIFI_WEB_CONSOLE_PORT = 80;",
+        "const uint32_t WIFI_WEB_TELEMETRY_MIN_FREE_HEAP = 60000;",
+        "const uint8_t WIFI_CONSOLE_CHANNEL = 6;",
+        "const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;",
+        "const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;",
+        "const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;",
+        "const unsigned long WIFI_STA_APPLY_DELAY_MS = 800;",
+        "const char* WIFI_OTA_HOSTNAME = \"mus4-ota\";",
+        "const char* WIFI_OTA_PASSWORD = \"mus4-debug\";",
+        "const uint16_t WIFI_OTA_PORT = 3232;",
+        "const unsigned long WIFI_OTA_WINDOW_MS = 120000UL;",
+        "const uint8_t WIFI_AP_SSID_MAX_LEN = 32;",
+        "const uint8_t WIFI_STA_SSID_MAX_LEN = 32;",
+        "const uint8_t WIFI_STA_PASSWORD_MAX_LEN = 63;",
+        "const uint8_t WIFI_STA_PASSWORD_MIN_LEN = 8;",
+        "const uint8_t WIFI_WEB_LOG_CAPACITY = 64;",
+        "const uint16_t WIFI_WEB_DATA_CAPACITY = 256;",
+        "const unsigned long WIFI_WEB_DATA_INTERVAL_MS = 16;",
+        "struct WebLogEntry",
+        "struct WifiScanEntry",
+        "struct WebDataPoint",
+        "int rcChannels[RC_CHANNEL_COUNT];",
+    ]:
+        assert symbol in wifi_types
+
+    assert "#include \"WifiConsoleTypes.h\"" in sketch_source
+    assert "WebLogEntry wifiWebLogs[WIFI_WEB_LOG_CAPACITY];" in sketch_source
+    assert "WifiScanEntry wifiScanCache[16];" in sketch_source
+    assert "WebDataPoint wifiWebData[WIFI_WEB_DATA_CAPACITY];" in sketch_source
+    assert "struct WebLogEntry" not in sketch_source
+    assert "struct WifiScanEntry" not in sketch_source
+    assert "struct WebDataPoint" not in sketch_source
+    assert "#include \"WifiConsoleTypes.h\"" in source
 
 
 def test_drift_assist_helpers_remain_available_after_module_split():

@@ -395,7 +395,7 @@ static void stopWifiMdnsIfNeeded()
     mus4LogLine("wifi", "mDNS stopped");
 }
 
-static void clearWifiStaHandoff()
+void clearWifiStaHandoff()
 {
     wifiStaHandoffActive = false;
     wifiStaHandoffTargetSsid[0] = 0;
@@ -425,20 +425,6 @@ static void startWifiStaHandoff(const String& targetSsid)
 static void disconnectWifiStaOnly()
 {
     esp_wifi_disconnect();
-}
-
-static void clearWifiStaRuntimeStateWithoutDisconnect()
-{
-    wifiStaSsid[0] = 0;
-    wifiStaPassword[0] = 0;
-    wifiStaPasswordSet = false;
-    wifiStaConfigured = false;
-    wifiStaConnected = false;
-    wifiStaTimedOut = false;
-    wifiStaConnecting = false;
-    clearWifiStaLastError();
-    wifiStaApplyPending = false;
-    clearWifiStaHandoff();
 }
 
 void applyWifiStaCredentials()
@@ -542,51 +528,6 @@ static bool saveWifiApPreference(const String& ssid)
     size_t ssidWritten = mus4Prefs.putString(MUS4_PREF_AP_SSID_KEY, wifiApSsid);
     mus4Prefs.end();
     return ssidWritten > 0;
-}
-
-bool clearWifiStaPreference()
-{
-    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
-    size_t enabledWritten = mus4Prefs.putBool(MUS4_PREF_STA_ENABLED_KEY, false);
-    mus4Prefs.remove(MUS4_PREF_STA_SSID_KEY);
-    mus4Prefs.remove(MUS4_PREF_STA_PASSWORD_KEY);
-    mus4Prefs.end();
-    if (enabledWritten == 0) return false;
-    clearWifiStaRuntimeStateWithoutDisconnect();
-    return true;
-}
-
-static void loadWifiStaPreference()
-{
-    wifiStaSsid[0] = 0;
-    wifiStaPassword[0] = 0;
-    wifiStaPasswordSet = false;
-    wifiStaConfigured = false;
-    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) {
-        copyWifiStaSsid(String(WIFI_STA_SSID));
-        copyWifiStaPassword(String(WIFI_STA_PASSWORD));
-        wifiStaConfigured = strlen(wifiStaSsid) > 0;
-        mus4LogLine("wifi", "STA config load failed, using build defaults");
-        return;
-    }
-    bool hasStaEnabled = mus4Prefs.isKey(MUS4_PREF_STA_ENABLED_KEY);
-    bool staEnabled = mus4Prefs.getBool(MUS4_PREF_STA_ENABLED_KEY, false);
-    String ssid = hasStaEnabled && staEnabled ? mus4Prefs.getString(MUS4_PREF_STA_SSID_KEY, "") : String(WIFI_STA_SSID);
-    String password = hasStaEnabled && staEnabled ? mus4Prefs.getString(MUS4_PREF_STA_PASSWORD_KEY, "") : String(WIFI_STA_PASSWORD);
-    mus4Prefs.end();
-    if (hasStaEnabled && !staEnabled) {
-        mus4LogLine("wifi", "STA disabled by preference");
-        return;
-    }
-    if (copyWifiStaSsid(ssid) && copyWifiStaPassword(password)) {
-        wifiStaConfigured = strlen(wifiStaSsid) > 0;
-    } else {
-        wifiStaSsid[0] = 0;
-        wifiStaPassword[0] = 0;
-        wifiStaPasswordSet = false;
-        wifiStaConfigured = false;
-        mus4LogLine("wifi", "STA config invalid");
-    }
 }
 
 #endif

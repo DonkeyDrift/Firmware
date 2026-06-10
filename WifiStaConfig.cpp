@@ -6,6 +6,15 @@
 #include "Mus4Log.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
+#if __has_include("WirelessSecrets.h")
+#include "WirelessSecrets.h"
+#endif
+#ifndef WIFI_STA_SSID
+#define WIFI_STA_SSID ""
+#endif
+#ifndef WIFI_STA_PASSWORD
+#define WIFI_STA_PASSWORD ""
+#endif
 static const uint8_t WIFI_STA_CONFIG_SSID_MAX_LEN = 32;
 static const uint8_t WIFI_STA_CONFIG_PASSWORD_MAX_LEN = 63;
 static const uint8_t WIFI_STA_CONFIG_PASSWORD_MIN_LEN = 8;
@@ -29,7 +38,7 @@ extern unsigned long wifiStaApplyDeadlineMs;
 extern Preferences mus4Prefs;
 
 extern void applyWifiStaCredentials();
-extern bool clearWifiStaPreference();
+extern void clearWifiStaHandoff();
 
 bool copyWifiStaSsid(const String& ssid)
 {
@@ -109,6 +118,65 @@ bool saveWifiStaPasswordPreference(const String& password)
     mus4Prefs.end();
     if (enabledWritten == 0 || (wifiStaPasswordSet && passwordWritten == 0)) return false;
     return true;
+}
+
+void clearWifiStaRuntimeStateWithoutDisconnect()
+{
+    wifiStaSsid[0] = 0;
+    wifiStaPassword[0] = 0;
+    wifiStaPasswordSet = false;
+    wifiStaConfigured = false;
+    wifiStaConnected = false;
+    wifiStaTimedOut = false;
+    wifiStaConnecting = false;
+    clearWifiStaLastError();
+    wifiStaApplyPending = false;
+    clearWifiStaHandoff();
+}
+
+bool clearWifiStaPreference()
+{
+    if (!mus4Prefs.begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = mus4Prefs.putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, false);
+    mus4Prefs.remove(WIFI_STA_CONFIG_PREF_SSID_KEY);
+    mus4Prefs.remove(WIFI_STA_CONFIG_PREF_PASSWORD_KEY);
+    mus4Prefs.end();
+    if (enabledWritten == 0) return false;
+    clearWifiStaRuntimeStateWithoutDisconnect();
+    return true;
+}
+
+void loadWifiStaPreference()
+{
+    wifiStaSsid[0] = 0;
+    wifiStaPassword[0] = 0;
+    wifiStaPasswordSet = false;
+    wifiStaConfigured = false;
+    if (!mus4Prefs.begin(WIFI_STA_CONFIG_PREF_NAMESPACE, true)) {
+        copyWifiStaSsid(String(WIFI_STA_SSID));
+        copyWifiStaPassword(String(WIFI_STA_PASSWORD));
+        wifiStaConfigured = strlen(wifiStaSsid) > 0;
+        mus4LogLine("wifi", "STA config load failed, using build defaults");
+        return;
+    }
+    bool hasStaEnabled = mus4Prefs.isKey(WIFI_STA_CONFIG_PREF_ENABLED_KEY);
+    bool staEnabled = mus4Prefs.getBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, false);
+    String ssid = hasStaEnabled && staEnabled ? mus4Prefs.getString(WIFI_STA_CONFIG_PREF_SSID_KEY, "") : String(WIFI_STA_SSID);
+    String password = hasStaEnabled && staEnabled ? mus4Prefs.getString(WIFI_STA_CONFIG_PREF_PASSWORD_KEY, "") : String(WIFI_STA_PASSWORD);
+    mus4Prefs.end();
+    if (hasStaEnabled && !staEnabled) {
+        mus4LogLine("wifi", "STA disabled by preference");
+        return;
+    }
+    if (copyWifiStaSsid(ssid) && copyWifiStaPassword(password)) {
+        wifiStaConfigured = strlen(wifiStaSsid) > 0;
+    } else {
+        wifiStaSsid[0] = 0;
+        wifiStaPassword[0] = 0;
+        wifiStaPasswordSet = false;
+        wifiStaConfigured = false;
+        mus4LogLine("wifi", "STA config invalid");
+    }
 }
 
 void printWifiStaStatus(Print& out)

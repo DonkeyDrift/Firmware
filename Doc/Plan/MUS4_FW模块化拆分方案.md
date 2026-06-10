@@ -309,6 +309,30 @@ pytest tests/
 5. 抽出 AP/STA 启停、mDNS 生命周期、DNS captive、Wi-Fi 扫描和 STA handoff 到 `WifiManager.h/.cpp`。
 6. 最后迁移 TCP Console 认证会话和无线命令主分发到 `WirelessConsole.h/.cpp`。
 
+#### 本轮设计：收敛 `WifiStaConfig` 清理/加载 helper
+
+本轮采用单切片迁移 `clearWifiStaRuntimeStateWithoutDisconnect()`、`clearWifiStaPreference()` 和 `loadWifiStaPreference()` 到 `WifiStaConfig.h/.cpp`。迁移范围只覆盖 STA 配置清理、持久化清除和启动加载，不改 Wi-Fi 连接、AP 保底、mDNS、handoff、Web route、OTA 或无线权限策略。
+
+设计边界：
+
+- `WifiStaConfig.h/.cpp` 负责 STA 配置复制、保存、清除、加载、状态输出和配置命令入口。
+- `MUS4_FW.ino` 继续保留全局状态、`applyWifiStaCredentials()`、实际连接/断连逻辑，以及 AP/STA handoff 状态机。
+- `clearWifiStaRuntimeStateWithoutDisconnect()` 迁移后仍不得调用 `WiFi.mode()`、`WiFi.disconnect()` 或 `esp_wifi_disconnect()`，只清理内存态并调用 handoff 清理 helper。
+- 短期继续通过 `extern` 桥接 `wifiStaSsid`、`wifiStaPassword`、`wifiStaPasswordSet`、`wifiStaConfigured`、`wifiStaConnected`、`wifiStaTimedOut`、`wifiStaConnecting`、`wifiStaApplyPending`、`mus4Prefs` 和 `clearWifiStaHandoff()`。
+
+行为保持：
+
+- Preferences namespace 仍为 `mus4`，key 仍为 `sta_en`、`sta_ssid`、`sta_pass`。
+- `WIFI_STA_CLEAR` 成功响应仍为 `WIFI_STA_CLEARED`，失败响应仍为 `NACK:WIFI_STA_CLEAR`。
+- `loadWifiStaPreference()` 保留原加载语义：Preferences 打开失败时回退编译默认 `WIFI_STA_SSID` / `WIFI_STA_PASSWORD`；存在 `sta_en=false` 时保持 STA 禁用，不回退默认值；配置无效时清空运行态并记录 `STA config invalid`。
+- `clearWifiStaPreference()` 保留写入 `sta_en=false`、移除 `sta_ssid` / `sta_pass`、成功后清理运行态的顺序。
+
+测试保护：
+
+- 先在 `tests/test_firmware_feature_flags.py` 增加源码断言，确认三个函数定义迁入 `WifiStaConfig.cpp` 且不再定义在 `MUS4_FW.ino`。
+- 断言 `WifiStaConfig.cpp` 仍包含 `sta_en=false`、移除 `sta_ssid` / `sta_pass`、编译默认 SSID/密码回退、`STA disabled by preference` 和 `STA config invalid` 等关键行为。
+- 运行 `pytest tests/test_firmware_feature_flags.py tests/test_wireless_console_policy.py`、`pytest tests/` 和 `./arduino-cli-wsl.ps1 -Compile -Sketch MUS4_FW.ino`。
+
 每个切片都必须同步检查：
 
 - `wireless_console_policy.py`

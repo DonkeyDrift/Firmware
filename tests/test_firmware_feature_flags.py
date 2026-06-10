@@ -474,6 +474,9 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     assert "bool saveWifiStaPreference(const String& ssid, const String& password)" in sta_header
     assert "bool saveWifiStaSsidPreference(const String& ssid)" in sta_header
     assert "bool saveWifiStaPasswordPreference(const String& password)" in sta_header
+    assert "void clearWifiStaRuntimeStateWithoutDisconnect()" in sta_header
+    assert "bool clearWifiStaPreference()" in sta_header
+    assert "void loadWifiStaPreference()" in sta_header
     assert "bool copyWifiStaSsid(const String& ssid)" in sta_source
     assert "bool copyWifiStaPassword(const String& password)" in sta_source
     assert "String wifiStaIpText()" in sta_source
@@ -483,6 +486,9 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     assert "bool saveWifiStaPreference(const String& ssid, const String& password)" in sta_source
     assert "bool saveWifiStaSsidPreference(const String& ssid)" in sta_source
     assert "bool saveWifiStaPasswordPreference(const String& password)" in sta_source
+    assert re.search(r"^void\s+clearWifiStaRuntimeStateWithoutDisconnect\s*\(\)", sta_source, re.MULTILINE)
+    assert re.search(r"^bool\s+clearWifiStaPreference\s*\(\)", sta_source, re.MULTILINE)
+    assert re.search(r"^void\s+loadWifiStaPreference\s*\(\)", sta_source, re.MULTILINE)
     assert "#include \"WifiStaConfig.h\"" in sketch_source
     assert "bool processWifiStaConfigCommand(const String& line, Print& out)" not in sketch_source
     assert "void printWifiStaStatus(Print& out)" not in sketch_source
@@ -493,6 +499,9 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     assert "static bool saveWifiStaPreference" not in sketch_source
     assert "bool saveWifiStaSsidPreference(const String& ssid)" not in sketch_source
     assert "bool saveWifiStaPasswordPreference(const String& password)" not in sketch_source
+    assert "static void clearWifiStaRuntimeStateWithoutDisconnect" not in sketch_source
+    assert "bool clearWifiStaPreference()" not in sketch_source
+    assert "static void loadWifiStaPreference" not in sketch_source
     assert "static bool copyWifiStaSsid" not in sketch_source
     assert "static bool copyWifiStaPassword" not in sketch_source
 
@@ -515,6 +524,14 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
         "WIFI_STA_CONFIG_PREF_ENABLED_KEY = \"sta_en\"",
         "WIFI_STA_CONFIG_PREF_SSID_KEY = \"sta_ssid\"",
         "WIFI_STA_CONFIG_PREF_PASSWORD_KEY = \"sta_pass\"",
+        "mus4Prefs.putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, false)",
+        "mus4Prefs.remove(WIFI_STA_CONFIG_PREF_SSID_KEY)",
+        "mus4Prefs.remove(WIFI_STA_CONFIG_PREF_PASSWORD_KEY)",
+        "clearWifiStaRuntimeStateWithoutDisconnect()",
+        "WIFI_STA_SSID",
+        "WIFI_STA_PASSWORD",
+        "STA disabled by preference",
+        "STA config invalid",
         "wifiStaConfigured = true",
         "WIFI_STA_STATUS",
         "WIFI_STA_SSID:",
@@ -928,7 +945,7 @@ def test_wifi_sta_to_sta_handoff_keeps_ap_as_transition_page():
     assert "char wifiStaHandoffTargetSsid" in source
     assert "static void startWifiStaHandoff" in source
     assert "static void finishWifiStaHandoff" in source
-    assert "static void clearWifiStaHandoff" in source
+    assert "void clearWifiStaHandoff" in source
     handoff_body = re.search(
         r"static void startWifiStaHandoff.*?\n\}",
         source,
@@ -1468,7 +1485,7 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
         re.DOTALL,
     ).group("body")
     runtime_clear_body = re.search(
-        r"static void clearWifiStaRuntimeStateWithoutDisconnect\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void clearWifiStaRuntimeStateWithoutDisconnect\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")

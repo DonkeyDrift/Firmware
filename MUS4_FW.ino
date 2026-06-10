@@ -557,29 +557,6 @@ static bool saveWifiStaPreference(const String& ssid, const String& password)
     return true;
 }
 
-bool saveWifiStaSsidPreference(const String& ssid)
-{
-    if (!copyWifiStaSsid(ssid)) return false;
-    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
-    size_t enabledWritten = mus4Prefs.putBool(MUS4_PREF_STA_ENABLED_KEY, true);
-    size_t ssidWritten = mus4Prefs.putString(MUS4_PREF_STA_SSID_KEY, wifiStaSsid);
-    mus4Prefs.end();
-    if (enabledWritten == 0 || ssidWritten == 0) return false;
-    wifiStaConfigured = true;
-    return true;
-}
-
-bool saveWifiStaPasswordPreference(const String& password)
-{
-    if (!copyWifiStaPassword(password)) return false;
-    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
-    size_t enabledWritten = mus4Prefs.putBool(MUS4_PREF_STA_ENABLED_KEY, true);
-    size_t passwordWritten = mus4Prefs.putString(MUS4_PREF_STA_PASSWORD_KEY, wifiStaPassword);
-    mus4Prefs.end();
-    if (enabledWritten == 0 || (wifiStaPasswordSet && passwordWritten == 0)) return false;
-    return true;
-}
-
 bool clearWifiStaPreference()
 {
     if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;

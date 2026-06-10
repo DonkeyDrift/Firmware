@@ -1,6 +1,7 @@
 #include "WifiStaConfig.h"
 
 #include <WiFi.h>
+#include <Preferences.h>
 
 #include "Mus4Log.h"
 
@@ -9,6 +10,10 @@ static const uint8_t WIFI_STA_CONFIG_SSID_MAX_LEN = 32;
 static const uint8_t WIFI_STA_CONFIG_PASSWORD_MAX_LEN = 63;
 static const uint8_t WIFI_STA_CONFIG_PASSWORD_MIN_LEN = 8;
 static const unsigned long WIFI_STA_CONFIG_APPLY_DELAY_MS = 800;
+static const char* WIFI_STA_CONFIG_PREF_NAMESPACE = "mus4";
+static const char* WIFI_STA_CONFIG_PREF_ENABLED_KEY = "sta_en";
+static const char* WIFI_STA_CONFIG_PREF_SSID_KEY = "sta_ssid";
+static const char* WIFI_STA_CONFIG_PREF_PASSWORD_KEY = "sta_pass";
 
 extern bool wifiStaConfigured;
 extern bool wifiStaConnected;
@@ -21,9 +26,8 @@ extern char wifiStaPassword[];
 extern char wifiStaLastError[];
 extern char wifiStaLastErrorMessage[];
 extern unsigned long wifiStaApplyDeadlineMs;
+extern Preferences mus4Prefs;
 
-extern bool saveWifiStaSsidPreference(const String& ssid);
-extern bool saveWifiStaPasswordPreference(const String& password);
 extern void applyWifiStaCredentials();
 extern bool clearWifiStaPreference();
 
@@ -69,6 +73,29 @@ void scheduleWifiStaApply()
 {
     wifiStaApplyPending = true;
     wifiStaApplyDeadlineMs = millis() + WIFI_STA_CONFIG_APPLY_DELAY_MS;
+}
+
+bool saveWifiStaSsidPreference(const String& ssid)
+{
+    if (!copyWifiStaSsid(ssid)) return false;
+    if (!mus4Prefs.begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = mus4Prefs.putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, true);
+    size_t ssidWritten = mus4Prefs.putString(WIFI_STA_CONFIG_PREF_SSID_KEY, wifiStaSsid);
+    mus4Prefs.end();
+    if (enabledWritten == 0 || ssidWritten == 0) return false;
+    wifiStaConfigured = true;
+    return true;
+}
+
+bool saveWifiStaPasswordPreference(const String& password)
+{
+    if (!copyWifiStaPassword(password)) return false;
+    if (!mus4Prefs.begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = mus4Prefs.putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, true);
+    size_t passwordWritten = mus4Prefs.putString(WIFI_STA_CONFIG_PREF_PASSWORD_KEY, wifiStaPassword);
+    mus4Prefs.end();
+    if (enabledWritten == 0 || (wifiStaPasswordSet && passwordWritten == 0)) return false;
+    return true;
 }
 
 void printWifiStaStatus(Print& out)

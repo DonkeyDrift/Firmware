@@ -647,21 +647,6 @@ void ensureWifiOtaStarted()
     wifiOtaStarted = true;
 }
 
-static void updateWifiOta()
-{
-    if (wifiDevModeEnabled) keepDevModeOtaWindowActive();
-    if (!wifiOtaWindowOpen) return;
-    if (wifiOtaInProgress || wifiOtaParkGuardActive) {
-        forceWifiOtaParkLocked();
-    }
-    unsigned long now = millis();
-    if (!wifiDevModeEnabled && !wifiOtaInProgress && (long)(now - wifiOtaDeadlineMs) >= 0) {
-        closeWifiOtaWindow("TIMEOUT");
-        return;
-    }
-    ArduinoOTA.handle();
-}
-
 static void processWirelessConsoleLine(const String& line, Print& out, WirelessCommandOrigin origin)
 {
     if (line.equalsIgnoreCase("PING")) {

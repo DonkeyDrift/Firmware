@@ -104,6 +104,21 @@ bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf
     return false;
 }
 
+void updateWifiOta()
+{
+    if (wifiDevModeEnabled) keepDevModeOtaWindowActive();
+    if (!wifiOtaWindowOpen) return;
+    if (wifiOtaInProgress || wifiOtaParkGuardActive) {
+        forceWifiOtaParkLocked();
+    }
+    unsigned long now = millis();
+    if (!wifiDevModeEnabled && !wifiOtaInProgress && (long)(now - wifiOtaDeadlineMs) >= 0) {
+        closeWifiOtaWindow("TIMEOUT");
+        return;
+    }
+    ArduinoOTA.handle();
+}
+
 void closeWifiOtaWindow(const char* reason)
 {
     wifiOtaWindowOpen = false;

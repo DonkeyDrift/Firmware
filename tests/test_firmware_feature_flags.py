@@ -470,17 +470,20 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     assert "String wifiStaIpText()" in sta_header
     assert "void clearWifiStaLastError()" in sta_header
     assert "void setWifiStaLastError(const char* code, const char* message, bool timedOut)" in sta_header
+    assert "void scheduleWifiStaApply()" in sta_header
     assert "bool copyWifiStaSsid(const String& ssid)" in sta_source
     assert "bool copyWifiStaPassword(const String& password)" in sta_source
     assert "String wifiStaIpText()" in sta_source
     assert "void clearWifiStaLastError()" in sta_source
     assert "void setWifiStaLastError(const char* code, const char* message, bool timedOut)" in sta_source
+    assert "void scheduleWifiStaApply()" in sta_source
     assert "#include \"WifiStaConfig.h\"" in sketch_source
     assert "bool processWifiStaConfigCommand(const String& line, Print& out)" not in sketch_source
     assert "void printWifiStaStatus(Print& out)" not in sketch_source
     assert "String wifiStaIpText()" not in sketch_source
     assert "static void clearWifiStaLastError" not in sketch_source
     assert "static void setWifiStaLastError" not in sketch_source
+    assert "static void scheduleWifiStaApply" not in sketch_source
     assert "static bool copyWifiStaSsid" not in sketch_source
     assert "static bool copyWifiStaPassword" not in sketch_source
 
@@ -497,6 +500,9 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
         "snprintf(wifiStaLastErrorMessage, 128, \"%s\", message)",
         "wifiStaTimedOut = timedOut",
         "STA failed: %s",
+        "wifiStaApplyPending = true",
+        "WIFI_STA_CONFIG_APPLY_DELAY_MS = 800",
+        "wifiStaApplyDeadlineMs = millis() + WIFI_STA_CONFIG_APPLY_DELAY_MS",
         "WIFI_STA_STATUS",
         "WIFI_STA_SSID:",
         "WIFI_STA_PASSWORD:",

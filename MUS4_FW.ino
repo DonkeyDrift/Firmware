@@ -456,12 +456,6 @@ void applyWifiStaCredentials()
     mus4Logf("wifi", "STA connecting: %s", wifiStaSsid);
 }
 
-static void scheduleWifiStaApply()
-{
-    wifiStaApplyPending = true;
-    wifiStaApplyDeadlineMs = millis() + WIFI_STA_APPLY_DELAY_MS;
-}
-
 static void scheduleWifiApRestart()
 {
     wifiApRestartPending = true;

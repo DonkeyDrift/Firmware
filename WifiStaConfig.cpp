@@ -8,16 +8,19 @@
 static const uint8_t WIFI_STA_CONFIG_SSID_MAX_LEN = 32;
 static const uint8_t WIFI_STA_CONFIG_PASSWORD_MAX_LEN = 63;
 static const uint8_t WIFI_STA_CONFIG_PASSWORD_MIN_LEN = 8;
+static const unsigned long WIFI_STA_CONFIG_APPLY_DELAY_MS = 800;
 
 extern bool wifiStaConfigured;
 extern bool wifiStaConnected;
 extern bool wifiStaTimedOut;
 extern bool wifiStaConnecting;
 extern bool wifiStaPasswordSet;
+extern bool wifiStaApplyPending;
 extern char wifiStaSsid[];
 extern char wifiStaPassword[];
 extern char wifiStaLastError[];
 extern char wifiStaLastErrorMessage[];
+extern unsigned long wifiStaApplyDeadlineMs;
 
 extern bool saveWifiStaSsidPreference(const String& ssid);
 extern bool saveWifiStaPasswordPreference(const String& password);
@@ -60,6 +63,12 @@ void setWifiStaLastError(const char* code, const char* message, bool timedOut)
     wifiStaConnecting = false;
     wifiStaConnected = false;
     mus4Logf("wifi", "STA failed: %s", code);
+}
+
+void scheduleWifiStaApply()
+{
+    wifiStaApplyPending = true;
+    wifiStaApplyDeadlineMs = millis() + WIFI_STA_CONFIG_APPLY_DELAY_MS;
 }
 
 void printWifiStaStatus(Print& out)

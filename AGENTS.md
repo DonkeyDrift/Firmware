@@ -2,7 +2,7 @@
 
 # AGENTS.md - MUS4 项目编码指南
 
-MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件，当前主 Sketch 为根目录 `MUS4_FW.ino`，固件版本 `v1.7.3`（定义于 `BuildInfo.h`），目标硬件为 MUS4-v2.4.2 PCB（兼容 v2.3）。固件负责 RC 接收机 PWM 输入采集、Pilot 上位机串口控制、多模式驾驶控制融合、Park/紧急制动状态机、I2C 传感器采集、TUI 状态显示，以及可选的 Wi-Fi 控制台、OTA 更新和 BLE 游戏手柄输出。
+MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件，当前主 Sketch 为根目录 `MUS4_FW.ino`，固件版本 `v1.7.4`（定义于 `BuildInfo.h`），目标硬件为 MUS4-v2.4.2 PCB（兼容 v2.3）。固件负责 RC 接收机 PWM 输入采集、Pilot 上位机串口控制、多模式驾驶控制融合、Park/紧急制动状态机、I2C 传感器采集、TUI 状态显示，以及可选的 Wi-Fi 控制台、OTA 更新和 BLE 游戏手柄输出。
 
 ---
 
@@ -25,12 +25,12 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 
 ### 1.2 代码组织
 
-根目录不再是单文件 sketch，而是按模块拆分后的多文件 Arduino 项目，所有新模块均成对提供 `.h/.cpp`（除部分纯头文件工具外）：
+根目录是多文件 Arduino 项目，主 Sketch `MUS4_FW.ino` 仅保留 `setup()` / `loop()`、全局变量装配和中断快照读取，所有业务逻辑均已拆分为成对的 `.h/.cpp` 模块（部分纯头文件工具除外）：
 
 ```text
 根目录/
-├── MUS4_FW.ino                    # 主固件入口（~1000 行），包含 setup/loop/中断/全局装配/混控
-├── BuildInfo.h                    # 固件版本与构建时间宏（当前 v1.7.3）
+├── MUS4_FW.ino                    # 主固件入口（~556 行），setup/loop/全局装配/混控
+├── BuildInfo.h                    # 固件版本与构建时间宏（当前 v1.7.4）
 ├── FirmwareConfig.h               # 编译期功能开关、引脚定义、时序/滤波/日志目标等核心常量
 ├── SharedTypes.h                  # 跨模块共享数据结构（SensorData、ControlData）
 ├── RuntimeState.h                 # Wi-Fi / OTA 运行时聚合状态结构体（WifiRuntimeState / OtaRuntimeState）
@@ -90,7 +90,7 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 │   ├── getcurrent/                # INA219 电流读取示例
 │   ├── testIIC/                   # I2C 扫描与通信测试
 │   └── smart_provisioning/        # Wi-Fi 配网示例（AP + Web Server）
-├── Doc/                           # 项目文档（中文为主）
+├── docs/                          # 项目文档（中文为主）
 │   ├── Arch/architecture.md       # 固件主循环、状态机、数据流架构
 │   ├── Hardware/pin_definitions.md# 权威引脚定义（v2.3/v2.4.2）
 │   ├── Hardware/CONFIG.md         # 硬件配置说明
@@ -420,20 +420,20 @@ OTA 窗口打开或 OTA 传输进行时会暂停 Serial1 遥测。
 
 | 文档 | 内容 |
 |------|------|
-| `Doc/Arch/architecture.md` | 固件主循环、状态机、数据流、时序分析 |
-| `Doc/Hardware/pin_definitions.md` | MUS4-v2.3/v2.4.2 权威引脚定义与连接图 |
-| `Doc/Hardware/CONFIG.md` | 硬件配置说明 |
-| `Doc/Tools/ArduinoCLI.md` | `arduino-cli.py` 使用说明 |
-| `Doc/Tools/arduino-cli-wsl_manual.md` | WSL 构建脚本背景与排障 |
-| `Doc/Tools/train_tub_driver.md` | Tub JSON 训练工具说明 |
-| `Doc/Tools/mus4_pilot_infer.md` | Pilot 推理工具说明 |
-| `Doc/README/DevNote.md` | 开发环境配置、串口协议、常量表 |
-| `Doc/README/OPERATIONS.md` | 串口运行时操作命令与数据帧 |
-| `Doc/Plan/` | 设计方案与实施路线；新增方案类内容写入此目录 |
-| `Doc/Algo/` | 算法逻辑说明 |
-| `Doc/Inspect/` | 问题排查记录 |
-| `Doc/Guide/` | 操作指南 |
-| `Doc/Valid/` | 验证指南 |
+| `docs/Arch/architecture.md` | 固件主循环、状态机、数据流、时序分析 |
+| `docs/Hardware/pin_definitions.md` | MUS4-v2.3/v2.4.2 权威引脚定义与连接图 |
+| `docs/Hardware/CONFIG.md` | 硬件配置说明 |
+| `docs/Tools/ArduinoCLI.md` | `arduino-cli.py` 使用说明 |
+| `docs/Tools/arduino-cli-wsl_manual.md` | WSL 构建脚本背景与排障 |
+| `docs/Tools/train_tub_driver.md` | Tub JSON 训练工具说明 |
+| `docs/Tools/mus4_pilot_infer.md` | Pilot 推理工具说明 |
+| `docs/README/DevNote.md` | 开发环境配置、串口协议、常量表 |
+| `docs/README/OPERATIONS.md` | 串口运行时操作命令与数据帧 |
+| `docs/Plan/` | 设计方案与实施路线；新增方案类内容写入此目录 |
+| `docs/Algo/` | 算法逻辑说明 |
+| `docs/Inspect/` | 问题排查记录 |
+| `docs/Guide/` | 操作指南 |
+| `docs/Valid/` | 验证指南 |
 | `CHANGELOG.md` | 版本发布记录 |
 | `CLAUDE.md` | 面向 Claude Code 的详细行为参考与编辑安全备忘 |
 

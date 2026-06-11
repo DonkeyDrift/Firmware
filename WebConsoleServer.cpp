@@ -130,7 +130,7 @@ void printWirelessStatus(Print& out)
         wifiWebLogMaxDtMs,
         wifiWebDataMaxDtMs,
         wifiWebCommandMaxDtMs,
-        wifiRuntime.apSsid,
+        getActiveWifiApSsid().c_str(),
         WiFi.softAPIP().toString().c_str(),
         WiFi.softAPgetStationNum(),
         wifiRuntime.staConfigured ? 1 : 0,
@@ -275,8 +275,10 @@ static String wifiApJson()
 {
     String response;
     response.reserve(128);
+    // Return the configured base SSID (<prefix>-ESP) so the config dialog
+    // can edit the prefix. The live broadcast SSID may differ in DEV mode.
     response += "{\"ssid\":";
-    appendJsonString(response, getActiveWifiApSsid().c_str());
+    appendJsonString(response, ws.apSsid);
     response += ",\"ip\":";
     appendJsonString(response, WiFi.softAPIP().toString().c_str());
     response += ",\"clients\":";
@@ -351,7 +353,7 @@ static String wifiStaJson()
     response += ",\"handoff_sta_ip\":";
     appendJsonString(response, ws.staHandoffStaIp[0] ? ws.staHandoffStaIp : wifiStaIpText().c_str());
     response += ",\"handoff_ap_ssid\":";
-    appendJsonString(response, ws.staHandoffApSsid[0] ? ws.staHandoffApSsid : ws.apSsid);
+    appendJsonString(response, ws.staHandoffApSsid[0] ? ws.staHandoffApSsid : getActiveWifiApSsid().c_str());
     response += ",\"handoff_ap_url\":";
     appendJsonString(response, "http://192.168.4.1/");
     response += ",\"handoff_mdns_url\":";

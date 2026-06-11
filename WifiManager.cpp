@@ -307,7 +307,7 @@ void startWifiStaHandoff(const String& targetSsid)
 {
     wifiStaHandoffActive = true;
     targetSsid.toCharArray(wifiStaHandoffTargetSsid, sizeof(wifiStaHandoffTargetSsid));
-    snprintf(wifiStaHandoffApSsid, sizeof(wifiStaHandoffApSsid), "%s", wifiApSsid);
+    snprintf(wifiStaHandoffApSsid, sizeof(wifiStaHandoffApSsid), "%s", getActiveWifiApSsid().c_str());
     wifiStaHandoffStaIp[0] = 0;
     wifiStaHandoffStartedMs = millis();
     ensureWifiApAvailable();

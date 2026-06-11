@@ -6,16 +6,23 @@
 #include "Mus4Log.h"
 #include "SharedTypes.h"
 #include "TUI.h"
+#include "WifiConsoleTypes.h"
 
-extern Preferences mus4Prefs;
 extern TUI tui;
 extern ControlData car_output;
 extern uint16_t pwm_filtered[];
-extern const char* MUS4_PREF_NAMESPACE;
-extern const char* MUS4_PREF_STEER_MIN_KEY;
-extern const char* MUS4_PREF_STEER_MID_KEY;
-extern const char* MUS4_PREF_STEER_MAX_KEY;
-extern const char* MUS4_PREF_STEER_CAL_EN_KEY;
+
+static WifiRuntimeState* g_ws = nullptr;
+
+void setSteeringCalibrationRuntimeState(WifiRuntimeState& ws)
+{
+    g_ws = &ws;
+}
+
+static inline Preferences& prefs()
+{
+    return *g_ws->prefs;
+}
 
 SteeringCalibration steer_cal;
 bool steer_cal_enabled = false;
@@ -29,29 +36,29 @@ void loadSteeringCalibration()
     steer_cal.min_pwm = RC_STEERING_MIN;
     steer_cal.mid_pwm = RC_STEERING_MID;
     steer_cal.max_pwm = RC_STEERING_MAX;
-    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) {
+    if (!prefs().begin(MUS4_PREF_NAMESPACE, true)) {
         steer_cal_enabled = false;
         return;
     }
-    steer_cal_enabled = mus4Prefs.getBool(MUS4_PREF_STEER_CAL_EN_KEY, false);
+    steer_cal_enabled = prefs().getBool(MUS4_PREF_STEER_CAL_EN_KEY, false);
     if (steer_cal_enabled) {
-        steer_cal.min_pwm = (int16_t)mus4Prefs.getShort(MUS4_PREF_STEER_MIN_KEY, RC_STEERING_MIN);
-        steer_cal.mid_pwm = (int16_t)mus4Prefs.getShort(MUS4_PREF_STEER_MID_KEY, RC_STEERING_MID);
-        steer_cal.max_pwm = (int16_t)mus4Prefs.getShort(MUS4_PREF_STEER_MAX_KEY, RC_STEERING_MAX);
+        steer_cal.min_pwm = (int16_t)prefs().getShort(MUS4_PREF_STEER_MIN_KEY, RC_STEERING_MIN);
+        steer_cal.mid_pwm = (int16_t)prefs().getShort(MUS4_PREF_STEER_MID_KEY, RC_STEERING_MID);
+        steer_cal.max_pwm = (int16_t)prefs().getShort(MUS4_PREF_STEER_MAX_KEY, RC_STEERING_MAX);
     }
-    mus4Prefs.end();
+    prefs().end();
     mus4Logf("cal", "steer_cal enabled=%d min=%d mid=%d max=%d",
              steer_cal_enabled ? 1 : 0, steer_cal.min_pwm, steer_cal.mid_pwm, steer_cal.max_pwm);
 }
 
 bool saveSteeringCalibration()
 {
-    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
-    mus4Prefs.putShort(MUS4_PREF_STEER_MIN_KEY, steer_cal.min_pwm);
-    mus4Prefs.putShort(MUS4_PREF_STEER_MID_KEY, steer_cal.mid_pwm);
-    mus4Prefs.putShort(MUS4_PREF_STEER_MAX_KEY, steer_cal.max_pwm);
-    mus4Prefs.putBool(MUS4_PREF_STEER_CAL_EN_KEY, true);
-    mus4Prefs.end();
+    if (!prefs().begin(MUS4_PREF_NAMESPACE, false)) return false;
+    prefs().putShort(MUS4_PREF_STEER_MIN_KEY, steer_cal.min_pwm);
+    prefs().putShort(MUS4_PREF_STEER_MID_KEY, steer_cal.mid_pwm);
+    prefs().putShort(MUS4_PREF_STEER_MAX_KEY, steer_cal.max_pwm);
+    prefs().putBool(MUS4_PREF_STEER_CAL_EN_KEY, true);
+    prefs().end();
     steer_cal_enabled = true;
     mus4Logf("cal", "saved min=%d mid=%d max=%d", steer_cal.min_pwm, steer_cal.mid_pwm, steer_cal.max_pwm);
     return true;
@@ -63,12 +70,12 @@ void resetSteeringCalibration()
     steer_cal.mid_pwm = RC_STEERING_MID;
     steer_cal.max_pwm = RC_STEERING_MAX;
     steer_cal_enabled = false;
-    if (mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) {
-        mus4Prefs.remove(MUS4_PREF_STEER_MIN_KEY);
-        mus4Prefs.remove(MUS4_PREF_STEER_MID_KEY);
-        mus4Prefs.remove(MUS4_PREF_STEER_MAX_KEY);
-        mus4Prefs.remove(MUS4_PREF_STEER_CAL_EN_KEY);
-        mus4Prefs.end();
+    if (prefs().begin(MUS4_PREF_NAMESPACE, false)) {
+        prefs().remove(MUS4_PREF_STEER_MIN_KEY);
+        prefs().remove(MUS4_PREF_STEER_MID_KEY);
+        prefs().remove(MUS4_PREF_STEER_MAX_KEY);
+        prefs().remove(MUS4_PREF_STEER_CAL_EN_KEY);
+        prefs().end();
     }
     mus4LogLine("cal", "reset to defaults");
 }

@@ -6,23 +6,43 @@
 #include "SharedTypes.h"
 #include "SteeringCalibration.h"
 #include "TUI.h"
+#include "RuntimeState.h"
 
 extern TUI tui;
 extern ControlData pilot_data;
 extern int lastSeq;
 
 extern bool processLine(const String& line, int* throttle, int* steering, int* seq);
-extern bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb);
+#ifdef ENABLE_WIFI_CONSOLE
+extern bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb, OtaRuntimeState& os, WifiRuntimeState& ws);
+extern bool processWifiStaConfigCommand(const String& line, Print& out, WifiRuntimeState& ws);
+
+static OtaRuntimeState* g_otaState = nullptr;
+static WifiRuntimeState* g_wifiState = nullptr;
+
+void setCommandDispatcherRuntimeStates(OtaRuntimeState& os, WifiRuntimeState& ws)
+{
+    g_otaState = &os;
+    g_wifiState = &ws;
+}
+#else
 extern bool processWifiStaConfigCommand(const String& line, Print& out);
+#endif
 
 bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb)
 {
-    if (processLocalOtaMaintenanceCommand(line, out, sb)) {
+#ifdef ENABLE_WIFI_CONSOLE
+    if (g_otaState && g_wifiState && processLocalOtaMaintenanceCommand(line, out, sb, *g_otaState, *g_wifiState)) {
         return true;
     }
+    if (g_wifiState && processWifiStaConfigCommand(line, out, *g_wifiState)) {
+        return true;
+    }
+#else
     if (processWifiStaConfigCommand(line, out)) {
         return true;
     }
+#endif
     if (line.equalsIgnoreCase("LOG_WEB")) {
         setMus4LogTargetWeb();
         mus4LogLine("log", mus4LogTarget == MUS4_LOG_TARGET_WEB ? "target=web" : "target=serial wifi_disabled");

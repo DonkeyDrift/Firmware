@@ -3,8 +3,6 @@
 #include "SharedTypes.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
-extern bool wifiConsoleAuthenticated;
-extern bool wifiDevModeEnabled;
 extern ControlData car_output;
 
 String redactWirelessConsoleLine(const String& line)
@@ -84,14 +82,14 @@ bool isParkLockedWirelessCommand(const String& line)
         line.equalsIgnoreCase("FILTER_TEST");
 }
 
-bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin)
+bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, WifiRuntimeState& ws)
 {
-    bool webDevMode = wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB;
+    bool webDevMode = ws.devModeEnabled && origin == WIRELESS_ORIGIN_WEB;
     if (line.equalsIgnoreCase("PING") || line.equalsIgnoreCase("STATUS") || line.equalsIgnoreCase("WIFI_STA_STATUS")) return true;
     if (line.startsWith("AUTH:")) return true;
-    if (isWirelessOtaOpenCommand(line)) return (webDevMode || wifiConsoleAuthenticated) && car_output.park == PARK_LOCKED;
-    if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || wifiConsoleAuthenticated;
-    if (!wifiConsoleAuthenticated && !webDevMode) return false;
+    if (isWirelessOtaOpenCommand(line)) return (webDevMode || ws.consoleAuthenticated) && car_output.park == PARK_LOCKED;
+    if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || ws.consoleAuthenticated;
+    if (!ws.consoleAuthenticated && !webDevMode) return false;
     if (isParkLockedWirelessCommand(line)) return car_output.park == PARK_LOCKED;
     if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || isWifiStaConfigCommand(line)) return true;
     return isWirelessControlCommand(line);

@@ -133,6 +133,7 @@ unsigned long outputTTL = 100;
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
 #ifdef ENABLE_WIFI_CONSOLE
+#include "RuntimeState.h"
 void ensureWifiOtaStarted();
 #if __has_include("WirelessSecrets.h")
 #include "WirelessSecrets.h"
@@ -156,40 +157,50 @@ WebLogEntry wifiWebLogs[WIFI_WEB_LOG_CAPACITY];
 WifiScanEntry wifiScanCache[16];
 uint8_t wifiScanCacheCount = 0;
 WebDataPoint wifiWebData[WIFI_WEB_DATA_CAPACITY];
-bool wifiConsoleStarted = false;
-bool wifiConsoleAuthenticated = false;
-bool wifiStaConfigured = false;
-bool wifiStaConnected = false;
-bool wifiStaTimedOut = false;
-bool wifiStaConnecting = false;
-char wifiStaLastError[24] = {0};
-char wifiStaLastErrorMessage[128] = {0};
-bool wifiStaApplyPending = false;
-bool wifiApRestartPending = false;
-bool wifiMdnsStarted = false;
-bool wifiOtaStarted = false;
-bool wifiOtaWindowOpen = false;
-bool wifiOtaInProgress = false;
-bool wifiOtaParkGuardActive = false;
-bool wifiStaHandoffActive = false;
-char wifiStaHandoffTargetSsid[WIFI_STA_SSID_MAX_LEN + 1] = {0};
-char wifiStaHandoffStaIp[16] = {0};
-char wifiStaHandoffApSsid[WIFI_AP_SSID_MAX_LEN + 1] = {0};
-unsigned long wifiStaHandoffStartedMs = 0;
+// Aggregated runtime state passed by reference into wireless/STA/OTA modules.
+// Existing code in this file continues to use the original names via
+// reference/pointer aliases declared immediately below.
+WifiRuntimeState wifiRuntime;
+OtaRuntimeState otaRuntime;
+
+// Wi-Fi runtime state aliases
+bool& wifiConsoleStarted = wifiRuntime.consoleStarted;
+bool& wifiConsoleAuthenticated = wifiRuntime.consoleAuthenticated;
+bool& wifiStaConfigured = wifiRuntime.staConfigured;
+bool& wifiStaConnected = wifiRuntime.staConnected;
+bool& wifiStaTimedOut = wifiRuntime.staTimedOut;
+bool& wifiStaConnecting = wifiRuntime.staConnecting;
+char* const wifiStaLastError = wifiRuntime.staLastError;
+char* const wifiStaLastErrorMessage = wifiRuntime.staLastErrorMessage;
+bool& wifiStaApplyPending = wifiRuntime.staApplyPending;
+bool& wifiApRestartPending = wifiRuntime.apRestartPending;
+bool& wifiMdnsStarted = wifiRuntime.mdnsStarted;
+bool& wifiStaHandoffActive = wifiRuntime.staHandoffActive;
+char* const wifiStaHandoffTargetSsid = wifiRuntime.staHandoffTargetSsid;
+char* const wifiStaHandoffStaIp = wifiRuntime.staHandoffStaIp;
+char* const wifiStaHandoffApSsid = wifiRuntime.staHandoffApSsid;
+unsigned long& wifiStaHandoffStartedMs = wifiRuntime.staHandoffStartedMs;
+bool& wifiDevModeEnabled = wifiRuntime.devModeEnabled;
+char* const wifiApSsid = wifiRuntime.apSsid;
+char* const wifiStaSsid = wifiRuntime.staSsid;
+char* const wifiStaPassword = wifiRuntime.staPassword;
+bool& wifiStaPasswordSet = wifiRuntime.staPasswordSet;
+unsigned long& lastWifiConsoleStartAttemptMs = wifiRuntime.lastConsoleStartAttemptMs;
+unsigned long& wifiStaConnectStartMs = wifiRuntime.staConnectStartMs;
+unsigned long& wifiStaApplyDeadlineMs = wifiRuntime.staApplyDeadlineMs;
+unsigned long& wifiApRestartDeadlineMs = wifiRuntime.apRestartDeadlineMs;
+
+// OTA runtime state aliases
+bool& wifiOtaStarted = otaRuntime.started;
+bool& wifiOtaWindowOpen = otaRuntime.windowOpen;
+bool& wifiOtaInProgress = otaRuntime.inProgress;
+bool& wifiOtaParkGuardActive = otaRuntime.parkGuardActive;
+unsigned long& wifiOtaDeadlineMs = otaRuntime.deadlineMs;
+uint8_t& wifiOtaLastProgressPct = otaRuntime.lastProgressPct;
+
+// Web-local state (not yet migrated into aggregates; will move with WebConsoleServer/WebTelemetry)
 static bool wifiWebUpdateError = false;
 static size_t wifiWebUpdateReceived = 0;
-
-bool wifiDevModeEnabled = false;
-char wifiApSsid[WIFI_AP_SSID_MAX_LEN + 1] = {0};
-char wifiStaSsid[WIFI_STA_SSID_MAX_LEN + 1] = {0};
-char wifiStaPassword[WIFI_STA_PASSWORD_MAX_LEN + 1] = {0};
-bool wifiStaPasswordSet = false;
-Preferences mus4Prefs;
-unsigned long lastWifiConsoleStartAttemptMs = 0;
-unsigned long wifiStaConnectStartMs = 0;
-unsigned long wifiStaApplyDeadlineMs = 0;
-unsigned long wifiApRestartDeadlineMs = 0;
-unsigned long wifiOtaDeadlineMs = 0;
 unsigned long lastWifiWebDataSampleMs = 0;
 uint32_t wifiWebLogSeq = 0;
 uint32_t wifiWebLogDropped = 0;
@@ -227,7 +238,10 @@ unsigned long lastWifiWebSocketPushMs = 0;
 String wifiWebSocketPayload;
 uint8_t wifiWebSocketBinaryPayload[256];
 #endif
-uint8_t wifiOtaLastProgressPct = 0;
+
+// Preferences remains a standalone global object; the runtime state keeps a
+// pointer to it so that modules can access it without an extra extern.
+Preferences mus4Prefs;
 #endif
 int lastSeq = -1;                     // Last received sequence number
 
@@ -303,9 +317,9 @@ static bool saveDevModePreference(bool enabled)
     if (written == 0) return false;
     wifiDevModeEnabled = enabled;
     if (wifiDevModeEnabled) {
-        keepDevModeOtaWindowActive();
+        keepDevModeOtaWindowActive(otaRuntime, wifiRuntime);
     } else if (wifiOtaWindowOpen && !wifiOtaInProgress) {
-        closeWifiOtaWindow("DEV_MODE_OFF");
+        closeWifiOtaWindow("DEV_MODE_OFF", otaRuntime);
     }
     mus4Logf("wifi", "dev_mode saved=%d", wifiDevModeEnabled ? 1 : 0);
     return true;
@@ -544,7 +558,7 @@ static void printWirelessStatus(Print& out)
         wifiConsoleBuf.errors,
         wifiOtaWindowOpen ? 1 : 0,
         wifiOtaLastProgressPct,
-        wifiOtaTtlMs(),
+        wifiOtaTtlMs(otaRuntime, wifiRuntime),
         wifiDevModeEnabled ? 1 : 0,
         wifiOtaParkGuardActive ? 1 : 0,
         MUS4_FIRMWARE_VERSION,
@@ -614,7 +628,9 @@ static void setupWifiOtaCallbacks()
         wifiOtaInProgress = false;
         if (wifiDevModeEnabled) {
             wifiOtaParkGuardActive = false;
-            keepDevModeOtaWindowActive();
+            ensureWifiOtaStarted();
+            otaRuntime.windowOpen = true;
+            otaRuntime.deadlineMs = millis() + 120000UL;
         } else {
             wifiOtaWindowOpen = false;
             wifiOtaParkGuardActive = false;
@@ -629,7 +645,9 @@ static void setupWifiOtaCallbacks()
         wifiOtaInProgress = false;
         if (wifiDevModeEnabled) {
             wifiOtaParkGuardActive = false;
-            keepDevModeOtaWindowActive();
+            ensureWifiOtaStarted();
+            otaRuntime.windowOpen = true;
+            otaRuntime.deadlineMs = millis() + 120000UL;
         } else {
             wifiOtaWindowOpen = false;
             wifiOtaParkGuardActive = false;
@@ -662,7 +680,7 @@ static void processWirelessConsoleLine(const String& line, Print& out, WirelessC
         out.println(wifiConsoleAuthenticated ? "AUTH_OK" : "AUTH_FAIL");
         return;
     }
-    if (!isWirelessCommandAllowed(line, origin)) {
+    if (!isWirelessCommandAllowed(line, origin, wifiRuntime)) {
         bool webDevMode = wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB;
         if (isParkLockedWirelessCommand(line) && car_output.park != PARK_LOCKED && (wifiConsoleAuthenticated || webDevMode)) {
             out.println("NACK:PARK_REQUIRED");
@@ -673,19 +691,19 @@ static void processWirelessConsoleLine(const String& line, Print& out, WirelessC
         return;
     }
     if (isWirelessOtaOpenCommand(line)) {
-        openWifiOtaWindow(out, origin);
+        openWifiOtaWindow(out, origin, otaRuntime, wifiRuntime);
         return;
     }
     if (isWirelessOtaStatusCommand(line)) {
-        printWifiOtaStatus(out);
+        printWifiOtaStatus(out, otaRuntime, wifiRuntime);
         return;
     }
     if (isWirelessOtaCloseCommand(line)) {
-        closeWifiOtaWindow("USER");
+        closeWifiOtaWindow("USER", otaRuntime);
         out.println("OTA_CLOSED");
         return;
     }
-    if (processWifiStaConfigCommand(line, out)) {
+    if (processWifiStaConfigCommand(line, out, wifiRuntime)) {
         return;
     }
     dispatchCommandLine(line, out, wifiConsoleBuf);
@@ -1941,6 +1959,17 @@ void mode_change(bool modeValid) // Switch driving mode according to the RC mode
 
 void setup()
 {
+    // Bind the shared Preferences instance into the runtime state before any
+    // module uses wifiRuntime.prefs.
+    wifiRuntime.prefs = &mus4Prefs;
+
+    // Provide runtime state references to modules that were previously using
+    // scattered extern bool/char variables.
+    setWifiRuntimeState(wifiRuntime);
+    setWifiIdentityRuntimeState(wifiRuntime);
+    setSteeringCalibrationRuntimeState(wifiRuntime);
+    setCommandDispatcherRuntimeStates(otaRuntime, wifiRuntime);
+
     pinMode(UART_SEL, OUTPUT);
     // digitalWrite(UART_SEL, HIGH);
     digitalWrite(UART_SEL, LOW);
@@ -1968,7 +1997,7 @@ void setup()
       loadWifiStaPreference();
       loadSteeringCalibration();
       setupWifiConsole();
-      keepDevModeOtaWindowActive();
+      keepDevModeOtaWindowActive(otaRuntime, wifiRuntime);
     #endif
 
     g_i2cWorkingSpeed = I2C_SPEED;
@@ -2035,7 +2064,7 @@ void loop()
       updateWifiConsole();
       updateWifiWebConsole();
       updateWifiSta();
-      updateWifiOta();
+      updateWifiOta(otaRuntime, wifiRuntime);
     #endif
 
     // RC signal readout: check timeout and validity, then apply moving-average filtering (with update interval control)
@@ -2230,7 +2259,7 @@ void loop()
 
     if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
     {
-        if (shouldEmitSerial1Telemetry()) {
+        if (shouldEmitSerial1Telemetry(otaRuntime)) {
             Serial1.printf("T%d:S%d\n", car_output.throttle, car_output.steering); // RC => Type-C
         }
         lastRCDataUpdate = millis();

@@ -3,7 +3,17 @@
 #ifdef ENABLE_WIFI_CONSOLE
 static const uint8_t WIFI_IDENTITY_AP_SSID_MAX_LEN = 32;
 
-extern char wifiApSsid[];
+static WifiRuntimeState* g_ws = nullptr;
+
+void setWifiIdentityRuntimeState(WifiRuntimeState& ws)
+{
+    g_ws = &ws;
+}
+
+static inline char* apSsid()
+{
+    return g_ws ? g_ws->apSsid : nullptr;
+}
 
 bool isMdnsSafeHostnameChar(char c)
 {
@@ -26,13 +36,16 @@ bool isMdnsSafeHostname(const String& value)
 bool copyWifiApSsid(const String& ssid)
 {
     if (!isMdnsSafeHostname(ssid)) return false;
-    ssid.toCharArray(wifiApSsid, WIFI_IDENTITY_AP_SSID_MAX_LEN + 1);
+    char* s = apSsid();
+    if (!s) return false;
+    ssid.toCharArray(s, WIFI_IDENTITY_AP_SSID_MAX_LEN + 1);
     return true;
 }
 
 String wifiMdnsHostText()
 {
-    String host = String(wifiApSsid);
+    char* s = apSsid();
+    String host = s ? String(s) : String("");
     host.toLowerCase();
     return host;
 }

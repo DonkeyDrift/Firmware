@@ -1818,3 +1818,73 @@ def test_web_console_handles_common_captive_portal_probes_locally():
     assert 'uri.startsWith("/api/")' in not_found_body
     assert 'wifiWebServer.send(404, "application/json", "{\\"error\\":\\"not_found\\"}")' in not_found_body
     assert "redirectWifiWebCaptivePortalToRoot()" in not_found_body
+
+
+def test_wifi_discovery_compile_switches_exist():
+    source = (PROJECT_ROOT / "FirmwareConfig.h").read_text(encoding="utf-8")
+    assert "#define ENABLE_WIFI_NETBIOS_DISCOVERY" in source
+    assert "#define ENABLE_WIFI_LLMNR_DISCOVERY" in source
+    assert "#ifdef ENABLE_WIFI_CONSOLE" in source
+    assert source.index("#define ENABLE_WIFI_NETBIOS_DISCOVERY") > source.index("#ifdef ENABLE_WIFI_CONSOLE")
+
+
+def test_wifi_netbios_lifecycle_follows_sta_connection():
+    source = firmware_source_text()
+
+    apply_body = re.search(
+        r"(?:static )?void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    update_sta_body = re.search(
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    connected_branch = update_sta_body.split("if (status == WL_CONNECTED)", 1)[1].split("if (wifiStaConnected)", 1)[0]
+    disconnected_branch = update_sta_body.split("if (wifiStaConnected)", 1)[1].split("if (!wifiStaConnecting)", 1)[0]
+
+    assert "stopWifiNetbiosIfNeeded()" in apply_body
+    assert "startWifiNetbiosIfNeeded()" in connected_branch
+    assert "stopWifiNetbiosIfNeeded()" in disconnected_branch
+
+
+def test_wifi_llmnr_lifecycle_follows_sta_connection():
+    source = firmware_source_text()
+
+    apply_body = re.search(
+        r"(?:static )?void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    update_sta_body = re.search(
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    update_console_body = re.search(
+        r"(?:static )?void updateWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    connected_branch = update_sta_body.split("if (status == WL_CONNECTED)", 1)[1].split("if (wifiStaConnected)", 1)[0]
+    disconnected_branch = update_sta_body.split("if (wifiStaConnected)", 1)[1].split("if (!wifiStaConnecting)", 1)[0]
+
+    assert "stopWifiLlmnrIfNeeded()" in apply_body
+    assert "startWifiLlmnrIfNeeded()" in connected_branch
+    assert "stopWifiLlmnrIfNeeded()" in disconnected_branch
+    assert "processLlmnrPacket()" in update_console_body
+
+
+def test_wifi_sta_credentials_set_dhcp_hostname():
+    source = firmware_source_text()
+
+    apply_body = re.search(
+        r"(?:static )?void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "WiFi.setHostname(" in apply_body
+    assert "wifiMdnsHostText().c_str()" in apply_body
+    assert apply_body.index("WiFi.setHostname(") < apply_body.index("WiFi.begin(")

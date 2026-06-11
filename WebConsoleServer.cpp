@@ -61,7 +61,7 @@ extern bool saveWifiApPreference(const String& ssid);
 extern void sampleWifiWebData();
 
 // Web-local state (moved from MUS4_FW.ino)
-static bool wifiWebUpdateError = false;
+static String wifiWebUpdateErrorMsg;
 static size_t wifiWebUpdateReceived = 0;
 static unsigned long lastWifiWebUpdateMs = 0;
 static uint32_t wifiWebUpdateMaxDtMs = 0;
@@ -629,20 +629,30 @@ static void handleWifiWebUpdateGet()
     wifiWebServer.send_P(200, "text/html", WIFI_WEB_UPDATE_HTML);
 }
 
+static bool isWifiWebUpdateAuthOk()
+{
+    if (ws.devModeEnabled) return true;
+    if (ws.consoleAuthenticated) return true;
+    // Allow one-shot auth via query parameter for scripted uploads
+    if (wifiWebServer.hasArg("auth") && wifiWebServer.arg("auth").equals(WIFI_CONSOLE_AP_PASSWORD)) {
+        return true;
+    }
+    return false;
+}
+
 static void handleWifiWebUpdateUpload()
 {
     HTTPUpload& upload = wifiWebServer.upload();
     if (upload.status == UPLOAD_FILE_START) {
-        wifiWebUpdateError = false;
+        wifiWebUpdateErrorMsg = "";
         wifiWebUpdateReceived = 0;
-        bool webDevMode = ws.devModeEnabled;
-        if (!webDevMode && !ws.consoleAuthenticated) {
-            wifiWebUpdateError = true;
+        if (!isWifiWebUpdateAuthOk()) {
+            wifiWebUpdateErrorMsg = "NACK:AUTH_REQUIRED";
             mus4LogLine("ota", "http update rejected: auth required");
             return;
         }
         if (car_output.park != PARK_LOCKED) {
-            wifiWebUpdateError = true;
+            wifiWebUpdateErrorMsg = "NACK:PARK_REQUIRED";
             mus4LogLine("ota", "http update rejected: park required");
             return;
         }
@@ -652,15 +662,15 @@ static void handleWifiWebUpdateUpload()
         os.windowOpen = true;
         os.lastProgressPct = 0;
         if (!Update.begin(upload.totalSize > 0 ? upload.totalSize : UPDATE_SIZE_UNKNOWN)) {
-            wifiWebUpdateError = true;
+            wifiWebUpdateErrorMsg = "NACK:BEGIN_FAILED:" + String(Update.errorString());
             mus4Logf("ota", "http update begin failed: %s", Update.errorString());
         } else {
             mus4LogLine("ota", "http update begin");
         }
     } else if (upload.status == UPLOAD_FILE_WRITE) {
-        if (wifiWebUpdateError) return;
+        if (wifiWebUpdateErrorMsg.length() > 0) return;
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-            wifiWebUpdateError = true;
+            wifiWebUpdateErrorMsg = "NACK:WRITE_FAILED";
             mus4Logf("ota", "http update write failed at %u", wifiWebUpdateReceived);
         } else {
             wifiWebUpdateReceived += upload.currentSize;
@@ -669,12 +679,12 @@ static void handleWifiWebUpdateUpload()
             }
         }
     } else if (upload.status == UPLOAD_FILE_END) {
-        if (wifiWebUpdateError) {
+        if (wifiWebUpdateErrorMsg.length() > 0) {
             Update.end();
             return;
         }
         if (!Update.end(true)) {
-            wifiWebUpdateError = true;
+            wifiWebUpdateErrorMsg = "NACK:END_FAILED:" + String(Update.errorString());
             mus4Logf("ota", "http update end failed: %s", Update.errorString());
         } else {
             os.lastProgressPct = 100;
@@ -682,7 +692,7 @@ static void handleWifiWebUpdateUpload()
         }
     } else if (upload.status == UPLOAD_FILE_ABORTED) {
         Update.end();
-        wifiWebUpdateError = true;
+        wifiWebUpdateErrorMsg = "NACK:ABORTED";
         os.inProgress = false;
         mus4LogLine("ota", "http update aborted");
     }
@@ -692,8 +702,8 @@ static void handleWifiWebUpdatePost()
 {
     unsigned long startedMs = millis();
     sendWifiWebApiHeaders();
-    if (wifiWebUpdateError) {
-        wifiWebServer.send(500, "text/plain", "NACK:UPDATE_FAILED\n");
+    if (wifiWebUpdateErrorMsg.length() > 0) {
+        wifiWebServer.send(500, "text/plain", wifiWebUpdateErrorMsg + "\n");
         recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
         return;
     }

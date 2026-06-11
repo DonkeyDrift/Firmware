@@ -99,6 +99,9 @@ param(
     [Parameter(HelpMessage="HTTP OTA target host or IP (default: read from .mus4_ota_target)")]
     [string]$HttpOtaHost,
 
+    [Parameter(HelpMessage="HTTP OTA Web Console password (default: mus4-debug)")]
+    [string]$HttpOtaPassword = "mus4-debug",
+
     [Parameter(HelpMessage="Arduino Sketch file path (default: auto-detect)")]
     [Alias("i")]
     [string]$Sketch,
@@ -561,17 +564,31 @@ function Get-HttpOtaTarget {
 function Invoke-HttpOtaUpload {
     param(
         [Parameter(Mandatory=$true)][string]$BinPath,
-        [Parameter(Mandatory=$true)][string]$TargetHost
+        [Parameter(Mandatory=$true)][string]$TargetHost,
+        [Parameter(Mandatory=$false)][string]$Password = "mus4-debug"
     )
     if (-not (Test-Path $BinPath)) {
         Write-Error "Binary file not found: $BinPath"
         return $false
     }
 
-    $uri = "http://$TargetHost/update"
-    Write-Host "`n>>> HTTP OTA Upload to $uri" -ForegroundColor Cyan
+    $baseUri = "http://$TargetHost"
+    $updateUri = "$baseUri/update?auth=$Password"
+    Write-Host "`n>>> HTTP OTA Upload to $updateUri" -ForegroundColor Cyan
     Write-Host "    Firmware: $BinPath" -ForegroundColor Gray
-    Write-Host "    Note: requires Web Console auth + Park locked (or dev mode enabled)" -ForegroundColor DarkGray
+
+    # 预检：认证 + 打开 OTA 窗口（强制 Park 锁定）
+    Write-Host "    Pre-flight: authenticating and opening OTA window..." -ForegroundColor DarkGray
+    $authBody = "AUTH:$Password"
+    $authResponse = curl.exe -s -X POST "$baseUri/api/cmd" -H "Content-Type: text/plain" --data "$authBody" --connect-timeout 10 --max-time 30
+    if ($authResponse -notmatch "AUTH_OK") {
+        Write-Warning "Auth pre-flight did not return AUTH_OK (response: $authResponse). Continuing anyway (device may already be authenticated or in dev mode)."
+    }
+
+    $enableOtaResponse = curl.exe -s -X POST "$baseUri/api/cmd" -H "Content-Type: text/plain" --data "ENABLE_OTA" --connect-timeout 10 --max-time 30
+    if ($enableOtaResponse -notmatch "OTA_READY") {
+        Write-Warning "ENABLE_OTA pre-flight did not return OTA_READY (response: $enableOtaResponse). Continuing anyway (OTA window may already be open)."
+    }
 
     # 确保使用绝对路径，避免 curl 解析相对路径问题
     $absBinPath = Resolve-Path $BinPath
@@ -582,7 +599,12 @@ function Invoke-HttpOtaUpload {
         "-F", "firmware=@$absBinPath;type=application/octet-stream",
         "--progress-bar",
         "--fail",
-        $uri
+        "--connect-timeout", "10",
+        "--max-time", "180",
+        "--retry", "2",
+        "--retry-delay", "3",
+        "--retry-connrefused",
+        $updateUri
     )
 
     $prevEAP = $ErrorActionPreference
@@ -603,7 +625,8 @@ function Invoke-HttpOtaUpload {
         return $true
     } else {
         Write-Host "`n>>> HTTP OTA Upload Failed (curl exit code: $exitCode)" -ForegroundColor Red
-        Write-Host "    Tips: check Web Console auth, Park lock, and target availability." -ForegroundColor Yellow
+        Write-Host "    Tips: check device Wi-Fi connection, ensure Park is locked, and verify the password." -ForegroundColor Yellow
+        Write-Host "    Common causes: auth expired, Park not locked, low free heap, or partition too small." -ForegroundColor Yellow
         return $false
     }
 }
@@ -1367,7 +1390,7 @@ if ($Upload -or $Serial) {
             Write-Error "HTTP OTA 需要指定目标主机。请使用 -HttpOtaHost 参数，或在项目根目录创建 .mus4_ota_target 文件（每行一个 IP/主机名）。"
             exit 1
         }
-        $success = Invoke-HttpOtaUpload -BinPath $BinPath -TargetHost $HttpOtaHost
+        $success = Invoke-HttpOtaUpload -BinPath $BinPath -TargetHost $HttpOtaHost -Password $HttpOtaPassword
         if (-not $success) { exit 1 }
     } else {
         # 原有上传路径：串口 / ArduinoOTA

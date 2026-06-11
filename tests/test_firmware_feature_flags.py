@@ -788,6 +788,76 @@ def test_rc_interrupt_state_keeps_iram_and_volatile_guards():
     assert "void setupRcPwmCapture()" in source
 
 
+def test_rc_pwm_capture_is_split_from_sketch():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    capture_source = (PROJECT_ROOT / "RcPwmCapture.cpp").read_text(encoding="utf-8")
+
+    assert "#include \"RcPwmCapture.h\"" in sketch_source
+    assert "static void IRAM_ATTR acceptRcPulse" not in sketch_source
+    assert "void IRAM_ATTR handle_interrupt" not in sketch_source
+    assert "void IRAM_ATTR CH1_interrupt()" not in sketch_source
+    assert "void (*isr_functions[RC_CHANNEL_COUNT])()" not in sketch_source
+    assert "mcpwm_new_capture_timer" not in sketch_source
+    assert "static void IRAM_ATTR acceptRcPulse" in capture_source
+    assert "void IRAM_ATTR handle_interrupt" in capture_source
+    assert "void IRAM_ATTR CH1_interrupt()" in capture_source
+    assert "void (*isr_functions[RC_CHANNEL_COUNT])()" in capture_source
+    assert "void setupRcPwmCapture()" in capture_source
+
+
+def test_control_mixer_is_split_from_sketch():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    mixer_source = (PROJECT_ROOT / "ControlMixer.cpp").read_text(encoding="utf-8")
+
+    assert "#include \"ControlMixer.h\"" in sketch_source
+    assert "void mode_change(bool modeValid)" not in sketch_source
+    assert "void updateControlOutput()" not in sketch_source
+    assert "int lastCarMode = -1" not in sketch_source
+    assert "int carOutputModeLast = -1" not in sketch_source
+    assert "void mode_change(bool modeValid)" in mixer_source
+    assert "void updateControlOutput()" in mixer_source
+    assert "buzzer.playModeSound" in mixer_source
+    assert "sendGamepadPacket()" in mixer_source
+    assert "apply_drift_assist" in mixer_source
+
+
+def test_safety_state_is_split_from_sketch():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    safety_header = (PROJECT_ROOT / "SafetyState.h").read_text(encoding="utf-8")
+    safety_source = (PROJECT_ROOT / "SafetyState.cpp").read_text(encoding="utf-8")
+
+    assert "#include \"SafetyState.h\"" in sketch_source
+    assert "void emergencyStop()" not in sketch_source
+    assert "void park_change()" not in sketch_source
+    assert "enum EmergencyStopState" not in sketch_source
+    assert "EmergencyStopState emergencyStopState" not in sketch_source
+    assert "enum EmergencyStopState" in safety_header
+    assert "extern EmergencyStopState emergencyStopState" in safety_header
+    assert "void emergencyStop()" in safety_source
+    assert "void park_change()" in safety_source
+    assert "EmergencyStopState emergencyStopState = EST_IDLE" in safety_source
+    assert "buzzer.playParkUnlockSound()" in safety_source
+    assert "buzzer.playParkLockSound()" in safety_source
+
+
+def test_actuator_output_is_split_from_sketch():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    actuator_source = (PROJECT_ROOT / "ActuatorOutput.cpp").read_text(encoding="utf-8")
+
+    assert "#include \"ActuatorOutput.h\"" in sketch_source
+    assert "ledcAttachChannel(STEERING_PIN" not in sketch_source
+    assert "ledcWriteChannel(CH_STEERING" not in sketch_source
+    assert "ledcAttachChannel(THROTTLE_PIN" not in sketch_source
+    assert "ledcWriteChannel(CH_THROTTLE" not in sketch_source
+    assert "setupActuatorOutput()" in sketch_source
+    assert "updateActuatorOutput()" in sketch_source
+    assert "void setupActuatorOutput()" in actuator_source
+    assert "void updateActuatorOutput()" in actuator_source
+    assert "ledcAttachChannel(STEERING_PIN" in actuator_source
+    assert "ledcWriteChannel(CH_STEERING" in actuator_source
+    assert "extern const int SERVO_MID_V = 7372" in actuator_source
+    assert "extern const int SERVO_RANGE_V = 2458" in actuator_source
+
 
 def test_wifi_ota_status_helpers_are_split_from_sketch():
     source = firmware_source_text()

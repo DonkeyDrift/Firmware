@@ -13,6 +13,16 @@ bool saveDevModePreference(bool enabled);
 void startWifiMdnsIfNeeded();
 void stopWifiMdnsIfNeeded();
 
+#ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
+void startWifiNetbiosIfNeeded();
+void stopWifiNetbiosIfNeeded();
+#endif
+
+#ifdef ENABLE_WIFI_LLMNR_DISCOVERY
+void startWifiLlmnrIfNeeded();
+void stopWifiLlmnrIfNeeded();
+#endif
+
 void clearWifiStaHandoff();
 void finishWifiStaHandoff();
 void startWifiStaHandoff(const String& targetSsid);

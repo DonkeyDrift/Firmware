@@ -17,6 +17,12 @@
 #include <Preferences.h>
 #include <ESPmDNS.h>
 #include <esp_wifi.h>
+#ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
+#include <NetBIOS.h>
+#endif
+#ifdef ENABLE_WIFI_LLMNR_DISCOVERY
+#include <WiFiUdp.h>
+#endif
 
 // Hardware objects defined in MUS4_FW.ino
 extern Preferences mus4Prefs;
@@ -74,6 +80,106 @@ extern uint32_t wifiWebDataSeq;
 // Wi-Fi scan cache (defined in MUS4_FW.ino)
 extern WifiScanEntry wifiScanCache[];
 extern uint8_t wifiScanCacheCount;
+
+#ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
+static bool wifiNetbiosStarted = false;
+#endif
+
+#ifdef ENABLE_WIFI_LLMNR_DISCOVERY
+static WiFiUDP wifiLlmnrUdp;
+static bool wifiLlmnrStarted = false;
+static const uint16_t LLMNR_PORT = 5355;
+static const IPAddress LLMNR_MULTICAST_IP(224, 0, 0, 252);
+
+static bool isLlmnrQueryForHost(const uint8_t* data, uint16_t len, const String& host)
+{
+    if (len < host.length() + 5) return false;
+    uint8_t labelLen = data[0];
+    if (labelLen != host.length()) return false;
+    for (uint8_t i = 0; i < labelLen; i++) {
+        if (tolower(data[1 + i]) != tolower(host[i])) return false;
+    }
+    if (data[1 + labelLen] != 0) return false;
+    uint16_t qtype = (data[2 + labelLen] << 8) | data[3 + labelLen];
+    uint16_t qclass = (data[4 + labelLen] << 8) | data[5 + labelLen];
+    return qtype == 0x0001 && qclass == 0x0001;
+}
+
+static void processLlmnrPacket()
+{
+    if (!wifiLlmnrStarted) return;
+    int packetSize = wifiLlmnrUdp.parsePacket();
+    if (packetSize < 9) return;
+
+    uint8_t buffer[256];
+    int len = wifiLlmnrUdp.read(buffer, sizeof(buffer));
+    if (len < 9) return;
+
+    // Must be a query (QR bit clear)
+    if (len >= 3 && (buffer[2] & 0x80)) return;
+
+    String host = wifiMdnsHostText();
+    if (len < 12 + (int)host.length() + 5) return;
+    if (!isLlmnrQueryForHost(buffer + 12, len - 12, host)) return;
+
+    IPAddress remoteIp = wifiLlmnrUdp.remoteIP();
+    uint16_t remotePort = wifiLlmnrUdp.remotePort();
+    uint16_t queryId = (buffer[0] << 8) | buffer[1];
+
+    uint8_t response[128];
+    uint16_t idx = 0;
+
+    // Header
+    response[idx++] = (queryId >> 8) & 0xFF;
+    response[idx++] = queryId & 0xFF;
+    response[idx++] = 0x80; // QR=1 (response)
+    response[idx++] = 0x00;
+    response[idx++] = 0x00; // QDCOUNT = 1
+    response[idx++] = 0x01;
+    response[idx++] = 0x00; // ANCOUNT = 1
+    response[idx++] = 0x01;
+    response[idx++] = 0x00; // NSCOUNT = 0
+    response[idx++] = 0x00;
+    response[idx++] = 0x00; // ARCOUNT = 0
+    response[idx++] = 0x00;
+
+    // Question section (embedded name at offset 12 for C00C pointer)
+    uint8_t nameLen = host.length();
+    response[idx++] = nameLen;
+    for (uint8_t i = 0; i < nameLen; i++) {
+        response[idx++] = tolower(host[i]);
+    }
+    response[idx++] = 0x00;
+    response[idx++] = 0x00; // Type A
+    response[idx++] = 0x01;
+    response[idx++] = 0x00; // Class IN
+    response[idx++] = 0x01;
+
+    // Answer section (pointer C00C to question name)
+    response[idx++] = 0xC0;
+    response[idx++] = 0x0C;
+    response[idx++] = 0x00; // Type A
+    response[idx++] = 0x01;
+    response[idx++] = 0x00; // Class IN
+    response[idx++] = 0x01;
+    response[idx++] = 0x00; // TTL = 300
+    response[idx++] = 0x00;
+    response[idx++] = 0x01;
+    response[idx++] = 0x2C;
+    response[idx++] = 0x00; // RDLENGTH = 4
+    response[idx++] = 0x04;
+
+    IPAddress localIp = WiFi.localIP();
+    response[idx++] = localIp[0];
+    response[idx++] = localIp[1];
+    response[idx++] = localIp[2];
+    response[idx++] = localIp[3];
+
+    wifiLlmnrUdp.beginPacket(remoteIp, remotePort);
+    wifiLlmnrUdp.write(response, idx);
+    wifiLlmnrUdp.endPacket();
+}
+#endif // ENABLE_WIFI_LLMNR_DISCOVERY
 
 // Web console layer (defined in other modules)
 extern void setupWebConsoleServer();
@@ -135,6 +241,51 @@ void stopWifiMdnsIfNeeded()
     mus4LogLine("wifi", "mDNS stopped");
 }
 
+#ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
+void startWifiNetbiosIfNeeded()
+{
+    if (wifiNetbiosStarted) return;
+    if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) return;
+    if (!NBNS.begin(wifiMdnsHostText().c_str())) {
+        mus4LogLine("wifi", "NetBIOS start failed");
+        return;
+    }
+    wifiNetbiosStarted = true;
+    mus4Logf("wifi", "NetBIOS started: %s", wifiMdnsHostText().c_str());
+}
+
+void stopWifiNetbiosIfNeeded()
+{
+    if (!wifiNetbiosStarted) return;
+    NBNS.end();
+    wifiNetbiosStarted = false;
+    mus4LogLine("wifi", "NetBIOS stopped");
+}
+#endif
+
+#ifdef ENABLE_WIFI_LLMNR_DISCOVERY
+void startWifiLlmnrIfNeeded()
+{
+    if (wifiLlmnrStarted) return;
+    if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) return;
+    if (!wifiLlmnrUdp.begin(LLMNR_PORT)) {
+        mus4LogLine("wifi", "LLMNR start failed");
+        return;
+    }
+    wifiLlmnrUdp.beginMulticast(LLMNR_MULTICAST_IP, LLMNR_PORT);
+    wifiLlmnrStarted = true;
+    mus4Logf("wifi", "LLMNR started: %s", wifiMdnsHostText().c_str());
+}
+
+void stopWifiLlmnrIfNeeded()
+{
+    if (!wifiLlmnrStarted) return;
+    wifiLlmnrUdp.stop();
+    wifiLlmnrStarted = false;
+    mus4LogLine("wifi", "LLMNR stopped");
+}
+#endif
+
 void clearWifiStaHandoff()
 {
     wifiStaHandoffActive = false;
@@ -171,6 +322,12 @@ void applyWifiStaCredentials()
 {
     if (!wifiStaConfigured) return;
     stopWifiMdnsIfNeeded();
+#ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
+    stopWifiNetbiosIfNeeded();
+#endif
+#ifdef ENABLE_WIFI_LLMNR_DISCOVERY
+    stopWifiLlmnrIfNeeded();
+#endif
     wifiStaApplyPending = false;
     wifiStaConnected = false;
     wifiStaTimedOut = false;
@@ -178,6 +335,7 @@ void applyWifiStaCredentials()
     clearWifiStaLastError();
     wifiStaConnectStartMs = millis();
     disconnectWifiStaOnly();
+    WiFi.setHostname(wifiMdnsHostText().c_str());
     WiFi.begin(wifiStaSsid, wifiStaPassword);
     mus4Logf("wifi", "STA connecting: %s", wifiStaSsid);
 }
@@ -328,6 +486,12 @@ void updateWifiSta()
             wifiStaConnecting = false;
             clearWifiStaLastError();
             startWifiMdnsIfNeeded();
+#ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
+            startWifiNetbiosIfNeeded();
+#endif
+#ifdef ENABLE_WIFI_LLMNR_DISCOVERY
+            startWifiLlmnrIfNeeded();
+#endif
             mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
             finishWifiStaHandoff();
         }
@@ -336,6 +500,12 @@ void updateWifiSta()
     if (wifiStaConnected) {
         wifiStaConnected = false;
         stopWifiMdnsIfNeeded();
+#ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
+        stopWifiNetbiosIfNeeded();
+#endif
+#ifdef ENABLE_WIFI_LLMNR_DISCOVERY
+        stopWifiLlmnrIfNeeded();
+#endif
         mus4LogLine("wifi", "STA disconnected");
         ensureWifiApAvailable();
     }
@@ -358,6 +528,9 @@ void updateWifiConsole()
     if (wifiConsoleStarted) {
         wifiCaptiveDnsServer.processNextRequest();
     }
+#ifdef ENABLE_WIFI_LLMNR_DISCOVERY
+    processLlmnrPacket();
+#endif
     if (!wifiConsoleStarted) {
         if (millis() - lastWifiConsoleStartAttemptMs >= WIFI_CONSOLE_RETRY_INTERVAL_MS) {
             setupWifiConsole();

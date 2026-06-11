@@ -24,123 +24,122 @@ static const char* WIFI_STA_CONFIG_PREF_ENABLED_KEY = "sta_en";
 static const char* WIFI_STA_CONFIG_PREF_SSID_KEY = "sta_ssid";
 static const char* WIFI_STA_CONFIG_PREF_PASSWORD_KEY = "sta_pass";
 
-extern bool wifiStaConfigured;
-extern bool wifiStaConnected;
-extern bool wifiStaTimedOut;
-extern bool wifiStaConnecting;
-extern bool wifiStaPasswordSet;
-extern bool wifiStaApplyPending;
-extern char wifiStaSsid[];
-extern char wifiStaPassword[];
-extern char wifiStaLastError[];
-extern char wifiStaLastErrorMessage[];
-extern unsigned long wifiStaApplyDeadlineMs;
-extern Preferences mus4Prefs;
+static WifiRuntimeState* g_ws = nullptr;
 
 extern void applyWifiStaCredentials();
 extern void clearWifiStaHandoff();
 
+void setWifiRuntimeState(WifiRuntimeState& ws)
+{
+    g_ws = &ws;
+}
+
+static inline WifiRuntimeState& ws()
+{
+    return *g_ws;
+}
+
 bool copyWifiStaSsid(const String& ssid)
 {
     if (ssid.length() == 0 || ssid.length() > WIFI_STA_CONFIG_SSID_MAX_LEN) return false;
-    ssid.toCharArray(wifiStaSsid, WIFI_STA_CONFIG_SSID_MAX_LEN + 1);
+    ssid.toCharArray(ws().staSsid, WIFI_STA_CONFIG_SSID_MAX_LEN + 1);
     return true;
 }
 
 bool copyWifiStaPassword(const String& password)
 {
     if (password.length() > 0 && (password.length() < WIFI_STA_CONFIG_PASSWORD_MIN_LEN || password.length() > WIFI_STA_CONFIG_PASSWORD_MAX_LEN)) return false;
-    password.toCharArray(wifiStaPassword, WIFI_STA_CONFIG_PASSWORD_MAX_LEN + 1);
-    wifiStaPasswordSet = password.length() > 0;
+    password.toCharArray(ws().staPassword, WIFI_STA_CONFIG_PASSWORD_MAX_LEN + 1);
+    ws().staPasswordSet = password.length() > 0;
     return true;
 }
 
 String wifiStaIpText()
 {
-    return wifiStaConnected ? WiFi.localIP().toString() : String("0.0.0.0");
+    return ws().staConnected ? WiFi.localIP().toString() : String("0.0.0.0");
 }
 
 void clearWifiStaLastError()
 {
-    wifiStaLastError[0] = 0;
-    wifiStaLastErrorMessage[0] = 0;
+    ws().staLastError[0] = 0;
+    ws().staLastErrorMessage[0] = 0;
 }
 
 void setWifiStaLastError(const char* code, const char* message, bool timedOut)
 {
     // 保留本轮连接的首个失败原因，避免后续瞬态状态覆盖更有诊断价值的根因。
-    if (wifiStaLastError[0] != 0) return;
-    snprintf(wifiStaLastError, 24, "%s", code);
-    snprintf(wifiStaLastErrorMessage, 128, "%s", message);
-    wifiStaTimedOut = timedOut;
-    wifiStaConnecting = false;
-    wifiStaConnected = false;
+    if (ws().staLastError[0] != 0) return;
+    snprintf(ws().staLastError, 24, "%s", code);
+    snprintf(ws().staLastErrorMessage, 128, "%s", message);
+    ws().staTimedOut = timedOut;
+    ws().staConnecting = false;
+    ws().staConnected = false;
     mus4Logf("wifi", "STA failed: %s", code);
 }
 
 void scheduleWifiStaApply()
 {
-    wifiStaApplyPending = true;
-    wifiStaApplyDeadlineMs = millis() + WIFI_STA_CONFIG_APPLY_DELAY_MS;
+    ws().staApplyPending = true;
+    ws().staApplyDeadlineMs = millis() + WIFI_STA_CONFIG_APPLY_DELAY_MS;
 }
 
 bool saveWifiStaPreference(const String& ssid, const String& password)
 {
     if (!copyWifiStaSsid(ssid) || !copyWifiStaPassword(password)) return false;
-    if (!mus4Prefs.begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
-    size_t enabledWritten = mus4Prefs.putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, true);
-    size_t ssidWritten = mus4Prefs.putString(WIFI_STA_CONFIG_PREF_SSID_KEY, wifiStaSsid);
-    size_t passwordWritten = mus4Prefs.putString(WIFI_STA_CONFIG_PREF_PASSWORD_KEY, wifiStaPassword);
-    mus4Prefs.end();
-    if (enabledWritten == 0 || ssidWritten == 0 || (wifiStaPasswordSet && passwordWritten == 0)) return false;
-    wifiStaConfigured = true;
+    if (!ws().prefs->begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = ws().prefs->putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, true);
+    size_t ssidWritten = ws().prefs->putString(WIFI_STA_CONFIG_PREF_SSID_KEY, ws().staSsid);
+    size_t passwordWritten = ws().prefs->putString(WIFI_STA_CONFIG_PREF_PASSWORD_KEY, ws().staPassword);
+    ws().prefs->end();
+    if (enabledWritten == 0 || ssidWritten == 0 || (ws().staPasswordSet && passwordWritten == 0)) return false;
+    ws().staConfigured = true;
     return true;
 }
 
 bool saveWifiStaSsidPreference(const String& ssid)
 {
     if (!copyWifiStaSsid(ssid)) return false;
-    if (!mus4Prefs.begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
-    size_t enabledWritten = mus4Prefs.putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, true);
-    size_t ssidWritten = mus4Prefs.putString(WIFI_STA_CONFIG_PREF_SSID_KEY, wifiStaSsid);
-    mus4Prefs.end();
+    if (!ws().prefs->begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = ws().prefs->putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, true);
+    size_t ssidWritten = ws().prefs->putString(WIFI_STA_CONFIG_PREF_SSID_KEY, ws().staSsid);
+    ws().prefs->end();
     if (enabledWritten == 0 || ssidWritten == 0) return false;
-    wifiStaConfigured = true;
+    ws().staConfigured = true;
     return true;
 }
 
 bool saveWifiStaPasswordPreference(const String& password)
 {
     if (!copyWifiStaPassword(password)) return false;
-    if (!mus4Prefs.begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
-    size_t enabledWritten = mus4Prefs.putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, true);
-    size_t passwordWritten = mus4Prefs.putString(WIFI_STA_CONFIG_PREF_PASSWORD_KEY, wifiStaPassword);
-    mus4Prefs.end();
-    if (enabledWritten == 0 || (wifiStaPasswordSet && passwordWritten == 0)) return false;
+    if (!ws().prefs->begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = ws().prefs->putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, true);
+    size_t passwordWritten = ws().prefs->putString(WIFI_STA_CONFIG_PREF_PASSWORD_KEY, ws().staPassword);
+    ws().prefs->end();
+    if (enabledWritten == 0 || (ws().staPasswordSet && passwordWritten == 0)) return false;
     return true;
 }
 
 void clearWifiStaRuntimeStateWithoutDisconnect()
 {
-    wifiStaSsid[0] = 0;
-    wifiStaPassword[0] = 0;
-    wifiStaPasswordSet = false;
-    wifiStaConfigured = false;
-    wifiStaConnected = false;
-    wifiStaTimedOut = false;
-    wifiStaConnecting = false;
+    ws().staSsid[0] = 0;
+    ws().staPassword[0] = 0;
+    ws().staPasswordSet = false;
+    ws().staConfigured = false;
+    ws().staConnected = false;
+    ws().staTimedOut = false;
+    ws().staConnecting = false;
     clearWifiStaLastError();
-    wifiStaApplyPending = false;
+    ws().staApplyPending = false;
     clearWifiStaHandoff();
 }
 
 bool clearWifiStaPreference()
 {
-    if (!mus4Prefs.begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
-    size_t enabledWritten = mus4Prefs.putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, false);
-    mus4Prefs.remove(WIFI_STA_CONFIG_PREF_SSID_KEY);
-    mus4Prefs.remove(WIFI_STA_CONFIG_PREF_PASSWORD_KEY);
-    mus4Prefs.end();
+    if (!ws().prefs->begin(WIFI_STA_CONFIG_PREF_NAMESPACE, false)) return false;
+    size_t enabledWritten = ws().prefs->putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, false);
+    ws().prefs->remove(WIFI_STA_CONFIG_PREF_SSID_KEY);
+    ws().prefs->remove(WIFI_STA_CONFIG_PREF_PASSWORD_KEY);
+    ws().prefs->end();
     if (enabledWritten == 0) return false;
     clearWifiStaRuntimeStateWithoutDisconnect();
     return true;
@@ -148,33 +147,33 @@ bool clearWifiStaPreference()
 
 void loadWifiStaPreference()
 {
-    wifiStaSsid[0] = 0;
-    wifiStaPassword[0] = 0;
-    wifiStaPasswordSet = false;
-    wifiStaConfigured = false;
-    if (!mus4Prefs.begin(WIFI_STA_CONFIG_PREF_NAMESPACE, true)) {
+    ws().staSsid[0] = 0;
+    ws().staPassword[0] = 0;
+    ws().staPasswordSet = false;
+    ws().staConfigured = false;
+    if (!ws().prefs->begin(WIFI_STA_CONFIG_PREF_NAMESPACE, true)) {
         copyWifiStaSsid(String(WIFI_STA_SSID));
         copyWifiStaPassword(String(WIFI_STA_PASSWORD));
-        wifiStaConfigured = strlen(wifiStaSsid) > 0;
+        ws().staConfigured = strlen(ws().staSsid) > 0;
         mus4LogLine("wifi", "STA config load failed, using build defaults");
         return;
     }
-    bool hasStaEnabled = mus4Prefs.isKey(WIFI_STA_CONFIG_PREF_ENABLED_KEY);
-    bool staEnabled = mus4Prefs.getBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, false);
-    String ssid = hasStaEnabled && staEnabled ? mus4Prefs.getString(WIFI_STA_CONFIG_PREF_SSID_KEY, "") : String(WIFI_STA_SSID);
-    String password = hasStaEnabled && staEnabled ? mus4Prefs.getString(WIFI_STA_CONFIG_PREF_PASSWORD_KEY, "") : String(WIFI_STA_PASSWORD);
-    mus4Prefs.end();
+    bool hasStaEnabled = ws().prefs->isKey(WIFI_STA_CONFIG_PREF_ENABLED_KEY);
+    bool staEnabled = ws().prefs->getBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, false);
+    String ssid = hasStaEnabled && staEnabled ? ws().prefs->getString(WIFI_STA_CONFIG_PREF_SSID_KEY, "") : String(WIFI_STA_SSID);
+    String password = hasStaEnabled && staEnabled ? ws().prefs->getString(WIFI_STA_CONFIG_PREF_PASSWORD_KEY, "") : String(WIFI_STA_PASSWORD);
+    ws().prefs->end();
     if (hasStaEnabled && !staEnabled) {
         mus4LogLine("wifi", "STA disabled by preference");
         return;
     }
     if (copyWifiStaSsid(ssid) && copyWifiStaPassword(password)) {
-        wifiStaConfigured = strlen(wifiStaSsid) > 0;
+        ws().staConfigured = strlen(ws().staSsid) > 0;
     } else {
-        wifiStaSsid[0] = 0;
-        wifiStaPassword[0] = 0;
-        wifiStaPasswordSet = false;
-        wifiStaConfigured = false;
+        ws().staSsid[0] = 0;
+        ws().staPassword[0] = 0;
+        ws().staPasswordSet = false;
+        ws().staConfigured = false;
         mus4LogLine("wifi", "STA config invalid");
     }
 }
@@ -182,19 +181,19 @@ void loadWifiStaPreference()
 void printWifiStaStatus(Print& out)
 {
     out.printf("WIFI_STA configured=%d connected=%d timed_out=%d connecting=%d ssid=\"%s\" password_set=%d ap_ip=%s sta_ip=%s last_error=\"%s\" last_error_message=\"%s\"\n",
-        wifiStaConfigured ? 1 : 0,
-        wifiStaConnected ? 1 : 0,
-        wifiStaTimedOut ? 1 : 0,
-        wifiStaConnecting ? 1 : 0,
-        wifiStaSsid,
-        wifiStaPasswordSet ? 1 : 0,
+        ws().staConfigured ? 1 : 0,
+        ws().staConnected ? 1 : 0,
+        ws().staTimedOut ? 1 : 0,
+        ws().staConnecting ? 1 : 0,
+        ws().staSsid,
+        ws().staPasswordSet ? 1 : 0,
         WiFi.softAPIP().toString().c_str(),
         wifiStaIpText().c_str(),
-        wifiStaLastError,
-        wifiStaLastErrorMessage);
+        ws().staLastError,
+        ws().staLastErrorMessage);
 }
 
-bool processWifiStaConfigCommand(const String& line, Print& out)
+bool processWifiStaConfigCommand(const String& line, Print& out, WifiRuntimeState& /*ws*/)
 {
     if (line.equalsIgnoreCase("WIFI_STA_STATUS")) {
         printWifiStaStatus(out);
@@ -207,7 +206,7 @@ bool processWifiStaConfigCommand(const String& line, Print& out)
             out.println("NACK:WIFI_STA_SSID");
             return true;
         }
-        out.printf("WIFI_STA_SSID_SAVED configured=%d\n", wifiStaConfigured ? 1 : 0);
+        out.printf("WIFI_STA_SSID_SAVED configured=%d\n", ws().staConfigured ? 1 : 0);
         return true;
     }
     if (line.startsWith("WIFI_STA_PASSWORD:")) {
@@ -216,16 +215,16 @@ bool processWifiStaConfigCommand(const String& line, Print& out)
             out.println("NACK:WIFI_STA_PASSWORD");
             return true;
         }
-        out.printf("WIFI_STA_PASSWORD_SAVED password_set=%d\n", wifiStaPasswordSet ? 1 : 0);
+        out.printf("WIFI_STA_PASSWORD_SAVED password_set=%d\n", ws().staPasswordSet ? 1 : 0);
         return true;
     }
     if (line.equalsIgnoreCase("WIFI_STA_APPLY")) {
-        if (!wifiStaConfigured) {
+        if (!ws().staConfigured) {
             out.println("NACK:WIFI_STA_NOT_CONFIGURED");
             return true;
         }
         applyWifiStaCredentials();
-        out.printf("WIFI_STA_APPLY_OK ssid=\"%s\"\n", wifiStaSsid);
+        out.printf("WIFI_STA_APPLY_OK ssid=\"%s\"\n", ws().staSsid);
         return true;
     }
     if (line.equalsIgnoreCase("WIFI_STA_CLEAR")) {

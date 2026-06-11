@@ -4,6 +4,10 @@
 #include "FirmwareConfig.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
+#include "RuntimeState.h"
+
+void setWifiRuntimeState(WifiRuntimeState& ws);
+
 bool copyWifiStaSsid(const String& ssid);
 bool copyWifiStaPassword(const String& password);
 String wifiStaIpText();
@@ -17,7 +21,7 @@ void clearWifiStaRuntimeStateWithoutDisconnect();
 bool clearWifiStaPreference();
 void loadWifiStaPreference();
 void printWifiStaStatus(Print& out);
-bool processWifiStaConfigCommand(const String& line, Print& out);
+bool processWifiStaConfigCommand(const String& line, Print& out, WifiRuntimeState& ws);
 #else
 inline bool processWifiStaConfigCommand(const String& line, Print& out)
 {

@@ -1,6 +1,9 @@
 #pragma once
 #include <Arduino.h>
 #include "SharedTypes.h"
+#include "RuntimeState.h"
+
+void setSteeringCalibrationRuntimeState(WifiRuntimeState& ws);
 
 struct SteeringCalibration {
     int16_t min_pwm;

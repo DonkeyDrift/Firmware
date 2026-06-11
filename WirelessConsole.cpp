@@ -3,9 +3,56 @@
 #include "SharedTypes.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
-extern bool wifiConsoleAuthenticated;
-extern bool wifiDevModeEnabled;
+#include "BuildInfo.h"
+#include "CommandDispatcher.h"
+#include "JsonUtil.h"
+#include "Mus4Log.h"
+#include "WebLogBuffer.h"
+#include "WifiIdentity.h"
+#include "WifiOta.h"
+#include "WifiStaConfig.h"
+
+#include <WiFi.h>
+#include <ESPmDNS.h>
+
 extern ControlData car_output;
+extern ControlData pilot_data;
+extern ControlData rc_data;
+extern SensorData ina219Data;
+extern SensorData mpu6050Data;
+extern SerialBuf wifiConsoleBuf;
+extern WifiRuntimeState wifiRuntime;
+extern OtaRuntimeState otaRuntime;
+
+extern bool drift_assist_enabled;
+extern bool drift_assist_active;
+extern float drift_compensation;
+extern float gyro_z_filtered;
+extern int pwm_filtered[RC_CHANNEL_COUNT];
+
+extern uint32_t wifiWebUpdateMaxDtMs;
+extern uint32_t wifiWebSampleMaxDtMs;
+extern uint32_t wifiWebHttpMaxDtMs;
+extern uint32_t wifiWebSocketMaxDtMs;
+extern uint32_t wifiWebStatusRequests;
+extern uint32_t wifiWebLogRequests;
+extern uint32_t wifiWebDataRequests;
+extern uint32_t wifiWebCommandRequests;
+extern uint32_t wifiWebStatusMaxDtMs;
+extern uint32_t wifiWebLogMaxDtMs;
+extern uint32_t wifiWebDataMaxDtMs;
+extern uint32_t wifiWebCommandMaxDtMs;
+
+#ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
+extern bool wifiWebSocketClientConnected;
+extern uint32_t wifiWebSocketDroppedPoints;
+extern uint32_t wifiWebSocketQueueFullSkips;
+extern uint32_t wifiWebSocketHeapSkips;
+extern uint32_t wifiWebSocketFramesSent;
+extern uint32_t wifiWebSocketMaxBacklog;
+extern uint32_t wifiWebSocketConnects;
+extern uint32_t wifiWebSocketDisconnects;
+#endif
 
 String redactWirelessConsoleLine(const String& line)
 {
@@ -84,16 +131,60 @@ bool isParkLockedWirelessCommand(const String& line)
         line.equalsIgnoreCase("FILTER_TEST");
 }
 
-bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin)
+bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, WifiRuntimeState& ws)
 {
-    bool webDevMode = wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB;
+    bool webDevMode = ws.devModeEnabled && origin == WIRELESS_ORIGIN_WEB;
     if (line.equalsIgnoreCase("PING") || line.equalsIgnoreCase("STATUS") || line.equalsIgnoreCase("WIFI_STA_STATUS")) return true;
     if (line.startsWith("AUTH:")) return true;
-    if (isWirelessOtaOpenCommand(line)) return (webDevMode || wifiConsoleAuthenticated) && car_output.park == PARK_LOCKED;
-    if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || wifiConsoleAuthenticated;
-    if (!wifiConsoleAuthenticated && !webDevMode) return false;
+    if (isWirelessOtaOpenCommand(line)) return (webDevMode || ws.consoleAuthenticated) && car_output.park == PARK_LOCKED;
+    if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || ws.consoleAuthenticated;
+    if (!ws.consoleAuthenticated && !webDevMode) return false;
     if (isParkLockedWirelessCommand(line)) return car_output.park == PARK_LOCKED;
     if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || isWifiStaConfigCommand(line)) return true;
     return isWirelessControlCommand(line);
+}
+
+void processWirelessConsoleLine(const String& line, Print& out, WirelessCommandOrigin origin)
+{
+    if (line.equalsIgnoreCase("PING")) {
+        out.println("PONG");
+        return;
+    }
+    if (line.equalsIgnoreCase("STATUS")) {
+        printWirelessStatus(out);
+        return;
+    }
+    if (line.startsWith("AUTH:")) {
+        wifiRuntime.consoleAuthenticated = line.substring(5).equals(WIFI_CONSOLE_AP_PASSWORD);
+        out.println(wifiRuntime.consoleAuthenticated ? "AUTH_OK" : "AUTH_FAIL");
+        return;
+    }
+    if (!isWirelessCommandAllowed(line, origin, wifiRuntime)) {
+        bool webDevMode = wifiRuntime.devModeEnabled && origin == WIRELESS_ORIGIN_WEB;
+        if (isParkLockedWirelessCommand(line) && car_output.park != PARK_LOCKED && (wifiRuntime.consoleAuthenticated || webDevMode)) {
+            out.println("NACK:PARK_REQUIRED");
+        } else {
+            out.println("NACK:UNAUTHORIZED");
+        }
+        wifiConsoleBuf.errors++;
+        return;
+    }
+    if (isWirelessOtaOpenCommand(line)) {
+        openWifiOtaWindow(out, origin, otaRuntime, wifiRuntime);
+        return;
+    }
+    if (isWirelessOtaStatusCommand(line)) {
+        printWifiOtaStatus(out, otaRuntime, wifiRuntime);
+        return;
+    }
+    if (isWirelessOtaCloseCommand(line)) {
+        closeWifiOtaWindow("USER", otaRuntime);
+        out.println("OTA_CLOSED");
+        return;
+    }
+    if (processWifiStaConfigCommand(line, out, wifiRuntime)) {
+        return;
+    }
+    dispatchCommandLine(line, out, wifiConsoleBuf);
 }
 #endif

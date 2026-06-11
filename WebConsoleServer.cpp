@@ -228,11 +228,23 @@ static void handleWifiWebCommand()
         recordWifiWebHandlerDt(startedMs, wifiWebCommandMaxDtMs);
         return;
     }
+    String target = wifiWebServer.arg("target");
+    target.trim();
     String response;
     StringPrint out(response);
-    appendWebLog("web", String("> ") + redactWirelessConsoleLine(line));
-    processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_WEB);
-    appendWebLogLines("cmd", response);
+    if (target.equalsIgnoreCase("serial")) {
+        appendWebLog("web", String("> [serial] ") + redactWirelessConsoleLine(line));
+        Serial.println(line);
+        out.println("ACK:SERIAL");
+    } else if (target.equalsIgnoreCase("serial1")) {
+        appendWebLog("web", String("> [serial1] ") + redactWirelessConsoleLine(line));
+        Serial1.println(line);
+        out.println("ACK:SERIAL1");
+    } else {
+        appendWebLog("web", String("> ") + redactWirelessConsoleLine(line));
+        processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_WEB);
+        appendWebLogLines("cmd", response);
+    }
     sendWifiWebApiHeaders();
     wifiWebServer.send(200, "text/plain", response);
     recordWifiWebHandlerDt(startedMs, wifiWebCommandMaxDtMs);

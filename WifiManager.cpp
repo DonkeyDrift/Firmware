@@ -462,6 +462,12 @@ void setupWifiConsole()
     delay(100);
     WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);
+    {
+        String host = wifiMdnsHostText();
+        if (host.length() > 0) {
+            WiFi.setHostname(host.c_str());
+        }
+    }
     setupWifiWebConsole();
     if (!startWifiApServices("AP started")) {
         return;
@@ -492,6 +498,12 @@ void updateWifiSta()
 #ifdef ENABLE_WIFI_LLMNR_DISCOVERY
             startWifiLlmnrIfNeeded();
 #endif
+            // Re-bind WebServer so the STA interface is included in the listen
+            // socket. LwIP may not auto-add new interfaces to an existing
+            // INADDR_ANY socket on some Arduino-ESP32 builds.
+            wifiWebServer.close();
+            wifiWebServer.begin();
+            mus4LogLine("wifi", "WebServer re-bound for STA");
             mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
             finishWifiStaHandoff();
         }
@@ -531,6 +543,23 @@ void updateWifiConsole()
 #ifdef ENABLE_WIFI_LLMNR_DISCOVERY
     processLlmnrPacket();
 #endif
+    // Keep mDNS alive: IGMP-snooping routers may drop multicast forwarding
+    // after the group membership times out. Periodically restart mDNS to
+    // force a fresh IGMP join and service announcement.
+    if (wifiMdnsStarted) {
+        static unsigned long lastMdnsRestartMs = 0;
+        if (millis() - lastMdnsRestartMs >= 60000) {
+            lastMdnsRestartMs = millis();
+            MDNS.end();
+            wifiMdnsStarted = false;
+            startWifiMdnsIfNeeded();
+            if (wifiMdnsStarted) {
+                mus4LogLine("wifi", "mDNS restarted for refresh");
+            } else {
+                mus4LogLine("wifi", "mDNS refresh failed");
+            }
+        }
+    }
     if (!wifiConsoleStarted) {
         if (millis() - lastWifiConsoleStartAttemptMs >= WIFI_CONSOLE_RETRY_INTERVAL_MS) {
             setupWifiConsole();

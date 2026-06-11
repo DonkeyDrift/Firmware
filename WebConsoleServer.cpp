@@ -161,7 +161,11 @@ static void handleWifiWebCaptivePortal()
 
 static void handleWifiWebCaptivePortalRedirectPage()
 {
-    String url = String("http://") + WiFi.softAPIP().toString() + "/";
+    String host = wifiWebServer.hostHeader();
+    if (host.length() == 0 || host.indexOf(WiFi.softAPIP().toString()) >= 0) {
+        host = WiFi.softAPIP().toString();
+    }
+    String url = String("http://") + host + "/";
     String response = String("<!doctype html><html><head><meta charset=\"utf-8\">") +
         "<meta http-equiv=\"refresh\" content=\"0;url=" + url + "\">" +
         "<script>location.replace('" + url + "');</script></head>" +
@@ -291,13 +295,14 @@ static void handleWifiWebApSet()
         wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
         return;
     }
-    String ssid = wifiWebServer.arg("ssid");
-    ssid.trim();
-    if (ssid.length() == 0 || ssid.length() > WIFI_AP_SSID_MAX_LEN || !isMdnsSafeHostname(ssid)) {
+    String prefix = wifiWebServer.arg("ssid");
+    prefix.trim();
+    if (!isValidApSsidPrefix(prefix)) {
         wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_ssid\"}");
         return;
     }
-    if (!saveWifiApPreference(ssid)) {
+    String fullSsid = prefix + WIFI_AP_SSID_SUFFIX;
+    if (!saveWifiApPreference(fullSsid)) {
         wifiWebServer.send(500, "application/json", "{\"saved\":false}");
         return;
     }

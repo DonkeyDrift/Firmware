@@ -446,7 +446,7 @@ def test_wifi_console_types_are_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     for symbol in [
-        "const char* WIFI_CONSOLE_AP_DEFAULT_SSID = \"MUS4-DEBUG\";",
+        "const char* WIFI_CONSOLE_AP_DEFAULT_SSID = \"MUS4-ESP\";",
         "const char* WIFI_CONSOLE_AP_PASSWORD = \"mus4-debug\";",
         "const uint16_t WIFI_CONSOLE_PORT = 2323;",
         "const uint16_t WIFI_WEB_CONSOLE_PORT = 80;",
@@ -1060,7 +1060,7 @@ def test_web_console_ap_ssid_modal_and_api_are_present():
     source = firmware_source_text()
 
     assert 'id="wifiApModal"' in source
-    assert 'AP SSID 配置' in source
+    assert 'AP 名称配置' in source
     assert 'id="apSsid"' in source
     assert '保存并重启 AP' in source
     assert 'openNetworkSettings()' in source
@@ -1087,10 +1087,12 @@ def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
     assert "bool isMdnsSafeHostnameChar(char c)" in identity_header
     assert "bool isMdnsSafeHostname(const String& value)" in identity_header
     assert "bool copyWifiApSsid(const String& ssid)" in identity_header
+    assert "bool isValidApSsidPrefix(const String& value)" in identity_header
     assert "String wifiMdnsHostText()" in identity_header
     assert "String wifiMdnsUrlText()" in identity_header
     assert "#include \"WifiIdentity.h\"" in sketch_source
     assert "if (!isMdnsSafeHostname(ssid)) return false;" in identity_source
+    assert "bool isValidApSsidPrefix" in identity_source
     assert "WIFI_IDENTITY_AP_SSID_MAX_LEN = 32" in identity_source
     assert "c >= 'A' && c <= 'Z'" in identity_source
     assert "c >= 'a' && c <= 'z'" in identity_source
@@ -1102,7 +1104,7 @@ def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
     assert "String(\"http://\") + wifiMdnsHostText() + \".local/\"" in identity_source
     assert "static bool isMdnsSafeHostname" not in sketch_source
     assert "static String wifiMdnsHostText" not in sketch_source
-    assert "SSID 只能使用字母、数字和短横线" in source
+    assert "前缀只能使用大小写字母和数字" in source
     assert "invalid_ssid" in source
 
 

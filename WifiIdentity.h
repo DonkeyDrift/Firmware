@@ -10,6 +10,7 @@ void setWifiIdentityRuntimeState(WifiRuntimeState& ws);
 
 bool isMdnsSafeHostnameChar(char c);
 bool isMdnsSafeHostname(const String& value);
+bool isValidApSsidPrefix(const String& value);
 bool copyWifiApSsid(const String& ssid);
 String wifiMdnsHostText();
 String wifiMdnsUrlText();

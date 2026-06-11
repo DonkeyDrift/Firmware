@@ -6,25 +6,24 @@
 
 ### 1. 当前主要问题不再是模块数量，而是全局状态未收敛
 
-当前代码已拆出 20 余对 `.h/.cpp`，但 `MUS4_FW.ino` 中仍有大量全局对象与 `static` helper：
+当前代码已拆出 20 余对 `.h/.cpp`，且 `MUS4_FW.ino` 中的 Wi-Fi / OTA runtime 全局状态已收敛到 `WifiRuntimeState` / `OtaRuntimeState` 结构体，消除了 15+ 个散列 `extern bool/char[]`。Web HTTP route handler、WebSocket telemetry 和 Wi-Fi runtime 状态机也已分别迁出到 `WebConsoleServer.h/.cpp`、`WebTelemetry.h/.cpp` 和 `WifiManager.h/.cpp`。`MUS4_FW.ino` 从原 ~3700 行收敛到 ~1000 行。
 
-- Wi-Fi runtime 状态（`wifiStaConnected`、`wifiOtaWindowOpen`、`wifiStaHandoffActive` 等约 15 个布尔/字符串变量）。
-- Web server / WebSocket / route handler（约 650 行，覆盖 root、API、 captive portal、OTA upload、plot data）。
-- TCP Console server / client 生命周期（`setupWifiConsole()`、`updateWifiConsole()` 等）。
-- STA handoff、AP 重启、mDNS 启动/停止等状态机。
+剩余仍在 `MUS4_FW.ino` 中的堆积：
+
 - RC PWM 捕获：MCPWM capture 初始化和双模式中断（传统 `attachInterrupt` + `mcpwm` capture）。
 - 顶层混控、Park、紧急制动以及 `User_throttle`、`Pilot_throttle` 等输入缓冲。
+- 传感器读取调用、TUI 渲染调用和 `loop()` 任务调度。
 
-这些代码仍通过 `extern` 或参数在模块间传递，形成隐式依赖网。下一步的优化重点应当是**把散落的 runtime 状态收进小型结构体**，而不是继续新增更多只包含 helper 的切片。
+下一步的优化重点应当是**后置的安全关键切片**（RC ISR、Park/PWM、控制混控），而不是继续新增 helper 模块。
 
 ### 2. 建议调整模块边界（2.0 版）
 
 | 区域 | 当前状态 | 优化方向 |
 |------|----------|----------|
-| **Web HTTP / Route** | 全部在 `MUS4_FW.ino` 中，约 650 行 | 抽出 `WebConsoleServer.h/.cpp`，统一注册 route、处理 captive portal、API 响应头和页面入口。不要把 WebSocket 混进去。 |
-| **WebSocket Telemetry** | 全部在 `MUS4_FW.ino` 中 | 抽出 `WebTelemetry.h/.cpp`，ring buffer、数据点采样、`pushWifiWebSocketData()` 全部迁出。 |
-| **Wi-Fi Runtime 状态机** | AP/STA handoff、mDNS、DNS captive、扫描分散在 `.ino` | 抽出 `WifiManager.h/.cpp`，聚合 AP 启停、STA handoff、扫描调度、mDNS 生命周期。`WifiStaConfig` 只保留配置读写与命令入口，不持有连接状态机。 |
-| **TCP Console** | `setupWifiConsole()` / `updateWifiConsole()` 在 `.ino` | 并入 `WirelessConsole.h/.cpp` 或新建 `TcpConsole.h/.cpp`，与 Web Console 共用认证会话抽象。 |
+| **Web HTTP / Route** | ✅ 已迁入 `WebConsoleServer.h/.cpp` | 维护中。HTTP route、API handler、captive portal、OTA upload 均已迁出。 |
+| **WebSocket Telemetry** | ✅ 已迁入 `WebTelemetry.h/.cpp` | 维护中。ring buffer、数据点采样、`pushWifiWebSocketData()` 均已迁出。 |
+| **Wi-Fi Runtime 状态机** | ✅ 已迁入 `WifiManager.h/.cpp`；全局状态已收敛到 `WifiRuntimeState` / `OtaRuntimeState` | 维护中。AP/STA handoff、mDNS、DNS captive、TCP Console 均已迁入 `WifiManager`。`WifiStaConfig` 回归配置读写与命令入口。 |
+| **TCP Console** | ✅ 已随 `WifiManager` 迁入 | `updateWifiConsole()` 已迁入 `WifiManager.cpp`。 |
 | **RC 输入** | ISR + MCPWM capture + 通道解释全在 `.ino` | 非 ISR 部分迁入 `RcInput.h/.cpp`；MCPWM 与传统 ISR 迁入 `RcPwmCapture.h/.cpp`，并在 `setup()` 中只暴露 `rcPwmCaptureBegin()`。 |
 | **安全与混控** | Park、紧急制动、模式切换、混控、PWM 写入仍在 `.ino` | 这是最后的安全关键切片，建议先引入 `ControlContext` 结构体（包含 `ControlData`、模式、Park 状态、紧急制动状态），再抽出 `SafetyState.h/.cpp` 和 `ControlMixer.h/.cpp`。 |
 | **FirmwareApp 装配层** | 尚未引入 | 在 `loop()` 任务调度清晰后，再引入 `FirmwareApp.h/.cpp`，让 `.ino` 只剩 `app.begin()` / `app.update()`。不要提前做，否则会掩盖初始化顺序问题。 |
@@ -35,17 +34,31 @@
 
 ```cpp
 struct WifiRuntimeState {
-    bool apAvailable;
+    bool consoleStarted;
+    bool consoleAuthenticated;
     bool staConfigured;
     bool staConnected;
-    bool staConnecting;
     bool staTimedOut;
+    bool staConnecting;
+    char staLastError[32];
+    char staLastErrorMessage[128];
     bool staApplyPending;
     bool apRestartPending;
     bool mdnsStarted;
-    bool handoffActive;
-    String currentApSsid;
-    String staTargetSsid;
+    bool staHandoffActive;
+    char staHandoffTargetSsid[33];
+    char staHandoffStaIp[16];
+    char staHandoffApSsid[33];
+    unsigned long staHandoffStartedMs;
+    bool devModeEnabled;
+    char apSsid[33];
+    char staSsid[33];
+    char staPassword[64];
+    bool staPasswordSet;
+    unsigned long lastConsoleStartAttemptMs;
+    unsigned long staConnectStartMs;
+    unsigned long staApplyDeadlineMs;
+    unsigned long apRestartDeadlineMs;
 };
 
 struct OtaRuntimeState {
@@ -53,16 +66,8 @@ struct OtaRuntimeState {
     bool windowOpen;
     bool inProgress;
     bool parkGuardActive;
-    unsigned long windowOpenedAt;
-};
-
-struct RcRuntimeState {
-    volatile uint32_t pwmValues[RC_CHANNEL_COUNT];
-    volatile uint32_t riseTimes[RC_CHANNEL_COUNT];
-    volatile uint32_t lastValidTimes[RC_CHANNEL_COUNT];
-    int userThrottle;
-    int userSteering;
-    bool filterInitialized;
+    unsigned long deadlineMs;
+    uint8_t lastProgressPct;
 };
 ```
 
@@ -70,6 +75,8 @@ struct RcRuntimeState {
 - 消除大量 `extern bool xxx`；模块接口从“读/写全局变量”变成“传结构体指针/引用”。
 - 方便单元测试：可以在宿主环境中实例化这些结构体并注入模块。
 - 减少 `.ino` 中的声明噪音。
+
+> 当前状态：`WifiRuntimeState` / `OtaRuntimeState` 已落地在 `RuntimeState.h`，`MUS4_FW.ino` 中保留结构体实例和引用别名，所有无线模块均已通过引用参数访问状态。`char* const` 别名显式标记 `extern` 以保证跨翻译单元链接。
 
 ### 4. `loop()` 调度表化
 
@@ -141,6 +148,11 @@ struct Task {
 - `WifiIdentity.h/.cpp`：承载 AP SSID/mDNS hostname 校验、AP SSID 复制、mDNS host/url 文本生成 helper。
 - `WifiOta.h/.cpp`：承载 OTA 窗口管理、ArduinoOTA callback、HTTP OTA guard、OTA 状态输出和维护命令入口。
 - `SharedTypes.h`：已统一使用 `ControlData`，删除了 `MUS4_FW.ino` 与 `CommandDispatcher.cpp` 中重复的 `struct_message`。
+- `RuntimeState.h`：承载 `WifiRuntimeState` 和 `OtaRuntimeState` 聚合状态结构体，替代了 15+ 个散列全局变量。
+- `WebLogBuffer.h/.cpp`：承载 Web 日志 ring buffer 和 `appendWebLog` 桥接。
+- `WebConsoleServer.h/.cpp`：承载 HTTP route 注册、Web API handler、captive portal、OTA upload 和 `printWirelessStatus()`。
+- `WebTelemetry.h/.cpp`：承载 WebSocket telemetry 服务器、事件处理、`pushWifiWebSocketData()` 和数据采样推送。
+- `WifiManager.h/.cpp`：承载 Wi-Fi runtime 状态机，包括 AP/STA 启停、mDNS 生命周期、DNS captive、STA handoff、TCP Console 生命周期和 `setupWifiConsole()` / `updateWifiConsole()` / `updateWifiSta()`。
 
 源码断言测试 `tests/test_firmware_feature_flags.py` 已改为聚合读取多个固件源码文件，避免代码从 `MUS4_FW.ino` 迁出后测试误报。近期无线相关切片均按“先断言、再迁移、再 `pytest tests/`、WSL 编译、HTTP OTA”的闭环验证。
 
@@ -391,7 +403,7 @@ pytest tests/
 
 ### 阶段 3：无线/Web/OTA 拆分
 
-状态：已完成低风险 helper 切片；**剩余高风险/大体积切片亟待按优化意见推进**。
+状态：已完成全部切片，包括全局状态收敛和 `.ino` 中 Web/Wi-Fi 逻辑的迁出。
 
 已完成：
 
@@ -399,14 +411,11 @@ pytest tests/
 2. `WifiStaConfig.h/.cpp`：STA 命令入口、状态输出、SSID/密码复制校验、STA IP 文本、错误状态记录、延迟应用调度、SSID/密码 Preferences 保存/加载/清除。
 3. `WifiIdentity.h/.cpp`：AP SSID/mDNS hostname 校验、AP SSID 复制、mDNS host/url 文本生成。
 4. `WifiOta.h/.cpp`：OTA 窗口、TTL、ArduinoOTA callback、HTTP OTA guard、OTA 状态输出和维护命令入口。
-
-后续推荐顺序（已按当前状态调整）：
-
-1. **先收敛全局状态**：引入 `WifiRuntimeState` / `OtaRuntimeState` 结构体，替代 `MUS4_FW.ino` 中分散的 15+ 个 Wi-Fi/Ota 全局变量。这是最高优先级优化，不引入新模块也能显著降低 `.ino` 复杂度。
-2. 抽出 AP/STA 启停、mDNS 生命周期、DNS captive、Wi-Fi 扫描和 STA handoff 到 `WifiManager.h/.cpp`。让 `WifiStaConfig` 回归“配置读写 + 命令入口”本职，不再持有连接状态机。
-3. 抽出 Web route 注册和页面 handler 到 `WebConsoleServer.h/.cpp`。
-4. 抽出 WebSocket telemetry 与曲线数据到 `WebTelemetry.h/.cpp`。
-5. 最后迁移 TCP Console 认证会话和无线命令主分发 `processWirelessConsoleLine()` 到 `WirelessConsole.h/.cpp`。
+5. `RuntimeState.h`：引入 `WifiRuntimeState` / `OtaRuntimeState`，替代 15+ 个散列全局变量。
+6. `WebLogBuffer.h/.cpp`：Web 日志 ring buffer 和日志桥接。
+7. `WebConsoleServer.h/.cpp`：HTTP route、API handler、captive portal、OTA upload、`printWirelessStatus()`。
+8. `WebTelemetry.h/.cpp`：WebSocket telemetry、数据采样、`pushWifiWebSocketData()`。
+9. `WifiManager.h/.cpp`：AP/STA 启停、mDNS 生命周期、DNS captive、STA handoff、TCP Console 生命周期。
 
 > 注：原规划中“本轮设计：收敛 `WifiStaConfig` 清理/加载 helper”已随 `v1.7.x` 迭代落地，详见 `WifiStaConfig.cpp` 当前实现。下文不再复述该轮详细设计。
 
@@ -458,11 +467,10 @@ pytest tests/
 
 ## 全局状态收敛策略
 
-### 短期（已处于尾声，需尽快收敛）
+### 短期（已完成）
 
 - 保留 `TUI`、`Buzzer`、传感器对象、Web server、`ControlData`、`SensorData`、RC `volatile` 数组等必要全局对象在 `MUS4_FW.ino`。
-- **Wi-Fi / OTA runtime 状态不应再继续以散列 `extern bool` 形式存在**。当前 `WifiStaConfig`、`WirelessConsole`、`WifiIdentity`、`WifiOta` 中仍有较多 `extern` 桥接，这是下一步首要清理目标。
-- 新模块优先通过结构体引用或参数访问状态，仅在确实需要跨模块共享硬件对象时保留 `extern`。
+- **Wi-Fi / OTA runtime 状态已收敛到 `WifiRuntimeState` / `OtaRuntimeState`**。当前 `WifiStaConfig`、`WirelessConsole`、`WifiIdentity`、`WifiOta`、`WebConsoleServer`、`WebTelemetry`、`WifiManager` 均已通过结构体引用或参数访问状态，仅在确实需要跨模块共享硬件对象时保留 `extern`。
 - 每次迁移只移动一个责任域。
 
 ### 中期
@@ -520,33 +528,26 @@ pytest tests/
 
 ## 下一步建议（基于当前 `v1.7.3` 状态）
 
-当前低风险工具、命令、诊断、传感器、类型收敛，以及无线/STA/OTA helper 拆分已经完成。`MUS4_FW.ino` 仍有约 2270 行，下一步应从“继续新增模块”转向**“收敛全局状态、迁出 `.ino` 中堆积的 Web/Wi-Fi 逻辑、为最终安全切片做准备”**：
+当前低风险工具、命令、诊断、传感器、类型收敛，以及无线/Web/OTA/Wi-Fi 状态机拆分已经全部完成。`MUS4_FW.ino` 已从 ~3700 行收敛到 ~1000 行，全局状态已收敛到 `WifiRuntimeState` / `OtaRuntimeState`。下一步应从“继续新增 helper 模块”转向**“后置的安全关键切片”**：
 
-1. **优先收敛 Wi-Fi / OTA 全局状态（不新增模块也能看到成效）**
-   - 在 `SharedTypes.h` 或新建 `RuntimeState.h` 中引入 `WifiRuntimeState` 和 `OtaRuntimeState`。
-   - 将 `MUS4_FW.ino` 中 `wifiStaConnected`、`wifiOtaWindowOpen`、`wifiStaHandoffActive` 等 15+ 变量迁入结构体。
-   - 修改 `WirelessConsole.cpp`、`WifiStaConfig.cpp`、`WifiOta.cpp` 的接口，由 `extern bool` 改为接收 `WifiRuntimeState&` / `OtaRuntimeState&`。
-   - 此步骤做完后，`MUS4_FW.ino` 可减少约 50～80 行声明与 `extern` 噪音，并为后续 `WifiManager` 拆分打好基础。
+1. **RC 输入拆分（次高优先级）**
+   - 将非 ISR 的 RC 通道解释、timeout、滤波和模式/Park 通道处理迁入 `RcInput.h/.cpp`。
+   - 将 MCPWM capture 初始化迁入 `RcPwmCapture.h/.cpp`，暂不急于迁移 ISR。
+   - 在测试保护充分后迁移 ISR。
+   - 每次只迁一个责任域，必须配合断动力或架空车轮硬件验证。
 
-2. **迁出 Web route 与 WebSocket telemetry（最大的 `.ino` 体积负担）**
-   - 新建 `WebConsoleServer.h/.cpp`，将 `handleWifiWebRoot()`、`handleWifiWebStatus()`、`handleWifiWebCommand()`、`handleWifiWebUpdateUpload()` 等约 650 行 handler 整体迁出。
-   - 新建 `WebTelemetry.h/.cpp`，将 ring buffer、数据点采样、`pushWifiWebSocketData()` 迁出。
-   - `MUS4_FW.ino` 只保留 `server.on(...)` 的注册调用或全部委托给 `webConsoleServer.begin()`。
+2. **Park、安全状态机与控制混控拆分（最后阶段）**
+   - 引入 `ControlContext` 结构体（包含 `ControlData`、模式、Park 状态、紧急制动状态）。
+   - 抽出 Park/紧急制动状态机到 `SafetyState.h/.cpp`。
+   - 抽出控制混控（手动、半自动、全自动）到 `ControlMixer.h/.cpp`。
+   - 抽出 PWM 输出限幅和 `ledc` 写入到 `ActuatorOutput.h/.cpp`。
+   - 此区域直接影响舵机、电调和安全状态，必须保留 PWM 限幅、Park 锁定覆盖油门、失联安全默认值等行为。
 
-3. **拆分 `WifiManager`（承接 Wi-Fi runtime 状态机）**
-   - 将 `setupWifiConsoleServices()`、`startWifiApServices()`、`applyWifiStaCredentials()`、`updateWifiSta()`、`startWifiStaHandoff()`、`finishWifiStaHandoff()` 等迁入 `WifiManager.h/.cpp`。
-   - `WifiStaConfig` 只保留配置读写与 Web/API 命令入口，不再处理连接状态机。
-   - `WifiIdentity` 继续独立，提供 AP SSID/mDNS 相关 helper。
-
-4. **继续后置 RC/ISR、Park/PWM 安全关键切片**
-   - 在前三步让 `.ino` 体积降到 1200 行以下、全局状态清晰后，再进入 `RcInput` / `RcPwmCapture` / `SafetyState` / `ControlMixer` / `ActuatorOutput` 拆分。
-   - 这些切片必须配合断动力或架空车轮硬件验证，每次只迁一个责任域。
-
-5. **最后引入 `FirmwareApp` 装配层**
+3. **最后引入 `FirmwareApp` 装配层**
    - 当 `loop()` 中只剩调度代码、各模块边界稳定后，再封装 `FirmwareApp.begin()` / `FirmwareApp.update()`。
    - 不要提前做：当前初始化顺序仍有较多隐式依赖，提前封装会掩盖问题。
 
-6. **文档与测试同步**
+4. **文档与测试同步**
    - 每次收敛全局状态后，更新 `tests/test_firmware_feature_flags.py` 的源码断言，确认目标变量/函数已从 `MUS4_FW.ino` 迁出。
    - 同步更新 `AGENTS.md` 的代码组织图和模块清单。
    - 保持 `wireless_console_policy.py` 与 `WirelessConsole.cpp` 的权限策略一致。

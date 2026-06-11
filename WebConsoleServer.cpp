@@ -4,6 +4,8 @@
 
 #include "JsonUtil.h"
 #include "Mus4Log.h"
+#include "BuildInfo.h"
+#include "SharedTypes.h"
 #include "StringPrint.h"
 #include "WebConsoleAssets.h"
 #include "WebLogBuffer.h"
@@ -30,6 +32,7 @@ extern OtaRuntimeState otaRuntime;
 
 // Control / sensor globals defined in MUS4_FW.ino (to be migrated later)
 extern ControlData car_output;
+extern SerialBuf wifiConsoleBuf;
 
 // Web telemetry globals defined in MUS4_FW.ino (to be migrated to WebTelemetry)
 extern WebDataPoint wifiWebData[WIFI_WEB_DATA_CAPACITY];
@@ -37,6 +40,10 @@ extern uint32_t wifiWebDataSeq;
 extern uint16_t wifiWebDataHead;
 extern uint16_t wifiWebDataCount;
 extern unsigned long lastWifiWebDataSampleMs;
+
+#ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
+#include "WebTelemetry.h"
+#endif
 
 // Wi-Fi scan cache globals defined in MUS4_FW.ino (to be migrated with WebConsoleServer later)
 extern WifiScanEntry wifiScanCache[16];
@@ -48,6 +55,7 @@ extern void clearWifiStaHandoff();
 extern void scheduleWifiStaApply();
 extern void scheduleWifiApRestart();
 extern bool saveDevModePreference(bool enabled);
+extern bool saveWifiApPreference(const String& ssid);
 
 // Web telemetry sampler still in MUS4_FW.ino (to be migrated to WebTelemetry in slice 3)
 extern void sampleWifiWebData();
@@ -59,7 +67,6 @@ static unsigned long lastWifiWebUpdateMs = 0;
 static uint32_t wifiWebUpdateMaxDtMs = 0;
 static uint32_t wifiWebSampleMaxDtMs = 0;
 static uint32_t wifiWebHttpMaxDtMs = 0;
-static uint32_t wifiWebSocketMaxDtMs = 0;
 static uint32_t wifiWebStatusRequests = 0;
 static uint32_t wifiWebLogRequests = 0;
 static uint32_t wifiWebDataRequests = 0;
@@ -68,6 +75,71 @@ static uint32_t wifiWebStatusMaxDtMs = 0;
 static uint32_t wifiWebLogMaxDtMs = 0;
 static uint32_t wifiWebDataMaxDtMs = 0;
 static uint32_t wifiWebCommandMaxDtMs = 0;
+
+void printWirelessStatus(Print& out)
+{
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s mdns_host=\"%s\" mdns_url=%s mdns_started=%d\n",
+        car_output.mode,
+        car_output.park ? 1 : 0,
+        car_output.throttle,
+        car_output.steering,
+        wifiConsoleBuf.frames,
+        wifiConsoleBuf.errors,
+        os.windowOpen ? 1 : 0,
+        os.lastProgressPct,
+        wifiOtaTtlMs(otaRuntime, wifiRuntime),
+        wifiRuntime.devModeEnabled ? 1 : 0,
+        otaRuntime.parkGuardActive ? 1 : 0,
+        MUS4_FIRMWARE_VERSION,
+        MUS4_BUILD_DATE,
+        MUS4_BUILD_TIME,
+        WIFI_WEB_CONSOLE_PORT,
+        (unsigned long)ESP.getFreeHeap(),
+        (unsigned long)WIFI_WEB_TELEMETRY_MIN_FREE_HEAP,
+#ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
+        WIFI_WEB_SOCKET_PORT,
+        wifiWebSocketClientConnected ? 1 : 0,
+        wifiWebSocketDroppedPoints,
+        wifiWebSocketQueueFullSkips,
+        wifiWebSocketHeapSkips,
+        wifiWebSocketFramesSent,
+        wifiWebSocketMaxBacklog,
+        wifiWebSocketConnects,
+        wifiWebSocketDisconnects,
+#else
+        0,
+        0,
+        0UL,
+        0UL,
+        0UL,
+        0UL,
+        0UL,
+        0UL,
+        0UL,
+#endif
+        wifiWebUpdateMaxDtMs,
+        wifiWebSampleMaxDtMs,
+        wifiWebHttpMaxDtMs,
+        wifiWebSocketMaxDtMs,
+        wifiWebStatusRequests,
+        wifiWebLogRequests,
+        wifiWebDataRequests,
+        wifiWebCommandRequests,
+        wifiWebStatusMaxDtMs,
+        wifiWebLogMaxDtMs,
+        wifiWebDataMaxDtMs,
+        wifiWebCommandMaxDtMs,
+        wifiRuntime.apSsid,
+        WiFi.softAPIP().toString().c_str(),
+        WiFi.softAPgetStationNum(),
+        wifiRuntime.staConfigured ? 1 : 0,
+        wifiRuntime.staConnected ? 1 : 0,
+        wifiRuntime.staSsid,
+        wifiStaIpText().c_str(),
+        wifiMdnsHostText().c_str(),
+        wifiMdnsUrlText().c_str(),
+        wifiRuntime.mdnsStarted ? 1 : 0);
+}
 
 static void redirectWifiWebCaptivePortalToRoot()
 {

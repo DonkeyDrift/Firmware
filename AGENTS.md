@@ -29,10 +29,11 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 
 ```text
 根目录/
-├── MUS4_FW.ino                    # 主固件入口（~2270 行），包含 setup/loop/中断/全局状态
+├── MUS4_FW.ino                    # 主固件入口（~1000 行），包含 setup/loop/中断/全局装配/混控
 ├── BuildInfo.h                    # 固件版本与构建时间宏（当前 v1.7.3）
 ├── FirmwareConfig.h               # 编译期功能开关、引脚定义、时序/滤波/日志目标等核心常量
 ├── SharedTypes.h                  # 跨模块共享数据结构（SensorData、ControlData）
+├── RuntimeState.h                 # Wi-Fi / OTA 运行时聚合状态结构体（WifiRuntimeState / OtaRuntimeState）
 ├── TUI.h / TUI.cpp                # ANSI 终端仪表盘，支持脏矩形增量刷新与降级模式
 ├── Buzzer.h / Buzzer.cpp          # 蜂鸣器状态机（模式/停车提示音）
 ├── LedStatus.h / LedStatus.cpp    # WS2812B LED 颜色与闪烁控制
@@ -51,6 +52,10 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 ├── WifiIdentity.h / WifiIdentity.cpp           # AP SSID / mDNS 主机名校验
 ├── WifiOta.h / WifiOta.cpp                     # OTA 窗口、ArduinoOTA 生命周期、Park 保护
 ├── WebConsoleAssets.h             # Web Console HTML（Drifter Console）与 OTA 上传页（PROGMEM）
+├── WebLogBuffer.h / WebLogBuffer.cpp           # Web 日志 ring buffer 与日志桥接
+├── WebConsoleServer.h / WebConsoleServer.cpp   # HTTP route、API handler、captive portal、OTA upload
+├── WebTelemetry.h / WebTelemetry.cpp           # WebSocket telemetry、数据采样与推送
+├── WifiManager.h / WifiManager.cpp             # Wi-Fi runtime 状态机（AP/STA/mDNS/DNS/TCP Console）
 ├── DriftAssist.h / DriftAssist.cpp             # 漂移辅助：基于 GyroZ 与 CH5/CH6 的转向补偿
 ├── SteeringControl.h / SteeringControl.cpp     # 转向 PID 平滑与故障安全
 ├── SteeringCalibration.h / SteeringCalibration.cpp # 转向通道交互式标定

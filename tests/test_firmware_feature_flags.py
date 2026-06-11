@@ -53,6 +53,10 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.h",
     PROJECT_ROOT / "WifiOta.cpp",
+    PROJECT_ROOT / "WebTelemetry.h",
+    PROJECT_ROOT / "WebTelemetry.cpp",
+    PROJECT_ROOT / "WifiManager.h",
+    PROJECT_ROOT / "WifiManager.cpp",
 ]
 ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
 CONFIG_YAML = PROJECT_ROOT / "config.yaml"
@@ -1029,8 +1033,8 @@ def test_web_console_exposes_ap_name_mdns_lan_console_entry():
 
     assert "#include <ESPmDNS.h>" in source
     assert "bool& wifiMdnsStarted" in source
-    assert "static void startWifiMdnsIfNeeded()" in source
-    assert "static void stopWifiMdnsIfNeeded()" in source
+    assert "void startWifiMdnsIfNeeded()" in source
+    assert "void stopWifiMdnsIfNeeded()" in source
     assert "String wifiMdnsHostText()" in source
     assert "String wifiMdnsUrlText()" in source
     assert "MDNS.begin(wifiMdnsHostText().c_str())" in source
@@ -1074,14 +1078,14 @@ def test_wifi_sta_to_sta_handoff_keeps_ap_as_transition_page():
     assert "WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS" not in source
     assert "bool& wifiStaHandoffActive" in source
     assert "char* const wifiStaHandoffTargetSsid" in source
-    assert "static void startWifiStaHandoff" in source
-    assert "static void finishWifiStaHandoff" in source
+    assert "void startWifiStaHandoff" in source
+    assert "void finishWifiStaHandoff" in source
     assert "void clearWifiStaHandoff" in source
     handoff_body = re.search(
-        r"static void startWifiStaHandoff.*?\n\}",
+        r"void startWifiStaHandoff\(const String& targetSsid\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
-    ).group(0)
+    ).group("body")
     assert "ensureWifiApAvailable()" in handoff_body
     assert "restartWifiAp()" not in handoff_body
     assert "body.set('source',location.hostname==='192.168.4.1'?'ap':'sta')" in source
@@ -1342,9 +1346,9 @@ def test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_
 
     assert "static void handleWifiWebStaPassword()" in source
     assert 'wifiWebServer.on("/api/wifi-sta/password", HTTP_GET, handleWifiWebStaPassword)' in source
-    assert "if (!wifiConsoleAuthenticated && !wifiDevModeEnabled)" in source
+    assert "if (!ws.consoleAuthenticated && !ws.devModeEnabled)" in source
     assert "\\\"password_len\\\":" in source
-    assert "appendJsonString(response, wifiStaPassword)" in source
+    assert "appendJsonString(response, ws.staPassword)" in source
 
     public_body = re.search(
         r"static String wifiStaJson\(\)\s*\{(?P<body>.*?)\n\}",
@@ -1379,7 +1383,7 @@ def test_web_console_keeps_ap_running_after_successful_wifi_sta_connection():
     assert "stopWifiApAfterStaConnected" not in source
     assert "AP stopped after STA connected" not in source
     restart_body = re.search(
-        r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1388,7 +1392,7 @@ def test_web_console_keeps_ap_running_after_successful_wifi_sta_connection():
     assert "WiFi.mode(WIFI_STA)" not in source
 
     update_sta_body = re.search(
-        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1494,7 +1498,7 @@ def test_wifi_mdns_lifecycle_follows_sta_connection():
         re.DOTALL,
     ).group("body")
     update_sta_body = re.search(
-        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1511,12 +1515,12 @@ def test_wifi_console_applies_sta_after_console_is_ready():
     source = firmware_source_text()
 
     setup_body = re.search(
-        r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
     console_services_body = re.search(
-        r"static bool startWifiConsoleServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool startWifiConsoleServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1532,22 +1536,22 @@ def test_wifi_softap_uses_explicit_ipv4_gateway_configuration():
     source = firmware_source_text()
 
     restart_body = re.search(
-        r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
     setup_body = re.search(
-        r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
 
-    assert "static bool configureWifiSoftApNetwork()" in source
+    assert "bool configureWifiSoftApNetwork()" in source
     assert "IPAddress apIp(192, 168, 4, 1)" in source
     assert "IPAddress subnet(255, 255, 255, 0)" in source
     assert "WiFi.softAPConfig(apIp, apIp, subnet)" in source
     start_services_body = re.search(
-        r"static bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1561,12 +1565,12 @@ def test_sta_disconnect_keeps_soft_ap_clients_connected_and_services_available()
     source = firmware_source_text()
 
     ensure_body = re.search(
-        r"static bool ensureWifiApAvailable\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool ensureWifiApAvailable\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
     update_sta_body = re.search(
-        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1576,14 +1580,14 @@ def test_sta_disconnect_keeps_soft_ap_clients_connected_and_services_available()
     assert "restartWifiAp()" not in disconnected_branch
     assert "WiFi.softAPdisconnect(true)" not in disconnected_branch
     start_services_body = re.search(
-        r"static bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
 
     assert "wifiApStopPending" not in source
     console_services_body = re.search(
-        r"static bool startWifiConsoleServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool startWifiConsoleServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1606,7 +1610,7 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
     source = firmware_source_text()
 
     disconnect_body = re.search(
-        r"static void disconnectWifiStaOnly\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void disconnectWifiStaOnly\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1626,12 +1630,12 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
         re.DOTALL,
     ).group("body")
     setup_body = re.search(
-        r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
 
-    assert "static void disconnectWifiStaOnly()" in source
+    assert "void disconnectWifiStaOnly()" in source
     assert "esp_wifi_disconnect()" in disconnect_body
     assert "disconnectWifiStaOnly()" in apply_body
     assert "clearWifiStaRuntimeStateWithoutDisconnect()" in clear_body
@@ -1656,12 +1660,12 @@ def test_soft_ap_disconnect_is_limited_to_explicit_ap_restart():
     source = firmware_source_text()
 
     restart_body = re.search(
-        r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
     setup_body = re.search(
-        r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1671,7 +1675,7 @@ def test_soft_ap_disconnect_is_limited_to_explicit_ap_restart():
         re.DOTALL,
     ).group("body")
     update_sta_body = re.search(
-        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")

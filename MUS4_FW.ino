@@ -65,6 +65,8 @@
 #include "WifiStaConfig.h"
 #include "WifiIdentity.h"
 #include "WifiOta.h"
+#include "WebTelemetry.h"
+#include "WifiManager.h"
 #include "DriftAssist.h"
 #include "SteeringControl.h"
 #include "Diagnostics.h"
@@ -150,10 +152,6 @@ WiFiServer wifiConsoleServer(WIFI_CONSOLE_PORT);
 WiFiClient wifiConsoleClient;
 WebServer wifiWebServer(WIFI_WEB_CONSOLE_PORT);
 DNSServer wifiCaptiveDnsServer;
-#ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
-AsyncWebServer wifiWebSocketServer(WIFI_WEB_SOCKET_PORT);
-AsyncWebSocket wifiWebSocket("/");
-#endif
 SerialBuf wifiConsoleBuf = {{0},0,0,0,false};
 WifiScanEntry wifiScanCache[16];
 uint8_t wifiScanCacheCount = 0;
@@ -171,20 +169,20 @@ bool& wifiStaConfigured = wifiRuntime.staConfigured;
 bool& wifiStaConnected = wifiRuntime.staConnected;
 bool& wifiStaTimedOut = wifiRuntime.staTimedOut;
 bool& wifiStaConnecting = wifiRuntime.staConnecting;
-char* const wifiStaLastError = wifiRuntime.staLastError;
-char* const wifiStaLastErrorMessage = wifiRuntime.staLastErrorMessage;
+extern char* const wifiStaLastError = wifiRuntime.staLastError;
+extern char* const wifiStaLastErrorMessage = wifiRuntime.staLastErrorMessage;
 bool& wifiStaApplyPending = wifiRuntime.staApplyPending;
 bool& wifiApRestartPending = wifiRuntime.apRestartPending;
 bool& wifiMdnsStarted = wifiRuntime.mdnsStarted;
 bool& wifiStaHandoffActive = wifiRuntime.staHandoffActive;
-char* const wifiStaHandoffTargetSsid = wifiRuntime.staHandoffTargetSsid;
-char* const wifiStaHandoffStaIp = wifiRuntime.staHandoffStaIp;
-char* const wifiStaHandoffApSsid = wifiRuntime.staHandoffApSsid;
+extern char* const wifiStaHandoffTargetSsid = wifiRuntime.staHandoffTargetSsid;
+extern char* const wifiStaHandoffStaIp = wifiRuntime.staHandoffStaIp;
+extern char* const wifiStaHandoffApSsid = wifiRuntime.staHandoffApSsid;
 unsigned long& wifiStaHandoffStartedMs = wifiRuntime.staHandoffStartedMs;
 bool& wifiDevModeEnabled = wifiRuntime.devModeEnabled;
-char* const wifiApSsid = wifiRuntime.apSsid;
-char* const wifiStaSsid = wifiRuntime.staSsid;
-char* const wifiStaPassword = wifiRuntime.staPassword;
+extern char* const wifiApSsid = wifiRuntime.apSsid;
+extern char* const wifiStaSsid = wifiRuntime.staSsid;
+extern char* const wifiStaPassword = wifiRuntime.staPassword;
 bool& wifiStaPasswordSet = wifiRuntime.staPasswordSet;
 unsigned long& lastWifiConsoleStartAttemptMs = wifiRuntime.lastConsoleStartAttemptMs;
 unsigned long& wifiStaConnectStartMs = wifiRuntime.staConnectStartMs;
@@ -199,28 +197,11 @@ bool& wifiOtaParkGuardActive = otaRuntime.parkGuardActive;
 unsigned long& wifiOtaDeadlineMs = otaRuntime.deadlineMs;
 uint8_t& wifiOtaLastProgressPct = otaRuntime.lastProgressPct;
 
-// Web telemetry state (to be migrated to WebTelemetry in slice 3)
+// Shared web telemetry data buffer (used by WebConsoleServer and WebTelemetry)
 unsigned long lastWifiWebDataSampleMs = 0;
 uint32_t wifiWebDataSeq = 0;
 uint16_t wifiWebDataHead = 0;
 uint16_t wifiWebDataCount = 0;
-uint32_t wifiWebSocketMaxDtMs = 0;
-#ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
-bool wifiWebSocketClientConnected = false;
-uint32_t wifiWebSocketClientId = 0;
-AsyncWebSocketClient* wifiWebSocketClient = nullptr;
-uint32_t wifiWebSocketClientLastSeq = 0;
-uint32_t wifiWebSocketDroppedPoints = 0;
-uint32_t wifiWebSocketQueueFullSkips = 0;
-uint32_t wifiWebSocketHeapSkips = 0;
-uint32_t wifiWebSocketFramesSent = 0;
-uint32_t wifiWebSocketMaxBacklog = 0;
-uint32_t wifiWebSocketConnects = 0;
-uint32_t wifiWebSocketDisconnects = 0;
-unsigned long lastWifiWebSocketPushMs = 0;
-String wifiWebSocketPayload;
-uint8_t wifiWebSocketBinaryPayload[256];
-#endif
 
 // Preferences remains a standalone global object; the runtime state keeps a
 // pointer to it so that modules can access it without an extra extern.
@@ -280,198 +261,7 @@ const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
 const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
 
 #ifdef ENABLE_WIFI_CONSOLE
-static void loadDevModePreference()
-{
-    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) {
-        wifiDevModeEnabled = false;
-        mus4LogLine("wifi", "dev_mode load failed");
-        return;
-    }
-    wifiDevModeEnabled = mus4Prefs.getBool(MUS4_PREF_DEV_MODE_KEY, false);
-    mus4Prefs.end();
-    mus4Logf("wifi", "dev_mode=%d", wifiDevModeEnabled ? 1 : 0);
-}
-
-static bool saveDevModePreference(bool enabled)
-{
-    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
-    size_t written = mus4Prefs.putBool(MUS4_PREF_DEV_MODE_KEY, enabled);
-    mus4Prefs.end();
-    if (written == 0) return false;
-    wifiDevModeEnabled = enabled;
-    if (wifiDevModeEnabled) {
-        keepDevModeOtaWindowActive(otaRuntime, wifiRuntime);
-    } else if (wifiOtaWindowOpen && !wifiOtaInProgress) {
-        closeWifiOtaWindow("DEV_MODE_OFF", otaRuntime);
-    }
-    mus4Logf("wifi", "dev_mode saved=%d", wifiDevModeEnabled ? 1 : 0);
-    return true;
-}
-
-
-static void startWifiMdnsIfNeeded()
-{
-    if (wifiMdnsStarted) return;
-    if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) return;
-    if (!MDNS.begin(wifiMdnsHostText().c_str())) {
-        mus4LogLine("wifi", "mDNS start failed");
-        return;
-    }
-    MDNS.addService("http", "tcp", WIFI_WEB_CONSOLE_PORT);
-    wifiMdnsStarted = true;
-    mus4Logf("wifi", "mDNS started: %s.local", wifiMdnsHostText().c_str());
-}
-
-static bool ensureWifiApAvailable();
-static bool restartWifiAp();
-
-static void stopWifiMdnsIfNeeded()
-{
-    if (!wifiMdnsStarted) return;
-    MDNS.end();
-    wifiMdnsStarted = false;
-    mus4LogLine("wifi", "mDNS stopped");
-}
-
-void clearWifiStaHandoff()
-{
-    wifiStaHandoffActive = false;
-    wifiStaHandoffTargetSsid[0] = 0;
-    wifiStaHandoffStaIp[0] = 0;
-    wifiStaHandoffApSsid[0] = 0;
-    wifiStaHandoffStartedMs = 0;
-}
-
-static void finishWifiStaHandoff()
-{
-    if (!wifiStaHandoffActive) return;
-    snprintf(wifiStaHandoffStaIp, sizeof(wifiStaHandoffStaIp), "%s", WiFi.localIP().toString().c_str());
-    mus4Logf("wifi", "STA handoff ready ssid=%s ip=%s", wifiStaHandoffTargetSsid, wifiStaHandoffStaIp);
-}
-
-static void startWifiStaHandoff(const String& targetSsid)
-{
-    wifiStaHandoffActive = true;
-    targetSsid.toCharArray(wifiStaHandoffTargetSsid, sizeof(wifiStaHandoffTargetSsid));
-    snprintf(wifiStaHandoffApSsid, sizeof(wifiStaHandoffApSsid), "%s", wifiApSsid);
-    wifiStaHandoffStaIp[0] = 0;
-    wifiStaHandoffStartedMs = millis();
-    ensureWifiApAvailable();
-    mus4Logf("wifi", "STA handoff started target=%s", wifiStaHandoffTargetSsid);
-}
-
-static void disconnectWifiStaOnly()
-{
-    esp_wifi_disconnect();
-}
-
-void applyWifiStaCredentials()
-{
-    if (!wifiStaConfigured) return;
-    stopWifiMdnsIfNeeded();
-    wifiStaApplyPending = false;
-    wifiStaConnected = false;
-    wifiStaTimedOut = false;
-    wifiStaConnecting = true;
-    clearWifiStaLastError();
-    wifiStaConnectStartMs = millis();
-    disconnectWifiStaOnly();
-    WiFi.begin(wifiStaSsid, wifiStaPassword);
-    mus4Logf("wifi", "STA connecting: %s", wifiStaSsid);
-}
-
-static void scheduleWifiApRestart()
-{
-    wifiApRestartPending = true;
-    wifiApRestartDeadlineMs = millis() + WIFI_STA_APPLY_DELAY_MS;
-}
-
-static bool configureWifiSoftApNetwork()
-{
-    IPAddress apIp(192, 168, 4, 1);
-    IPAddress subnet(255, 255, 255, 0);
-    return WiFi.softAPConfig(apIp, apIp, subnet);
-}
-
-static bool startWifiConsoleServices(const char* logPrefix)
-{
-    wifiCaptiveDnsServer.start(53, "*", WiFi.softAPIP());
-    wifiConsoleServer.begin();
-    wifiConsoleServer.setNoDelay(true);
-    wifiWebServer.begin();
-    wifiConsoleStarted = true;
-    mus4Logf("wifi", "%s ssid=%s IP: %s", logPrefix, wifiApSsid, WiFi.softAPIP().toString().c_str());
-    return true;
-}
-
-static bool startWifiApServices(const char* logPrefix)
-{
-    configureWifiSoftApNetwork();
-    bool started = WiFi.softAP(
-        wifiApSsid,
-        WIFI_CONSOLE_AP_PASSWORD,
-        WIFI_CONSOLE_CHANNEL,
-        false,
-        WIFI_CONSOLE_MAX_CLIENTS
-    );
-    if (!started) {
-        wifiConsoleStarted = false;
-        mus4Logf("wifi", "%s failed", logPrefix);
-        return false;
-    }
-    return startWifiConsoleServices(logPrefix);
-}
-
-static bool ensureWifiApAvailable()
-{
-    wifiApRestartPending = false;
-    if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
-        return startWifiApServices("AP ensured");
-    }
-    return startWifiConsoleServices("AP ensured");
-}
-
-static bool restartWifiAp()
-{
-    wifiApRestartPending = false;
-    wifiCaptiveDnsServer.stop();
-    WiFi.softAPdisconnect(true);
-    delay(100);
-    WiFi.mode(WIFI_AP_STA);
-    return startWifiApServices("AP restarted");
-}
-
-static void loadWifiApPreference()
-{
-    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) {
-        copyWifiApSsid(String(WIFI_CONSOLE_AP_DEFAULT_SSID));
-        mus4LogLine("wifi", "AP SSID load failed, using default");
-        return;
-    }
-    String ssid = mus4Prefs.getString(MUS4_PREF_AP_SSID_KEY, WIFI_CONSOLE_AP_DEFAULT_SSID);
-    mus4Prefs.end();
-    ssid.trim();
-    if (!copyWifiApSsid(ssid)) {
-        copyWifiApSsid(String(WIFI_CONSOLE_AP_DEFAULT_SSID));
-        mus4LogLine("wifi", "AP SSID invalid, using default");
-    }
-}
-
-static bool saveWifiApPreference(const String& ssid)
-{
-    String trimmed = ssid;
-    trimmed.trim();
-    if (!copyWifiApSsid(trimmed)) return false;
-    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
-    size_t ssidWritten = mus4Prefs.putString(MUS4_PREF_AP_SSID_KEY, wifiApSsid);
-    mus4Prefs.end();
-    return ssidWritten > 0;
-}
-
-#endif
-
-#ifdef ENABLE_WIFI_CONSOLE
-static void sampleWifiWebData()
+void sampleWifiWebData()
 {
     unsigned long now = millis();
     if (now - lastWifiWebDataSampleMs < WIFI_WEB_DATA_INTERVAL_MS) return;
@@ -555,320 +345,6 @@ void ensureWifiOtaStarted()
     wifiOtaStarted = true;
 }
 
-#ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
-static uint16_t wifiWebDataIndexForSeq(uint32_t seq)
-{
-    for (uint16_t i = 0; i < wifiWebDataCount; i++) {
-        uint16_t index = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - wifiWebDataCount + i) % WIFI_WEB_DATA_CAPACITY;
-        if (wifiWebData[index].seq == seq) return index;
-    }
-    return WIFI_WEB_DATA_CAPACITY;
-}
-
-static void sendWifiWebSocketHello(AsyncWebSocketClient* client)
-{
-    if (!client) return;
-    wifiWebSocketPayload = "{\"type\":\"hello\",\"seq\":";
-    wifiWebSocketPayload += wifiWebDataSeq;
-    wifiWebSocketPayload += '}';
-    client->text(wifiWebSocketPayload);
-}
-
-static void handleWifiWebSocketMessage(AsyncWebSocketClient* client, uint8_t* data, size_t length)
-{
-    if (!client || !wifiWebSocketClientConnected || wifiWebSocketClientId != client->id()) return;
-    String message;
-    message.reserve(length + 1);
-    for (size_t i = 0; i < length; i++) message += (char)data[i];
-    message.trim();
-    if (message.startsWith("since:")) {
-        uint32_t seq = (uint32_t)message.substring(6).toInt();
-        uint32_t replayFloor = wifiWebDataSeq > WIFI_WEB_SOCKET_MAX_REPLAY_POINTS ? wifiWebDataSeq - WIFI_WEB_SOCKET_MAX_REPLAY_POINTS : 0;
-        if (seq >= replayFloor && seq <= wifiWebDataSeq) wifiWebSocketClientLastSeq = seq;
-    }
-}
-
-static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t length)
-{
-    (void)server;
-    if (type == WS_EVT_CONNECT) {
-        if (wifiWebSocketClientConnected && wifiWebSocketClientId != client->id()) {
-            client->close();
-            return;
-        }
-        wifiWebSocketClientConnected = true;
-        wifiWebSocketClientId = client->id();
-        wifiWebSocketClient = client;
-        wifiWebSocketClientLastSeq = wifiWebDataSeq;
-        wifiWebSocketConnects++;
-        client->keepAlivePeriod(WIFI_WEB_SOCKET_KEEPALIVE_SECONDS);
-        client->setCloseClientOnQueueFull(false);
-        sendWifiWebSocketHello(client);
-        mus4LogLine("web", "ws connected");
-        return;
-    }
-    if (type == WS_EVT_DISCONNECT) {
-        if (wifiWebSocketClientConnected && wifiWebSocketClientId == client->id()) {
-            wifiWebSocketClientConnected = false;
-            wifiWebSocketClient = nullptr;
-            wifiWebSocketClientLastSeq = wifiWebDataSeq;
-            wifiWebSocketDisconnects++;
-            lastWifiWebSocketPushMs = millis();
-            mus4LogLine("web", "ws disconnected");
-        }
-        return;
-    }
-    if (type == WS_EVT_DATA) {
-        AwsFrameInfo* info = (AwsFrameInfo*)arg;
-        if (info && info->final && info->index == 0 && info->len == length && info->opcode == WS_TEXT) {
-            handleWifiWebSocketMessage(client, data, length);
-        }
-    }
-}
-
-static void pushWifiWebSocketData()
-{
-    if (!wifiWebSocketClientConnected) return;
-    if (!wifiWebSocketClient || !wifiWebSocketClient->canSend() || wifiWebSocketClient->queueIsFull()) {
-        wifiWebSocketQueueFullSkips++;
-        return;
-    }
-    if (!wifiWebSocket.availableForWrite(wifiWebSocketClientId)) {
-        wifiWebSocketQueueFullSkips++;
-        return;
-    }
-    if (wifiOtaInProgress) return;
-    if (ESP.getFreeHeap() < WIFI_WEB_TELEMETRY_MIN_FREE_HEAP) {
-        wifiWebSocketHeapSkips++;
-        return;
-    }
-    unsigned long now = millis();
-    if (now - lastWifiWebSocketPushMs < WIFI_WEB_SOCKET_PUSH_INTERVAL_MS) return;
-    if (wifiWebDataCount == 0 || wifiWebDataSeq <= wifiWebSocketClientLastSeq) return;
-    uint32_t firstSeq = wifiWebSocketClientLastSeq + 1;
-    uint32_t oldestSeq = wifiWebDataSeq - wifiWebDataCount + 1;
-    if (firstSeq < oldestSeq) {
-        wifiWebSocketDroppedPoints += oldestSeq - firstSeq;
-        firstSeq = oldestSeq;
-    }
-    uint32_t available = wifiWebDataSeq - firstSeq + 1;
-    if (available > wifiWebSocketMaxBacklog) wifiWebSocketMaxBacklog = available;
-    if (available > WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME) {
-        uint32_t skipped = available - WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME;
-        wifiWebSocketDroppedPoints += skipped;
-        firstSeq += skipped;
-        available = WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME;
-    }
-    uint8_t* cursor = wifiWebSocketBinaryPayload;
-    auto writeU8 = [&](uint8_t value) { *cursor++ = value; };
-    auto writeU16 = [&](uint16_t value) { memcpy(cursor, &value, sizeof(value)); cursor += sizeof(value); };
-    auto writeU32 = [&](uint32_t value) { memcpy(cursor, &value, sizeof(value)); cursor += sizeof(value); };
-    auto writeI16 = [&](int16_t value) { memcpy(cursor, &value, sizeof(value)); cursor += sizeof(value); };
-    auto writeF32 = [&](float value) { memcpy(cursor, &value, sizeof(value)); cursor += sizeof(value); };
-    uint8_t pointCount = 0;
-    uint32_t lastSentSeq = wifiWebSocketClientLastSeq;
-    uint16_t latestIndex = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - 1) % WIFI_WEB_DATA_CAPACITY;
-    WebDataPoint& latest = wifiWebData[latestIndex];
-    writeU8('M');
-    writeU8('4');
-    writeU8(1);
-    writeU8(0);
-    writeU32(wifiWebSocketDroppedPoints);
-    writeU32(latest.seq);
-    writeU32((uint32_t)latest.t);
-    writeU16(latest.dtMs);
-    writeI16((int16_t)latest.throttle);
-    writeI16((int16_t)latest.steering);
-    writeF32(latest.gyroZ);
-    writeU8((uint8_t)latest.mode);
-    writeU8(latest.park ? 1 : 0);
-    for (uint8_t i = 0; i < RC_CHANNEL_COUNT; i++) writeU16((uint16_t)latest.rcChannels[i]);
-    writeI16((int16_t)latest.rcThrottle);
-    writeI16((int16_t)latest.rcSteering);
-    writeI16((int16_t)latest.pilotThrottle);
-    writeI16((int16_t)latest.pilotSteering);
-    writeF32(latest.gyroZFiltered);
-    writeF32(latest.driftCompensation);
-    writeU8(latest.driftEnabled ? 1 : 0);
-    writeU8(latest.driftActive ? 1 : 0);
-    writeF32(latest.voltage);
-    uint8_t* pointCountSlot = cursor++;
-    for (uint32_t seq = firstSeq; seq < firstSeq + available; seq++) {
-        uint16_t index = wifiWebDataIndexForSeq(seq);
-        if (index == WIFI_WEB_DATA_CAPACITY) continue;
-        WebDataPoint& point = wifiWebData[index];
-        writeU32(point.seq);
-        writeU32((uint32_t)point.t);
-        writeU16(point.dtMs);
-        writeI16((int16_t)point.throttle);
-        writeI16((int16_t)point.steering);
-        writeF32(point.gyroZ);
-        pointCount++;
-        lastSentSeq = seq;
-    }
-    *pointCountSlot = pointCount;
-    if (pointCount > 0 && wifiWebSocketClient && wifiWebSocketClient->canSend()) {
-        wifiWebSocketClient->binary(wifiWebSocketBinaryPayload, cursor - wifiWebSocketBinaryPayload);
-        wifiWebSocketClientLastSeq = lastSentSeq;
-        wifiWebSocketFramesSent++;
-        lastWifiWebSocketPushMs = now;
-    }
-}
-
-static void setupWifiWebSocket()
-{
-    wifiWebSocketPayload.reserve(1536);
-    wifiWebSocket.onEvent(handleWifiWebSocketEvent);
-    wifiWebSocketServer.addHandler(&wifiWebSocket);
-    wifiWebSocketServer.begin();
-    mus4Logf("web", "ws telemetry port=%u", WIFI_WEB_SOCKET_PORT);
-}
-
-static void updateWifiWebSocket()
-{
-    wifiWebSocket.cleanupClients();
-    pushWifiWebSocketData();
-}
-#endif
-
-static void setupWifiWebConsole()
-{
-    setupWebConsoleServer();
-#ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
-    setupWifiWebSocket();
-#endif
-}
-
-static void updateWifiWebConsole()
-{
-    updateWebConsoleServer();
-    if (wifiApRestartPending && (long)(millis() - wifiApRestartDeadlineMs) >= 0) {
-        restartWifiAp();
-    }
-#ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
-    unsigned long stageStart = millis();
-    updateWifiWebSocket();
-    uint32_t stageDt = (uint32_t)(millis() - stageStart);
-    if (stageDt > wifiWebSocketMaxDtMs) wifiWebSocketMaxDtMs = stageDt;
-#endif
-}
-
-static void setupWifiConsole()
-{
-    webLogBufferInit();
-    mus4SetWebLogSink(appendWebLog);
-    lastWifiConsoleStartAttemptMs = millis();
-    wifiStaConnected = false;
-    wifiStaTimedOut = false;
-    wifiStaConnecting = false;
-    wifiApRestartPending = false;
-    clearWifiStaLastError();
-    WiFi.disconnect(true, true);
-    WiFi.mode(WIFI_OFF);
-    delay(100);
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.setSleep(false);
-    setupWifiWebConsole();
-    if (!startWifiApServices("AP started")) {
-        return;
-    }
-    mus4Logf("wifi", "AP %s IP: %s Port: %u Web: %u", wifiApSsid, WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT);
-    if (wifiStaConfigured) {
-        applyWifiStaCredentials();
-    }
-}
-
-static void updateWifiSta()
-{
-    if (!wifiStaConfigured) return;
-    if (wifiStaApplyPending && (long)(millis() - wifiStaApplyDeadlineMs) >= 0) {
-        applyWifiStaCredentials();
-    }
-    wl_status_t status = WiFi.status();
-    if (status == WL_CONNECTED) {
-        if (!wifiStaConnected) {
-            wifiStaConnected = true;
-            wifiStaTimedOut = false;
-            wifiStaConnecting = false;
-            clearWifiStaLastError();
-            startWifiMdnsIfNeeded();
-            mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
-            finishWifiStaHandoff();
-        }
-        return;
-    }
-    if (wifiStaConnected) {
-        wifiStaConnected = false;
-        stopWifiMdnsIfNeeded();
-        mus4LogLine("wifi", "STA disconnected");
-        ensureWifiApAvailable();
-    }
-    if (!wifiStaConnecting) return;
-    if (status == WL_NO_SSID_AVAIL) {
-        setWifiStaLastError("no_ssid", "未找到目标 SSID，请检查网络名称或距离。", false);
-        return;
-    }
-    if (status == WL_CONNECT_FAILED) {
-        setWifiStaLastError("auth_failed", "STA 认证失败，请检查 Wi-Fi 密码。", false);
-        return;
-    }
-    if (!wifiStaTimedOut && millis() - wifiStaConnectStartMs >= WIFI_STA_CONNECT_TIMEOUT_MS) {
-        setWifiStaLastError("timeout", "STA 连接超时，请检查 SSID、密码与路由器信号。", true);
-    }
-}
-
-static void updateWifiConsole()
-{
-    if (wifiConsoleStarted) {
-        wifiCaptiveDnsServer.processNextRequest();
-    }
-    if (!wifiConsoleStarted) {
-        if (millis() - lastWifiConsoleStartAttemptMs >= WIFI_CONSOLE_RETRY_INTERVAL_MS) {
-            setupWifiConsole();
-        }
-        return;
-    }
-    if (!wifiConsoleClient || !wifiConsoleClient.connected()) {
-        WiFiClient nextClient = wifiConsoleServer.available();
-        if (nextClient) {
-            if (wifiConsoleClient) wifiConsoleClient.stop();
-            wifiConsoleClient = nextClient;
-            wifiConsoleClient.setNoDelay(true);
-            wifiConsoleAuthenticated = false;
-            wifiConsoleClient.println("MUS4 WiFi Console Ready");
-            wifiConsoleClient.println("Use AUTH:<password> to unlock control commands");
-            appendWebLog("tcp", "client connected");
-        }
-        return;
-    }
-    while (wifiConsoleClient.available()) {
-        int c = wifiConsoleClient.read();
-        if (c < 0) break;
-        if (c == '\r') continue;
-        if (c == '\n') {
-            wifiConsoleBuf.buf[wifiConsoleBuf.len] = 0;
-            String line = String(wifiConsoleBuf.buf);
-            line.trim();
-            String response;
-            StringPrint out(response);
-            appendWebLog("tcp", String("> ") + redactWirelessConsoleLine(line));
-            processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_TCP);
-            wifiConsoleClient.print(response);
-            appendWebLogLines("cmd", response);
-            wifiConsoleBuf.len = 0;
-            wifiConsoleBuf.overflow = false;
-        } else {
-            if (wifiConsoleBuf.len < sizeof(wifiConsoleBuf.buf) - 1) {
-                wifiConsoleBuf.buf[wifiConsoleBuf.len++] = (char)c;
-            } else {
-                wifiConsoleBuf.len = 0;
-                wifiConsoleBuf.overflow = true;
-                wifiConsoleBuf.errors++;
-                wifiConsoleClient.println("NACK:OVERFLOW");
-            }
-        }
-    }
-}
 #else
 #endif
 

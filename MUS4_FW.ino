@@ -67,6 +67,7 @@
 #include "WifiOta.h"
 #include "WebTelemetry.h"
 #include "WifiManager.h"
+#include "ControlMixer.h"
 #include "DriftAssist.h"
 #include "SteeringControl.h"
 #include "Diagnostics.h"
@@ -78,7 +79,6 @@
 TUI tui(Serial);
 Buzzer buzzer(BUZZER_PIN);
 
-int lastCarMode = -1;
 bool lastParkState = false;
 
 #ifdef ENABLE_GAMEPAD_MODE
@@ -351,7 +351,6 @@ int Pilot_steering = 0; // Steering value from the host computer
 
 // RC calibration defaults moved to top of file (must precede function definitions for Arduino preprocessor compatibility)
 
-int carOutputModeLast = -1;
 unsigned long counter;
 
 void emergencyStop()
@@ -477,33 +476,6 @@ void park_change()
     }
 
     car_output.park = rc_data.park;
-}
-
-void mode_change(bool modeValid) // Switch driving mode according to the RC mode value
-{
-    if (!modeValid) {
-        return;
-    }
-
-    rc_data.mode = pwm_filtered[CH_MODE];
-    if (rc_data.mode <= MODE_PWM_MANUAL_MAX)
-    {
-        car_output.mode = CAR_MODE_MANUAL; // 0: RC manual mode
-    }
-    else if (rc_data.mode >= MODE_PWM_FULL_AUTO_MIN)
-    {
-        car_output.mode = CAR_MODE_FULL_AUTO; // 2: autonomous driving mode
-    }
-    else
-    {
-        car_output.mode = CAR_MODE_SEMI_AUTO; // 1: Pilot steering with manual throttle
-    }
-
-    if (car_output.mode != lastCarMode)
-    {
-        buzzer.playModeSound(car_output.mode);
-        lastCarMode = car_output.mode;
-    }
 }
 
 void setup()
@@ -687,82 +659,7 @@ void loop()
     mode_change(modeValid);
     update_drift_assist_control(driftValid, driftScaleValid);
 
-    if (car_output.mode == CAR_MODE_FULL_AUTO)
-    {
-        // Controlled by Pilot
-        if (car_output.park == 1)
-        {
-            // car_output.throttle = 0;
-            // emergencyStop();
-            if (carOutputModeLast != CAR_MODE_FULL_AUTO || toggleActive == false)
-            {
-                setLEDToggle(CRGB::Blue, CRGB::Red);
-                carOutputModeLast = CAR_MODE_FULL_AUTO;
-            }
-            if (!toggleActive)
-            {
-                setLEDToggle(CRGB::Blue, CRGB::Red);
-            }
-        }
-        else
-        {
-            setLEDColor(CRGB::Blue); // set LED to Red
-            car_output.throttle = pilot_data.throttle;
-        }
-        car_output.steering = pilot_data.steering;
-
-        #ifdef ENABLE_GAMEPAD_MODE
-            sendGamepadPacket();
-        #endif
-    }
-    else if (car_output.mode == CAR_MODE_SEMI_AUTO)
-    {
-        // Controlled by both RC and Pilot
-        if (car_output.park == 1)
-        {
-            // car_output.throttle = 0;
-            // emergencyStop();
-            if (carOutputModeLast != CAR_MODE_SEMI_AUTO || toggleActive == false)
-            {
-                setLEDToggle(CRGB::Yellow, CRGB::Red);
-                carOutputModeLast = CAR_MODE_SEMI_AUTO;
-            }
-        }
-        else
-        {
-            setLEDColor(CRGB::Yellow); // set LED to blue
-            car_output.throttle = map(rc_data.throttle, RC_THROTTLE_MIN, RC_THROTTLE_MAX, -100, 100);
-        }
-        car_output.steering = pilot_data.steering;
-    }
-    else
-    {
-        // Controlled by RC Controller (car_output.mode = CAR_MODE_MANUAL)
-        if (car_output.park == 1)
-        {
-            // car_output.throttle = 0;
-            // emergencyStop();
-            if (carOutputModeLast != CAR_MODE_MANUAL || toggleActive == false)
-            {
-                setLEDToggle(CRGB::Green, CRGB::Red);
-                carOutputModeLast = CAR_MODE_MANUAL;
-            }
-        }
-        else
-        {
-            setLEDColor(CRGB::Green); // set LED to blue
-
-            // RC => CAR
-            car_output.throttle = map(rc_data.throttle, RC_THROTTLE_MIN, RC_THROTTLE_MAX, -100, 100);
-        }
-        if (steer_cal_enabled) {
-            car_output.steering = mapSteeringCalibrated(rc_data.steering);
-        } else {
-            car_output.steering = map(rc_data.steering, RC_STEERING_MIN, RC_STEERING_MAX, -100, 100);
-        }
-        // Drift Assist: add counter-steer compensation only in manual mode
-        car_output.steering = apply_drift_assist(car_output.steering);
-    }
+    updateControlOutput();
 
     if (mus4LogTarget == MUS4_LOG_TARGET_SERIAL) {
         tui.setRC(pwm_filtered[CH_STEERING], pwm_filtered[CH_THROTTLE], pwm_filtered[CH_PARK], pwm_filtered[CH_MODE], pwm_filtered[CH_DRIFT], pwm_filtered[CH_DRIFT_SCALE]);

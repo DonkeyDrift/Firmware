@@ -27,6 +27,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "RcFilter.cpp",
     PROJECT_ROOT / "RcPwmCapture.h",
     PROJECT_ROOT / "RcPwmCapture.cpp",
+    PROJECT_ROOT / "ControlMixer.h",
+    PROJECT_ROOT / "ControlMixer.cpp",
     PROJECT_ROOT / "CommandParser.h",
     PROJECT_ROOT / "CommandParser.cpp",
     PROJECT_ROOT / "CommandDispatcher.h",

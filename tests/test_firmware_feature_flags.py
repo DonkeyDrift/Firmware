@@ -132,13 +132,13 @@ def test_websocket_curve_data_feature_is_enabled():
     assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", source, re.MULTILINE)
 
 
-def test_firmware_version_is_v1_7_3_and_changelog_is_current():
+def test_firmware_version_is_v1_7_4_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.3"' in build_info
-    assert "## 2026-06-10 v1.7.3" in changelog
-    assert changelog.index("## 2026-06-10 v1.7.3") < changelog.index("## 2026-06-07 v1.6.0")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.4"' in build_info
+    assert "## 2026-06-11 v1.7.4" in changelog
+    assert changelog.index("## 2026-06-11 v1.7.4") < changelog.index("## 2026-06-07 v1.6.0")
 
 
 def test_web_console_serial_log_display_is_limited_to_16_lines():

@@ -15,7 +15,7 @@ sketch: MUS4_FW.ino
 libraries_path: libraries
 
 # WSL 端工作目录（编译时的工作路径，默认 ~/arduino-build/<项目名>）
-# work_dir: ~/arduino-build/mus4
+work_dir: /home/dkc/arduino-build/MUS4_FW
 
 # I/O 模式
 # native = 同步到 WSL 原生 ext4 分区编译（性能最优，默认）

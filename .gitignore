@@ -47,3 +47,6 @@ WirelessSecrets.h
 # Local OTA target configuration
 .mus4_ota_target
 ArduFlux.json
+.cache/
+.pyc
+.worktrees/

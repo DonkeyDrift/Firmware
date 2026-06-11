@@ -8,18 +8,9 @@
 #include "WirelessConsole.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
-static const char* WIFI_CONSOLE_AP_PASSWORD = "mus4-debug";
-static const uint16_t WIFI_OTA_PORT = 3232;
-static const unsigned long WIFI_OTA_WINDOW_MS = 120000UL;
+// WIFI_CONSOLE_AP_PASSWORD, WIFI_OTA_PORT and WIFI_OTA_WINDOW_MS are defined
+// in WifiConsoleTypes.h (included via RuntimeState.h -> WifiConsoleTypes.h).
 
-extern bool wifiOtaStarted;
-extern bool wifiOtaWindowOpen;
-extern bool wifiOtaInProgress;
-extern bool wifiOtaParkGuardActive;
-extern bool wifiDevModeEnabled;
-extern unsigned long wifiOtaDeadlineMs;
-extern uint8_t wifiOtaLastProgressPct;
-extern bool wifiConsoleAuthenticated;
 extern SerialBuf wifiConsoleBuf;
 extern ControlData rc_data;
 extern ControlData car_output;
@@ -33,23 +24,23 @@ void forceWifiOtaParkLocked()
     car_output.throttle = 0;
 }
 
-void keepDevModeOtaWindowActive()
+void keepDevModeOtaWindowActive(OtaRuntimeState& os, WifiRuntimeState& ws)
 {
-    if (!wifiDevModeEnabled) return;
+    if (!ws.devModeEnabled) return;
     ensureWifiOtaStarted();
-    wifiOtaWindowOpen = true;
-    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
+    os.windowOpen = true;
+    os.deadlineMs = millis() + WIFI_OTA_WINDOW_MS;
 }
 
-bool shouldEmitSerial1Telemetry()
+bool shouldEmitSerial1Telemetry(OtaRuntimeState& os)
 {
-    return !wifiOtaWindowOpen && !wifiOtaInProgress;
+    return !os.windowOpen && !os.inProgress;
 }
 
-void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin)
+void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin, OtaRuntimeState& os, WifiRuntimeState& ws)
 {
-    bool webDevMode = wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB;
-    if (!webDevMode && !wifiConsoleAuthenticated) {
+    bool webDevMode = ws.devModeEnabled && origin == WIRELESS_ORIGIN_WEB;
+    if (!webDevMode && !ws.consoleAuthenticated) {
         out.println("NACK:AUTH_REQUIRED");
         wifiConsoleBuf.errors++;
         return;
@@ -59,99 +50,99 @@ void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin)
         wifiConsoleBuf.errors++;
         return;
     }
-    wifiOtaParkGuardActive = true;
+    os.parkGuardActive = true;
     forceWifiOtaParkLocked();
     ensureWifiOtaStarted();
-    wifiOtaWindowOpen = true;
-    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
-    wifiOtaLastProgressPct = 0;
+    os.windowOpen = true;
+    os.deadlineMs = millis() + WIFI_OTA_WINDOW_MS;
+    os.lastProgressPct = 0;
     out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.localIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
     mus4LogLine("ota", webDevMode ? "ready: web_dev" : "ready");
 }
 
-void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb)
+void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb, OtaRuntimeState& os)
 {
     if (!line.substring(11).equals(WIFI_CONSOLE_AP_PASSWORD)) {
         out.println("NACK:AUTH_REQUIRED");
         sb.errors++;
         return;
     }
-    wifiOtaParkGuardActive = true;
+    os.parkGuardActive = true;
     forceWifiOtaParkLocked();
     ensureWifiOtaStarted();
-    wifiOtaWindowOpen = true;
-    wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS;
-    wifiOtaLastProgressPct = 0;
+    os.windowOpen = true;
+    os.deadlineMs = millis() + WIFI_OTA_WINDOW_MS;
+    os.lastProgressPct = 0;
     out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.localIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
     mus4LogLine("ota", "ready: local");
 }
 
-bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)
+bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb, OtaRuntimeState& os, WifiRuntimeState& ws)
 {
     if (isLocalOtaOpenCommand(line)) {
-        openLocalWifiOtaWindow(line, out, sb);
+        openLocalWifiOtaWindow(line, out, sb, os);
         return true;
     }
     if (isWirelessOtaStatusCommand(line)) {
-        printWifiOtaStatus(out);
+        printWifiOtaStatus(out, os, ws);
         return true;
     }
     if (isWirelessOtaCloseCommand(line)) {
-        closeWifiOtaWindow("LOCAL");
+        closeWifiOtaWindow("LOCAL", os);
         out.println("OTA_CLOSED");
         return true;
     }
     return false;
 }
 
-void updateWifiOta()
+void updateWifiOta(OtaRuntimeState& os, WifiRuntimeState& ws)
 {
-    if (wifiDevModeEnabled) keepDevModeOtaWindowActive();
-    if (!wifiOtaWindowOpen) return;
-    if (wifiOtaInProgress || wifiOtaParkGuardActive) {
+    if (ws.devModeEnabled) keepDevModeOtaWindowActive(os, ws);
+    if (!os.windowOpen) return;
+    if (os.inProgress || os.parkGuardActive) {
         forceWifiOtaParkLocked();
     }
     unsigned long now = millis();
-    if (!wifiDevModeEnabled && !wifiOtaInProgress && (long)(now - wifiOtaDeadlineMs) >= 0) {
-        closeWifiOtaWindow("TIMEOUT");
+    if (!ws.devModeEnabled && !os.inProgress && (long)(now - os.deadlineMs) >= 0) {
+        closeWifiOtaWindow("TIMEOUT", os);
         return;
     }
     ArduinoOTA.handle();
 }
 
-void closeWifiOtaWindow(const char* reason)
+void closeWifiOtaWindow(const char* reason, OtaRuntimeState& os)
 {
-    wifiOtaWindowOpen = false;
-    wifiOtaDeadlineMs = 0;
-    wifiOtaInProgress = false;
-    wifiOtaParkGuardActive = false;
-    wifiOtaLastProgressPct = 0;
-    if (wifiOtaStarted) {
+    os.windowOpen = false;
+    os.deadlineMs = 0;
+    os.inProgress = false;
+    os.parkGuardActive = false;
+    os.lastProgressPct = 0;
+    if (os.started) {
         ArduinoOTA.end();
-        wifiOtaStarted = false;
+        os.started = false;
     }
     mus4LogLine("ota", String("closed: ") + reason);
 }
 
-unsigned long wifiOtaTtlMs()
+unsigned long wifiOtaTtlMs(OtaRuntimeState& os, WifiRuntimeState& ws)
 {
-    if (!wifiOtaWindowOpen) return 0;
-    if (wifiDevModeEnabled) return WIFI_OTA_WINDOW_MS;
+    if (!os.windowOpen) return 0;
+    if (ws.devModeEnabled) return WIFI_OTA_WINDOW_MS;
     unsigned long now = millis();
-    if ((long)(wifiOtaDeadlineMs - now) <= 0) return 0;
-    return wifiOtaDeadlineMs - now;
+    if ((long)(os.deadlineMs - now) <= 0) return 0;
+    return os.deadlineMs - now;
 }
 
-void printWifiOtaStatus(Print& out)
+void printWifiOtaStatus(Print& out, OtaRuntimeState& os, WifiRuntimeState& ws)
 {
     out.printf("OTA_STATUS started=%d window=%d in_progress=%d ttl_ms=%lu progress=%u park=%d dev_mode=%d park_guard=%d\n",
-        wifiOtaStarted ? 1 : 0,
-        wifiOtaWindowOpen ? 1 : 0,
-        wifiOtaInProgress ? 1 : 0,
-        wifiOtaTtlMs(),
-        wifiOtaLastProgressPct,
+        os.started ? 1 : 0,
+        os.windowOpen ? 1 : 0,
+        os.inProgress ? 1 : 0,
+        wifiOtaTtlMs(os, ws),
+        os.lastProgressPct,
         car_output.park ? 1 : 0,
-        wifiDevModeEnabled ? 1 : 0,
-        wifiOtaParkGuardActive ? 1 : 0);
+        ws.devModeEnabled ? 1 : 0,
+        os.parkGuardActive ? 1 : 0);
 }
 #endif

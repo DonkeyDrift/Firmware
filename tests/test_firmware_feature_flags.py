@@ -25,6 +25,14 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "GamepadMode.cpp",
     PROJECT_ROOT / "RcFilter.h",
     PROJECT_ROOT / "RcFilter.cpp",
+    PROJECT_ROOT / "RcPwmCapture.h",
+    PROJECT_ROOT / "RcPwmCapture.cpp",
+    PROJECT_ROOT / "ControlMixer.h",
+    PROJECT_ROOT / "ControlMixer.cpp",
+    PROJECT_ROOT / "SafetyState.h",
+    PROJECT_ROOT / "SafetyState.cpp",
+    PROJECT_ROOT / "ActuatorOutput.h",
+    PROJECT_ROOT / "ActuatorOutput.cpp",
     PROJECT_ROOT / "CommandParser.h",
     PROJECT_ROOT / "CommandParser.cpp",
     PROJECT_ROOT / "CommandDispatcher.h",
@@ -47,10 +55,16 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "Diagnostics.h",
     PROJECT_ROOT / "Diagnostics.cpp",
     PROJECT_ROOT / "SerialBufferTypes.h",
+    PROJECT_ROOT / "WebLogBuffer.h",
+    PROJECT_ROOT / "WebLogBuffer.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.h",
     PROJECT_ROOT / "WifiOta.cpp",
+    PROJECT_ROOT / "WebTelemetry.h",
+    PROJECT_ROOT / "WebTelemetry.cpp",
+    PROJECT_ROOT / "WifiManager.h",
+    PROJECT_ROOT / "WifiManager.cpp",
 ]
 ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
 CONFIG_YAML = PROJECT_ROOT / "config.yaml"
@@ -118,13 +132,13 @@ def test_websocket_curve_data_feature_is_enabled():
     assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", source, re.MULTILINE)
 
 
-def test_firmware_version_is_v1_7_3_and_changelog_is_current():
+def test_firmware_version_is_v1_7_4_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.3"' in build_info
-    assert "## 2026-06-10 v1.7.3" in changelog
-    assert changelog.index("## 2026-06-10 v1.7.3") < changelog.index("## 2026-06-07 v1.6.0")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.4"' in build_info
+    assert "## 2026-06-11 v1.7.4" in changelog
+    assert changelog.index("## 2026-06-11 v1.7.4") < changelog.index("## 2026-06-07 v1.6.0")
 
 
 def test_web_console_serial_log_display_is_limited_to_16_lines():
@@ -432,7 +446,7 @@ def test_wifi_console_types_are_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     for symbol in [
-        "const char* WIFI_CONSOLE_AP_DEFAULT_SSID = \"MUS4-DEBUG\";",
+        "const char* WIFI_CONSOLE_AP_DEFAULT_SSID = \"MUS4-ESP\";",
         "const char* WIFI_CONSOLE_AP_PASSWORD = \"mus4-debug\";",
         "const uint16_t WIFI_CONSOLE_PORT = 2323;",
         "const uint16_t WIFI_WEB_CONSOLE_PORT = 80;",
@@ -461,7 +475,8 @@ def test_wifi_console_types_are_split_from_sketch():
         assert symbol in wifi_types
 
     assert "#include \"WifiConsoleTypes.h\"" in sketch_source
-    assert "WebLogEntry wifiWebLogs[WIFI_WEB_LOG_CAPACITY];" in sketch_source
+    assert "WebLogEntry s_webLogEntries[WIFI_WEB_LOG_CAPACITY];" in source
+    assert "static WebLogEntry s_webLogEntries[WIFI_WEB_LOG_CAPACITY];" in source
     assert "WifiScanEntry wifiScanCache[16];" in sketch_source
     assert "WebDataPoint wifiWebData[WIFI_WEB_DATA_CAPACITY];" in sketch_source
     assert "struct WebLogEntry" not in sketch_source
@@ -476,8 +491,8 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     sta_source = (PROJECT_ROOT / "WifiStaConfig.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "bool processWifiStaConfigCommand(const String& line, Print& out)" in sta_header
-    assert "bool processWifiStaConfigCommand(const String& line, Print& out)" in sta_source
+    assert "bool processWifiStaConfigCommand(const String& line, Print& out, WifiRuntimeState& ws)" in sta_header
+    assert "bool processWifiStaConfigCommand(const String& line, Print& out, WifiRuntimeState&" in sta_source
     assert "void printWifiStaStatus(Print& out)" in sta_header
     assert "void printWifiStaStatus(Print& out)" in sta_source
     assert "bool copyWifiStaSsid(const String& ssid)" in sta_header
@@ -505,7 +520,7 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     assert re.search(r"^bool\s+clearWifiStaPreference\s*\(\)", sta_source, re.MULTILINE)
     assert re.search(r"^void\s+loadWifiStaPreference\s*\(\)", sta_source, re.MULTILINE)
     assert "#include \"WifiStaConfig.h\"" in sketch_source
-    assert "bool processWifiStaConfigCommand(const String& line, Print& out)" not in sketch_source
+    assert "bool processWifiStaConfigCommand(const String& line, Print& out, WifiRuntimeState& ws)" not in sketch_source
     assert "void printWifiStaStatus(Print& out)" not in sketch_source
     assert "String wifiStaIpText()" not in sketch_source
     assert "static void clearWifiStaLastError" not in sketch_source
@@ -525,29 +540,29 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
         "last_error_message=\\\"%s\\\"",
         "ssid.length() == 0 || ssid.length() > WIFI_STA_CONFIG_SSID_MAX_LEN",
         "password.length() > 0 && (password.length() < WIFI_STA_CONFIG_PASSWORD_MIN_LEN || password.length() > WIFI_STA_CONFIG_PASSWORD_MAX_LEN)",
-        "wifiStaPasswordSet = password.length() > 0",
-        "wifiStaConnected ? WiFi.localIP().toString() : String(\"0.0.0.0\")",
+        "ws().staPasswordSet = password.length() > 0",
+        "ws().staConnected ? WiFi.localIP().toString() : String(\"0.0.0.0\")",
         "保留本轮连接的首个失败原因",
-        "if (wifiStaLastError[0] != 0) return",
-        "snprintf(wifiStaLastError, 24, \"%s\", code)",
-        "snprintf(wifiStaLastErrorMessage, 128, \"%s\", message)",
-        "wifiStaTimedOut = timedOut",
+        "if (ws().staLastError[0] != 0) return",
+        "snprintf(ws().staLastError, 24, \"%s\", code)",
+        "snprintf(ws().staLastErrorMessage, 128, \"%s\", message)",
+        "ws().staTimedOut = timedOut",
         "STA failed: %s",
-        "wifiStaApplyPending = true",
+        "ws().staApplyPending = true",
         "WIFI_STA_CONFIG_APPLY_DELAY_MS = 800",
-        "wifiStaApplyDeadlineMs = millis() + WIFI_STA_CONFIG_APPLY_DELAY_MS",
+        "ws().staApplyDeadlineMs = millis() + WIFI_STA_CONFIG_APPLY_DELAY_MS",
         "WIFI_STA_CONFIG_PREF_ENABLED_KEY = \"sta_en\"",
         "WIFI_STA_CONFIG_PREF_SSID_KEY = \"sta_ssid\"",
         "WIFI_STA_CONFIG_PREF_PASSWORD_KEY = \"sta_pass\"",
-        "mus4Prefs.putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, false)",
-        "mus4Prefs.remove(WIFI_STA_CONFIG_PREF_SSID_KEY)",
-        "mus4Prefs.remove(WIFI_STA_CONFIG_PREF_PASSWORD_KEY)",
+        "ws().prefs->putBool(WIFI_STA_CONFIG_PREF_ENABLED_KEY, false)",
+        "ws().prefs->remove(WIFI_STA_CONFIG_PREF_SSID_KEY)",
+        "ws().prefs->remove(WIFI_STA_CONFIG_PREF_PASSWORD_KEY)",
         "clearWifiStaRuntimeStateWithoutDisconnect()",
         "WIFI_STA_SSID",
         "WIFI_STA_PASSWORD",
         "STA disabled by preference",
         "STA config invalid",
-        "wifiStaConfigured = true",
+        "ws().staConfigured = true",
         "WIFI_STA_STATUS",
         "WIFI_STA_SSID:",
         "WIFI_STA_PASSWORD:",
@@ -561,7 +576,7 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     ]:
         assert symbol in sta_source
 
-    assert "processWifiStaConfigCommand(line, out)" in source
+    assert "processWifiStaConfigCommand(line, out, wifiRuntime)" in source
 
 
 def test_wireless_command_policy_helpers_are_split_from_sketch():
@@ -571,7 +586,7 @@ def test_wireless_command_policy_helpers_are_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "enum WirelessCommandOrigin" in wireless_header
-    assert "bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin)" in wireless_header
+    assert "bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, WifiRuntimeState& ws)" in wireless_header
     assert "bool isParkLockedWirelessCommand(const String& line)" in wireless_header
     assert "bool isWirelessOtaOpenCommand(const String& line)" in wireless_header
     assert "bool isWirelessOtaStatusCommand(const String& line)" in wireless_header
@@ -725,7 +740,22 @@ def test_log_bridge_remains_available_after_module_split():
     assert "void mus4LogLine(const char* source, const String& line)" in source
     assert "void mus4Logf(const char* source, const char* fmt, ...)" in source
     assert "extern uint8_t mus4LogTarget" in source
-    assert "mus4SetWebLogSink(appendWifiWebLog)" in source
+    assert "mus4SetWebLogSink(appendWebLog)" in source
+
+
+def test_web_log_buffer_is_split_from_sketch():
+    sketch = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
+
+    assert "void appendWebLog(const char* source, const String& line)" in source
+    assert "void appendWebLogLines(const char* source, const String& text)" in source
+    assert "void writeWebLogsJson(String& response, uint32_t since)" in source
+    assert "static void appendWifiWebLog" not in sketch
+    assert "appendWifiWebLog(" not in sketch
+    assert "void processWirelessConsoleLine(const String& line, Print& out, WirelessCommandOrigin origin)" in source
+    assert "void printWirelessStatus(Print& out)" in source
+    assert "static void processWirelessConsoleLine" not in sketch
+    assert "static void printWirelessStatus" not in sketch
 
 
 
@@ -751,12 +781,82 @@ def test_rc_interrupt_state_keeps_iram_and_volatile_guards():
     source = firmware_source_text()
 
     assert re.search(r"^volatile\s+uint16_t\s+pwm_value\[RC_CHANNEL_COUNT\]", source, re.MULTILINE)
-    assert re.search(r"^volatile\s+unsigned\s+long\s+rise_time\[RC_CHANNEL_COUNT\]", source, re.MULTILINE)
     assert re.search(r"^volatile\s+unsigned\s+long\s+last_valid_time\[RC_CHANNEL_COUNT\]", source, re.MULTILINE)
     assert "void IRAM_ATTR handle_interrupt" in source
     assert "void IRAM_ATTR CH1_interrupt()" in source
     assert "static bool IRAM_ATTR onRcModeCapture" in source
+    assert "void setupRcPwmCapture()" in source
 
+
+def test_rc_pwm_capture_is_split_from_sketch():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    capture_source = (PROJECT_ROOT / "RcPwmCapture.cpp").read_text(encoding="utf-8")
+
+    assert "#include \"RcPwmCapture.h\"" in sketch_source
+    assert "static void IRAM_ATTR acceptRcPulse" not in sketch_source
+    assert "void IRAM_ATTR handle_interrupt" not in sketch_source
+    assert "void IRAM_ATTR CH1_interrupt()" not in sketch_source
+    assert "void (*isr_functions[RC_CHANNEL_COUNT])()" not in sketch_source
+    assert "mcpwm_new_capture_timer" not in sketch_source
+    assert "static void IRAM_ATTR acceptRcPulse" in capture_source
+    assert "void IRAM_ATTR handle_interrupt" in capture_source
+    assert "void IRAM_ATTR CH1_interrupt()" in capture_source
+    assert "void (*isr_functions[RC_CHANNEL_COUNT])()" in capture_source
+    assert "void setupRcPwmCapture()" in capture_source
+
+
+def test_control_mixer_is_split_from_sketch():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    mixer_source = (PROJECT_ROOT / "ControlMixer.cpp").read_text(encoding="utf-8")
+
+    assert "#include \"ControlMixer.h\"" in sketch_source
+    assert "void mode_change(bool modeValid)" not in sketch_source
+    assert "void updateControlOutput()" not in sketch_source
+    assert "int lastCarMode = -1" not in sketch_source
+    assert "int carOutputModeLast = -1" not in sketch_source
+    assert "void mode_change(bool modeValid)" in mixer_source
+    assert "void updateControlOutput()" in mixer_source
+    assert "buzzer.playModeSound" in mixer_source
+    assert "sendGamepadPacket()" in mixer_source
+    assert "apply_drift_assist" in mixer_source
+
+
+def test_safety_state_is_split_from_sketch():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    safety_header = (PROJECT_ROOT / "SafetyState.h").read_text(encoding="utf-8")
+    safety_source = (PROJECT_ROOT / "SafetyState.cpp").read_text(encoding="utf-8")
+
+    assert "#include \"SafetyState.h\"" in sketch_source
+    assert "void emergencyStop()" not in sketch_source
+    assert "void park_change()" not in sketch_source
+    assert "enum EmergencyStopState" not in sketch_source
+    assert "EmergencyStopState emergencyStopState" not in sketch_source
+    assert "enum EmergencyStopState" in safety_header
+    assert "extern EmergencyStopState emergencyStopState" in safety_header
+    assert "void emergencyStop()" in safety_source
+    assert "void park_change()" in safety_source
+    assert "EmergencyStopState emergencyStopState = EST_IDLE" in safety_source
+    assert "buzzer.playParkUnlockSound()" in safety_source
+    assert "buzzer.playParkLockSound()" in safety_source
+
+
+def test_actuator_output_is_split_from_sketch():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    actuator_source = (PROJECT_ROOT / "ActuatorOutput.cpp").read_text(encoding="utf-8")
+
+    assert "#include \"ActuatorOutput.h\"" in sketch_source
+    assert "ledcAttachChannel(STEERING_PIN" not in sketch_source
+    assert "ledcWriteChannel(CH_STEERING" not in sketch_source
+    assert "ledcAttachChannel(THROTTLE_PIN" not in sketch_source
+    assert "ledcWriteChannel(CH_THROTTLE" not in sketch_source
+    assert "setupActuatorOutput()" in sketch_source
+    assert "updateActuatorOutput()" in sketch_source
+    assert "void setupActuatorOutput()" in actuator_source
+    assert "void updateActuatorOutput()" in actuator_source
+    assert "ledcAttachChannel(STEERING_PIN" in actuator_source
+    assert "ledcWriteChannel(CH_STEERING" in actuator_source
+    assert "extern const int SERVO_MID_V = 7372" in actuator_source
+    assert "extern const int SERVO_RANGE_V = 2458" in actuator_source
 
 
 def test_wifi_ota_status_helpers_are_split_from_sketch():
@@ -766,26 +866,26 @@ def test_wifi_ota_status_helpers_are_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "#include \"WifiOta.h\"" in sketch_source
-    assert "unsigned long wifiOtaTtlMs()" in ota_header
-    assert "void printWifiOtaStatus(Print& out)" in ota_header
-    assert "void closeWifiOtaWindow(const char* reason)" in ota_header
+    assert "unsigned long wifiOtaTtlMs(OtaRuntimeState& os, WifiRuntimeState& ws)" in ota_header
+    assert "void printWifiOtaStatus(Print& out, OtaRuntimeState& os, WifiRuntimeState& ws)" in ota_header
+    assert "void closeWifiOtaWindow(const char* reason, OtaRuntimeState& os)" in ota_header
     assert "void forceWifiOtaParkLocked()" in ota_header
-    assert "void keepDevModeOtaWindowActive()" in ota_header
-    assert "bool shouldEmitSerial1Telemetry()" in ota_header
-    assert "void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb)" in ota_header
-    assert "bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb)" in ota_header
-    assert "void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin)" in ota_header
-    assert "void updateWifiOta()" in ota_header
-    assert re.search(r"^unsigned long\s+wifiOtaTtlMs\s*\(\)", ota_source, re.MULTILINE)
-    assert re.search(r"^void\s+printWifiOtaStatus\s*\(Print& out\)", ota_source, re.MULTILINE)
-    assert re.search(r"^void\s+closeWifiOtaWindow\s*\(const char\* reason\)", ota_source, re.MULTILINE)
+    assert "void keepDevModeOtaWindowActive(OtaRuntimeState& os, WifiRuntimeState& ws)" in ota_header
+    assert "bool shouldEmitSerial1Telemetry(OtaRuntimeState& os)" in ota_header
+    assert "void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb, OtaRuntimeState& os)" in ota_header
+    assert "bool processLocalOtaMaintenanceCommand(const String& line, Print& out, SerialBuf& sb, OtaRuntimeState& os, WifiRuntimeState& ws)" in ota_header
+    assert "void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin, OtaRuntimeState& os, WifiRuntimeState& ws)" in ota_header
+    assert "void updateWifiOta(OtaRuntimeState& os, WifiRuntimeState& ws)" in ota_header
+    assert re.search(r"^unsigned long\s+wifiOtaTtlMs\s*\(OtaRuntimeState& os, WifiRuntimeState& ws\)", ota_source, re.MULTILINE)
+    assert re.search(r"^void\s+printWifiOtaStatus\s*\(Print& out, OtaRuntimeState& os, WifiRuntimeState& ws\)", ota_source, re.MULTILINE)
+    assert re.search(r"^void\s+closeWifiOtaWindow\s*\(const char\* reason, OtaRuntimeState& os\)", ota_source, re.MULTILINE)
     assert re.search(r"^void\s+forceWifiOtaParkLocked\s*\(\)", ota_source, re.MULTILINE)
-    assert re.search(r"^void\s+keepDevModeOtaWindowActive\s*\(\)", ota_source, re.MULTILINE)
-    assert re.search(r"^bool\s+shouldEmitSerial1Telemetry\s*\(\)", ota_source, re.MULTILINE)
-    assert re.search(r"^void\s+openLocalWifiOtaWindow\s*\(const String& line, Print& out, SerialBuf& sb\)", ota_source, re.MULTILINE)
-    assert re.search(r"^bool\s+processLocalOtaMaintenanceCommand\s*\(const String& line, Print& out, SerialBuf& sb\)", ota_source, re.MULTILINE)
-    assert re.search(r"^void\s+openWifiOtaWindow\s*\(Print& out, WirelessCommandOrigin origin\)", ota_source, re.MULTILINE)
-    assert re.search(r"^void\s+updateWifiOta\s*\(\)", ota_source, re.MULTILINE)
+    assert re.search(r"^void\s+keepDevModeOtaWindowActive\s*\(OtaRuntimeState& os, WifiRuntimeState& ws\)", ota_source, re.MULTILINE)
+    assert re.search(r"^bool\s+shouldEmitSerial1Telemetry\s*\(OtaRuntimeState& os\)", ota_source, re.MULTILINE)
+    assert re.search(r"^void\s+openLocalWifiOtaWindow\s*\(const String& line, Print& out, SerialBuf& sb, OtaRuntimeState& os\)", ota_source, re.MULTILINE)
+    assert re.search(r"^bool\s+processLocalOtaMaintenanceCommand\s*\(const String& line, Print& out, SerialBuf& sb, OtaRuntimeState& os, WifiRuntimeState& ws\)", ota_source, re.MULTILINE)
+    assert re.search(r"^void\s+openWifiOtaWindow\s*\(Print& out, WirelessCommandOrigin origin, OtaRuntimeState& os, WifiRuntimeState& ws\)", ota_source, re.MULTILINE)
+    assert re.search(r"^void\s+updateWifiOta\s*\(OtaRuntimeState& os, WifiRuntimeState& ws\)", ota_source, re.MULTILINE)
     assert "static void printWifiOtaStatus" not in sketch_source
     assert "static void closeWifiOtaWindow" not in sketch_source
     assert "static void forceWifiOtaParkLocked" not in sketch_source
@@ -796,66 +896,65 @@ def test_wifi_ota_status_helpers_are_split_from_sketch():
     assert "static void openWifiOtaWindow" not in sketch_source
     assert "static void updateWifiOta" not in sketch_source
     assert "OTA_STATUS started=%d window=%d in_progress=%d ttl_ms=%lu progress=%u park=%d dev_mode=%d park_guard=%d" in ota_source
-    assert "if (!wifiOtaWindowOpen) return 0" in ota_source
-    assert "WIFI_CONSOLE_AP_PASSWORD = \"mus4-debug\"" in ota_source
-    assert "WIFI_OTA_PORT = 3232" in ota_source
-    assert "WIFI_OTA_WINDOW_MS = 120000UL" in ota_source
-    assert "if (wifiDevModeEnabled) return WIFI_OTA_WINDOW_MS" in ota_source
-    assert "wifiOtaDeadlineMs - now" in ota_source
-    assert "wifiOtaStarted ? 1 : 0" in ota_source
-    assert "wifiOtaLastProgressPct" in ota_source
+    assert "if (!os.windowOpen) return 0" in ota_source
+    assert "WIFI_CONSOLE_AP_PASSWORD" in ota_source
+    assert "WIFI_OTA_PORT" in ota_source
+    assert "WIFI_OTA_WINDOW_MS" in ota_source
+    assert "if (ws.devModeEnabled) return WIFI_OTA_WINDOW_MS" in ota_source
+    assert "os.deadlineMs - now" in ota_source
+    assert "os.started ? 1 : 0" in ota_source
+    assert "os.lastProgressPct" in ota_source
     assert "car_output.park ? 1 : 0" in ota_source
-    assert "wifiOtaParkGuardActive ? 1 : 0" in ota_source
-    assert "wifiOtaWindowOpen = false" in ota_source
-    assert "wifiOtaDeadlineMs = 0" in ota_source
-    assert "wifiOtaInProgress = false" in ota_source
-    assert "wifiOtaParkGuardActive = false" in ota_source
-    assert "wifiOtaLastProgressPct = 0" in ota_source
+    assert "os.parkGuardActive ? 1 : 0" in ota_source
+    assert "os.windowOpen = false" in ota_source
+    assert "os.deadlineMs = 0" in ota_source
+    assert "os.inProgress = false" in ota_source
+    assert "os.parkGuardActive = false" in ota_source
+    assert "os.lastProgressPct = 0" in ota_source
     assert "ArduinoOTA.end()" in ota_source
-    assert "wifiOtaStarted = false" in ota_source
+    assert "os.started = false" in ota_source
     assert "mus4LogLine(\"ota\", String(\"closed: \") + reason)" in ota_source
     assert "rc_data.park = PARK_LOCKED" in ota_source
     assert "car_output.park = PARK_LOCKED" in ota_source
     assert "car_output.throttle = 0" in ota_source
-    assert "if (!wifiDevModeEnabled) return" in ota_source
+    assert "if (!ws.devModeEnabled) return" in ota_source
     assert "ensureWifiOtaStarted()" in ota_source
-    assert "wifiOtaWindowOpen = true" in ota_source
-    assert "wifiOtaDeadlineMs = millis() + WIFI_OTA_WINDOW_MS" in ota_source
-    assert "return !wifiOtaWindowOpen && !wifiOtaInProgress" in ota_source
+    assert "os.windowOpen = true" in ota_source
+    assert "os.deadlineMs = millis() + WIFI_OTA_WINDOW_MS" in ota_source
+    assert "return !os.windowOpen && !os.inProgress" in ota_source
     assert "line.substring(11).equals(WIFI_CONSOLE_AP_PASSWORD)" in ota_source
     assert "out.println(\"NACK:AUTH_REQUIRED\")" in ota_source
     assert "sb.errors++" in ota_source
-    assert "wifiOtaLastProgressPct = 0" in ota_source
+    assert "os.lastProgressPct = 0" in ota_source
     assert "OTA_READY ip=%s port=%u ttl_ms=%lu" in ota_source
     assert "mus4LogLine(\"ota\", \"ready: local\")" in ota_source
     assert "isLocalOtaOpenCommand(line)" in ota_source
-    assert "openLocalWifiOtaWindow(line, out, sb)" in ota_source
+    assert "openLocalWifiOtaWindow(line, out, sb, os)" in ota_source
     assert "isWirelessOtaStatusCommand(line)" in ota_source
-    assert "printWifiOtaStatus(out)" in ota_source
+    assert "printWifiOtaStatus(out, os, ws)" in ota_source
     assert "isWirelessOtaCloseCommand(line)" in ota_source
-    assert "closeWifiOtaWindow(\"LOCAL\")" in ota_source
+    assert "closeWifiOtaWindow(\"LOCAL\", os)" in ota_source
     assert "out.println(\"OTA_CLOSED\")" in ota_source
     assert "return false" in ota_source
-    assert "wifiDevModeEnabled && origin == WIRELESS_ORIGIN_WEB" in ota_source
-    assert "if (!webDevMode && !wifiConsoleAuthenticated)" in ota_source
+    assert "ws.devModeEnabled && origin == WIRELESS_ORIGIN_WEB" in ota_source
+    assert "if (!webDevMode && !ws.consoleAuthenticated)" in ota_source
     assert "out.println(\"NACK:AUTH_REQUIRED\")" in ota_source
     assert "if (car_output.park != PARK_LOCKED)" in ota_source
     assert "out.println(\"NACK:PARK_REQUIRED\")" in ota_source
     assert "wifiConsoleBuf.errors++" in ota_source
     assert "mus4LogLine(\"ota\", webDevMode ? \"ready: web_dev\" : \"ready\")" in ota_source
-    assert "if (wifiDevModeEnabled) keepDevModeOtaWindowActive()" in ota_source
-    assert "if (!wifiOtaWindowOpen) return" in ota_source
-    assert "if (wifiOtaInProgress || wifiOtaParkGuardActive)" in ota_source
+    assert "if (ws.devModeEnabled) keepDevModeOtaWindowActive(os, ws)" in ota_source
+    assert "if (!os.windowOpen) return" in ota_source
+    assert "if (os.inProgress || os.parkGuardActive)" in ota_source
     assert "forceWifiOtaParkLocked()" in ota_source
     assert "unsigned long now = millis()" in ota_source
-    assert "!wifiDevModeEnabled && !wifiOtaInProgress && (long)(now - wifiOtaDeadlineMs) >= 0" in ota_source
-    assert "closeWifiOtaWindow(\"TIMEOUT\")" in ota_source
+    assert "!ws.devModeEnabled && !os.inProgress && (long)(now - os.deadlineMs) >= 0" in ota_source
+    assert "closeWifiOtaWindow(\"TIMEOUT\", os)" in ota_source
     assert "ArduinoOTA.handle()" in ota_source
-    assert "inline bool shouldEmitSerial1Telemetry() { return true; }" in ota_header
-    assert "printWifiOtaStatus(out)" in source
-    assert "closeWifiOtaWindow(\"LOCAL\")" in source
-    assert "closeWifiOtaWindow(\"USER\")" in source
-    assert "closeWifiOtaWindow(\"TIMEOUT\")" in source
+    assert "inline bool shouldEmitSerial1Telemetry(OtaRuntimeState& os) { (void)os; return true; }" in ota_header
+    assert "printWifiOtaStatus(out, otaRuntime, wifiRuntime)" in source
+    assert "closeWifiOtaWindow(\"USER\", otaRuntime)" in source
+    assert "closeWifiOtaWindow(\"DEV_MODE_OFF\", otaRuntime)" in source
 
 
 def test_wireless_ota_and_control_safety_guards_remain_present():
@@ -865,7 +964,7 @@ def test_wireless_ota_and_control_safety_guards_remain_present():
     assert "t < -100 || t > 100 || s < -100 || s > 100" in source
     assert "isWirelessOtaOpenCommand(line)" in source
     assert "car_output.park == PARK_LOCKED" in source
-    assert "return !wifiOtaWindowOpen && !wifiOtaInProgress" in source
+    assert "return !os.windowOpen && !os.inProgress" in source
     assert "forceWifiOtaParkLocked" in source
     assert "AUTH:<redacted>" in source
     assert "WIFI_STA_PASSWORD:<redacted>" in source
@@ -961,7 +1060,7 @@ def test_web_console_ap_ssid_modal_and_api_are_present():
     source = firmware_source_text()
 
     assert 'id="wifiApModal"' in source
-    assert 'AP SSID 配置' in source
+    assert 'AP 名称配置' in source
     assert 'id="apSsid"' in source
     assert '保存并重启 AP' in source
     assert 'openNetworkSettings()' in source
@@ -988,10 +1087,12 @@ def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
     assert "bool isMdnsSafeHostnameChar(char c)" in identity_header
     assert "bool isMdnsSafeHostname(const String& value)" in identity_header
     assert "bool copyWifiApSsid(const String& ssid)" in identity_header
+    assert "bool isValidApSsidPrefix(const String& value)" in identity_header
     assert "String wifiMdnsHostText()" in identity_header
     assert "String wifiMdnsUrlText()" in identity_header
     assert "#include \"WifiIdentity.h\"" in sketch_source
     assert "if (!isMdnsSafeHostname(ssid)) return false;" in identity_source
+    assert "bool isValidApSsidPrefix" in identity_source
     assert "WIFI_IDENTITY_AP_SSID_MAX_LEN = 32" in identity_source
     assert "c >= 'A' && c <= 'Z'" in identity_source
     assert "c >= 'a' && c <= 'z'" in identity_source
@@ -1003,17 +1104,39 @@ def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
     assert "String(\"http://\") + wifiMdnsHostText() + \".local/\"" in identity_source
     assert "static bool isMdnsSafeHostname" not in sketch_source
     assert "static String wifiMdnsHostText" not in sketch_source
-    assert "SSID 只能使用字母、数字和短横线" in source
+    assert "前缀只能使用大小写字母和数字" in source
     assert "invalid_ssid" in source
+
+
+def test_wifi_ap_ssid_prefix_is_limited_to_six_chars_with_dev_mode_suffix():
+    wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+    manager_header = (PROJECT_ROOT / "WifiManager.h").read_text(encoding="utf-8")
+    manager_source = (PROJECT_ROOT / "WifiManager.cpp").read_text(encoding="utf-8")
+    assets_source = (PROJECT_ROOT / "WebConsoleAssets.h").read_text(encoding="utf-8")
+    source = firmware_source_text()
+
+    assert 'const uint8_t WIFI_AP_SSID_PREFIX_MAX_LEN = 6;' in wifi_types
+    assert 'const char* WIFI_AP_SSID_SUFFIX = "-ESP";' in wifi_types
+    assert "String getActiveWifiApSsid()" in manager_header
+    assert "String getActiveWifiApSsid()" in manager_source
+    assert "buildWifiDevApSsid" in manager_source
+    assert "wifiStaSsidShortUpper" in manager_source
+    assert "wifiStaIpTailText" in manager_source
+    assert "!wifiDevModeEnabled || !wifiStaConnected" in manager_source
+    assert 'maxlength="6"' in assets_source
+    assert '/^([A-Za-z0-9]{1,6})$/' in assets_source
+    assert "长度为 1-6 位" in assets_source
+    assert "前 3 位大写" in source
+    assert "last two IP octets" in source
 
 
 def test_web_console_exposes_ap_name_mdns_lan_console_entry():
     source = firmware_source_text()
 
     assert "#include <ESPmDNS.h>" in source
-    assert "bool wifiMdnsStarted" in source
-    assert "static void startWifiMdnsIfNeeded()" in source
-    assert "static void stopWifiMdnsIfNeeded()" in source
+    assert "bool& wifiMdnsStarted" in source
+    assert "void startWifiMdnsIfNeeded()" in source
+    assert "void stopWifiMdnsIfNeeded()" in source
     assert "String wifiMdnsHostText()" in source
     assert "String wifiMdnsUrlText()" in source
     assert "MDNS.begin(wifiMdnsHostText().c_str())" in source
@@ -1025,7 +1148,7 @@ def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
     source = firmware_source_text()
 
     status_body = re.search(
-        r"static void printWirelessStatus\(Print& out\)\s*\{(?P<body>.*?)\n\}",
+        r"void printWirelessStatus\(Print& out\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1040,7 +1163,7 @@ def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
     assert "mdns_started=%d" in status_body
     assert "wifiMdnsHostText().c_str()" in status_body
     assert "wifiMdnsUrlText().c_str()" in status_body
-    assert "wifiMdnsStarted ? 1 : 0" in status_body
+    assert "wifiRuntime.mdnsStarted ? 1 : 0" in status_body
     assert "\\\"mdns_host\\\"" in sta_json_body
     assert "\\\"mdns_url\\\"" in sta_json_body
     assert "\\\"mdns_started\\\"" in sta_json_body
@@ -1055,16 +1178,16 @@ def test_wifi_sta_to_sta_handoff_keeps_ap_as_transition_page():
 
     assert "WIFI_STA_HANDOFF_AP_KEEP_MS" not in source
     assert "WIFI_AP_STOP_AFTER_STA_CONNECTED_DELAY_MS" not in source
-    assert "bool wifiStaHandoffActive" in source
-    assert "char wifiStaHandoffTargetSsid" in source
-    assert "static void startWifiStaHandoff" in source
-    assert "static void finishWifiStaHandoff" in source
+    assert "bool& wifiStaHandoffActive" in source
+    assert "char* const wifiStaHandoffTargetSsid" in source
+    assert "void startWifiStaHandoff" in source
+    assert "void finishWifiStaHandoff" in source
     assert "void clearWifiStaHandoff" in source
     handoff_body = re.search(
-        r"static void startWifiStaHandoff.*?\n\}",
+        r"void startWifiStaHandoff\(const String& targetSsid\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
-    ).group(0)
+    ).group("body")
     assert "ensureWifiApAvailable()" in handoff_body
     assert "restartWifiAp()" not in handoff_body
     assert "body.set('source',location.hostname==='192.168.4.1'?'ap':'sta')" in source
@@ -1325,9 +1448,9 @@ def test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_
 
     assert "static void handleWifiWebStaPassword()" in source
     assert 'wifiWebServer.on("/api/wifi-sta/password", HTTP_GET, handleWifiWebStaPassword)' in source
-    assert "if (!wifiConsoleAuthenticated && !wifiDevModeEnabled)" in source
+    assert "if (!ws.consoleAuthenticated && !ws.devModeEnabled)" in source
     assert "\\\"password_len\\\":" in source
-    assert "appendJsonString(response, wifiStaPassword)" in source
+    assert "appendJsonString(response, ws.staPassword)" in source
 
     public_body = re.search(
         r"static String wifiStaJson\(\)\s*\{(?P<body>.*?)\n\}",
@@ -1362,7 +1485,7 @@ def test_web_console_keeps_ap_running_after_successful_wifi_sta_connection():
     assert "stopWifiApAfterStaConnected" not in source
     assert "AP stopped after STA connected" not in source
     restart_body = re.search(
-        r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1371,7 +1494,7 @@ def test_web_console_keeps_ap_running_after_successful_wifi_sta_connection():
     assert "WiFi.mode(WIFI_STA)" not in source
 
     update_sta_body = re.search(
-        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1380,8 +1503,10 @@ def test_web_console_keeps_ap_running_after_successful_wifi_sta_connection():
     assert "scheduleWifiApStopAfterStaConnected" not in connected_branch
     assert "WiFi.softAP(" not in connected_branch
     assert "restartWifiAp()" not in connected_branch
-    assert "scheduleWifiApRestart()" not in connected_branch
-    assert "wifiApSsid" not in connected_branch
+    # Dev mode may schedule an AP restart to reflect STA info in the AP SSID.
+    if "scheduleWifiApRestart()" in connected_branch:
+        assert "wifiDevModeEnabled" in connected_branch
+        assert "getActiveWifiApSsid()" in connected_branch
 
 
 def test_web_console_keeps_ap_available_when_wifi_sta_connection_fails():
@@ -1394,9 +1519,9 @@ def test_web_console_keeps_ap_available_when_wifi_sta_connection_fails():
     ).group("body")
     assert "wifiApStopPending" not in source
     assert "保留本轮连接的首个失败原因" in failure_body
-    assert "if (wifiStaLastError[0] != 0) return" in failure_body
-    assert "wifiStaConnecting = false" in failure_body
-    assert "wifiStaConnected = false" in failure_body
+    assert "if (ws().staLastError[0] != 0) return" in failure_body
+    assert "ws().staConnecting = false" in failure_body
+    assert "ws().staConnected = false" in failure_body
 
 
 def test_web_console_redirects_to_sta_ip_after_successful_wifi_sta_connection():
@@ -1477,7 +1602,7 @@ def test_wifi_mdns_lifecycle_follows_sta_connection():
         re.DOTALL,
     ).group("body")
     update_sta_body = re.search(
-        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1494,12 +1619,12 @@ def test_wifi_console_applies_sta_after_console_is_ready():
     source = firmware_source_text()
 
     setup_body = re.search(
-        r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
     console_services_body = re.search(
-        r"static bool startWifiConsoleServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool startWifiConsoleServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1515,22 +1640,22 @@ def test_wifi_softap_uses_explicit_ipv4_gateway_configuration():
     source = firmware_source_text()
 
     restart_body = re.search(
-        r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
     setup_body = re.search(
-        r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
 
-    assert "static bool configureWifiSoftApNetwork()" in source
+    assert "bool configureWifiSoftApNetwork()" in source
     assert "IPAddress apIp(192, 168, 4, 1)" in source
     assert "IPAddress subnet(255, 255, 255, 0)" in source
     assert "WiFi.softAPConfig(apIp, apIp, subnet)" in source
     start_services_body = re.search(
-        r"static bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1544,12 +1669,12 @@ def test_sta_disconnect_keeps_soft_ap_clients_connected_and_services_available()
     source = firmware_source_text()
 
     ensure_body = re.search(
-        r"static bool ensureWifiApAvailable\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool ensureWifiApAvailable\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
     update_sta_body = re.search(
-        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1559,14 +1684,14 @@ def test_sta_disconnect_keeps_soft_ap_clients_connected_and_services_available()
     assert "restartWifiAp()" not in disconnected_branch
     assert "WiFi.softAPdisconnect(true)" not in disconnected_branch
     start_services_body = re.search(
-        r"static bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
 
     assert "wifiApStopPending" not in source
     console_services_body = re.search(
-        r"static bool startWifiConsoleServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool startWifiConsoleServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1589,7 +1714,7 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
     source = firmware_source_text()
 
     disconnect_body = re.search(
-        r"static void disconnectWifiStaOnly\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void disconnectWifiStaOnly\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1609,12 +1734,12 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
         re.DOTALL,
     ).group("body")
     setup_body = re.search(
-        r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
 
-    assert "static void disconnectWifiStaOnly()" in source
+    assert "void disconnectWifiStaOnly()" in source
     assert "esp_wifi_disconnect()" in disconnect_body
     assert "disconnectWifiStaOnly()" in apply_body
     assert "clearWifiStaRuntimeStateWithoutDisconnect()" in clear_body
@@ -1627,10 +1752,10 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
     assert "esp_wifi_disconnect" not in runtime_clear_body
     assert "WiFi.disconnect" not in runtime_clear_body
     assert "WiFi.mode" not in runtime_clear_body
-    assert "wifiStaConfigured = false" in runtime_clear_body
-    assert "wifiStaConnected = false" in runtime_clear_body
-    assert "wifiStaConnecting = false" in runtime_clear_body
-    assert "wifiStaApplyPending = false" in runtime_clear_body
+    assert "ws().staConfigured = false" in runtime_clear_body
+    assert "ws().staConnected = false" in runtime_clear_body
+    assert "ws().staConnecting = false" in runtime_clear_body
+    assert "ws().staApplyPending = false" in runtime_clear_body
     assert "clearWifiStaLastError()" in runtime_clear_body
     assert "WiFi.disconnect(true, true)" in setup_body
 
@@ -1639,12 +1764,12 @@ def test_soft_ap_disconnect_is_limited_to_explicit_ap_restart():
     source = firmware_source_text()
 
     restart_body = re.search(
-        r"static bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool restartWifiAp\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
     setup_body = re.search(
-        r"static void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1654,7 +1779,7 @@ def test_soft_ap_disconnect_is_limited_to_explicit_ap_restart():
         re.DOTALL,
     ).group("body")
     update_sta_body = re.search(
-        r"static void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1719,3 +1844,73 @@ def test_web_console_handles_common_captive_portal_probes_locally():
     assert 'uri.startsWith("/api/")' in not_found_body
     assert 'wifiWebServer.send(404, "application/json", "{\\"error\\":\\"not_found\\"}")' in not_found_body
     assert "redirectWifiWebCaptivePortalToRoot()" in not_found_body
+
+
+def test_wifi_discovery_compile_switches_exist():
+    source = (PROJECT_ROOT / "FirmwareConfig.h").read_text(encoding="utf-8")
+    assert "#define ENABLE_WIFI_NETBIOS_DISCOVERY" in source
+    assert "#define ENABLE_WIFI_LLMNR_DISCOVERY" in source
+    assert "#ifdef ENABLE_WIFI_CONSOLE" in source
+    assert source.index("#define ENABLE_WIFI_NETBIOS_DISCOVERY") > source.index("#ifdef ENABLE_WIFI_CONSOLE")
+
+
+def test_wifi_netbios_lifecycle_follows_sta_connection():
+    source = firmware_source_text()
+
+    apply_body = re.search(
+        r"(?:static )?void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    update_sta_body = re.search(
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    connected_branch = update_sta_body.split("if (status == WL_CONNECTED)", 1)[1].split("if (wifiStaConnected)", 1)[0]
+    disconnected_branch = update_sta_body.split("if (wifiStaConnected)", 1)[1].split("if (!wifiStaConnecting)", 1)[0]
+
+    assert "stopWifiNetbiosIfNeeded()" in apply_body
+    assert "startWifiNetbiosIfNeeded()" in connected_branch
+    assert "stopWifiNetbiosIfNeeded()" in disconnected_branch
+
+
+def test_wifi_llmnr_lifecycle_follows_sta_connection():
+    source = firmware_source_text()
+
+    apply_body = re.search(
+        r"(?:static )?void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    update_sta_body = re.search(
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    update_console_body = re.search(
+        r"(?:static )?void updateWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    connected_branch = update_sta_body.split("if (status == WL_CONNECTED)", 1)[1].split("if (wifiStaConnected)", 1)[0]
+    disconnected_branch = update_sta_body.split("if (wifiStaConnected)", 1)[1].split("if (!wifiStaConnecting)", 1)[0]
+
+    assert "stopWifiLlmnrIfNeeded()" in apply_body
+    assert "startWifiLlmnrIfNeeded()" in connected_branch
+    assert "stopWifiLlmnrIfNeeded()" in disconnected_branch
+    assert "processLlmnrPacket()" in update_console_body
+
+
+def test_wifi_sta_credentials_set_dhcp_hostname():
+    source = firmware_source_text()
+
+    apply_body = re.search(
+        r"(?:static )?void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "WiFi.setHostname(" in apply_body
+    assert "wifiMdnsHostText().c_str()" in apply_body
+    assert apply_body.index("WiFi.setHostname(") < apply_body.index("WiFi.begin(")

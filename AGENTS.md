@@ -2,7 +2,7 @@
 
 # AGENTS.md - MUS4 项目编码指南
 
-MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件，当前主 Sketch 为根目录 `MUS4_FW.ino`，固件版本 `v1.7.4`（定义于 `BuildInfo.h`），目标硬件为 MUS4-v2.4.2 PCB（兼容 v2.3）。固件负责 RC 接收机 PWM 输入采集、Pilot 上位机串口控制、多模式驾驶控制融合、Park/紧急制动状态机、I2C 传感器采集、TUI 状态显示，以及可选的 Wi-Fi 控制台、OTA 更新和 BLE 游戏手柄输出。
+MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件。当前主 Sketch 为根目录 `MUS4_FW.ino`，固件版本 `v1.7.4`（定义于 `BuildInfo.h`），目标硬件为 MUS4-v2.4.2 PCB（兼容 v2.3）。固件负责 RC 接收机 PWM 输入采集、Pilot 上位机串口控制、多模式驾驶控制融合、Park/紧急制动状态机、I2C 传感器采集、TUI 状态显示，以及可选的 Wi-Fi 控制台、OTA 更新和 BLE 游戏手柄输出。
 
 ---
 
@@ -22,8 +22,22 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
   - `AsyncTCP` / `ESPAsyncWebServer` — WebSocket 遥测（仅在启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY` 时生效）
   - `BleGamepad` — 蓝牙游戏手柄模式（仅在未启用 `ENABLE_WIFI_CONSOLE` 时生效）
 - **Python 依赖**: `pyyaml`, `pyserial`, `pytest`
+- **不存在传统包管理器清单**: 项目中没有 `pyproject.toml`、`package.json`、`Cargo.toml` 或 `Makefile`；构建入口是 Python 脚本和 PowerShell 脚本。
 
-### 1.2 代码组织
+### 1.2 关键配置文件
+
+| 文件 | 用途 | 备注 |
+|------|------|------|
+| `BuildInfo.h` | 固件版本宏 | `v1.7.4`，构建日期/时间由编译器 `__DATE__` / `__TIME__` 注入 |
+| `FirmwareConfig.h` | 编译期功能开关、引脚定义、时序/滤波/日志目标 | 所有 `.h/.cpp` 均优先包含此文件 |
+| `config.yaml` | `arduino-cli.py` 主配置 | FQBN、端口、波特率、串口自动检测关键字、复位策略、日志级别 |
+| `sketch.yaml` | Arduino CLI 项目级默认配置 | FQBN 与端口 |
+| `wslbuild.yaml` | WSL 构建脚本覆盖配置 | distro、工作目录、`io_mode`、库同步规则 |
+| `ArduFlux.json` | ArduFlux IDE 配置文件 | 当前板型、端口、Monitor 参数（不建议纳入版本控制，见 `.gitignore`） |
+| `WirelessSecrets.h` | 本地 Wi-Fi STA SSID/密码 | **不提交**，由 `.gitignore` 排除 |
+| `.mus4_ota_target` | HTTP OTA 默认目标主机首行 | **不提交**，由 `.gitignore` 排除 |
+
+### 1.3 代码组织
 
 根目录是多文件 Arduino 项目，主 Sketch `MUS4_FW.ino` 仅保留 `setup()` / `loop()`、全局变量装配和中断快照读取，所有业务逻辑均已拆分为成对的 `.h/.cpp` 模块（部分纯头文件工具除外）：
 
@@ -58,7 +72,7 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 ├── WebConsoleAssets.h             # Web Console HTML（Drifter Console）与 OTA 上传页（PROGMEM）
 ├── WebLogBuffer.h / WebLogBuffer.cpp           # Web 日志 ring buffer 与日志桥接
 ├── WebConsoleServer.h / WebConsoleServer.cpp   # HTTP route、API handler、captive portal、OTA upload
-├── WebTelemetry.h / WebTelemetry.cpp           # WebSocket telemetry、数据采样与推送
+├── WebTelemetry.h / WebTelemetry.cpp           # WebSocket 遥测、数据采样与推送
 ├── WifiManager.h / WifiManager.cpp             # Wi-Fi runtime 状态机（AP/STA/mDNS/DNS/TCP Console）
 ├── DriftAssist.h / DriftAssist.cpp             # 漂移辅助：基于 GyroZ 与 CH5/CH6 的转向补偿
 ├── SteeringControl.h / SteeringControl.cpp     # 转向 PID 平滑与故障安全
@@ -74,15 +88,15 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 ├── wslbuild.yaml                  # WSL 构建脚本覆盖配置
 ├── ArduFlux.json                  # ArduFlux IDE 配置文件
 ├── .mus4_ota_target               # HTTP OTA 默认目标主机（本地文件，不提交）
-├── arduino-cli.py                 # 跨平台构建/上传/监控 Python 主入口
+├── arduino-cli.py                 # 跨平台构建/上传/监控 Python 主入口（~1334 行）
 ├── arduino-cli-wsl.ps1            # Windows WSL 加速构建与 OTA 上传包装脚本
 ├── wireless_console_policy.py     # Wi-Fi/TCP/Web Console 权限策略的 Python 镜像
 ├── tests/                         # Python 单元/集成测试
-│   ├── test_arduino_cli.py
-│   ├── test_wireless_console_policy.py
-│   ├── test_firmware_feature_flags.py
-│   ├── test_train_tub_driver.py
-│   └── test_mus4_pilot_infer.py
+│   ├── test_arduino_cli.py        # 串口选择、OTA 工具链、编译命令的单元测试
+│   ├── test_wireless_console_policy.py # 无线权限策略、Web Log Buffer、网络状态格式化测试
+│   ├── test_firmware_feature_flags.py  # 源码结构断言（75+ 项），验证模块拆分、HTML/JS 结构、Wi-Fi 行为
+│   ├── test_train_tub_driver.py   # Tub 训练工具测试
+│   └── test_mus4_pilot_infer.py   # Pilot 推理控制器测试
 ├── tools/                         # 模型与数据采集工具
 │   ├── train_tub_driver.py        # Tub JSON 行为克隆训练工具
 │   └── mus4_pilot_infer.py        # Pilot 推理控制器
@@ -91,7 +105,7 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 │   ├── testIIC/                   # I2C 扫描与通信测试
 │   └── smart_provisioning/        # Wi-Fi 配网示例（AP + Web Server）
 ├── docs/                          # 项目文档（中文为主）
-│   ├── Arch/architecture.md       # 固件主循环、状态机、数据流架构
+│   ├── Arch/architecture.md       # 固件主循环、状态机、数据流架构（部分时序基于旧版，以 FirmwareConfig.h 为准）
 │   ├── Hardware/pin_definitions.md# 权威引脚定义（v2.3/v2.4.2）
 │   ├── Hardware/CONFIG.md         # 硬件配置说明
 │   ├── Tools/ArduinoCLI.md        # arduino-cli.py 使用说明
@@ -220,6 +234,12 @@ pytest tests/test_firmware_feature_flags.py
 pytest tests/test_train_tub_driver.py
 pytest tests/test_mus4_pilot_infer.py
 ```
+
+测试说明：
+- `test_arduino_cli.py`：基于 `unittest`，使用 `MagicMock` 对 `arduino-cli.py` 的串口选择、OTA 工具发现、编译命令组装、上传重试逻辑进行单元测试。
+- `test_wireless_console_policy.py`：基于 `unittest`，验证 `wireless_console_policy.py` 中的权限矩阵、Wi-Fi 状态格式化、Web Log Buffer、Tub 数据包格式。
+- `test_firmware_feature_flags.py`：基于 `pytest`，包含 **75+ 项源码级结构断言**。它读取固件源码并验证：模块是否正确拆分、符号是否存在于预期文件、Web Console HTML/JS 结构、Wi-Fi 状态机行为、编译开关状态等。**修改固件源码后必须确保此测试通过。**
+- `test_train_tub_driver.py` / `test_mus4_pilot_infer.py`：工具链测试。
 
 ### 3.2 固件运行时串口测试命令
 
@@ -360,7 +380,7 @@ OTA 窗口打开或 OTA 传输进行时会暂停 Serial1 遥测。
   - **需认证 + Park 锁定（或开发模式）**: `ENABLE_OTA`
   - **需认证**: `OTA_STATUS`, `DISABLE_OTA`
 - 修改认证/权限逻辑时，**必须同步更新** `wireless_console_policy.py` 与 `tests/test_wireless_console_policy.py`。
-- `WirelessSecrets.h` 与 `.mus4_ota_target` 包含真实凭据或目标地址，**不应纳入版本控制**。
+- `WirelessSecrets.h` 与 `.mus4_ota_target` 包含真实凭据或目标地址，**不应纳入版本控制**（已由 `.gitignore` 排除）。
 - 开发模式（DEV）持久化到 NVS，开启后 Web Console 可免 AUTH，但仍保留 Park Locked 安全限制；实际 OTA 传输期间固件会默认 Park Locked。
 
 ### 7.3 防御性编程
@@ -374,26 +394,16 @@ OTA 窗口打开或 OTA 传输进行时会暂停 Serial1 遥测。
 
 ## 8. 配置与部署
 
-### 8.1 配置文件说明
-
-| 文件 | 用途 |
-|------|------|
-| `config.yaml` | `arduino-cli.py` 主配置：FQBN、端口、波特率、自动检测关键字、复位策略、日志级别 |
-| `sketch.yaml` | Arduino CLI 项目默认：FQBN 与端口 |
-| `wslbuild.yaml` | WSL 构建覆盖：distro、工作目录、io_mode、库同步规则 |
-| `ArduFlux.json` | ArduFlux IDE 当前配置与 Profile |
-| `WirelessSecrets.h` | 本地 Wi-Fi STA SSID/密码（不提交） |
-| `.mus4_ota_target` | HTTP OTA 默认目标主机首行（不提交） |
-
-### 8.2 编译开关（`FirmwareConfig.h`）
+### 8.1 编译开关（`FirmwareConfig.h`）
 
 - `ENABLE_WIFI_CONSOLE`：已启用，开启 Wi-Fi AP/TCP/Web Console 全套功能。
 - `ENABLE_WIFI_WEBSOCKET_TELEMETRY`：在 `ENABLE_WIFI_CONSOLE` 启用时定义，开启 WebSocket 二进制遥测。
 - `ENABLE_GAMEPAD_MODE`：仅在 `ENABLE_WIFI_CONSOLE` 未定义时自动启用，避免 Wi-Fi 与 BLE 共存冲突。
 - `ENABLE_DIAGNOSTIC_COMMANDS`：默认注释关闭，开启后增加 `TEST`/`BENCH`/`STRESS`/`REGRESS`/`FILTER_TEST` 等诊断实现。
 - `ENABLE_BOOT_STEERING_SELF_TEST`：默认注释关闭。
+- `ENABLE_WIFI_NETBIOS_DISCOVERY` / `ENABLE_WIFI_LLMNR_DISCOVERY`：在 `ENABLE_WIFI_CONSOLE` 启用时定义，用于 STA 网络发现。
 
-### 8.3 配网系统部署（独立子项目）
+### 8.2 配网系统部署（独立子项目）
 
 `provisioning_system/` 是独立于主固件构建流程的配网系统：
 
@@ -413,6 +423,13 @@ OTA 窗口打开或 OTA 传输进行时会暂停 Serial1 遥测。
 - **提交信息**: 遵循 Conventional Commits，使用中文，例如 `fix(arduino-cli): 修复串口上传进度回退闪烁的问题`
 - **提交前检查**: 确认 `WirelessSecrets.h` / `.mus4_ota_target` 不含敏感信息、相关 Python 测试通过、固件编译通过。
 - **不要自动 push**：远端操作需用户明确授权。
+- **本地排除文件**（已由 `.gitignore` 处理，勿手动提交）：
+  - `WirelessSecrets.h`
+  - `.mus4_ota_target`
+  - `ArduFlux.json`
+  - `build/`, `build_wsl/`
+  - `.arduino_cli_state.json`, `.tmp_serial_state_test.json`
+  - `*.log`
 
 ---
 
@@ -420,7 +437,7 @@ OTA 窗口打开或 OTA 传输进行时会暂停 Serial1 遥测。
 
 | 文档 | 内容 |
 |------|------|
-| `docs/Arch/architecture.md` | 固件主循环、状态机、数据流、时序分析 |
+| `docs/Arch/architecture.md` | 固件主循环、状态机、数据流、时序分析（注意：部分时序参数基于历史版本，以 `FirmwareConfig.h` 为准） |
 | `docs/Hardware/pin_definitions.md` | MUS4-v2.3/v2.4.2 权威引脚定义与连接图 |
 | `docs/Hardware/CONFIG.md` | 硬件配置说明 |
 | `docs/Tools/ArduinoCLI.md` | `arduino-cli.py` 使用说明 |

@@ -49,3 +49,4 @@ WirelessSecrets.h
 ArduFlux.json
 .cache/
 .pyc
+.worktrees/

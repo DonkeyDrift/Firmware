@@ -25,6 +25,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "GamepadMode.cpp",
     PROJECT_ROOT / "RcFilter.h",
     PROJECT_ROOT / "RcFilter.cpp",
+    PROJECT_ROOT / "RcPwmCapture.h",
+    PROJECT_ROOT / "RcPwmCapture.cpp",
     PROJECT_ROOT / "CommandParser.h",
     PROJECT_ROOT / "CommandParser.cpp",
     PROJECT_ROOT / "CommandDispatcher.h",
@@ -773,11 +775,11 @@ def test_rc_interrupt_state_keeps_iram_and_volatile_guards():
     source = firmware_source_text()
 
     assert re.search(r"^volatile\s+uint16_t\s+pwm_value\[RC_CHANNEL_COUNT\]", source, re.MULTILINE)
-    assert re.search(r"^volatile\s+unsigned\s+long\s+rise_time\[RC_CHANNEL_COUNT\]", source, re.MULTILINE)
     assert re.search(r"^volatile\s+unsigned\s+long\s+last_valid_time\[RC_CHANNEL_COUNT\]", source, re.MULTILINE)
     assert "void IRAM_ATTR handle_interrupt" in source
     assert "void IRAM_ATTR CH1_interrupt()" in source
     assert "static bool IRAM_ATTR onRcModeCapture" in source
+    assert "void setupRcPwmCapture()" in source
 
 
 

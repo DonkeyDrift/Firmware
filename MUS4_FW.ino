@@ -42,9 +42,9 @@
 #include <ArduinoOTA.h>
 #include <Update.h>
 #include <Preferences.h>
-#include "driver/mcpwm_cap.h"
 #include "BuildInfo.h"
 #include "SharedTypes.h"
+#include "RcPwmCapture.h"
 #include "TUI.h"
 #include "WebConsoleAssets.h"
 #include "StringPrint.h"
@@ -89,9 +89,6 @@ bool lastParkState = false;
 Adafruit_MPU6050 mpu;
 Adafruit_INA219 ina219;
 
-volatile uint16_t pwm_value[RC_CHANNEL_COUNT] = {0};
-volatile unsigned long rise_time[RC_CHANNEL_COUNT] = {0};
-volatile unsigned long last_valid_time[RC_CHANNEL_COUNT] = {0};
 uint16_t pwm_filter_buf[RC_CHANNEL_COUNT][PWM_FILTER_SIZE] = {{0}};
 uint8_t pwm_filter_idx[RC_CHANNEL_COUNT] = {0};
 bool pwm_filter_initialized[RC_CHANNEL_COUNT] = {false};
@@ -103,8 +100,6 @@ bool aux_stable_initialized[RC_CHANNEL_COUNT] = {false};
 uint16_t primary_smooth_pwm[RC_CHANNEL_COUNT] = {0};
 bool primary_smooth_initialized[RC_CHANNEL_COUNT] = {false};
 bool filterDebugEnabled = false;          // Debug output switch
-
-const int Channels[RC_CHANNEL_COUNT] = {CH1_PIN, CH2_PIN, CH3_PIN, CH4_PIN, CH5_PIN, CH6_PIN};
 
 CRGB leds[NUM_LEDS]; // Define the array of leds
 
@@ -349,148 +344,6 @@ void ensureWifiOtaStarted()
 #endif
 
 
-static void IRAM_ATTR acceptRcPulse(int channel, uint32_t width, unsigned long now)
-{
-    static uint16_t candidate_pwm[RC_CHANNEL_COUNT] = {0};
-    static uint16_t large_change_count[RC_CHANNEL_COUNT] = {0};
-    static uint16_t last_large_pwm[RC_CHANNEL_COUNT] = {0};
-
-    if (width < RC_PWM_MIN || width > RC_PWM_MAX) return;
-
-    uint16_t pulse = (uint16_t)width;
-    uint16_t prev = pwm_value[channel];
-    int diff = abs((int)pulse - (int)prev);
-
-    if (diff <= 120) {
-        pwm_value[channel] = pulse;
-        last_valid_time[channel] = now;
-    } else if (diff <= 200) {
-        if (abs((int)pulse - (int)candidate_pwm[channel]) < 80) {
-            pwm_value[channel] = pulse;
-            last_valid_time[channel] = now;
-        }
-        candidate_pwm[channel] = pulse;
-    } else {
-        if (abs((int)pulse - (int)last_large_pwm[channel]) < 100) {
-            large_change_count[channel]++;
-            if (large_change_count[channel] >= 2) {
-                pwm_value[channel] = pulse;
-                last_valid_time[channel] = now;
-                large_change_count[channel] = 0;
-            }
-        } else {
-            large_change_count[channel] = 0;
-        }
-        last_large_pwm[channel] = pulse;
-    }
-}
-
-void IRAM_ATTR handle_interrupt(int channel)
-{
-    static int pin_state[RC_CHANNEL_COUNT] = {0};
-    static unsigned long last_edge_time[RC_CHANNEL_COUNT] = {0};
-    static unsigned long last_rise_time[RC_CHANNEL_COUNT] = {0};
-
-    unsigned long now = micros();
-    if (now - last_edge_time[channel] < 100) return;
-    last_edge_time[channel] = now;
-
-    pin_state[channel] = digitalRead(Channels[channel]);
-    if (pin_state[channel] == HIGH)
-    {
-        last_rise_time[channel] = now;
-    }
-    else
-    {
-        acceptRcPulse(channel, now - last_rise_time[channel], now);
-    }
-}
-
-void IRAM_ATTR CH1_interrupt() { handle_interrupt(CH_STEERING); } // interrupt handler
-void IRAM_ATTR CH2_interrupt() { handle_interrupt(CH_THROTTLE); }
-void IRAM_ATTR CH3_interrupt() { handle_interrupt(CH_PARK); }
-void IRAM_ATTR CH4_interrupt() { handle_interrupt(CH_MODE); }
-void IRAM_ATTR CH5_interrupt() { handle_interrupt(CH_DRIFT); }
-void IRAM_ATTR CH6_interrupt() { handle_interrupt(CH_DRIFT_SCALE); }
-
-void (*isr_functions[RC_CHANNEL_COUNT])() = {CH1_interrupt, CH2_interrupt, CH3_interrupt, CH4_interrupt, CH5_interrupt, CH6_interrupt}; // array of function pointers
-
-#if ENABLE_RC_MCPWM_CAPTURE
-static mcpwm_cap_timer_handle_t rcMcpwmCaptureTimer = nullptr;
-static mcpwm_cap_channel_handle_t rcModeCaptureChannel = nullptr;
-static volatile uint32_t rcModeLastRiseTick = 0;
-static volatile bool rcModeHasRiseTick = false;
-static bool rcMcpwmCaptureActive = false;
-
-static bool IRAM_ATTR onRcModeCapture(mcpwm_cap_channel_handle_t channel, const mcpwm_capture_event_data_t *edata, void *user_data)
-{
-    if (edata->cap_edge == MCPWM_CAP_EDGE_POS) {
-        rcModeLastRiseTick = edata->cap_value;
-        rcModeHasRiseTick = true;
-    } else if (edata->cap_edge == MCPWM_CAP_EDGE_NEG && rcModeHasRiseTick) {
-        uint32_t width = edata->cap_value - rcModeLastRiseTick;
-        acceptRcPulse(CH_MODE, width, micros());
-    }
-    return false;
-}
-
-static bool setupRcMcpwmCapture()
-{
-    mcpwm_capture_timer_config_t timerConfig = {};
-    timerConfig.group_id = RC_MCPWM_CAPTURE_GROUP_ID;
-    timerConfig.clk_src = MCPWM_CAPTURE_CLK_SRC_DEFAULT;
-    timerConfig.resolution_hz = RC_MCPWM_CAPTURE_RESOLUTION_HZ;
-
-    esp_err_t err = mcpwm_new_capture_timer(&timerConfig, &rcMcpwmCaptureTimer);
-    if (err != ESP_OK) {
-        mus4Logf("rc", "MCPWM timer init failed: %d", err);
-        return false;
-    }
-
-    mcpwm_capture_channel_config_t channelConfig = {};
-    channelConfig.gpio_num = CH4_PIN;
-    channelConfig.prescale = 1;
-    channelConfig.flags.pos_edge = true;
-    channelConfig.flags.neg_edge = true;
-    channelConfig.flags.pull_down = true;
-
-    err = mcpwm_new_capture_channel(rcMcpwmCaptureTimer, &channelConfig, &rcModeCaptureChannel);
-    if (err != ESP_OK) {
-        mus4Logf("rc", "MCPWM CH4 channel init failed: %d", err);
-        return false;
-    }
-
-    mcpwm_capture_event_callbacks_t callbacks = {};
-    callbacks.on_cap = onRcModeCapture;
-    err = mcpwm_capture_channel_register_event_callbacks(rcModeCaptureChannel, &callbacks, nullptr);
-    if (err != ESP_OK) {
-        mus4Logf("rc", "MCPWM CH4 callback init failed: %d", err);
-        return false;
-    }
-
-    err = mcpwm_capture_channel_enable(rcModeCaptureChannel);
-    if (err != ESP_OK) {
-        mus4Logf("rc", "MCPWM CH4 channel enable failed: %d", err);
-        return false;
-    }
-
-    err = mcpwm_capture_timer_enable(rcMcpwmCaptureTimer);
-    if (err != ESP_OK) {
-        mus4Logf("rc", "MCPWM timer enable failed: %d", err);
-        return false;
-    }
-
-    err = mcpwm_capture_timer_start(rcMcpwmCaptureTimer);
-    if (err != ESP_OK) {
-        mus4Logf("rc", "MCPWM timer start failed: %d", err);
-        return false;
-    }
-
-    mus4LogLine("rc", "MCPWM capture enabled for CH4");
-    return true;
-}
-#endif
-
 int User_throttle = 0;  // User throttle value from the RC transmitter
 int User_steering = 0;  // User steering value from the RC transmitter
 int Pilot_throttle = 0; // Throttle value from the host computer
@@ -704,24 +557,7 @@ void setup()
     setup_mpu6050();
     delay(100);
 
-#if ENABLE_RC_MCPWM_CAPTURE
-    rcMcpwmCaptureActive = setupRcMcpwmCapture();
-#endif
-    // Set the RC receiver pins as inputs and attach the interrupts
-    for (int i = 0; i < RC_CHANNEL_COUNT; i++)
-    {
-#if ENABLE_RC_MCPWM_CAPTURE
-        if (i == CH_MODE && rcMcpwmCaptureActive) continue;
-#endif
-        if (Channels[i] == 26) {
-            // GPIO 26 supports the internal pull-down resistor
-            pinMode(Channels[i], INPUT_PULLDOWN);
-        } else {
-            // Keep GPIO27 as a normal input; GPIO34/35/36/39 are input-only and have no internal pull-up/down
-            pinMode(Channels[i], INPUT);
-        }
-        attachInterrupt(digitalPinToInterrupt(Channels[i]), isr_functions[i], CHANGE);
-    }
+    setupRcPwmCapture();
 
     ledcAttachChannel(STEERING_PIN, 300, 14, CH_STEERING);
     ledcAttachChannel(THROTTLE_PIN, 300, 14, CH_THROTTLE);

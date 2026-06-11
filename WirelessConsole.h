@@ -8,6 +8,9 @@
 
 enum WirelessCommandOrigin { WIRELESS_ORIGIN_TCP, WIRELESS_ORIGIN_WEB };
 
+void processWirelessConsoleLine(const String& line, Print& out, WirelessCommandOrigin origin);
+void printWirelessStatus(Print& out);
+
 bool isWirelessControlCommand(const String& line);
 bool isWirelessOtaOpenCommand(const String& line);
 bool isLocalOtaOpenCommand(const String& line);

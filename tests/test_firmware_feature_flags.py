@@ -47,6 +47,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "Diagnostics.h",
     PROJECT_ROOT / "Diagnostics.cpp",
     PROJECT_ROOT / "SerialBufferTypes.h",
+    PROJECT_ROOT / "WebLogBuffer.h",
+    PROJECT_ROOT / "WebLogBuffer.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.h",
@@ -461,7 +463,8 @@ def test_wifi_console_types_are_split_from_sketch():
         assert symbol in wifi_types
 
     assert "#include \"WifiConsoleTypes.h\"" in sketch_source
-    assert "WebLogEntry wifiWebLogs[WIFI_WEB_LOG_CAPACITY];" in sketch_source
+    assert "WebLogEntry s_webLogEntries[WIFI_WEB_LOG_CAPACITY];" in source
+    assert "static WebLogEntry s_webLogEntries[WIFI_WEB_LOG_CAPACITY];" in source
     assert "WifiScanEntry wifiScanCache[16];" in sketch_source
     assert "WebDataPoint wifiWebData[WIFI_WEB_DATA_CAPACITY];" in sketch_source
     assert "struct WebLogEntry" not in sketch_source
@@ -725,7 +728,22 @@ def test_log_bridge_remains_available_after_module_split():
     assert "void mus4LogLine(const char* source, const String& line)" in source
     assert "void mus4Logf(const char* source, const char* fmt, ...)" in source
     assert "extern uint8_t mus4LogTarget" in source
-    assert "mus4SetWebLogSink(appendWifiWebLog)" in source
+    assert "mus4SetWebLogSink(appendWebLog)" in source
+
+
+def test_web_log_buffer_is_split_from_sketch():
+    sketch = MUS4_SKETCH.read_text(encoding="utf-8")
+    source = firmware_source_text()
+
+    assert "void appendWebLog(const char* source, const String& line)" in source
+    assert "void appendWebLogLines(const char* source, const String& text)" in source
+    assert "void writeWebLogsJson(String& response, uint32_t since)" in source
+    assert "static void appendWifiWebLog" not in sketch
+    assert "appendWifiWebLog(" not in sketch
+    assert "void processWirelessConsoleLine(const String& line, Print& out, WirelessCommandOrigin origin)" in source
+    assert "void printWirelessStatus(Print& out)" in source
+    assert "static void processWirelessConsoleLine" not in sketch
+    assert "static void printWirelessStatus" not in sketch
 
 
 
@@ -1024,7 +1042,7 @@ def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
     source = firmware_source_text()
 
     status_body = re.search(
-        r"static void printWirelessStatus\(Print& out\)\s*\{(?P<body>.*?)\n\}",
+        r"void printWirelessStatus\(Print& out\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1039,7 +1057,7 @@ def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
     assert "mdns_started=%d" in status_body
     assert "wifiMdnsHostText().c_str()" in status_body
     assert "wifiMdnsUrlText().c_str()" in status_body
-    assert "wifiMdnsStarted ? 1 : 0" in status_body
+    assert "wifiRuntime.mdnsStarted ? 1 : 0" in status_body
     assert "\\\"mdns_host\\\"" in sta_json_body
     assert "\\\"mdns_url\\\"" in sta_json_body
     assert "\\\"mdns_started\\\"" in sta_json_body

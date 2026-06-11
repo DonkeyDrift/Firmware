@@ -34,6 +34,7 @@ bool restartWifiAp();
 
 void loadWifiApPreference();
 bool saveWifiApPreference(const String& ssid);
+String getActiveWifiApSsid();
 
 void setupWifiConsole();
 void updateWifiSta();

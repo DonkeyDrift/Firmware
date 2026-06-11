@@ -9,7 +9,7 @@
 static const char* WIFI_CONSOLE_AP_DEFAULT_SSID = "MUS4-ESP";
 static const char* WIFI_CONSOLE_AP_PASSWORD = "mus4-debug";
 static const char* WIFI_AP_SSID_SUFFIX = "-ESP";
-static const uint8_t WIFI_AP_SSID_PREFIX_MAX_LEN = 8;
+static const uint8_t WIFI_AP_SSID_PREFIX_MAX_LEN = 6;
 static const uint16_t WIFI_CONSOLE_PORT = 2323;
 static const uint16_t WIFI_WEB_CONSOLE_PORT = 80;
 static const uint32_t WIFI_WEB_TELEMETRY_MIN_FREE_HEAP = 60000;

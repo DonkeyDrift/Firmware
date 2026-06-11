@@ -1108,6 +1108,28 @@ def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
     assert "invalid_ssid" in source
 
 
+def test_wifi_ap_ssid_prefix_is_limited_to_six_chars_with_dev_mode_suffix():
+    wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+    manager_header = (PROJECT_ROOT / "WifiManager.h").read_text(encoding="utf-8")
+    manager_source = (PROJECT_ROOT / "WifiManager.cpp").read_text(encoding="utf-8")
+    assets_source = (PROJECT_ROOT / "WebConsoleAssets.h").read_text(encoding="utf-8")
+    source = firmware_source_text()
+
+    assert 'const uint8_t WIFI_AP_SSID_PREFIX_MAX_LEN = 6;' in wifi_types
+    assert 'const char* WIFI_AP_SSID_SUFFIX = "-ESP";' in wifi_types
+    assert "String getActiveWifiApSsid()" in manager_header
+    assert "String getActiveWifiApSsid()" in manager_source
+    assert "buildWifiDevApSsid" in manager_source
+    assert "wifiStaSsidShortUpper" in manager_source
+    assert "wifiStaIpTailText" in manager_source
+    assert "!wifiDevModeEnabled || !wifiStaConnected" in manager_source
+    assert 'maxlength="6"' in assets_source
+    assert '/^([A-Za-z0-9]{1,6})$/' in assets_source
+    assert "长度为 1-6 位" in assets_source
+    assert "前 3 位大写" in source
+    assert "last two IP octets" in source
+
+
 def test_web_console_exposes_ap_name_mdns_lan_console_entry():
     source = firmware_source_text()
 
@@ -1481,8 +1503,10 @@ def test_web_console_keeps_ap_running_after_successful_wifi_sta_connection():
     assert "scheduleWifiApStopAfterStaConnected" not in connected_branch
     assert "WiFi.softAP(" not in connected_branch
     assert "restartWifiAp()" not in connected_branch
-    assert "scheduleWifiApRestart()" not in connected_branch
-    assert "wifiApSsid" not in connected_branch
+    # Dev mode may schedule an AP restart to reflect STA info in the AP SSID.
+    if "scheduleWifiApRestart()" in connected_branch:
+        assert "wifiDevModeEnabled" in connected_branch
+        assert "getActiveWifiApSsid()" in connected_branch
 
 
 def test_web_console_keeps_ap_available_when_wifi_sta_connection_fails():

@@ -12,6 +12,7 @@
 #include "WifiConsoleTypes.h"
 #include "WirelessConsole.h"
 #include "WifiIdentity.h"
+#include "WifiManager.h"
 #include "WifiOta.h"
 #include "WifiStaConfig.h"
 
@@ -275,7 +276,7 @@ static String wifiApJson()
     String response;
     response.reserve(128);
     response += "{\"ssid\":";
-    appendJsonString(response, ws.apSsid);
+    appendJsonString(response, getActiveWifiApSsid().c_str());
     response += ",\"ip\":";
     appendJsonString(response, WiFi.softAPIP().toString().c_str());
     response += ",\"clients\":";

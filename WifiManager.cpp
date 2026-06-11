@@ -214,6 +214,7 @@ bool saveDevModePreference(bool enabled)
         closeWifiOtaWindow("DEV_MODE_OFF", otaRuntime);
     }
     mus4Logf("wifi", "dev_mode saved=%d", wifiDevModeEnabled ? 1 : 0);
+    scheduleWifiApRestart();
     return true;
 }
 
@@ -346,6 +347,41 @@ void scheduleWifiApRestart()
     wifiApRestartDeadlineMs = millis() + WIFI_STA_APPLY_DELAY_MS;
 }
 
+static String wifiStaSsidShortUpper()
+{
+    String sta = WiFi.SSID();
+    if (sta.length() == 0) return String();
+    String out;
+    out.reserve(3);
+    for (uint8_t i = 0; i < sta.length() && out.length() < 3; i++) {
+        char c = sta[i];
+        if (c & 0x80) continue; // Skip non-ASCII bytes to keep SSID printable
+        out += (char)toupper(c);
+    }
+    return out.length() == 3 ? out : String();
+}
+
+static String wifiStaIpTailText()
+{
+    IPAddress ip = WiFi.localIP();
+    return String(ip[2]) + "." + String(ip[3]);
+}
+
+static String buildWifiDevApSsid(const String& baseSsid)
+{
+    if (!baseSsid.endsWith(WIFI_AP_SSID_SUFFIX)) return baseSsid;
+    String prefix = baseSsid.substring(0, baseSsid.length() - strlen(WIFI_AP_SSID_SUFFIX));
+    String staShort = wifiStaSsidShortUpper();
+    if (staShort.length() == 0) return baseSsid;
+    return prefix + WIFI_AP_SSID_SUFFIX + "-" + staShort + "-" + wifiStaIpTailText();
+}
+
+String getActiveWifiApSsid()
+{
+    if (!wifiDevModeEnabled || !wifiStaConnected) return String(wifiApSsid);
+    return buildWifiDevApSsid(wifiApSsid);
+}
+
 bool configureWifiSoftApNetwork()
 {
     IPAddress apIp(192, 168, 4, 1);
@@ -360,15 +396,16 @@ bool startWifiConsoleServices(const char* logPrefix)
     wifiConsoleServer.setNoDelay(true);
     wifiWebServer.begin();
     wifiConsoleStarted = true;
-    mus4Logf("wifi", "%s ssid=%s IP: %s", logPrefix, wifiApSsid, WiFi.softAPIP().toString().c_str());
+    mus4Logf("wifi", "%s ssid=%s IP: %s", logPrefix, getActiveWifiApSsid().c_str(), WiFi.softAPIP().toString().c_str());
     return true;
 }
 
 bool startWifiApServices(const char* logPrefix)
 {
     configureWifiSoftApNetwork();
+    String activeSsid = getActiveWifiApSsid();
     bool started = WiFi.softAP(
-        wifiApSsid,
+        activeSsid.c_str(),
         WIFI_CONSOLE_AP_PASSWORD,
         WIFI_CONSOLE_CHANNEL,
         false,
@@ -472,7 +509,7 @@ void setupWifiConsole()
     if (!startWifiApServices("AP started")) {
         return;
     }
-    mus4Logf("wifi", "AP %s IP: %s Port: %u Web: %u", wifiApSsid, WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT);
+    mus4Logf("wifi", "AP %s IP: %s Port: %u Web: %u", getActiveWifiApSsid().c_str(), WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT);
     if (wifiStaConfigured) {
         applyWifiStaCredentials();
     }
@@ -505,6 +542,13 @@ void updateWifiSta()
             wifiWebServer.begin();
             mus4LogLine("wifi", "WebServer re-bound for STA");
             mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
+            if (wifiDevModeEnabled) {
+                String targetSsid = getActiveWifiApSsid();
+                if (!targetSsid.equals(WiFi.softAPSSID())) {
+                    mus4Logf("wifi", "dev AP SSID update: %s", targetSsid.c_str());
+                    scheduleWifiApRestart();
+                }
+            }
             finishWifiStaHandoff();
         }
         return;
@@ -519,7 +563,11 @@ void updateWifiSta()
         stopWifiLlmnrIfNeeded();
 #endif
         mus4LogLine("wifi", "STA disconnected");
-        ensureWifiApAvailable();
+        if (!String(wifiApSsid).equals(WiFi.softAPSSID())) {
+            scheduleWifiApRestart();
+        } else {
+            ensureWifiApAvailable();
+        }
     }
     if (!wifiStaConnecting) return;
     if (status == WL_NO_SSID_AVAIL) {

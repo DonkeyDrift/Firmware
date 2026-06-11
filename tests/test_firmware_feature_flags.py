@@ -31,6 +31,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "ControlMixer.cpp",
     PROJECT_ROOT / "SafetyState.h",
     PROJECT_ROOT / "SafetyState.cpp",
+    PROJECT_ROOT / "ActuatorOutput.h",
+    PROJECT_ROOT / "ActuatorOutput.cpp",
     PROJECT_ROOT / "CommandParser.h",
     PROJECT_ROOT / "CommandParser.cpp",
     PROJECT_ROOT / "CommandDispatcher.h",

@@ -69,6 +69,7 @@
 #include "WifiManager.h"
 #include "ControlMixer.h"
 #include "SafetyState.h"
+#include "ActuatorOutput.h"
 #include "DriftAssist.h"
 #include "SteeringControl.h"
 #include "Diagnostics.h"
@@ -208,26 +209,6 @@ ControlData rc_data = {0, 0, 0, PARK_LOCKED};      // Initialize the structure a
 ControlData pilot_data = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
 ControlData car_output = {0, 0, 0, PARK_LOCKED};   // Initialize the structure at declaration
 
-// 300Hz PWM output parameters (for servo and ESC)
-// Frequency = 80MHz / (prescale * resolution)
-// 300Hz = 80000000 / (prescale * 16384) → prescale ≈ 16
-// Pulse-width calculation: count = (pulse_us / period_us) * 2^14
-// Period = 1000000/300 = 3333.33µs
-const int PWM_PERIOD_US = 3333;  // 300Hz period (µs)
-const int PWM_MIN_V = 4915;      // 1000µs @ 300Hz (1000/3333.33×16384 ≈ 4915)
-const int PWM_MAX_V = 9830;      // 2000µs @ 300Hz (2000/3333.33×16384 ≈ 9830)
-const int MOTOR_MID_V = 7372;    // 1500µs @ 300Hz
-const int MOTOR_RANGE_V = 2458; // ±500µs range
-extern const int SERVO_MID_V = 7372;    // 1500µs @ 300Hz
-extern const int SERVO_RANGE_V = 2458; // ±500µs range
-const int MOTOR_OFFSET_V = 1;
-const int SERVO_OFFSET_V = -1;
-
-// Waveform data
-int throttleWave[WAVE_WIDTH] = {0};
-int steeringWave[WAVE_WIDTH] = {0};
-int waveIndex = 0;
-
 // Sensor data storage
 SensorData ina219Data = {0}, mpu6050Data = {0};
 uint8_t g_mpuCandidateAddress = 0;
@@ -333,8 +314,6 @@ int Pilot_steering = 0; // Steering value from the host computer
 
 // RC calibration defaults moved to top of file (must precede function definitions for Arduino preprocessor compatibility)
 
-unsigned long counter;
-
 void setup()
 {
     // Bind the shared Preferences instance into the runtime state before any
@@ -387,9 +366,7 @@ void setup()
     delay(100);
 
     setupRcPwmCapture();
-
-    ledcAttachChannel(STEERING_PIN, 300, 14, CH_STEERING);
-    ledcAttachChannel(THROTTLE_PIN, 300, 14, CH_THROTTLE);
+    setupActuatorOutput();
 
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
     FastLED.setBrightness(BRIGHTNESS);
@@ -565,16 +542,7 @@ void loop()
 
 #endif
 
-    int pwm_steering = map(car_output.steering, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
-    int pwm_throttle = map(car_output.throttle, -100, 100, MOTOR_MID_V - MOTOR_RANGE_V, MOTOR_MID_V + MOTOR_RANGE_V);
-
-    pwm_steering = min(max(pwm_steering, PWM_MIN_V), PWM_MAX_V);
-    pwm_throttle = min(max(pwm_throttle, PWM_MIN_V), PWM_MAX_V);
-
-    ledcWriteChannel(CH_STEERING, pwm_steering);
-    ledcWriteChannel(CH_THROTTLE, pwm_throttle);
-
-    counter += 1;
+    updateActuatorOutput();
 
     scanLEDToggle();
     if (now - lastPerfEval >= 1000)

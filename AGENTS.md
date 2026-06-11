@@ -44,6 +44,7 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 ├── RcPwmCapture.h / RcPwmCapture.cpp       # RC PWM 输入捕获：中断、MCPWM、脉冲验证
 ├── ControlMixer.h / ControlMixer.cpp       # 驾驶模式切换、RC/Pilot 控制融合、Drift Assist
 ├── SafetyState.h / SafetyState.cpp         # Park 状态机、紧急制动 FSM
+├── ActuatorOutput.h / ActuatorOutput.cpp   # PWM 执行器输出：舵机/电调映射与驱动
 ├── CommandParser.h / CommandParser.cpp     # 串口命令解析、校验和、单元测试入口
 ├── LocalCommands.h / LocalCommands.cpp     # 本地串口行处理（Pilot 数据帧解析）
 ├── CommandDispatcher.h / CommandDispatcher.cpp # 命令分发（本地/无线/OTA/Wi-Fi STA）

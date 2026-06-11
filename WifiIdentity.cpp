@@ -1,6 +1,8 @@
 #include "WifiIdentity.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
+#include "WifiConsoleTypes.h"
+
 static const uint8_t WIFI_IDENTITY_AP_SSID_MAX_LEN = 32;
 
 static WifiRuntimeState* g_ws = nullptr;
@@ -29,6 +31,18 @@ bool isMdnsSafeHostname(const String& value)
     if (value[0] == '-' || value[value.length() - 1] == '-') return false;
     for (uint8_t i = 0; i < value.length(); i++) {
         if (!isMdnsSafeHostnameChar(value[i])) return false;
+    }
+    return true;
+}
+
+bool isValidApSsidPrefix(const String& value)
+{
+    if (value.length() == 0 || value.length() > WIFI_AP_SSID_PREFIX_MAX_LEN) return false;
+    for (uint8_t i = 0; i < value.length(); i++) {
+        char c = value[i];
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))) {
+            return false;
+        }
     }
     return true;
 }

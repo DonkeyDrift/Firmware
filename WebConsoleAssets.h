@@ -82,9 +82,10 @@ function closeLanguageMenu(){langMenu.classList.remove('show')}
 function openHelpModal(){fabActions.classList.add('show');closeLanguageMenu();helpOverlay.classList.add('show');helpModal.classList.add('show')}
 function closeHelpModal(){helpOverlay.classList.remove('show');helpModal.classList.remove('show')}
 const LOG_DISPLAY_MAX_BYTES=16000;
-function appendLogLine(t,src){const s=src||'web';let buf=sourceBuffers[s];buf+=t+'\n';while(buf.length>LOG_SOURCE_MAX_BYTES){const idx=buf.indexOf('\n');if(idx<0){buf=buf.slice(-LOG_SOURCE_MAX_BYTES);break;}buf=buf.substring(idx+1);}sourceBuffers[s]=buf;if(s!==currentLogSource||logPaused)return;log.textContent=buf.slice(-LOG_DISPLAY_MAX_BYTES);log.scrollTop=log.scrollHeight;}
+function canonicalLogSource(src){if(src==='serial'||src==='serial1')return src;return 'web';}
+function appendLogLine(t,src){const s=canonicalLogSource(src||'web');let buf=sourceBuffers[s];buf+=t+'\n';while(buf.length>LOG_SOURCE_MAX_BYTES){const idx=buf.indexOf('\n');if(idx<0){buf=buf.slice(-LOG_SOURCE_MAX_BYTES);break;}buf=buf.substring(idx+1);}sourceBuffers[s]=buf;if(s!==currentLogSource||logPaused)return;log.textContent=buf.slice(-LOG_DISPLAY_MAX_BYTES);log.scrollTop=log.scrollHeight;}
 function line(t){appendLogLine(t,'web');}
-function switchLogSource(src){currentLogSource=src||'web';cmdTarget.value=currentLogSource;const buf=sourceBuffers[currentLogSource];log.textContent=buf.length>0?buf.slice(-LOG_DISPLAY_MAX_BYTES):'[当前来源暂无日志]';log.scrollTop=log.scrollHeight;}
+function switchLogSource(src){currentLogSource=canonicalLogSource(src||'web');cmdTarget.value=currentLogSource;const buf=sourceBuffers[currentLogSource];log.textContent=buf.length>0?buf.slice(-LOG_DISPLAY_MAX_BYTES):'[当前来源暂无日志]';log.scrollTop=log.scrollHeight;}
 function clearLog(){sourceBuffers[currentLogSource]='';log.textContent='[当前来源暂无日志]'}
 function togglePause(){logPaused=!logPaused;refreshDynamicLabels()}
 function toggleChart(){chartPaused=!chartPaused;refreshDynamicLabels()}

@@ -251,7 +251,7 @@ static void handleWifiWebCommand()
     } else {
         appendWebLog("web", String("> ") + redactWirelessConsoleLine(line));
         processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_WEB);
-        appendWebLogLines("cmd", response);
+        appendWebLogLines("web", response);
     }
     sendWifiWebApiHeaders();
     wifiWebServer.send(200, "text/plain", response);

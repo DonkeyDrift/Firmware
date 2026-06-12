@@ -18,8 +18,8 @@ static const char* canonicalWebLogSource(const char* source)
 static WebLogEntry s_webLogEntries[WIFI_WEB_LOG_CAPACITY];
 static uint32_t s_webLogSeq = 0;
 static uint32_t s_webLogDropped = 0;
-static uint8_t s_webLogHead = 0;
-static uint8_t s_webLogCount = 0;
+static uint16_t s_webLogHead = 0;
+static uint16_t s_webLogCount = 0;
 
 void webLogBufferInit()
 {
@@ -27,7 +27,7 @@ void webLogBufferInit()
     s_webLogDropped = 0;
     s_webLogHead = 0;
     s_webLogCount = 0;
-    for (uint8_t i = 0; i < WIFI_WEB_LOG_CAPACITY; i++) {
+    for (uint16_t i = 0; i < WIFI_WEB_LOG_CAPACITY; i++) {
         s_webLogEntries[i] = WebLogEntry{};
     }
 }
@@ -71,8 +71,8 @@ void writeWebLogsJson(String& response, uint32_t since)
     response += s_webLogDropped;
     response += ",\"entries\":[";
     bool first = true;
-    for (uint8_t i = 0; i < s_webLogCount; i++) {
-        uint8_t index = (s_webLogHead + WIFI_WEB_LOG_CAPACITY - s_webLogCount + i) % WIFI_WEB_LOG_CAPACITY;
+    for (uint16_t i = 0; i < s_webLogCount; i++) {
+        uint16_t index = (s_webLogHead + WIFI_WEB_LOG_CAPACITY - s_webLogCount + i) % WIFI_WEB_LOG_CAPACITY;
         WebLogEntry& entry = s_webLogEntries[index];
         if (entry.seq <= since) continue;
         if (!first) response += ',';

@@ -522,13 +522,20 @@ void loop()
 
     if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
     {
+        String telem = String("T") + car_output.throttle + ":S" + car_output.steering;
         if (shouldEmitSerial1Telemetry(otaRuntime)) {
-            String telem = String("T") + car_output.throttle + ":S" + car_output.steering;
             Serial1.println(telem); // RC => Type-C
-#ifdef ENABLE_WIFI_CONSOLE
-            appendWebLog("serial1", telem);
-#endif
         }
+#ifdef ENABLE_WIFI_CONSOLE
+        // Log Serial1 telemetry to the web console at a lower rate (4 Hz) to
+        // avoid filling the small web log ring buffer and overwriting other
+        // source logs (e.g. serial command replies).
+        static unsigned long lastSerial1WebLogMs = 0;
+        if (millis() - lastSerial1WebLogMs >= 250) {
+            appendWebLog("serial1", telem);
+            lastSerial1WebLogMs = millis();
+        }
+#endif
         lastRCDataUpdate = millis();
     }
 

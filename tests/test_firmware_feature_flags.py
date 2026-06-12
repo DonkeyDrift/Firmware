@@ -163,6 +163,8 @@ def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
     assert "function switchLogSource(" in source
     assert "function trimLogDisplay(" not in source
     assert "cmdTarget.addEventListener('change'" in source
+    assert "function canonicalLogSource(" in source
+    assert "if(src==='serial'||src==='serial1')return src;return 'web';" in source
 
 
 def test_web_console_screen_saver_activates_after_60_seconds():
@@ -457,6 +459,16 @@ def test_serial_line_reader_is_split_from_sketch():
     assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in reader_source
     assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in sketch_source
     assert "#include \"SerialLineReader.h\"" in source
+
+
+def test_serial1_telemetry_web_log_is_independent_of_ota_window():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "appendWebLog(\"serial1\", telem)" in sketch_source
+    # The web-log append must sit outside the hardware-send guard so that
+    # users can still inspect Serial1 telemetry in the Web Console even when
+    # the OTA window is open.
+    assert "if (shouldEmitSerial1Telemetry(otaRuntime)) {\n            Serial1.println(telem);" in sketch_source
 
 
 def test_wifi_console_types_are_split_from_sketch():

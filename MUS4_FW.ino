@@ -522,13 +522,13 @@ void loop()
 
     if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
     {
+        String telem = String("T") + car_output.throttle + ":S" + car_output.steering;
         if (shouldEmitSerial1Telemetry(otaRuntime)) {
-            String telem = String("T") + car_output.throttle + ":S" + car_output.steering;
             Serial1.println(telem); // RC => Type-C
-#ifdef ENABLE_WIFI_CONSOLE
-            appendWebLog("serial1", telem);
-#endif
         }
+#ifdef ENABLE_WIFI_CONSOLE
+        appendWebLog("serial1", telem);
+#endif
         lastRCDataUpdate = millis();
     }
 

@@ -5,8 +5,15 @@
 
 #ifdef ENABLE_WIFI_CONSOLE
 
+// Optional real-time sink for log entries.  Set by the WebSocket module to
+// push logs to the browser as they are appended.
+typedef void (*WebLogSocketSink)(uint32_t seq, unsigned long t, const char* source, const char* line);
+
 // Initialize the web log ring buffer. Call once before any append/read.
 void webLogBufferInit();
+
+// Register a sink that receives every appended log line in real time.
+void webLogBufferSetSocketSink(WebLogSocketSink sink);
 
 // Append a single log line to the web log ring buffer.
 void appendWebLog(const char* source, const String& line);

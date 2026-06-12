@@ -126,10 +126,14 @@ def test_smart_provisioning_web_ui_polls_new_ip_and_falls_back_to_mdns():
     assert "手动打开" in source
 
 
-def test_websocket_curve_data_feature_is_enabled():
+def test_websocket_curve_data_feature_is_enabled_and_streams_logs():
     source = firmware_source_text()
+    web_telemetry = (PROJECT_ROOT / "WebTelemetry.cpp").read_text(encoding="utf-8")
 
     assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", source, re.MULTILINE)
+    assert "sendWebLogToSocket" in web_telemetry
+    assert "webLogBufferSetSocketSink(sendWebLogToSocket)" in web_telemetry
+    assert r'\"type\":\"log\"' in web_telemetry
 
 
 def test_firmware_version_is_v1_7_6_and_changelog_is_current():
@@ -165,6 +169,9 @@ def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
     assert "cmdTarget.addEventListener('change'" in source
     assert "function canonicalLogSource(" in source
     assert "if(src==='serial'||src==='serial1')return src;return 'web';" in source
+    assert "typeof e.data==='string'" in source
+    assert "j.type==='log'" in source
+    assert "appendLogLine('['+j.t+']['+j.src+'] '+j.line,j.src)" in source
 
 
 def test_web_console_screen_saver_activates_after_60_seconds():
@@ -463,6 +470,7 @@ def test_serial_line_reader_is_split_from_sketch():
 
 def test_serial1_telemetry_has_dedicated_web_log_buffer():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    web_log_header = (PROJECT_ROOT / "WebLogBuffer.h").read_text(encoding="utf-8")
     web_log_source = (PROJECT_ROOT / "WebLogBuffer.cpp").read_text(encoding="utf-8")
     wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
 
@@ -476,6 +484,12 @@ def test_serial1_telemetry_has_dedicated_web_log_buffer():
     assert "struct Serial1WebLogEntry" in web_log_source
     assert "s_serial1LogEntries[SERIAL1_WEB_LOG_CAPACITY]" in web_log_source
     assert "appendSerial1WebLog" in web_log_source
+
+    # Real-time WebSocket sink for log streaming.
+    assert "typedef void (*WebLogSocketSink)" in web_log_header
+    assert "(uint32_t seq, unsigned long t, const char* source, const char* line)" in web_log_header
+    assert "void webLogBufferSetSocketSink(WebLogSocketSink sink)" in web_log_header
+    assert "webLogBufferSetSocketSink" in web_log_source
 
 
 def test_wifi_console_types_are_split_from_sketch():

@@ -60,6 +60,25 @@ static void sendWifiWebSocketHello(AsyncWebSocketClient* client)
     client->text(wifiWebSocketPayload);
 }
 
+static void sendWebLogToSocket(uint32_t seq, unsigned long t, const char* source, const char* line)
+{
+    if (!wifiWebSocketClientConnected || !wifiWebSocketClient) return;
+    if (!wifiWebSocketClient->canSend() || wifiWebSocketClient->queueIsFull()) return;
+    if (otaRuntime.inProgress) return;
+    if (ESP.getFreeHeap() < WIFI_WEB_TELEMETRY_MIN_FREE_HEAP) return;
+
+    wifiWebSocketPayload = "{\"type\":\"log\",\"seq\":";
+    wifiWebSocketPayload += seq;
+    wifiWebSocketPayload += ",\"t\":";
+    wifiWebSocketPayload += t;
+    wifiWebSocketPayload += ",\"src\":\"";
+    wifiWebSocketPayload += source;
+    wifiWebSocketPayload += "\",\"line\":";
+    appendJsonString(wifiWebSocketPayload, line);
+    wifiWebSocketPayload += '}';
+    wifiWebSocketClient->text(wifiWebSocketPayload);
+}
+
 static void handleWifiWebSocketMessage(AsyncWebSocketClient* client, uint8_t* data, size_t length)
 {
     if (!client || !wifiWebSocketClientConnected || wifiWebSocketClientId != client->id()) return;
@@ -207,6 +226,7 @@ void setupWifiWebSocket()
     wifiWebSocket.onEvent(handleWifiWebSocketEvent);
     wifiWebSocketServer.addHandler(&wifiWebSocket);
     wifiWebSocketServer.begin();
+    webLogBufferSetSocketSink(sendWebLogToSocket);
     mus4Logf("web", "ws telemetry port=%u", WIFI_WEB_SOCKET_PORT);
 }
 

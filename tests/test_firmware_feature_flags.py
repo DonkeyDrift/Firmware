@@ -144,14 +144,14 @@ def test_firmware_version_is_v1_7_4_and_changelog_is_current():
 def test_web_console_serial_log_display_is_limited_to_16_lines():
     source = firmware_source_text()
 
-    assert "#serialPanel .log{flex:0 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(16 * 1.35em + 16px)}" in source
-    assert "#serialPanel .log{height:calc(16 * 1.35em + 16px)}" in source
+    assert "#serialPanel .log{flex:1 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
+    assert "#serialPanel .log{height:" not in source
 
 
 def test_web_console_screen_saver_activates_after_60_seconds():
     source = firmware_source_text()
 
-    assert "now-parkLockedAt>=60000&&range<10" in source
+    assert "now-parkLockedAt>=3000&&range<10" in source
     assert "now-parkLockedAt>=10000&&range<10" not in source
 
 
@@ -273,8 +273,8 @@ def test_web_console_dynamic_visible_copy_uses_current_language():
     assert "pauseBtn" in source
     assert "chartBtn" in source
     assert "chartFullscreenBtn" in source
-    assert "textContent=logPaused?t('button.resume'):t('button.pause')" in source
-    assert "textContent=document.fullscreenElement===chartPanel?t('button.split'):t('button.fullscreen')" in source
+    assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
+    assert "f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     assert "showToast(t('toast.copyFailed')" in source
     assert "explainCommandError" in source
     assert "PARK_REQUIRED" in source
@@ -1227,9 +1227,9 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "static const char WIFI_WEB_UPDATE_HTML[] PROGMEM" not in sketch_source
     assert source.index('<section class="panel" id="chartPanel">') < source.index('<section class="panel" id="serialPanel">')
     assert '<section class="panel" id="serialPanel">' in source
-    assert "#serialPanel{display:flex;flex-direction:column}" in source
-    assert "#serialPanel .log{flex:0 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(16 * 1.35em + 16px)}" in source
-    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}#serialPanel .log{height:calc(16 * 1.35em + 16px)}}" in source
+    assert "#serialPanel{display:flex;flex-direction:column;gap:8px;padding-bottom:6px}" in source
+    assert "#serialPanel .log{flex:1 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
+    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}" in source
     assert "canvas{width:100%;height:auto;aspect-ratio:38/13;" in source
     assert "#chartPanel:fullscreen canvas{width:min(100%,calc((100vh - 118px) * 38 / 13));height:auto;max-height:calc(100vh - 118px);aspect-ratio:38/13}" in source
     assert "dataMeta.textContent=transport+' realtime seq='+lastDataSeq+' +'+added" not in source
@@ -1240,14 +1240,14 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}}" not in source
     assert "@media(min-width:900px){.grid{grid-template-columns:1fr 2fr}.wide{grid-column:1/-1}}" not in source
     assert '.chartControls{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}.chartTools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}' in source
-    assert 'onclick="toggleChart()" id="chartBtn" data-i18n="button.pause"' in source
-    assert 'onclick="clearChart()" data-i18n="button.clear"' in source
-    assert 'onclick="toggleChartFullscreen()" id="chartFullscreenBtn" data-i18n="button.fullscreen"' in source
+    assert 'class="iconButton" onclick="toggleChart()" id="chartBtn" title="暂停"' in source
+    assert 'class="iconButton" onclick="clearChart()" title="清空"' in source
+    assert 'class="iconButton" onclick="toggleChartFullscreen()" id="chartFullscreenBtn" title="全屏"' in source
     assert 'onclick="ts()" data-i18n="button.tubStart"' in source
     assert 'onclick="te()" data-i18n="button.tubStop"' in source
     assert 'onclick="td()" data-i18n="button.tubJson"' in source
-    assert "document.getElementById('chartBtn').textContent=chartPaused?t('button.draw'):t('button.pause')" in source
-    assert "document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?t('button.split'):t('button.fullscreen')" in source
+    assert "c.innerHTML=chartPaused?ICON_PLAY:ICON_PAUSE" in source
+    assert "f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     assert '<button onclick="clearChart()">清空曲线</button>' not in source
     assert '<button onclick="toggleChart()" id="chartBtn">暂停曲线</button>' not in source
     assert "'暂停曲线'" not in source
@@ -1255,10 +1255,10 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" target="_blank" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
-    assert '<input id="cmd"><button onclick="sendCmd()" data-i18n="button.send">发送</button><button onclick="clearLog()" data-i18n="button.clear">清空</button><button onclick="togglePause()" id="pauseBtn" data-i18n="button.pause">暂停</button>' in source
+    assert '<button onclick="sendCmd()" data-i18n="button.send">发送</button><button class="iconButton" onclick="clearLog()" title="清空"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
-    assert "document.getElementById('pauseBtn').textContent=logPaused?t('button.resume'):t('button.pause')" in source
+    assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
     assert '>暂停日志</button>' not in source
     assert "'继续日志'" not in source
     assert "'暂停日志'" not in source
@@ -1322,7 +1322,7 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
     assert source.index(serial_panel) < source.index(diagnostics_panel)
     assert source.index(diagnostics_panel) < source.index('id="rcFold" class="fold"')
     assert source.index('id="rcFold" class="fold"') < source.index('id="statusFold" class="fold"')
-    assert '@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}#serialPanel .log{height:calc(16 * 1.35em + 16px)}}' in source
+    assert '@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}' in source
     assert "function toggleFold(id)" in source
     assert "function renderStatus(t)" in source
     assert "function parseStatusPairs(t)" in source

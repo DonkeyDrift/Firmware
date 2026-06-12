@@ -30,7 +30,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 <section class="panel" id="chartPanel">
 <canvas id="chart" width="760" height="260"></canvas>
 <div class="legend"><span class="c1">Throttle<b id="thrMeta">--</b></span><span class="c2">Steering<b id="strMeta">--</b></span><span class="c4">GyroZ<b id="gzMeta">--</b></span></div>
-<div class="chartControls"><button onclick="toggleChart()" id="chartBtn" data-i18n="button.pause">暂停</button><button onclick="clearChart()" data-i18n="button.clear">清空</button><button onclick="toggleChartFullscreen()" id="chartFullscreenBtn" data-i18n="button.fullscreen">全屏</button><div class="chartTools"><button onclick="ts()" data-i18n="button.tubStart">Tub Start</button><button onclick="te()" data-i18n="button.tubStop">Tub Stop</button><button onclick="td()" data-i18n="button.tubJson">Tub JSON</button></div></div>
+<div class="chartControls"><button class="iconButton" onclick="toggleChart()" id="chartBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearChart()" title="清空"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="toggleChartFullscreen()" id="chartFullscreenBtn" title="全屏"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M0 0h5L0 5z"/><path d="M16 0h-5L16 5z"/><path d="M0 16h5L0 11z"/><path d="M16 16h-5L16 11z"/></svg></button><div class="chartTools"><button onclick="ts()" data-i18n="button.tubStart">Tub Start</button><button onclick="te()" data-i18n="button.tubStop">Tub Stop</button><button onclick="td()" data-i18n="button.tubJson">Tub JSON</button></div></div>
 </section>
 <section class="panel" id="serialPanel">
 <div class="row"><button onclick="sendCmd()" data-i18n="button.send">发送</button><button class="iconButton" onclick="clearLog()" title="清空"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><input id="cmd"><select id="cmdTarget"><option value="web">Web</option><option value="serial">Serial</option><option value="serial1">Serial1</option></select></div>
@@ -68,7 +68,7 @@ function initCanvasDpr(){dpr=window.devicePixelRatio||1;cw=Math.round((canvas.cl
 function readStoredLanguage(){try{return normalizeLanguage(localStorage.getItem(LANG_STORAGE_KEY))}catch(e){return 'zh'}}
 function writeStoredLanguage(lang){try{localStorage.setItem(LANG_STORAGE_KEY,lang)}catch(e){}}
 function t(key){return (I18N[uiLang]&&I18N[uiLang][key])||I18N.zh[key]||key}
-function refreshDynamicLabels(){document.getElementById('pauseBtn').textContent=logPaused?t('button.resume'):t('button.pause');document.getElementById('chartBtn').textContent=chartPaused?t('button.draw'):t('button.pause');document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?t('button.split'):t('button.fullscreen');updateStaPasswordEye()}
+function refreshDynamicLabels(){const p=document.getElementById('pauseBtn'),c=document.getElementById('chartBtn'),f=document.getElementById('chartFullscreenBtn');p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE;p.title=logPaused?t('button.resume'):t('button.pause');c.innerHTML=chartPaused?ICON_PLAY:ICON_PAUSE;c.title=chartPaused?t('button.draw'):t('button.pause');f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN;f.title=document.fullscreenElement===chartPanel?t('button.split'):t('button.fullscreen');updateStaPasswordEye()}
 function applyLanguage(lang){uiLang=normalizeLanguage(lang);document.documentElement.lang=uiLang;document.querySelectorAll('[data-i18n]').forEach(e=>{const v=t(e.dataset.i18n);if(v)e.textContent=v});document.querySelectorAll('[data-i18n-placeholder]').forEach(e=>{const v=t(e.dataset.i18nPlaceholder);if(v)e.placeholder=v});document.querySelectorAll('[data-i18n-aria]').forEach(e=>{const v=t(e.dataset.i18nAria);if(v)e.setAttribute('aria-label',v)});langMenu.querySelectorAll('button[data-lang]').forEach(b=>b.classList.toggle('active',b.dataset.lang===uiLang));refreshDynamicLabels()}
 function setLanguage(lang){uiLang=normalizeLanguage(lang);writeStoredLanguage(uiLang);applyLanguage(uiLang);closeLanguageMenu()}
 function toggleFabActions(e){if(e)e.stopPropagation();fabActions.classList.toggle('show')}
@@ -79,10 +79,10 @@ function openHelpModal(){fabActions.classList.add('show');closeLanguageMenu();he
 function closeHelpModal(){helpOverlay.classList.remove('show');helpModal.classList.remove('show')}
 function line(t){if(logPaused)return;log.textContent+=t+'\n';if(log.textContent.length>16000)log.textContent=log.textContent.slice(-12000);log.scrollTop=log.scrollHeight}
 function clearLog(){log.textContent=''}
-function togglePause(){logPaused=!logPaused;document.getElementById('pauseBtn').textContent=logPaused?t('button.resume'):t('button.pause')}
-function toggleChart(){chartPaused=!chartPaused;document.getElementById('chartBtn').textContent=chartPaused?t('button.draw'):t('button.pause')}
+function togglePause(){logPaused=!logPaused;refreshDynamicLabels()}
+function toggleChart(){chartPaused=!chartPaused;refreshDynamicLabels()}
 function toggleChartFullscreen(){if(document.fullscreenElement===chartPanel)document.exitFullscreen();else chartPanel.requestFullscreen()}
-document.addEventListener('fullscreenchange',()=>{document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?t('button.split'):t('button.fullscreen');gridReady=false;draw()});
+document.addEventListener('fullscreenchange',()=>{refreshDynamicLabels();gridReady=false;draw()});
 document.addEventListener('click',collapseFabActions);
 window.addEventListener('scroll',collapseFabActions,{passive:true});
 window.addEventListener('touchmove',collapseFabActions,{passive:true});

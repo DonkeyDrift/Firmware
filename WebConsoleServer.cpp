@@ -238,11 +238,11 @@ static void handleWifiWebCommand()
     String response;
     StringPrint out(response);
     if (target.equalsIgnoreCase("serial")) {
-        appendWebLog("web", String("> [serial] ") + redactWirelessConsoleLine(line));
+        appendWebLog("serial", String("> ") + redactWirelessConsoleLine(line));
         Serial.println(line);
         out.println("ACK:SERIAL");
     } else if (target.equalsIgnoreCase("serial1")) {
-        appendWebLog("web", String("> [serial1] ") + redactWirelessConsoleLine(line));
+        appendWebLog("serial1", String("> ") + redactWirelessConsoleLine(line));
         Serial1.println(line);
         out.println("ACK:SERIAL1");
     } else {

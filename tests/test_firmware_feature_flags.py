@@ -1271,6 +1271,10 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert 'ICON_RECORDING=' in source
     assert 'ICON_DOWNLOAD=' in source
     assert 'tubRecordBtn.classList.toggle' in source
+    assert 'id="tubMeta"' in source
+    assert 'class="recMeta"' in source
+    assert 'function updateTubMeta()' in source
+    assert 'tubMeta.textContent=tubSamples.length' in source
     assert "c.innerHTML=chartPaused?ICON_PLAY:ICON_PAUSE" in source
     assert "f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     assert '<button onclick="clearChart()">清空曲线</button>' not in source
@@ -1391,6 +1395,7 @@ def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
     assert "function td()" in source
     assert "function tp(p)" in source
     assert "function toggleTub()" in source
+    assert "function updateTubMeta()" in source
     assert "handleDataPayload" in source
     assert "tp(latest)" in source
     assert "TUB_MAX_SAMPLES" in source

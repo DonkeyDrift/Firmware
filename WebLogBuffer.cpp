@@ -32,19 +32,24 @@ static uint16_t s_webLogHead = 0;
 static uint16_t s_webLogCount = 0;
 static uint8_t s_serial1LogHead = 0;
 static uint8_t s_serial1LogCount = 0;
+static WebLogSocketSink s_webLogSocketSink = nullptr;
 
 static void appendGeneralWebLog(const char* source, const String& line)
 {
+    const char* src = canonicalWebLogSource(source);
     WebLogEntry& entry = s_webLogEntries[s_webLogHead];
     entry.seq = ++s_webLogSeq;
     entry.t = millis();
-    snprintf(entry.source, sizeof(entry.source), "%s", canonicalWebLogSource(source));
+    snprintf(entry.source, sizeof(entry.source), "%s", src);
     snprintf(entry.line, sizeof(entry.line), "%s", line.c_str());
     s_webLogHead = (s_webLogHead + 1) % WIFI_WEB_LOG_CAPACITY;
     if (s_webLogCount < WIFI_WEB_LOG_CAPACITY) {
         s_webLogCount++;
     } else {
         s_webLogDropped++;
+    }
+    if (s_webLogSocketSink) {
+        s_webLogSocketSink(entry.seq, entry.t, src, entry.line);
     }
 }
 
@@ -60,6 +65,9 @@ static void appendSerial1WebLog(const String& line)
     } else {
         s_webLogDropped++;
     }
+    if (s_webLogSocketSink) {
+        s_webLogSocketSink(entry.seq, entry.t, "serial1", entry.line);
+    }
 }
 
 void webLogBufferInit()
@@ -70,12 +78,18 @@ void webLogBufferInit()
     s_webLogCount = 0;
     s_serial1LogHead = 0;
     s_serial1LogCount = 0;
+    s_webLogSocketSink = nullptr;
     for (uint16_t i = 0; i < WIFI_WEB_LOG_CAPACITY; i++) {
         s_webLogEntries[i] = WebLogEntry{};
     }
     for (uint8_t i = 0; i < SERIAL1_WEB_LOG_CAPACITY; i++) {
         s_serial1LogEntries[i] = Serial1WebLogEntry{};
     }
+}
+
+void webLogBufferSetSocketSink(WebLogSocketSink sink)
+{
+    s_webLogSocketSink = sink;
 }
 
 void appendWebLog(const char* source, const String& line)

@@ -2,9 +2,11 @@
 
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 
+#include "JsonUtil.h"
 #include "Mus4Log.h"
 #include "RuntimeState.h"
 #include "SharedTypes.h"
+#include "WebLogBuffer.h"
 #include "WifiConsoleTypes.h"
 #include <WiFi.h>
 

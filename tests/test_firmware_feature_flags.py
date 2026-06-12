@@ -1275,6 +1275,8 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert 'class="recMeta"' in source
     assert 'function updateTubMeta()' in source
     assert 'tubMeta.textContent=tubSamples.length' in source
+    assert '<span class="recMeta">录制量<b id="tubMeta">0</b></span>' in source
+    assert 'function clearChart(){pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;tubSamples=[];tubStartedMs=0;tubStoppedMs=0;tubLastSeq=0;tubRecording=false;updateTubMeta();draw()}' in source
     assert "c.innerHTML=chartPaused?ICON_PLAY:ICON_PAUSE" in source
     assert "f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     assert '<button onclick="clearChart()">清空曲线</button>' not in source

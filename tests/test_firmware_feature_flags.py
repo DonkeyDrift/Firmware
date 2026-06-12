@@ -1265,9 +1265,18 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert 'class="iconButton" onclick="toggleChart()" id="chartBtn" title="暂停"' in source
     assert 'class="iconButton" onclick="clearChart()" title="清空"' in source
     assert 'class="iconButton" onclick="toggleChartFullscreen()" id="chartFullscreenBtn" title="全屏"' in source
-    assert 'onclick="ts()" data-i18n="button.tubStart"' in source
-    assert 'onclick="te()" data-i18n="button.tubStop"' in source
-    assert 'onclick="td()" data-i18n="button.tubJson"' in source
+    assert 'class="iconButton" onclick="toggleTub()" id="tubRecordBtn"' in source
+    assert 'class="iconButton" onclick="td()" id="tubDownloadBtn"' in source
+    assert 'ICON_RECORD=' in source
+    assert 'ICON_RECORDING=' in source
+    assert 'ICON_DOWNLOAD=' in source
+    assert 'tubRecordBtn.classList.toggle' in source
+    assert 'id="tubMeta"' in source
+    assert 'class="recMeta"' in source
+    assert 'function updateTubMeta()' in source
+    assert 'tubMeta.textContent=tubSamples.length' in source
+    assert '<span class="recMeta">录制量<b id="tubMeta">0</b></span>' in source
+    assert 'function clearChart(){pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;tubSamples=[];tubStartedMs=0;tubStoppedMs=0;tubLastSeq=0;tubRecording=false;updateTubMeta();draw()}' in source
     assert "c.innerHTML=chartPaused?ICON_PLAY:ICON_PAUSE" in source
     assert "f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     assert '<button onclick="clearChart()">清空曲线</button>' not in source
@@ -1387,11 +1396,13 @@ def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
     assert "function te()" in source
     assert "function td()" in source
     assert "function tp(p)" in source
+    assert "function toggleTub()" in source
+    assert "function updateTubMeta()" in source
     assert "handleDataPayload" in source
     assert "tp(latest)" in source
     assert "TUB_MAX_SAMPLES" in source
-    assert "Tub Start" in source
-    assert "Download Tub JSON" not in source
+    assert "tubRecordBtn" in source
+    assert "tubDownloadBtn" in source
     assert "LittleFS" not in source
     assert "SPIFFS" not in source
 

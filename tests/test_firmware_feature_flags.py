@@ -126,33 +126,59 @@ def test_smart_provisioning_web_ui_polls_new_ip_and_falls_back_to_mdns():
     assert "手动打开" in source
 
 
-def test_websocket_curve_data_feature_is_enabled():
+def test_websocket_curve_data_feature_is_enabled_and_streams_logs():
     source = firmware_source_text()
+    web_telemetry = (PROJECT_ROOT / "WebTelemetry.cpp").read_text(encoding="utf-8")
 
     assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", source, re.MULTILINE)
+    assert "sendWebLogToSocket" in web_telemetry
+    assert "webLogBufferSetSocketSink(sendWebLogToSocket)" in web_telemetry
+    assert r'\"type\":\"log\"' in web_telemetry
 
 
-def test_firmware_version_is_v1_7_4_and_changelog_is_current():
+def test_firmware_version_is_v1_7_6_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.4"' in build_info
-    assert "## 2026-06-11 v1.7.4" in changelog
-    assert changelog.index("## 2026-06-11 v1.7.4") < changelog.index("## 2026-06-07 v1.6.0")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.6"' in build_info
+    assert "## 2026-06-12 v1.7.6" in changelog
+    assert changelog.index("## 2026-06-12 v1.7.6") < changelog.index("## 2026-06-11 v1.7.4")
 
 
-def test_web_console_serial_log_display_is_limited_to_16_lines():
+def test_web_console_serial_log_display_is_limited_to_20_lines():
     source = firmware_source_text()
 
-    assert "#serialPanel .log{flex:0 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(16 * 1.35em + 16px)}" in source
-    assert "#serialPanel .log{height:calc(16 * 1.35em + 16px)}" in source
+    assert "#serialPanel .log{flex:1 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
+    assert "#serialPanel .log{height:" not in source
+
+
+def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
+    source = firmware_source_text()
+
+    assert 'id="cmdTarget"' in source
+    assert 'id="logSource"' not in source
+    assert '<option value="web">Web</option>' in source
+    assert '<option value="serial">Serial</option>' in source
+    assert '<option value="serial1">Serial1</option>' in source
+    assert "const LOG_SOURCE_MAX_BYTES=1024*1024" in source
+    assert "const LOG_DISPLAY_MAX_BYTES=16000" in source
+    assert "sourceBuffers={web:'',serial:'',serial1:''}" in source
+    assert "function appendLogLine(" in source
+    assert "function switchLogSource(" in source
+    assert "function trimLogDisplay(" not in source
+    assert "cmdTarget.addEventListener('change'" in source
+    assert "function canonicalLogSource(" in source
+    assert "if(src==='serial'||src==='serial1')return src;return 'web';" in source
+    assert "typeof e.data==='string'" in source
+    assert "j.type==='log'" in source
+    assert "appendLogLine('['+j.t+']['+j.src+'] '+j.line,j.src)" in source
 
 
 def test_web_console_screen_saver_activates_after_60_seconds():
     source = firmware_source_text()
 
     assert "now-parkLockedAt>=60000&&range<10" in source
-    assert "now-parkLockedAt>=10000&&range<10" not in source
+    assert "now-parkLockedAt>=3000&&range<10" not in source
 
 
 def test_web_console_keeps_original_ui_and_direct_curve_path():
@@ -273,8 +299,8 @@ def test_web_console_dynamic_visible_copy_uses_current_language():
     assert "pauseBtn" in source
     assert "chartBtn" in source
     assert "chartFullscreenBtn" in source
-    assert "textContent=logPaused?t('button.resume'):t('button.pause')" in source
-    assert "textContent=document.fullscreenElement===chartPanel?t('button.split'):t('button.fullscreen')" in source
+    assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
+    assert "f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     assert "showToast(t('toast.copyFailed')" in source
     assert "explainCommandError" in source
     assert "PARK_REQUIRED" in source
@@ -400,7 +426,8 @@ def test_command_dispatcher_replaces_command_line_macro_after_module_split():
     assert "ControlData pilot_data" in sketch_source
     assert "ControlData car_output" in sketch_source
     assert "struct struct_message" not in sketch_source
-    assert "dispatchCommandLine(String(sb.buf), ser, sb);" in source
+    assert "dispatchCommandLine(line, out, sb);" in source
+    assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in source
     assert "#define PROCESS_COMMAND_LINE" not in sketch_source
     assert "PROCESS_COMMAND_LINE" not in sketch_source
 
@@ -428,7 +455,7 @@ def test_serial_line_reader_is_split_from_sketch():
 
     assert "void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)" in reader_header
     assert "void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)" in reader_source
-    assert "dispatchCommandLine(String(sb.buf), ser, sb);" in reader_source
+    assert "dispatchCommandLine(line, out, sb);" in reader_source
     assert "if (c == '\\r') continue;" in reader_source
     assert "if (c == '\\n')" in reader_source
     assert "sb.overflow = true;" in reader_source
@@ -436,8 +463,33 @@ def test_serial_line_reader_is_split_from_sketch():
     assert "readSerialBuf(Serial, serial0Buf);" in sketch_source
     assert "readSerialBuf(Serial1, serial1Buf);" in sketch_source
     assert "static void readSerialBuf" not in sketch_source
+    assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in reader_source
     assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in sketch_source
     assert "#include \"SerialLineReader.h\"" in source
+
+
+def test_serial1_telemetry_has_dedicated_web_log_buffer():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    web_log_header = (PROJECT_ROOT / "WebLogBuffer.h").read_text(encoding="utf-8")
+    web_log_source = (PROJECT_ROOT / "WebLogBuffer.cpp").read_text(encoding="utf-8")
+    wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+
+    # Serial1 telemetry must always be logged, even when the OTA window keeps
+    # the hardware line silent.
+    assert "appendWebLog(\"serial1\", telem)" in sketch_source
+    assert "if (shouldEmitSerial1Telemetry(otaRuntime)) {\n            Serial1.println(telem);" in sketch_source
+
+    # Dedicated compact buffer for high-rate Serial1 telemetry.
+    assert "static const uint8_t SERIAL1_WEB_LOG_CAPACITY = 64;" in wifi_types
+    assert "struct Serial1WebLogEntry" in web_log_source
+    assert "s_serial1LogEntries[SERIAL1_WEB_LOG_CAPACITY]" in web_log_source
+    assert "appendSerial1WebLog" in web_log_source
+
+    # Real-time WebSocket sink for log streaming.
+    assert "typedef void (*WebLogSocketSink)" in web_log_header
+    assert "(uint32_t seq, unsigned long t, const char* source, const char* line)" in web_log_header
+    assert "void webLogBufferSetSocketSink(WebLogSocketSink sink)" in web_log_header
+    assert "webLogBufferSetSocketSink" in web_log_source
 
 
 def test_wifi_console_types_are_split_from_sketch():
@@ -1161,9 +1213,11 @@ def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
     assert "mdns_host=\\\"%s\\\"" in status_body
     assert "mdns_url=%s" in status_body
     assert "mdns_started=%d" in status_body
+    assert "web_log_dropped=%lu" in status_body
     assert "wifiMdnsHostText().c_str()" in status_body
     assert "wifiMdnsUrlText().c_str()" in status_body
     assert "wifiRuntime.mdnsStarted ? 1 : 0" in status_body
+    assert "webLogBufferDropped()" in status_body
     assert "\\\"mdns_host\\\"" in sta_json_body
     assert "\\\"mdns_url\\\"" in sta_json_body
     assert "\\\"mdns_started\\\"" in sta_json_body
@@ -1227,9 +1281,9 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "static const char WIFI_WEB_UPDATE_HTML[] PROGMEM" not in sketch_source
     assert source.index('<section class="panel" id="chartPanel">') < source.index('<section class="panel" id="serialPanel">')
     assert '<section class="panel" id="serialPanel">' in source
-    assert "#serialPanel{display:flex;flex-direction:column}" in source
-    assert "#serialPanel .log{flex:0 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(16 * 1.35em + 16px)}" in source
-    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}#serialPanel .log{height:calc(16 * 1.35em + 16px)}}" in source
+    assert "#serialPanel{display:flex;flex-direction:column;gap:8px;padding-bottom:6px}" in source
+    assert "#serialPanel .log{flex:1 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
+    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}" in source
     assert "canvas{width:100%;height:auto;aspect-ratio:38/13;" in source
     assert "#chartPanel:fullscreen canvas{width:min(100%,calc((100vh - 118px) * 38 / 13));height:auto;max-height:calc(100vh - 118px);aspect-ratio:38/13}" in source
     assert "dataMeta.textContent=transport+' realtime seq='+lastDataSeq+' +'+added" not in source
@@ -1239,15 +1293,25 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "dataMeta" not in source
     assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}}" not in source
     assert "@media(min-width:900px){.grid{grid-template-columns:1fr 2fr}.wide{grid-column:1/-1}}" not in source
-    assert '.chartControls{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}.chartTools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}' in source
-    assert 'onclick="toggleChart()" id="chartBtn" data-i18n="button.pause"' in source
-    assert 'onclick="clearChart()" data-i18n="button.clear"' in source
-    assert 'onclick="toggleChartFullscreen()" id="chartFullscreenBtn" data-i18n="button.fullscreen"' in source
-    assert 'onclick="ts()" data-i18n="button.tubStart"' in source
-    assert 'onclick="te()" data-i18n="button.tubStop"' in source
-    assert 'onclick="td()" data-i18n="button.tubJson"' in source
-    assert "document.getElementById('chartBtn').textContent=chartPaused?t('button.draw'):t('button.pause')" in source
-    assert "document.getElementById('chartFullscreenBtn').textContent=document.fullscreenElement===chartPanel?t('button.split'):t('button.fullscreen')" in source
+    assert '.chartFooter{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:8px}.chartToolbar{display:flex;gap:6px;align-items:center}.chartTools{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-top:8px}' in source
+    assert '.chartControls' not in source
+    assert 'class="iconButton" onclick="toggleChart()" id="chartBtn" title="暂停"' in source
+    assert 'class="iconButton" onclick="clearChart()" title="清空"' in source
+    assert 'class="iconButton" onclick="toggleChartFullscreen()" id="chartFullscreenBtn" title="全屏"' in source
+    assert 'class="iconButton" onclick="toggleTub()" id="tubRecordBtn"' in source
+    assert 'class="iconButton" onclick="td()" id="tubDownloadBtn"' in source
+    assert 'ICON_RECORD=' in source
+    assert 'ICON_RECORDING=' in source
+    assert 'ICON_DOWNLOAD=' in source
+    assert 'tubRecordBtn.classList.toggle' in source
+    assert 'id="tubMeta"' in source
+    assert 'class="recMeta"' in source
+    assert 'function updateTubMeta()' in source
+    assert 'tubMeta.textContent=tubSamples.length' in source
+    assert '<span class="recMeta">录制量<b id="tubMeta">0</b></span>' in source
+    assert 'function clearChart(){pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;tubSamples=[];tubStartedMs=0;tubStoppedMs=0;tubLastSeq=0;tubRecording=false;updateTubMeta();draw()}' in source
+    assert "c.innerHTML=chartPaused?ICON_PLAY:ICON_PAUSE" in source
+    assert "f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     assert '<button onclick="clearChart()">清空曲线</button>' not in source
     assert '<button onclick="toggleChart()" id="chartBtn">暂停曲线</button>' not in source
     assert "'暂停曲线'" not in source
@@ -1255,10 +1319,10 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" target="_blank" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
-    assert '<input id="cmd"><button onclick="sendCmd()" data-i18n="button.send">发送</button><button onclick="clearLog()" data-i18n="button.clear">清空</button><button onclick="togglePause()" id="pauseBtn" data-i18n="button.pause">暂停</button>' in source
+    assert '<button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" title="清空"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
-    assert "document.getElementById('pauseBtn').textContent=logPaused?t('button.resume'):t('button.pause')" in source
+    assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
     assert '>暂停日志</button>' not in source
     assert "'继续日志'" not in source
     assert "'暂停日志'" not in source
@@ -1322,7 +1386,7 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
     assert source.index(serial_panel) < source.index(diagnostics_panel)
     assert source.index(diagnostics_panel) < source.index('id="rcFold" class="fold"')
     assert source.index('id="rcFold" class="fold"') < source.index('id="statusFold" class="fold"')
-    assert '@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}#serialPanel .log{height:calc(16 * 1.35em + 16px)}}' in source
+    assert '@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}' in source
     assert "function toggleFold(id)" in source
     assert "function renderStatus(t)" in source
     assert "function parseStatusPairs(t)" in source
@@ -1365,11 +1429,13 @@ def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
     assert "function te()" in source
     assert "function td()" in source
     assert "function tp(p)" in source
+    assert "function toggleTub()" in source
+    assert "function updateTubMeta()" in source
     assert "handleDataPayload" in source
     assert "tp(latest)" in source
     assert "TUB_MAX_SAMPLES" in source
-    assert "Tub Start" in source
-    assert "Download Tub JSON" not in source
+    assert "tubRecordBtn" in source
+    assert "tubDownloadBtn" in source
     assert "LittleFS" not in source
     assert "SPIFFS" not in source
 

@@ -1,5 +1,6 @@
 #include "SerialLineReader.h"
 
+#include "FirmwareConfig.h"
 #include "CommandDispatcher.h"
 #include "StringPrint.h"
 

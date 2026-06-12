@@ -2,7 +2,7 @@
 
 # AGENTS.md - MUS4 项目编码指南
 
-MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件。当前主 Sketch 为根目录 `MUS4_FW.ino`，固件版本 `v1.7.4`（定义于 `BuildInfo.h`），目标硬件为 MUS4-v2.4.2 PCB（兼容 v2.3）。固件负责 RC 接收机 PWM 输入采集、Pilot 上位机串口控制、多模式驾驶控制融合、Park/紧急制动状态机、I2C 传感器采集、TUI 状态显示，以及可选的 Wi-Fi 控制台、OTA 更新和 BLE 游戏手柄输出。
+MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件。当前主 Sketch 为根目录 `MUS4_FW.ino`，固件版本 `v1.7.6`（定义于 `BuildInfo.h`），目标硬件为 MUS4-v2.4.2 PCB（兼容 v2.3）。固件负责 RC 接收机 PWM 输入采集、Pilot 上位机串口控制、多模式驾驶控制融合、Park/紧急制动状态机、I2C 传感器采集、TUI 状态显示，以及可选的 Wi-Fi 控制台、OTA 更新和 BLE 游戏手柄输出。
 
 ---
 
@@ -28,7 +28,7 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 
 | 文件 | 用途 | 备注 |
 |------|------|------|
-| `BuildInfo.h` | 固件版本宏 | `v1.7.4`，构建日期/时间由编译器 `__DATE__` / `__TIME__` 注入 |
+| `BuildInfo.h` | 固件版本宏 | `v1.7.6`，构建日期/时间由编译器 `__DATE__` / `__TIME__` 注入 |
 | `FirmwareConfig.h` | 编译期功能开关、引脚定义、时序/滤波/日志目标 | 所有 `.h/.cpp` 均优先包含此文件 |
 | `config.yaml` | `arduino-cli.py` 主配置 | FQBN、端口、波特率、串口自动检测关键字、复位策略、日志级别 |
 | `sketch.yaml` | Arduino CLI 项目级默认配置 | FQBN 与端口 |
@@ -44,7 +44,7 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 ```text
 根目录/
 ├── MUS4_FW.ino                    # 主固件入口：setup/loop/全局装配/混控
-├── BuildInfo.h                    # 固件版本与构建时间宏（v1.7.4）
+├── BuildInfo.h                    # 固件版本与构建时间宏（v1.7.6）
 ├── FirmwareConfig.h               # 编译期功能开关、引脚定义、时序/滤波/日志目标等核心常量
 ├── SharedTypes.h                  # 跨模块共享数据结构（SensorData、ControlData）
 ├── RuntimeState.h                 # Wi-Fi / OTA 运行时聚合状态结构体（WifiRuntimeState / OtaRuntimeState）

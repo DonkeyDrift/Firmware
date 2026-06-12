@@ -132,13 +132,13 @@ def test_websocket_curve_data_feature_is_enabled():
     assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", source, re.MULTILINE)
 
 
-def test_firmware_version_is_v1_7_4_and_changelog_is_current():
+def test_firmware_version_is_v1_7_6_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.4"' in build_info
-    assert "## 2026-06-11 v1.7.4" in changelog
-    assert changelog.index("## 2026-06-11 v1.7.4") < changelog.index("## 2026-06-07 v1.6.0")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.6"' in build_info
+    assert "## 2026-06-12 v1.7.6" in changelog
+    assert changelog.index("## 2026-06-12 v1.7.6") < changelog.index("## 2026-06-11 v1.7.4")
 
 
 def test_web_console_serial_log_display_is_limited_to_20_lines():
@@ -164,11 +164,11 @@ def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
     assert "cmdTarget.addEventListener('change'" in source
 
 
-def test_web_console_screen_saver_activates_after_3_seconds():
+def test_web_console_screen_saver_activates_after_60_seconds():
     source = firmware_source_text()
 
-    assert "now-parkLockedAt>=3000&&range<10" in source
-    assert "now-parkLockedAt>=60000&&range<10" not in source
+    assert "now-parkLockedAt>=60000&&range<10" in source
+    assert "now-parkLockedAt>=3000&&range<10" not in source
 
 
 def test_web_console_keeps_original_ui_and_direct_curve_path():
@@ -1257,7 +1257,8 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "dataMeta" not in source
     assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}}" not in source
     assert "@media(min-width:900px){.grid{grid-template-columns:1fr 2fr}.wide{grid-column:1/-1}}" not in source
-    assert '.chartControls{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}.chartTools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}' in source
+    assert '.chartFooter{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:8px}.chartToolbar{display:flex;gap:6px;align-items:center}.chartTools{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-top:8px}' in source
+    assert '.chartControls' not in source
     assert 'class="iconButton" onclick="toggleChart()" id="chartBtn" title="暂停"' in source
     assert 'class="iconButton" onclick="clearChart()" title="清空"' in source
     assert 'class="iconButton" onclick="toggleChartFullscreen()" id="chartFullscreenBtn" title="全屏"' in source
@@ -1273,7 +1274,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" target="_blank" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
-    assert '<button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><button class="iconButton" onclick="clearLog()" title="清空"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
+    assert '<button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" title="清空"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source

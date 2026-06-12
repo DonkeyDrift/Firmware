@@ -292,7 +292,7 @@ python provisioning_system/tests/test_agent.py -v
 | TUI 渲染 | 动态 100–500 ms | 自适应降级 |
 | 波形图刷新 | 250 ms | 4 Hz |
 | 性能评估与降级检测 | 1000 ms | 1 Hz |
-| 主循环 delay | 4 ms | ~250 Hz 基线 |
+| 主循环 delay | 2 ms | ~500 Hz 基线 |
 
 ### 4.2 核心数据流
 

@@ -116,10 +116,10 @@
 #define COLOR_WHITE "\033[37m"
 
 // Output control parameters
-#define SENSOR_UPDATE_INTERVAL 2     // Sensor data update interval (ms) - ~60Hz
-#define RC_DATA_UPDATE_INTERVAL 2    // RC data update interval (ms) - ~60Hz
-#define RC_FILTER_UPDATE_INTERVAL 2   // RC filter update interval (ms) - ~125Hz, balances response and stability
-#define UI_UPDATE_INTERVAL 2         // UI update interval (ms) - smooth 60Hz experience
+#define SENSOR_UPDATE_INTERVAL 2     // Sensor data update interval (ms) - ~500Hz
+#define RC_DATA_UPDATE_INTERVAL 2    // RC data update interval (ms) - ~500Hz
+#define RC_FILTER_UPDATE_INTERVAL 2   // RC filter update interval (ms) - ~500Hz, balances response and stability
+#define UI_UPDATE_INTERVAL 2         // UI update interval (ms) - smooth 500Hz experience
 
 // Waveform parameters
 #ifndef WAVE_WIDTH

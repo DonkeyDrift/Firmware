@@ -44,6 +44,7 @@ static const uint8_t WIFI_STA_SSID_MAX_LEN = 32;
 static const uint8_t WIFI_STA_PASSWORD_MAX_LEN = 63;
 static const uint8_t WIFI_STA_PASSWORD_MIN_LEN = 8;
 static const uint8_t WIFI_WEB_LOG_CAPACITY = 64;
+static const uint8_t SERIAL1_WEB_LOG_CAPACITY = 64;
 static const uint16_t WIFI_WEB_DATA_CAPACITY = 256;
 static const unsigned long WIFI_WEB_DATA_INTERVAL_MS = 16;
 

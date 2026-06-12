@@ -150,7 +150,8 @@ def test_web_console_serial_log_display_is_limited_to_20_lines():
 def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
     source = firmware_source_text()
 
-    assert 'id="logSource"' in source
+    assert 'id="cmdTarget"' in source
+    assert 'id="logSource"' not in source
     assert '<option value="web">Web</option>' in source
     assert '<option value="serial">Serial</option>' in source
     assert '<option value="serial1">Serial1</option>' in source
@@ -159,7 +160,7 @@ def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
     assert "function appendLogLine(" in source
     assert "function switchLogSource(" in source
     assert "function trimLogDisplay(" in source
-    assert "logSource.addEventListener('change'" in source
+    assert "cmdTarget.addEventListener('change'" in source
 
 
 def test_web_console_screen_saver_activates_after_3_seconds():
@@ -1273,7 +1274,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert '<a href="/update" target="_blank" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
     assert '<div class="row"><button onclick="sendCmd()" data-i18n="button.send">发送</button><button class="iconButton" onclick="clearLog()" title="清空"><svg' in source
     assert '<button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg' in source
-    assert '<input id="cmd"><select id="cmdTarget"><option value="web">Web</option><option value="serial">Serial</option><option value="serial1">Serial1</option></select><select id="logSource">' in source
+    assert '<input id="cmd"><select id="cmdTarget"><option value="web">Web</option><option value="serial">Serial</option><option value="serial1">Serial1</option></select></div>' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "document.getElementById('pauseBtn').textContent=logPaused?t('button.resume'):t('button.pause')" in source

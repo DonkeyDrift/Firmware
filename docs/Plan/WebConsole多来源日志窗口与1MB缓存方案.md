@@ -34,20 +34,16 @@
    - **Web**：现有 Web Console、TCP Console、Wi-Fi/OTA/启动/传感器等通过 `mus4Log` / `appendWebLog` 产生的日志。
    - **Serial**：从 USB Serial（`Serial`）接收到的命令，以及 Web 端选择 `target=serial` 转发的命令和其响应。
    - **Serial1**：从 RS232 Serial1（`Serial1`）接收到的命令、`Txx:Sxx` 遥测，以及 Web 端选择 `target=serial1` 转发的命令和其响应。
-3. 命令目标下拉框 `cmdTarget` 继续用于**命令路由**；新增独立的日志来源下拉框 `logSource` 用于**显示切换**。
+3. 复用原有的命令目标下拉框 `cmdTarget`（`Web / Serial / Serial1`）同时作为**日志来源选择器**：切换选项时既决定命令发往哪个通道，也决定日志窗口显示哪个来源的缓存。
 
 ## 4. 推荐方案（方案 A）
 
 ### 4.1 前端设计
 
-在 `WebConsoleAssets.h` 的 Serial 面板中新增来源选择器：
+复用已有的命令目标下拉框 `cmdTarget`（`Web / Serial / Serial1`），为其添加 `change` 事件，在切换命令目标的同时切换日志窗口：
 
-```html
-<select id="logSource">
-  <option value="web">Web</option>
-  <option value="serial">Serial</option>
-  <option value="serial1">Serial1</option>
-</select>
+```js
+cmdTarget.addEventListener('change', e => { switchLogSource(e.target.value) });
 ```
 
 新增状态：
@@ -61,7 +57,7 @@ let currentLogSource = 'web';
 核心函数：
 
 - `appendLogLine(text, src)`：将一行文本追加到 `src` 对应的缓冲。若缓冲总长度超过 `LOG_SOURCE_MAX_BYTES`，从头部按整行删除最老内容，直到低于上限。如果 `src === currentLogSource` 且未暂停，再同步到 `#log` DOM 并滚动到底部。
-- `switchLogSource(src)`：切换 `currentLogSource`，将 `#log.textContent` 替换为对应缓冲内容，并滚动到底部。
+- `switchLogSource(src)`：切换 `currentLogSource`，同步 `cmdTarget.value`，将 `#log.textContent` 替换为对应缓冲内容，并滚动到底部。
 - `clearLog()`：清空当前来源的缓冲和 `#log` DOM。
 - `pollLog()`：从 `/api/log` 拉取新条目后，根据后端返回的 `src` 字段映射到 `web/serial/serial1`，调用 `appendLogLine`。
 
@@ -155,23 +151,17 @@ Serial.println(line);
   - 内存占用有硬上限。
   - 最老数据按整行丢弃，避免显示半行。
 
-## 5. 替代方案（方案 B）
+## 5. 最终采用的 UI 方案
 
-**简化版：复用现有 `cmdTarget` 下拉框作为“命令目标 + 当前日志来源”**。切换选项时同时改变命令去向和显示缓存；浏览器只维护当前选中来源的 1 MB 缓冲，其余来源不保留历史。
+**复用现有 `cmdTarget` 下拉框作为“命令目标 + 当前日志来源”**。切换选项时同时改变命令去向和显示缓存；浏览器仍维护三个来源的 1 MB 缓冲，切换时即时显示对应缓存。
 
-| 对比项 | 方案 A（推荐） | 方案 B（简化） |
-|--------|---------------|---------------|
-| UI 改动 | 新增 `logSource` 下拉框 | 复用 `cmdTarget` |
-| 同时查看 Serial1 历史并发送 Serial 命令 | 支持 | 不支持 |
-| 前端内存占用 | 3 MB | 1 MB |
-| 实现复杂度 | 略高 | 较低 |
-| 与现有命令路由语义的兼容性 | 完全保留 | 改变语义，可能让老用户困惑 |
+该方案去掉了独立的 `logSource` 下拉框，避免界面上出现两个完全相同的 `Web/Serial/Serial1` 下拉框，符合用户“去掉多余的串口来源选项”的要求。
 
 ## 6. 改动文件清单
 
 | 文件 | 改动内容 |
 |------|----------|
-| `WebConsoleAssets.h` | 新增 `logSource` 下拉框（方案 A）或调整 `cmdTarget` 行为（方案 B）；新增三来源缓冲与 `appendLogLine / switchLogSource / clearLogSource` 逻辑；更新 `pollLog()` 来源映射。 |
+| `WebConsoleAssets.h` | 复用 `cmdTarget` 作为日志来源选择器；新增三来源缓冲与 `appendLogLine / switchLogSource / clearLogSource` 逻辑；更新 `pollLog()` 来源映射。 |
 | `WebLogBuffer.cpp` | 在 `appendWebLog` 中加入规范来源归类，保证 `src` 只输出 `web/serial/serial1`。 |
 | `SerialLineReader.cpp` | 读取 `Serial`/`Serial1` 的输入后追加对应来源日志；用 `StringPrint` 捕获命令响应并追加。 |
 | `WebConsoleServer.cpp` | `handleWifiWebCommand()` 中 `target=serial/serial1` 时以对应来源记录转发的命令。 |
@@ -188,7 +178,7 @@ Serial.println(line);
    - 修改 `MUS4_FW.ino` 中 Serial1 遥测的双写。
 
 2. **前端多来源缓存**
-   - 在 `WebConsoleAssets.h` 中新增 `logSource` 下拉框与缓冲。
+   - 在 `WebConsoleAssets.h` 中为 `cmdTarget` 添加 `change` 事件，使其同时切换日志来源。
    - 重写 `line()` 为 `appendLogLine(text, src)`，实现 1 MB 环形文本缓冲。
    - 修改 `clearLog()`、`togglePause()` 以适配多来源。
 
@@ -225,5 +215,5 @@ Serial.println(line);
 ## 10. 待用户确认事项
 
 1. 1 MB 缓存是否确实放在浏览器端？若要求设备端 1 MB，需要额外硬件（PSRAM/SD）支持，方案需重新设计。
-2. 是否接受新增独立的 `logSource` 下拉框（方案 A），还是希望直接复用现有的 `cmdTarget`（方案 B）？
+2. （已确认）复用现有的 `cmdTarget` 下拉框作为日志来源选择器，不再新增独立的 `logSource`。
 3. Serial/Serial1 窗口是否还需要显示设备主动输出的诊断日志（如 `LOG_SERIAL` 模式下 `Serial.println` 的内容）？当前方案默认只捕获串口输入与命令响应；若需要，可增加可选的“镜像 Serial 诊断日志到 Web”功能。

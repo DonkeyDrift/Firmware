@@ -461,14 +461,21 @@ def test_serial_line_reader_is_split_from_sketch():
     assert "#include \"SerialLineReader.h\"" in source
 
 
-def test_serial1_telemetry_web_log_is_independent_of_ota_window():
+def test_serial1_telemetry_has_dedicated_web_log_buffer():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    web_log_source = (PROJECT_ROOT / "WebLogBuffer.cpp").read_text(encoding="utf-8")
+    wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
 
+    # Serial1 telemetry must always be logged, even when the OTA window keeps
+    # the hardware line silent.
     assert "appendWebLog(\"serial1\", telem)" in sketch_source
-    # The web-log append must sit outside the hardware-send guard so that
-    # users can still inspect Serial1 telemetry in the Web Console even when
-    # the OTA window is open.
     assert "if (shouldEmitSerial1Telemetry(otaRuntime)) {\n            Serial1.println(telem);" in sketch_source
+
+    # Dedicated compact buffer for high-rate Serial1 telemetry.
+    assert "static const uint8_t SERIAL1_WEB_LOG_CAPACITY = 64;" in wifi_types
+    assert "struct Serial1WebLogEntry" in web_log_source
+    assert "s_serial1LogEntries[SERIAL1_WEB_LOG_CAPACITY]" in web_log_source
+    assert "appendSerial1WebLog" in web_log_source
 
 
 def test_wifi_console_types_are_split_from_sketch():

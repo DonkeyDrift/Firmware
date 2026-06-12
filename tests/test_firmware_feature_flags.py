@@ -141,18 +141,34 @@ def test_firmware_version_is_v1_7_4_and_changelog_is_current():
     assert changelog.index("## 2026-06-11 v1.7.4") < changelog.index("## 2026-06-07 v1.6.0")
 
 
-def test_web_console_serial_log_display_is_limited_to_16_lines():
+def test_web_console_serial_log_display_is_limited_to_20_lines():
     source = firmware_source_text()
 
     assert "#serialPanel .log{flex:1 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
     assert "#serialPanel .log{height:" not in source
 
 
-def test_web_console_screen_saver_activates_after_60_seconds():
+def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
+    source = firmware_source_text()
+
+    assert 'id="cmdTarget"' in source
+    assert 'id="logSource"' not in source
+    assert '<option value="web">Web</option>' in source
+    assert '<option value="serial">Serial</option>' in source
+    assert '<option value="serial1">Serial1</option>' in source
+    assert "const LOG_SOURCE_MAX_BYTES=1024*1024" in source
+    assert "sourceBuffers={web:'',serial:'',serial1:''}" in source
+    assert "function appendLogLine(" in source
+    assert "function switchLogSource(" in source
+    assert "function trimLogDisplay(" in source
+    assert "cmdTarget.addEventListener('change'" in source
+
+
+def test_web_console_screen_saver_activates_after_3_seconds():
     source = firmware_source_text()
 
     assert "now-parkLockedAt>=3000&&range<10" in source
-    assert "now-parkLockedAt>=10000&&range<10" not in source
+    assert "now-parkLockedAt>=60000&&range<10" not in source
 
 
 def test_web_console_keeps_original_ui_and_direct_curve_path():
@@ -400,7 +416,8 @@ def test_command_dispatcher_replaces_command_line_macro_after_module_split():
     assert "ControlData pilot_data" in sketch_source
     assert "ControlData car_output" in sketch_source
     assert "struct struct_message" not in sketch_source
-    assert "dispatchCommandLine(String(sb.buf), ser, sb);" in source
+    assert "dispatchCommandLine(line, out, sb);" in source
+    assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in source
     assert "#define PROCESS_COMMAND_LINE" not in sketch_source
     assert "PROCESS_COMMAND_LINE" not in sketch_source
 
@@ -428,7 +445,7 @@ def test_serial_line_reader_is_split_from_sketch():
 
     assert "void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)" in reader_header
     assert "void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)" in reader_source
-    assert "dispatchCommandLine(String(sb.buf), ser, sb);" in reader_source
+    assert "dispatchCommandLine(line, out, sb);" in reader_source
     assert "if (c == '\\r') continue;" in reader_source
     assert "if (c == '\\n')" in reader_source
     assert "sb.overflow = true;" in reader_source
@@ -436,6 +453,7 @@ def test_serial_line_reader_is_split_from_sketch():
     assert "readSerialBuf(Serial, serial0Buf);" in sketch_source
     assert "readSerialBuf(Serial1, serial1Buf);" in sketch_source
     assert "static void readSerialBuf" not in sketch_source
+    assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in reader_source
     assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in sketch_source
     assert "#include \"SerialLineReader.h\"" in source
 

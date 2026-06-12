@@ -1,6 +1,18 @@
 #include "SerialLineReader.h"
 
 #include "CommandDispatcher.h"
+#include "StringPrint.h"
+
+#ifdef ENABLE_WIFI_CONSOLE
+#include "WebLogBuffer.h"
+#include "WirelessConsole.h"
+#endif
+
+static const char* serialSourceFor(HardwareSerial& ser)
+{
+    if (&ser == &Serial1) return "serial1";
+    return "serial";
+}
 
 void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)
 {
@@ -12,7 +24,17 @@ void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)
         if (c == '\n')
         {
             sb.buf[sb.len] = 0;
-            dispatchCommandLine(String(sb.buf), ser, sb);
+            String line = String(sb.buf);
+#ifdef ENABLE_WIFI_CONSOLE
+            appendWebLog(serialSourceFor(ser), String("> ") + redactWirelessConsoleLine(line));
+#endif
+            String response;
+            StringPrint out(response);
+            dispatchCommandLine(line, out, sb);
+            ser.print(response);
+#ifdef ENABLE_WIFI_CONSOLE
+            appendWebLogLines(serialSourceFor(ser), response);
+#endif
             sb.len = 0;
             sb.overflow = false;
         }

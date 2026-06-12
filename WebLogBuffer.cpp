@@ -5,6 +5,16 @@
 #include "JsonUtil.h"
 #include "WifiConsoleTypes.h"
 
+#include <string.h>
+
+static const char* canonicalWebLogSource(const char* source)
+{
+    if (strcmp(source, "serial") == 0 || strcmp(source, "serial1") == 0) {
+        return source;
+    }
+    return "web";
+}
+
 static WebLogEntry s_webLogEntries[WIFI_WEB_LOG_CAPACITY];
 static uint32_t s_webLogSeq = 0;
 static uint32_t s_webLogDropped = 0;
@@ -27,7 +37,7 @@ void appendWebLog(const char* source, const String& line)
     WebLogEntry& entry = s_webLogEntries[s_webLogHead];
     entry.seq = ++s_webLogSeq;
     entry.t = millis();
-    snprintf(entry.source, sizeof(entry.source), "%s", source);
+    snprintf(entry.source, sizeof(entry.source), "%s", canonicalWebLogSource(source));
     snprintf(entry.line, sizeof(entry.line), "%s", line.c_str());
     s_webLogHead = (s_webLogHead + 1) % WIFI_WEB_LOG_CAPACITY;
     if (s_webLogCount < WIFI_WEB_LOG_CAPACITY) {

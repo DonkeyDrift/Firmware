@@ -81,11 +81,11 @@ function toggleLanguageMenu(e){if(e)e.stopPropagation();fabActions.classList.add
 function closeLanguageMenu(){langMenu.classList.remove('show')}
 function openHelpModal(){fabActions.classList.add('show');closeLanguageMenu();helpOverlay.classList.add('show');helpModal.classList.add('show')}
 function closeHelpModal(){helpOverlay.classList.remove('show');helpModal.classList.remove('show')}
-function trimLogDisplay(){if(log.textContent.length>16000)log.textContent=log.textContent.slice(-12000)}
-function appendLogLine(t,src){const s=src||'web';let buf=sourceBuffers[s];buf+=t+'\n';while(buf.length>LOG_SOURCE_MAX_BYTES){const idx=buf.indexOf('\n');if(idx<0)break;buf=buf.substring(idx+1);}sourceBuffers[s]=buf;if(s===currentLogSource){if(logPaused)return;log.textContent=buf;trimLogDisplay();log.scrollTop=log.scrollHeight;}}
+const LOG_DISPLAY_MAX_BYTES=16000;
+function appendLogLine(t,src){const s=src||'web';let buf=sourceBuffers[s];buf+=t+'\n';while(buf.length>LOG_SOURCE_MAX_BYTES){const idx=buf.indexOf('\n');if(idx<0){buf=buf.slice(-LOG_SOURCE_MAX_BYTES);break;}buf=buf.substring(idx+1);}sourceBuffers[s]=buf;if(s!==currentLogSource||logPaused)return;log.textContent=buf.slice(-LOG_DISPLAY_MAX_BYTES);log.scrollTop=log.scrollHeight;}
 function line(t){appendLogLine(t,'web');}
-function switchLogSource(src){currentLogSource=src||'web';cmdTarget.value=currentLogSource;log.textContent=sourceBuffers[currentLogSource];trimLogDisplay();log.scrollTop=log.scrollHeight;}
-function clearLog(){sourceBuffers[currentLogSource]='';log.textContent=''}
+function switchLogSource(src){currentLogSource=src||'web';cmdTarget.value=currentLogSource;const buf=sourceBuffers[currentLogSource];log.textContent=buf.length>0?buf.slice(-LOG_DISPLAY_MAX_BYTES):'[当前来源暂无日志]';log.scrollTop=log.scrollHeight;}
+function clearLog(){sourceBuffers[currentLogSource]='';log.textContent='[当前来源暂无日志]'}
 function togglePause(){logPaused=!logPaused;refreshDynamicLabels()}
 function toggleChart(){chartPaused=!chartPaused;refreshDynamicLabels()}
 function toggleChartFullscreen(){if(document.fullscreenElement===chartPanel)document.exitFullscreen();else chartPanel.requestFullscreen()}
@@ -120,7 +120,7 @@ function connectDataSocket(){try{if(dataWs&&dataWs.readyState!==WebSocket.CLOSED
 async function pollData(){if(dataWsConnected)return;if(dataPolling)return;dataPolling=true;let delay=60;const start=performance.now();try{const r=await fetch('/api/data?since='+lastDataSeq);const j=await r.json();const elapsed=performance.now()-start;handleDataPayload(j,'poll',elapsed);delay=(j.points||[]).length?Math.max(30,Math.min(80,Math.round(elapsed*1.2))):100}catch(e){delay=160;line('data error: '+e)}finally{dataPolling=false;if(!dataWsConnected)setTimeout(pollData,delay)}}
 function explainCommandError(text){if(text.includes('PARK_REQUIRED'))return t('error.parkRequired');if(text.includes('AUTH_REQUIRED')||text.includes('UNAUTHORIZED'))return t('error.authRequired');return ''}
 function showCommandError(text){const msg=explainCommandError(text);if(msg)alert(msg)}
-async function sendCmd(){const v=cmd.value.trim();if(!v)return;const target=(cmdTarget?cmdTarget.value:'web')||'web';const r=await fetch('/api/cmd?target='+encodeURIComponent(target),{method:'POST',headers:{'Content-Type':'text/plain'},body:v});const t=await r.text();showCommandError(t);cmd.value='';refreshStatus()}
+async function sendCmd(){const v=cmd.value.trim();if(!v)return;const target=(cmdTarget?cmdTarget.value:'web')||'web';const r=await fetch('/api/cmd?target='+encodeURIComponent(target),{method:'POST',headers:{'Content-Type':'text/plain'},body:v});const t=await r.text();showCommandError(t);cmd.value='';refreshStatus();setTimeout(pollLog,200)}
 function renderDevMode(v){devModeCheck.checked=!!v;devModeSwitchText.textContent=v?'ON':'OFF'}function toggleDevModeFromSwitch(){if(devModeCheck.checked){devModeModal.classList.add('show')}else{setDevMode(false)}}
 async function refreshDevMode(){try{const r=await fetch('/api/devmode');const j=await r.json();renderDevMode(!!j.enabled)}catch(e){devModeSwitchText.textContent='ERR'}}
 function requestDevModeToggle(){if(devModeCheck.checked){setDevMode(false);return}devModeModal.classList.add('show')}

@@ -157,10 +157,11 @@ def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
     assert '<option value="serial">Serial</option>' in source
     assert '<option value="serial1">Serial1</option>' in source
     assert "const LOG_SOURCE_MAX_BYTES=1024*1024" in source
+    assert "const LOG_DISPLAY_MAX_BYTES=16000" in source
     assert "sourceBuffers={web:'',serial:'',serial1:''}" in source
     assert "function appendLogLine(" in source
     assert "function switchLogSource(" in source
-    assert "function trimLogDisplay(" in source
+    assert "function trimLogDisplay(" not in source
     assert "cmdTarget.addEventListener('change'" in source
 
 
@@ -1179,9 +1180,11 @@ def test_web_status_and_sta_api_include_ap_name_mdns_console_url():
     assert "mdns_host=\\\"%s\\\"" in status_body
     assert "mdns_url=%s" in status_body
     assert "mdns_started=%d" in status_body
+    assert "web_log_dropped=%lu" in status_body
     assert "wifiMdnsHostText().c_str()" in status_body
     assert "wifiMdnsUrlText().c_str()" in status_body
     assert "wifiRuntime.mdnsStarted ? 1 : 0" in status_body
+    assert "webLogBufferDropped()" in status_body
     assert "\\\"mdns_host\\\"" in sta_json_body
     assert "\\\"mdns_url\\\"" in sta_json_body
     assert "\\\"mdns_started\\\"" in sta_json_body

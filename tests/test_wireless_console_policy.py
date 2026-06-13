@@ -62,9 +62,9 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertTrue(POLICY.is_ota_window_active(now_ms=2500, deadline_ms=2000, dev_mode=True))
         self.assertTrue(POLICY.is_ota_window_active(now_ms=1000, deadline_ms=0, dev_mode=True))
 
-    def test_serial1_telemetry_pauses_during_ota_window_or_transfer(self):
+    def test_serial1_telemetry_pauses_only_during_ota_transfer(self):
         self.assertTrue(POLICY.should_emit_serial1_telemetry(ota_window_open=False, ota_in_progress=False))
-        self.assertFalse(POLICY.should_emit_serial1_telemetry(ota_window_open=True, ota_in_progress=False))
+        self.assertTrue(POLICY.should_emit_serial1_telemetry(ota_window_open=True, ota_in_progress=False))
         self.assertFalse(POLICY.should_emit_serial1_telemetry(ota_window_open=False, ota_in_progress=True))
         self.assertFalse(POLICY.should_emit_serial1_telemetry(ota_window_open=True, ota_in_progress=True))
 

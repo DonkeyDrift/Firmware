@@ -6,81 +6,83 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 MUS4_SKETCH = PROJECT_ROOT / "MUS4_FW.ino"
 FIRMWARE_SOURCE_PATHS = [
     MUS4_SKETCH,
-    PROJECT_ROOT / "FirmwareConfig.h",
+    PROJECT_ROOT / "MUS4.h",
     PROJECT_ROOT / "WebConsoleAssets.h",
-    PROJECT_ROOT / "StringPrint.h",
-    PROJECT_ROOT / "JsonUtil.h",
-    PROJECT_ROOT / "JsonUtil.cpp",
-    PROJECT_ROOT / "I2CBusTools.h",
-    PROJECT_ROOT / "I2CBusTools.cpp",
-    PROJECT_ROOT / "LedStatus.h",
-    PROJECT_ROOT / "LedStatus.cpp",
-    PROJECT_ROOT / "Mus4Log.h",
-    PROJECT_ROOT / "Mus4Log.cpp",
-    PROJECT_ROOT / "SteeringCalibration.h",
-    PROJECT_ROOT / "SteeringCalibration.cpp",
-    PROJECT_ROOT / "Sensors.h",
-    PROJECT_ROOT / "Sensors.cpp",
-    PROJECT_ROOT / "GamepadMode.h",
-    PROJECT_ROOT / "GamepadMode.cpp",
-    PROJECT_ROOT / "RcFilter.h",
-    PROJECT_ROOT / "RcFilter.cpp",
-    PROJECT_ROOT / "RcPwmCapture.h",
-    PROJECT_ROOT / "RcPwmCapture.cpp",
-    PROJECT_ROOT / "ControlMixer.h",
-    PROJECT_ROOT / "ControlMixer.cpp",
-    PROJECT_ROOT / "SafetyState.h",
-    PROJECT_ROOT / "SafetyState.cpp",
-    PROJECT_ROOT / "ActuatorOutput.h",
-    PROJECT_ROOT / "ActuatorOutput.cpp",
-    PROJECT_ROOT / "CommandParser.h",
-    PROJECT_ROOT / "CommandParser.cpp",
-    PROJECT_ROOT / "CommandDispatcher.h",
-    PROJECT_ROOT / "CommandDispatcher.cpp",
-    PROJECT_ROOT / "LocalCommands.h",
-    PROJECT_ROOT / "LocalCommands.cpp",
-    PROJECT_ROOT / "SerialLineReader.h",
-    PROJECT_ROOT / "SerialLineReader.cpp",
-    PROJECT_ROOT / "WifiConsoleTypes.h",
-    PROJECT_ROOT / "WirelessConsole.h",
-    PROJECT_ROOT / "WirelessConsole.cpp",
-    PROJECT_ROOT / "WifiStaConfig.h",
-    PROJECT_ROOT / "WifiStaConfig.cpp",
-    PROJECT_ROOT / "WifiIdentity.h",
-    PROJECT_ROOT / "WifiIdentity.cpp",
-    PROJECT_ROOT / "DriftAssist.h",
-    PROJECT_ROOT / "DriftAssist.cpp",
-    PROJECT_ROOT / "SteeringControl.h",
-    PROJECT_ROOT / "SteeringControl.cpp",
-    PROJECT_ROOT / "Diagnostics.h",
-    PROJECT_ROOT / "Diagnostics.cpp",
-    PROJECT_ROOT / "SerialBufferTypes.h",
-    PROJECT_ROOT / "WebLogBuffer.h",
-    PROJECT_ROOT / "WebLogBuffer.cpp",
-    PROJECT_ROOT / "WebConsoleServer.cpp",
-    PROJECT_ROOT / "WirelessConsole.cpp",
-    PROJECT_ROOT / "WifiOta.h",
-    PROJECT_ROOT / "WifiOta.cpp",
-    PROJECT_ROOT / "WebTelemetry.h",
-    PROJECT_ROOT / "WebTelemetry.cpp",
-    PROJECT_ROOT / "WifiManager.h",
-    PROJECT_ROOT / "WifiManager.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_IO.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_IO.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_IO.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_IO.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Command.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_IO.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_IO.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Control.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Control.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Control.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Control.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Control.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Command.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Command.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Command.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_IO.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Wifi.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Wifi.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Wifi.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Control.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Control.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Command.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Wifi.cpp",
+    PROJECT_ROOT / "MUS4_Wifi.cpp",
+    PROJECT_ROOT / "MUS4_Wifi.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Wifi.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Wifi.cpp",
+    PROJECT_ROOT / "MUS4.h",
+    PROJECT_ROOT / "MUS4_Wifi.cpp",
 ]
 ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
 CONFIG_YAML = PROJECT_ROOT / "config.yaml"
 WSLBUILD_YAML = PROJECT_ROOT / "wslbuild.yaml"
-BUILD_INFO = PROJECT_ROOT / "BuildInfo.h"
+BUILD_INFO = PROJECT_ROOT / "MUS4.h"
 CHANGELOG = PROJECT_ROOT / "CHANGELOG.md"
 SMART_PROVISIONING_SKETCH = PROJECT_ROOT / "examples" / "smart_provisioning" / "smart_provisioning.ino"
 SMART_PROVISIONING_WEB_UI = PROJECT_ROOT / "examples" / "smart_provisioning" / "web_ui.h"
 
 
 def firmware_source_text():
-    return "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in FIRMWARE_SOURCE_PATHS
-        if path.exists()
-    )
+    seen = set()
+    unique_paths = []
+    for path in FIRMWARE_SOURCE_PATHS:
+        if path.exists() and path not in seen:
+            unique_paths.append(path)
+            seen.add(path)
+    return "\n".join(path.read_text(encoding="utf-8") for path in unique_paths)
 
 
 def test_local_libraries_path_is_configured_for_build_tools():
@@ -128,7 +130,7 @@ def test_smart_provisioning_web_ui_polls_new_ip_and_falls_back_to_mdns():
 
 def test_websocket_curve_data_feature_is_enabled_and_streams_logs():
     source = firmware_source_text()
-    web_telemetry = (PROJECT_ROOT / "WebTelemetry.cpp").read_text(encoding="utf-8")
+    web_telemetry = (PROJECT_ROOT / "MUS4_Wifi.cpp").read_text(encoding="utf-8")
 
     assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", source, re.MULTILINE)
     assert "sendWebLogToSocket" in web_telemetry
@@ -136,13 +138,13 @@ def test_websocket_curve_data_feature_is_enabled_and_streams_logs():
     assert r'\"type\":\"log\"' in web_telemetry
 
 
-def test_firmware_version_is_v1_7_6_and_changelog_is_current():
+def test_firmware_version_is_v1_7_6_serial_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.6"' in build_info
-    assert "## 2026-06-12 v1.7.6" in changelog
-    assert changelog.index("## 2026-06-12 v1.7.6") < changelog.index("## 2026-06-11 v1.7.4")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.6-Serial"' in build_info
+    assert "## 2026-06-14 v1.7.6-Serial" in changelog
+    assert changelog.index("## 2026-06-14 v1.7.6-Serial") < changelog.index("## 2026-06-12 v1.7.6")
 
 
 def test_web_console_serial_log_display_is_limited_to_20_lines():
@@ -317,10 +319,10 @@ def test_diagnostic_code_is_not_built_by_default():
 
 
 def test_firmware_config_centralizes_core_compile_time_defaults():
-    config = (PROJECT_ROOT / "FirmwareConfig.h").read_text(encoding="utf-8")
+    config = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
     sketch = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert '#include "FirmwareConfig.h"' in sketch
+    assert '#include "MUS4.h"' in sketch
     assert re.search(r"^#define\s+ENABLE_WIFI_CONSOLE\b", config, re.MULTILINE)
     assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", config, re.MULTILINE)
     assert "#define CH1_PIN 36" in config
@@ -334,8 +336,7 @@ def test_firmware_config_centralizes_core_compile_time_defaults():
     assert "#define UI_UPDATE_INTERVAL 2" in config
     assert "#define WAVE_WIDTH 20" in config
     assert "#define WAVE_HEIGHT 6" in config
-    assert "#define CAR_MODE_MANUAL" not in (PROJECT_ROOT / "SharedTypes.h").read_text(encoding="utf-8")
-    assert "#define WAVE_WIDTH" not in (PROJECT_ROOT / "SharedTypes.h").read_text(encoding="utf-8")
+    assert config.index("// Build Flags, Pins, Timing, and Calibration") < config.index("// Shared Runtime Data Types")
     assert "#define ENABLE_WIFI_CONSOLE" not in sketch
     assert "#define CH1_PIN 36" not in sketch
     assert "#define PWM_FILTER_SIZE 5" not in sketch
@@ -379,8 +380,8 @@ def test_command_parser_helpers_remain_available_after_module_split():
     ]:
         assert symbol in source
 
-    parser_source = (PROJECT_ROOT / "CommandParser.cpp").read_text(encoding="utf-8")
-    local_commands_source = (PROJECT_ROOT / "LocalCommands.cpp").read_text(encoding="utf-8")
+    parser_source = (PROJECT_ROOT / "MUS4_Command.cpp").read_text(encoding="utf-8")
+    local_commands_source = (PROJECT_ROOT / "MUS4_Command.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
     assert "bool runUnitTests()" in parser_source
     assert "static bool runUnitTests()" not in sketch_source
@@ -413,8 +414,8 @@ def test_sketch_drops_legacy_tui_dirty_rectangle_state_after_module_split():
 
 def test_command_dispatcher_replaces_command_line_macro_after_module_split():
     source = firmware_source_text()
-    dispatcher_header = (PROJECT_ROOT / "CommandDispatcher.h").read_text(encoding="utf-8")
-    dispatcher_source = (PROJECT_ROOT / "CommandDispatcher.cpp").read_text(encoding="utf-8")
+    dispatcher_header = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
+    dispatcher_source = (PROJECT_ROOT / "MUS4_Command.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb)" in dispatcher_header
@@ -449,8 +450,8 @@ def test_command_dispatcher_replaces_command_line_macro_after_module_split():
 
 def test_serial_line_reader_is_split_from_sketch():
     source = firmware_source_text()
-    reader_header = (PROJECT_ROOT / "SerialLineReader.h").read_text(encoding="utf-8")
-    reader_source = (PROJECT_ROOT / "SerialLineReader.cpp").read_text(encoding="utf-8")
+    reader_header = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
+    reader_source = (PROJECT_ROOT / "MUS4_IO.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)" in reader_header
@@ -459,22 +460,22 @@ def test_serial_line_reader_is_split_from_sketch():
     assert "if (c == '\\r') continue;" in reader_source
     assert "if (c == '\\n')" in reader_source
     assert "sb.overflow = true;" in reader_source
-    assert "#include \"SerialLineReader.h\"" in sketch_source
+    assert "#include \"MUS4.h\"" in sketch_source
     assert "readSerialBuf(Serial, serial0Buf);" in sketch_source
     assert "readSerialBuf(Serial1, serial1Buf);" in sketch_source
     assert "static void readSerialBuf" not in sketch_source
     assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in reader_source
     assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in sketch_source
-    assert "#include \"SerialLineReader.h\"" in source
+    assert "#include \"MUS4.h\"" in source
 
 
 def test_serial1_telemetry_has_dedicated_web_log_buffer():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
-    web_log_header = (PROJECT_ROOT / "WebLogBuffer.h").read_text(encoding="utf-8")
-    web_log_source = (PROJECT_ROOT / "WebLogBuffer.cpp").read_text(encoding="utf-8")
-    wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+    web_log_header = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
+    web_log_source = (PROJECT_ROOT / "MUS4_Wifi.cpp").read_text(encoding="utf-8")
+    wifi_types = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
 
-    # Serial1 telemetry must always be logged, even when the OTA window keeps
+    # Serial1 telemetry must always be logged, even when an OTA transfer keeps
     # the hardware line silent.
     assert "appendWebLog(\"serial1\", telem)" in sketch_source
     assert "if (shouldEmitSerial1Telemetry(otaRuntime)) {\n            Serial1.println(telem);" in sketch_source
@@ -494,7 +495,7 @@ def test_serial1_telemetry_has_dedicated_web_log_buffer():
 
 def test_wifi_console_types_are_split_from_sketch():
     source = firmware_source_text()
-    wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+    wifi_types = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     for symbol in [
@@ -526,7 +527,7 @@ def test_wifi_console_types_are_split_from_sketch():
     ]:
         assert symbol in wifi_types
 
-    assert "#include \"WifiConsoleTypes.h\"" in sketch_source
+    assert "#include \"MUS4.h\"" in sketch_source
     assert "WebLogEntry s_webLogEntries[WIFI_WEB_LOG_CAPACITY];" in source
     assert "static WebLogEntry s_webLogEntries[WIFI_WEB_LOG_CAPACITY];" in source
     assert "WifiScanEntry wifiScanCache[16];" in sketch_source
@@ -534,13 +535,13 @@ def test_wifi_console_types_are_split_from_sketch():
     assert "struct WebLogEntry" not in sketch_source
     assert "struct WifiScanEntry" not in sketch_source
     assert "struct WebDataPoint" not in sketch_source
-    assert "#include \"WifiConsoleTypes.h\"" in source
+    assert "#include \"MUS4.h\"" in source
 
 
 def test_wifi_sta_config_command_entry_is_split_from_sketch():
     source = firmware_source_text()
-    sta_header = (PROJECT_ROOT / "WifiStaConfig.h").read_text(encoding="utf-8")
-    sta_source = (PROJECT_ROOT / "WifiStaConfig.cpp").read_text(encoding="utf-8")
+    sta_header = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
+    sta_source = (PROJECT_ROOT / "MUS4_Wifi.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "bool processWifiStaConfigCommand(const String& line, Print& out, WifiRuntimeState& ws)" in sta_header
@@ -571,7 +572,7 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
     assert re.search(r"^void\s+clearWifiStaRuntimeStateWithoutDisconnect\s*\(\)", sta_source, re.MULTILINE)
     assert re.search(r"^bool\s+clearWifiStaPreference\s*\(\)", sta_source, re.MULTILINE)
     assert re.search(r"^void\s+loadWifiStaPreference\s*\(\)", sta_source, re.MULTILINE)
-    assert "#include \"WifiStaConfig.h\"" in sketch_source
+    assert "#include \"MUS4.h\"" in sketch_source
     assert "bool processWifiStaConfigCommand(const String& line, Print& out, WifiRuntimeState& ws)" not in sketch_source
     assert "void printWifiStaStatus(Print& out)" not in sketch_source
     assert "String wifiStaIpText()" not in sketch_source
@@ -633,8 +634,8 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
 
 def test_wireless_command_policy_helpers_are_split_from_sketch():
     source = firmware_source_text()
-    wireless_header = (PROJECT_ROOT / "WirelessConsole.h").read_text(encoding="utf-8")
-    wireless_source = (PROJECT_ROOT / "WirelessConsole.cpp").read_text(encoding="utf-8")
+    wireless_header = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
+    wireless_source = (PROJECT_ROOT / "MUS4_Wifi.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "enum WirelessCommandOrigin" in wireless_header
@@ -648,7 +649,7 @@ def test_wireless_command_policy_helpers_are_split_from_sketch():
     assert "bool isWirelessControlCommand(const String& line)" in wireless_header
     assert "String redactWirelessConsoleLine(const String& line)" in wireless_header
     assert "String redactWirelessConsoleLine(const String& line)" in wireless_source
-    assert "#include \"WirelessConsole.h\"" in sketch_source
+    assert "#include \"MUS4.h\"" in sketch_source
 
     for symbol in [
         "line.equalsIgnoreCase(\"PING\")",
@@ -702,7 +703,7 @@ def test_steering_control_helpers_remain_available_after_module_split():
 
 def test_diagnostic_helpers_remain_available_after_module_split():
     source = firmware_source_text()
-    diagnostics_source = (PROJECT_ROOT / "Diagnostics.cpp").read_text(encoding="utf-8")
+    diagnostics_source = (PROJECT_ROOT / "MUS4_Command.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     for symbol in [
@@ -730,14 +731,14 @@ def test_diagnostic_helpers_remain_available_after_module_split():
 
 def test_serial_buffer_type_is_shared_after_module_split():
     source = firmware_source_text()
-    serial_buffer_types = (PROJECT_ROOT / "SerialBufferTypes.h").read_text(encoding="utf-8")
-    diagnostics_source = (PROJECT_ROOT / "Diagnostics.cpp").read_text(encoding="utf-8")
+    serial_buffer_types = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
+    diagnostics_source = (PROJECT_ROOT / "MUS4_Command.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "struct SerialBuf" in serial_buffer_types
     assert "char buf[256]" in serial_buffer_types
     assert "uint32_t errors" in serial_buffer_types
-    assert "#include \"SerialBufferTypes.h\"" in source
+    assert "#include \"MUS4.h\"" in source
     assert "struct SerialBuf" not in diagnostics_source
     assert "struct SerialBuf" not in sketch_source
 
@@ -842,9 +843,9 @@ def test_rc_interrupt_state_keeps_iram_and_volatile_guards():
 
 def test_rc_pwm_capture_is_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
-    capture_source = (PROJECT_ROOT / "RcPwmCapture.cpp").read_text(encoding="utf-8")
+    capture_source = (PROJECT_ROOT / "MUS4_Control.cpp").read_text(encoding="utf-8")
 
-    assert "#include \"RcPwmCapture.h\"" in sketch_source
+    assert "#include \"MUS4.h\"" in sketch_source
     assert "static void IRAM_ATTR acceptRcPulse" not in sketch_source
     assert "void IRAM_ATTR handle_interrupt" not in sketch_source
     assert "void IRAM_ATTR CH1_interrupt()" not in sketch_source
@@ -859,9 +860,9 @@ def test_rc_pwm_capture_is_split_from_sketch():
 
 def test_control_mixer_is_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
-    mixer_source = (PROJECT_ROOT / "ControlMixer.cpp").read_text(encoding="utf-8")
+    mixer_source = (PROJECT_ROOT / "MUS4_Control.cpp").read_text(encoding="utf-8")
 
-    assert "#include \"ControlMixer.h\"" in sketch_source
+    assert "#include \"MUS4.h\"" in sketch_source
     assert "void mode_change(bool modeValid)" not in sketch_source
     assert "void updateControlOutput()" not in sketch_source
     assert "int lastCarMode = -1" not in sketch_source
@@ -875,10 +876,10 @@ def test_control_mixer_is_split_from_sketch():
 
 def test_safety_state_is_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
-    safety_header = (PROJECT_ROOT / "SafetyState.h").read_text(encoding="utf-8")
-    safety_source = (PROJECT_ROOT / "SafetyState.cpp").read_text(encoding="utf-8")
+    safety_header = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
+    safety_source = (PROJECT_ROOT / "MUS4_Control.cpp").read_text(encoding="utf-8")
 
-    assert "#include \"SafetyState.h\"" in sketch_source
+    assert "#include \"MUS4.h\"" in sketch_source
     assert "void emergencyStop()" not in sketch_source
     assert "void park_change()" not in sketch_source
     assert "enum EmergencyStopState" not in sketch_source
@@ -894,9 +895,9 @@ def test_safety_state_is_split_from_sketch():
 
 def test_actuator_output_is_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
-    actuator_source = (PROJECT_ROOT / "ActuatorOutput.cpp").read_text(encoding="utf-8")
+    actuator_source = (PROJECT_ROOT / "MUS4_Control.cpp").read_text(encoding="utf-8")
 
-    assert "#include \"ActuatorOutput.h\"" in sketch_source
+    assert "#include \"MUS4.h\"" in sketch_source
     assert "ledcAttachChannel(STEERING_PIN" not in sketch_source
     assert "ledcWriteChannel(CH_STEERING" not in sketch_source
     assert "ledcAttachChannel(THROTTLE_PIN" not in sketch_source
@@ -913,11 +914,11 @@ def test_actuator_output_is_split_from_sketch():
 
 def test_wifi_ota_status_helpers_are_split_from_sketch():
     source = firmware_source_text()
-    ota_header = (PROJECT_ROOT / "WifiOta.h").read_text(encoding="utf-8")
-    ota_source = (PROJECT_ROOT / "WifiOta.cpp").read_text(encoding="utf-8")
+    ota_header = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
+    ota_source = (PROJECT_ROOT / "MUS4_Wifi.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "#include \"WifiOta.h\"" in sketch_source
+    assert "#include \"MUS4.h\"" in sketch_source
     assert "unsigned long wifiOtaTtlMs(OtaRuntimeState& os, WifiRuntimeState& ws)" in ota_header
     assert "void printWifiOtaStatus(Print& out, OtaRuntimeState& os, WifiRuntimeState& ws)" in ota_header
     assert "void closeWifiOtaWindow(const char* reason, OtaRuntimeState& os)" in ota_header
@@ -973,7 +974,7 @@ def test_wifi_ota_status_helpers_are_split_from_sketch():
     assert "ensureWifiOtaStarted()" in ota_source
     assert "os.windowOpen = true" in ota_source
     assert "os.deadlineMs = millis() + WIFI_OTA_WINDOW_MS" in ota_source
-    assert "return !os.windowOpen && !os.inProgress" in ota_source
+    assert "return !os.inProgress" in ota_source
     assert "line.substring(11).equals(WIFI_CONSOLE_AP_PASSWORD)" in ota_source
     assert "out.println(\"NACK:AUTH_REQUIRED\")" in ota_source
     assert "sb.errors++" in ota_source
@@ -1016,7 +1017,7 @@ def test_wireless_ota_and_control_safety_guards_remain_present():
     assert "t < -100 || t > 100 || s < -100 || s > 100" in source
     assert "isWirelessOtaOpenCommand(line)" in source
     assert "car_output.park == PARK_LOCKED" in source
-    assert "return !os.windowOpen && !os.inProgress" in source
+    assert "return !os.inProgress" in source
     assert "forceWifiOtaParkLocked" in source
     assert "AUTH:<redacted>" in source
     assert "WIFI_STA_PASSWORD:<redacted>" in source
@@ -1132,8 +1133,8 @@ def test_web_console_ap_ssid_modal_and_api_are_present():
 
 def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
     source = firmware_source_text()
-    identity_header = (PROJECT_ROOT / "WifiIdentity.h").read_text(encoding="utf-8")
-    identity_source = (PROJECT_ROOT / "WifiIdentity.cpp").read_text(encoding="utf-8")
+    identity_header = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
+    identity_source = (PROJECT_ROOT / "MUS4_Wifi.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "bool isMdnsSafeHostnameChar(char c)" in identity_header
@@ -1142,7 +1143,7 @@ def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
     assert "bool isValidApSsidPrefix(const String& value)" in identity_header
     assert "String wifiMdnsHostText()" in identity_header
     assert "String wifiMdnsUrlText()" in identity_header
-    assert "#include \"WifiIdentity.h\"" in sketch_source
+    assert "#include \"MUS4.h\"" in sketch_source
     assert "if (!isMdnsSafeHostname(ssid)) return false;" in identity_source
     assert "bool isValidApSsidPrefix" in identity_source
     assert "WIFI_IDENTITY_AP_SSID_MAX_LEN = 32" in identity_source
@@ -1161,9 +1162,9 @@ def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
 
 
 def test_wifi_ap_ssid_prefix_is_limited_to_six_chars_with_dev_mode_suffix():
-    wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
-    manager_header = (PROJECT_ROOT / "WifiManager.h").read_text(encoding="utf-8")
-    manager_source = (PROJECT_ROOT / "WifiManager.cpp").read_text(encoding="utf-8")
+    wifi_types = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
+    manager_header = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
+    manager_source = (PROJECT_ROOT / "MUS4_Wifi.cpp").read_text(encoding="utf-8")
     assets_source = (PROJECT_ROOT / "WebConsoleAssets.h").read_text(encoding="utf-8")
     source = firmware_source_text()
 
@@ -1913,7 +1914,7 @@ def test_web_console_handles_common_captive_portal_probes_locally():
 
 
 def test_wifi_discovery_compile_switches_exist():
-    source = (PROJECT_ROOT / "FirmwareConfig.h").read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "MUS4.h").read_text(encoding="utf-8")
     assert "#define ENABLE_WIFI_NETBIOS_DISCOVERY" in source
     assert "#define ENABLE_WIFI_LLMNR_DISCOVERY" in source
     assert "#ifdef ENABLE_WIFI_CONSOLE" in source

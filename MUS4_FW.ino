@@ -23,60 +23,7 @@
   Ends with "\n
 */
 
-#include "FirmwareConfig.h"
-
-#include <Wire.h>
-#include <FastLED.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
-#include <Adafruit_INA219.h>
-#include <WiFi.h>
-#include <WebServer.h>
-#include <DNSServer.h>
-#include <ESPmDNS.h>
-#include <esp_wifi.h>
-#ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#endif
-#include <ArduinoOTA.h>
-#include <Update.h>
-#include <Preferences.h>
-#include "BuildInfo.h"
-#include "SharedTypes.h"
-#include "RcPwmCapture.h"
-#include "TUI.h"
-#include "WebConsoleAssets.h"
-#include "StringPrint.h"
-#include "JsonUtil.h"
-#include "I2CBusTools.h"
-#include "LedStatus.h"
-#include "Mus4Log.h"
-#include "SteeringCalibration.h"
-#include "Sensors.h"
-#include "GamepadMode.h"
-#include "RcFilter.h"
-#include "CommandParser.h"
-#include "CommandDispatcher.h"
-#include "LocalCommands.h"
-#include "SerialLineReader.h"
-#include "WifiConsoleTypes.h"
-#include "WirelessConsole.h"
-#include "WifiStaConfig.h"
-#include "WifiIdentity.h"
-#include "WifiOta.h"
-#include "WebTelemetry.h"
-#include "WifiManager.h"
-#include "ControlMixer.h"
-#include "SafetyState.h"
-#include "ActuatorOutput.h"
-#include "DriftAssist.h"
-#include "SteeringControl.h"
-#include "Diagnostics.h"
-#include "SerialBufferTypes.h"
-
-#include "Buzzer.h"
-// #include "test_runner.h"
+#include "MUS4.h"
 
 TUI tui(Serial);
 Buzzer buzzer(BUZZER_PIN);
@@ -130,9 +77,6 @@ unsigned long outputTTL = 100;
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
 #ifdef ENABLE_WIFI_CONSOLE
-#include "RuntimeState.h"
-#include "WebLogBuffer.h"
-#include "WebConsoleServer.h"
 void ensureWifiOtaStarted();
 #if __has_include("WirelessSecrets.h")
 #include "WirelessSecrets.h"
@@ -249,7 +193,6 @@ void sampleWifiWebData()
     wifiWebDataHead = (wifiWebDataHead + 1) % WIFI_WEB_DATA_CAPACITY;
     if (wifiWebDataCount < WIFI_WEB_DATA_CAPACITY) wifiWebDataCount++;
 }
-
 static void setupWifiOtaCallbacks()
 {
     ArduinoOTA.setHostname(WIFI_OTA_HOSTNAME);

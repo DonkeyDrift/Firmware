@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-06-14 v1.7.6-Serial
+
+- 固件版本号从 `v1.7.6` 更新到 `v1.7.6-Serial`。
+- 调整 `Serial1` 遥测与 OTA 窗口共存策略：DEV mode 保持 OTA window 打开时继续输出 `Txx:Sxx`，仅在 OTA 实际传输中暂停。
+- 将项目自有头文件集中整理到 `MUS4.h`，并按配置、数据结构、I/O、控制、安全、命令、Wi-Fi 等段落分隔。
+- 将固件实现收敛为 `MUS4_IO.cpp`、`MUS4_Control.cpp`、`MUS4_Command.cpp`、`MUS4_Wifi.cpp` 四个 Arduino 风格功能文件，减少过度分散的源码入口。
+- 更新 README、中文 README、运行说明和用户说明书；尚未实现或需要后续硬件验证的内容仅放入 `docs/Plan/ROADMAP.md`。
+
 ## 2026-06-12 v1.7.6
 
 - 固件版本号从 `v1.7.4` 更新到 `v1.7.6`。

@@ -167,7 +167,7 @@ def is_ota_window_active(now_ms, deadline_ms, *, dev_mode=False):
 
 
 def should_emit_serial1_telemetry(ota_window_open, ota_in_progress):
-    return not (ota_window_open or ota_in_progress)
+    return not ota_in_progress
 
 
 def should_force_park_for_ota(park_guard_active, ota_in_progress, *, dev_mode=False):

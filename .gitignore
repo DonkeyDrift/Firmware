@@ -50,3 +50,4 @@ ArduFlux.json
 .cache/
 .pyc
 .worktrees/
+build_verbose/

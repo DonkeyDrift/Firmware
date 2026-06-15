@@ -1,0 +1,42 @@
+﻿{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Arduino: Build (RAMDisk)",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-File", "${env:U_DISK}\\PortableEnv\\_build_with_progress.ps1",
+                "-Cli", "${env:U_DISK}\\PortableEnv\\arduino-cli\\arduino-cli.exe",
+                "-Fqbn", "esp32:esp32:esp32:PartitionScheme=min_spiffs",
+                "-Libs", "${workspaceFolder}\\libraries",
+                "-BuildPath", "${env:ARDUINO_BUILD_BASE}\\${workspaceFolderBasename}",
+                "-OutputDir", "${workspaceFolder}\\build",
+                "-SketchDir", "${workspaceFolder}"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "detail": "使用 U 盘内 arduino-cli 编译当前工程，显示进度点与总用时。FQBN 与 PartitionScheme 来自 sketch.yaml。"
+        },
+        {
+            "label": "Arduino: Upload",
+            "type": "shell",
+            "command": "${env:U_DISK}\\PortableEnv\\arduino-cli\\arduino-cli.exe",
+            "args": [
+                "upload",
+                "--fqbn", "esp32:esp32:esp32:PartitionScheme=min_spiffs",
+                "--port", "COM3",
+                "--input-dir", "${workspaceFolder}\\build",
+                "."
+            ],
+            "group": "none",
+            "problemMatcher": [],
+            "detail": "上传编译好的固件到开发板。请根据设备管理器中的实际串口修改 COM3。"
+        }
+    ]
+}

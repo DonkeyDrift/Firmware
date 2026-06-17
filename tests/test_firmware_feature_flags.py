@@ -6,9 +6,9 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 MUS4_SKETCH = PROJECT_ROOT / "MUS4_FW.ino"
 FIRMWARE_SOURCE_PATHS = [
     MUS4_SKETCH,
-    PROJECT_ROOT / "FirmwareConfig.h",
+    PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h",
     PROJECT_ROOT / "WebConsoleAssets.h",
-    PROJECT_ROOT / "StringPrint.h",
+    PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "StringPrint.h",
     PROJECT_ROOT / "JsonUtil.h",
     PROJECT_ROOT / "JsonUtil.cpp",
     PROJECT_ROOT / "I2CBusTools.h",
@@ -41,7 +41,7 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "LocalCommands.cpp",
     PROJECT_ROOT / "SerialLineReader.h",
     PROJECT_ROOT / "SerialLineReader.cpp",
-    PROJECT_ROOT / "WifiConsoleTypes.h",
+    PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h",
     PROJECT_ROOT / "WirelessConsole.h",
     PROJECT_ROOT / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiStaConfig.h",
@@ -54,7 +54,7 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "SteeringControl.cpp",
     PROJECT_ROOT / "Diagnostics.h",
     PROJECT_ROOT / "Diagnostics.cpp",
-    PROJECT_ROOT / "SerialBufferTypes.h",
+    PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "SerialBufferTypes.h",
     PROJECT_ROOT / "WebLogBuffer.h",
     PROJECT_ROOT / "WebLogBuffer.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
@@ -69,7 +69,7 @@ FIRMWARE_SOURCE_PATHS = [
 ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
 CONFIG_YAML = PROJECT_ROOT / "config.yaml"
 WSLBUILD_YAML = PROJECT_ROOT / "wslbuild.yaml"
-BUILD_INFO = PROJECT_ROOT / "BuildInfo.h"
+BUILD_INFO = PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "BuildInfo.h"
 CHANGELOG = PROJECT_ROOT / "CHANGELOG.md"
 SMART_PROVISIONING_SKETCH = PROJECT_ROOT / "examples" / "smart_provisioning" / "smart_provisioning.ino"
 SMART_PROVISIONING_WEB_UI = PROJECT_ROOT / "examples" / "smart_provisioning" / "web_ui.h"
@@ -317,7 +317,7 @@ def test_diagnostic_code_is_not_built_by_default():
 
 
 def test_firmware_config_centralizes_core_compile_time_defaults():
-    config = (PROJECT_ROOT / "FirmwareConfig.h").read_text(encoding="utf-8")
+    config = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h").read_text(encoding="utf-8")
     sketch = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert '#include "FirmwareConfig.h"' in sketch
@@ -334,8 +334,8 @@ def test_firmware_config_centralizes_core_compile_time_defaults():
     assert "#define UI_UPDATE_INTERVAL 2" in config
     assert "#define WAVE_WIDTH 20" in config
     assert "#define WAVE_HEIGHT 6" in config
-    assert "#define CAR_MODE_MANUAL" not in (PROJECT_ROOT / "SharedTypes.h").read_text(encoding="utf-8")
-    assert "#define WAVE_WIDTH" not in (PROJECT_ROOT / "SharedTypes.h").read_text(encoding="utf-8")
+    assert "#define CAR_MODE_MANUAL" not in (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "SharedTypes.h").read_text(encoding="utf-8")
+    assert "#define WAVE_WIDTH" not in (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "SharedTypes.h").read_text(encoding="utf-8")
     assert "#define ENABLE_WIFI_CONSOLE" not in sketch
     assert "#define CH1_PIN 36" not in sketch
     assert "#define PWM_FILTER_SIZE 5" not in sketch
@@ -472,7 +472,7 @@ def test_serial1_telemetry_has_dedicated_web_log_buffer():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
     web_log_header = (PROJECT_ROOT / "WebLogBuffer.h").read_text(encoding="utf-8")
     web_log_source = (PROJECT_ROOT / "WebLogBuffer.cpp").read_text(encoding="utf-8")
-    wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+    wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
 
     # Serial1 telemetry must always be logged, even when the OTA window keeps
     # the hardware line silent.
@@ -494,7 +494,7 @@ def test_serial1_telemetry_has_dedicated_web_log_buffer():
 
 def test_wifi_console_types_are_split_from_sketch():
     source = firmware_source_text()
-    wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+    wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     for symbol in [
@@ -730,7 +730,7 @@ def test_diagnostic_helpers_remain_available_after_module_split():
 
 def test_serial_buffer_type_is_shared_after_module_split():
     source = firmware_source_text()
-    serial_buffer_types = (PROJECT_ROOT / "SerialBufferTypes.h").read_text(encoding="utf-8")
+    serial_buffer_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "SerialBufferTypes.h").read_text(encoding="utf-8")
     diagnostics_source = (PROJECT_ROOT / "Diagnostics.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
@@ -1161,7 +1161,7 @@ def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
 
 
 def test_wifi_ap_ssid_prefix_is_limited_to_six_chars_with_dev_mode_suffix():
-    wifi_types = (PROJECT_ROOT / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+    wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
     manager_header = (PROJECT_ROOT / "WifiManager.h").read_text(encoding="utf-8")
     manager_source = (PROJECT_ROOT / "WifiManager.cpp").read_text(encoding="utf-8")
     assets_source = (PROJECT_ROOT / "WebConsoleAssets.h").read_text(encoding="utf-8")
@@ -1913,7 +1913,7 @@ def test_web_console_handles_common_captive_portal_probes_locally():
 
 
 def test_wifi_discovery_compile_switches_exist():
-    source = (PROJECT_ROOT / "FirmwareConfig.h").read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h").read_text(encoding="utf-8")
     assert "#define ENABLE_WIFI_NETBIOS_DISCOVERY" in source
     assert "#define ENABLE_WIFI_LLMNR_DISCOVERY" in source
     assert "#ifdef ENABLE_WIFI_CONSOLE" in source

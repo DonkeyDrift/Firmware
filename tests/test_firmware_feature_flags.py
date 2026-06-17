@@ -33,17 +33,17 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "SafetyState.cpp",
     PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "ActuatorOutput.h",
     PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "ActuatorOutput.cpp",
-    PROJECT_ROOT / "CommandParser.h",
-    PROJECT_ROOT / "CommandParser.cpp",
-    PROJECT_ROOT / "CommandDispatcher.h",
-    PROJECT_ROOT / "CommandDispatcher.cpp",
-    PROJECT_ROOT / "LocalCommands.h",
-    PROJECT_ROOT / "LocalCommands.cpp",
-    PROJECT_ROOT / "SerialLineReader.h",
-    PROJECT_ROOT / "SerialLineReader.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandParser.h",
+    PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandParser.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.h",
+    PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "LocalCommands.h",
+    PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "LocalCommands.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "SerialLineReader.h",
+    PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "SerialLineReader.cpp",
     PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h",
-    PROJECT_ROOT / "WirelessConsole.h",
-    PROJECT_ROOT / "WirelessConsole.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.h",
+    PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiStaConfig.h",
     PROJECT_ROOT / "WifiStaConfig.cpp",
     PROJECT_ROOT / "WifiIdentity.h",
@@ -58,7 +58,7 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "WebLogBuffer.h",
     PROJECT_ROOT / "WebLogBuffer.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
-    PROJECT_ROOT / "WirelessConsole.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.cpp",
     PROJECT_ROOT / "WifiOta.h",
     PROJECT_ROOT / "WifiOta.cpp",
     PROJECT_ROOT / "WebTelemetry.h",
@@ -379,8 +379,8 @@ def test_command_parser_helpers_remain_available_after_module_split():
     ]:
         assert symbol in source
 
-    parser_source = (PROJECT_ROOT / "CommandParser.cpp").read_text(encoding="utf-8")
-    local_commands_source = (PROJECT_ROOT / "LocalCommands.cpp").read_text(encoding="utf-8")
+    parser_source = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandParser.cpp").read_text(encoding="utf-8")
+    local_commands_source = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "LocalCommands.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
     assert "bool runUnitTests()" in parser_source
     assert "static bool runUnitTests()" not in sketch_source
@@ -413,8 +413,8 @@ def test_sketch_drops_legacy_tui_dirty_rectangle_state_after_module_split():
 
 def test_command_dispatcher_replaces_command_line_macro_after_module_split():
     source = firmware_source_text()
-    dispatcher_header = (PROJECT_ROOT / "CommandDispatcher.h").read_text(encoding="utf-8")
-    dispatcher_source = (PROJECT_ROOT / "CommandDispatcher.cpp").read_text(encoding="utf-8")
+    dispatcher_header = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.h").read_text(encoding="utf-8")
+    dispatcher_source = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb)" in dispatcher_header
@@ -449,8 +449,8 @@ def test_command_dispatcher_replaces_command_line_macro_after_module_split():
 
 def test_serial_line_reader_is_split_from_sketch():
     source = firmware_source_text()
-    reader_header = (PROJECT_ROOT / "SerialLineReader.h").read_text(encoding="utf-8")
-    reader_source = (PROJECT_ROOT / "SerialLineReader.cpp").read_text(encoding="utf-8")
+    reader_header = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "SerialLineReader.h").read_text(encoding="utf-8")
+    reader_source = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "SerialLineReader.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)" in reader_header
@@ -633,8 +633,8 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
 
 def test_wireless_command_policy_helpers_are_split_from_sketch():
     source = firmware_source_text()
-    wireless_header = (PROJECT_ROOT / "WirelessConsole.h").read_text(encoding="utf-8")
-    wireless_source = (PROJECT_ROOT / "WirelessConsole.cpp").read_text(encoding="utf-8")
+    wireless_header = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.h").read_text(encoding="utf-8")
+    wireless_source = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "enum WirelessCommandOrigin" in wireless_header

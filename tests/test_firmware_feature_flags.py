@@ -21,8 +21,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "SteeringCalibration.cpp",
     PROJECT_ROOT / "libraries" / "mus4_i2c" / "src" / "Sensors.h",
     PROJECT_ROOT / "libraries" / "mus4_i2c" / "src" / "Sensors.cpp",
-    PROJECT_ROOT / "GamepadMode.h",
-    PROJECT_ROOT / "GamepadMode.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_diag" / "src" / "GamepadMode.h",
+    PROJECT_ROOT / "libraries" / "mus4_diag" / "src" / "GamepadMode.cpp",
     PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcFilter.h",
     PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcFilter.cpp",
     PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcPwmCapture.h",
@@ -52,8 +52,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "DriftAssist.cpp",
     PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "SteeringControl.h",
     PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "SteeringControl.cpp",
-    PROJECT_ROOT / "Diagnostics.h",
-    PROJECT_ROOT / "Diagnostics.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_diag" / "src" / "Diagnostics.h",
+    PROJECT_ROOT / "libraries" / "mus4_diag" / "src" / "Diagnostics.cpp",
     PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "SerialBufferTypes.h",
     PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebLogBuffer.h",
     PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebLogBuffer.cpp",
@@ -702,7 +702,7 @@ def test_steering_control_helpers_remain_available_after_module_split():
 
 def test_diagnostic_helpers_remain_available_after_module_split():
     source = firmware_source_text()
-    diagnostics_source = (PROJECT_ROOT / "Diagnostics.cpp").read_text(encoding="utf-8")
+    diagnostics_source = (PROJECT_ROOT / "libraries" / "mus4_diag" / "src" / "Diagnostics.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     for symbol in [
@@ -731,7 +731,7 @@ def test_diagnostic_helpers_remain_available_after_module_split():
 def test_serial_buffer_type_is_shared_after_module_split():
     source = firmware_source_text()
     serial_buffer_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "SerialBufferTypes.h").read_text(encoding="utf-8")
-    diagnostics_source = (PROJECT_ROOT / "Diagnostics.cpp").read_text(encoding="utf-8")
+    diagnostics_source = (PROJECT_ROOT / "libraries" / "mus4_diag" / "src" / "Diagnostics.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "struct SerialBuf" in serial_buffer_types

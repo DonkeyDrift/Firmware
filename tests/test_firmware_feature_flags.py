@@ -7,7 +7,7 @@ MUS4_SKETCH = PROJECT_ROOT / "MUS4_FW.ino"
 FIRMWARE_SOURCE_PATHS = [
     MUS4_SKETCH,
     PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h",
-    PROJECT_ROOT / "WebConsoleAssets.h",
+    PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h",
     PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "StringPrint.h",
     PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "JsonUtil.h",
     PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "JsonUtil.cpp",
@@ -55,14 +55,14 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "Diagnostics.h",
     PROJECT_ROOT / "Diagnostics.cpp",
     PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "SerialBufferTypes.h",
-    PROJECT_ROOT / "WebLogBuffer.h",
-    PROJECT_ROOT / "WebLogBuffer.cpp",
-    PROJECT_ROOT / "WebConsoleServer.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebLogBuffer.h",
+    PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebLogBuffer.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp",
     PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.cpp",
     PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiOta.h",
     PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiOta.cpp",
-    PROJECT_ROOT / "WebTelemetry.h",
-    PROJECT_ROOT / "WebTelemetry.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.h",
+    PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.cpp",
     PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.h",
     PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp",
 ]
@@ -128,7 +128,7 @@ def test_smart_provisioning_web_ui_polls_new_ip_and_falls_back_to_mdns():
 
 def test_websocket_curve_data_feature_is_enabled_and_streams_logs():
     source = firmware_source_text()
-    web_telemetry = (PROJECT_ROOT / "WebTelemetry.cpp").read_text(encoding="utf-8")
+    web_telemetry = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.cpp").read_text(encoding="utf-8")
 
     assert re.search(r"^#define\s+ENABLE_WIFI_WEBSOCKET_TELEMETRY\b", source, re.MULTILINE)
     assert "sendWebLogToSocket" in web_telemetry
@@ -470,8 +470,8 @@ def test_serial_line_reader_is_split_from_sketch():
 
 def test_serial1_telemetry_has_dedicated_web_log_buffer():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
-    web_log_header = (PROJECT_ROOT / "WebLogBuffer.h").read_text(encoding="utf-8")
-    web_log_source = (PROJECT_ROOT / "WebLogBuffer.cpp").read_text(encoding="utf-8")
+    web_log_header = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebLogBuffer.h").read_text(encoding="utf-8")
+    web_log_source = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebLogBuffer.cpp").read_text(encoding="utf-8")
     wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
 
     # Serial1 telemetry must always be logged, even when the OTA window keeps
@@ -1164,7 +1164,7 @@ def test_wifi_ap_ssid_prefix_is_limited_to_six_chars_with_dev_mode_suffix():
     wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
     manager_header = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.h").read_text(encoding="utf-8")
     manager_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
-    assets_source = (PROJECT_ROOT / "WebConsoleAssets.h").read_text(encoding="utf-8")
+    assets_source = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
     source = firmware_source_text()
 
     assert 'const uint8_t WIFI_AP_SSID_PREFIX_MAX_LEN = 6;' in wifi_types
@@ -1273,7 +1273,7 @@ def test_wifi_sta_handoff_status_api_and_web_prompt_are_present():
 
 def test_web_console_header_ota_button_and_log_area_are_compact():
     source = firmware_source_text()
-    assets_source = (PROJECT_ROOT / "WebConsoleAssets.h").read_text(encoding="utf-8")
+    assets_source = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "static const char WIFI_WEB_UPDATE_HTML[] PROGMEM" in assets_source

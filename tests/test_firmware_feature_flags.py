@@ -17,8 +17,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "libraries" / "mus4_ui" / "src" / "LedStatus.cpp",
     PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "Mus4Log.h",
     PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "Mus4Log.cpp",
-    PROJECT_ROOT / "SteeringCalibration.h",
-    PROJECT_ROOT / "SteeringCalibration.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "SteeringCalibration.h",
+    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "SteeringCalibration.cpp",
     PROJECT_ROOT / "libraries" / "mus4_i2c" / "src" / "Sensors.h",
     PROJECT_ROOT / "libraries" / "mus4_i2c" / "src" / "Sensors.cpp",
     PROJECT_ROOT / "GamepadMode.h",
@@ -27,8 +27,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcFilter.cpp",
     PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcPwmCapture.h",
     PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcPwmCapture.cpp",
-    PROJECT_ROOT / "ControlMixer.h",
-    PROJECT_ROOT / "ControlMixer.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.h",
+    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.cpp",
     PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "SafetyState.h",
     PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "SafetyState.cpp",
     PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "ActuatorOutput.h",
@@ -48,10 +48,10 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "WifiStaConfig.cpp",
     PROJECT_ROOT / "WifiIdentity.h",
     PROJECT_ROOT / "WifiIdentity.cpp",
-    PROJECT_ROOT / "DriftAssist.h",
-    PROJECT_ROOT / "DriftAssist.cpp",
-    PROJECT_ROOT / "SteeringControl.h",
-    PROJECT_ROOT / "SteeringControl.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "DriftAssist.h",
+    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "DriftAssist.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "SteeringControl.h",
+    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "SteeringControl.cpp",
     PROJECT_ROOT / "Diagnostics.h",
     PROJECT_ROOT / "Diagnostics.cpp",
     PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "SerialBufferTypes.h",
@@ -859,7 +859,7 @@ def test_rc_pwm_capture_is_split_from_sketch():
 
 def test_control_mixer_is_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
-    mixer_source = (PROJECT_ROOT / "ControlMixer.cpp").read_text(encoding="utf-8")
+    mixer_source = (PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.cpp").read_text(encoding="utf-8")
 
     assert "#include \"ControlMixer.h\"" in sketch_source
     assert "void mode_change(bool modeValid)" not in sketch_source

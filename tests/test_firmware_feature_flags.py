@@ -44,10 +44,10 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h",
     PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.h",
     PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.cpp",
-    PROJECT_ROOT / "WifiStaConfig.h",
-    PROJECT_ROOT / "WifiStaConfig.cpp",
-    PROJECT_ROOT / "WifiIdentity.h",
-    PROJECT_ROOT / "WifiIdentity.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaConfig.h",
+    PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaConfig.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiIdentity.h",
+    PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiIdentity.cpp",
     PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "DriftAssist.h",
     PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "DriftAssist.cpp",
     PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "SteeringControl.h",
@@ -59,12 +59,12 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "WebLogBuffer.cpp",
     PROJECT_ROOT / "WebConsoleServer.cpp",
     PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.cpp",
-    PROJECT_ROOT / "WifiOta.h",
-    PROJECT_ROOT / "WifiOta.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiOta.h",
+    PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiOta.cpp",
     PROJECT_ROOT / "WebTelemetry.h",
     PROJECT_ROOT / "WebTelemetry.cpp",
-    PROJECT_ROOT / "WifiManager.h",
-    PROJECT_ROOT / "WifiManager.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.h",
+    PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp",
 ]
 ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
 CONFIG_YAML = PROJECT_ROOT / "config.yaml"
@@ -539,8 +539,8 @@ def test_wifi_console_types_are_split_from_sketch():
 
 def test_wifi_sta_config_command_entry_is_split_from_sketch():
     source = firmware_source_text()
-    sta_header = (PROJECT_ROOT / "WifiStaConfig.h").read_text(encoding="utf-8")
-    sta_source = (PROJECT_ROOT / "WifiStaConfig.cpp").read_text(encoding="utf-8")
+    sta_header = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaConfig.h").read_text(encoding="utf-8")
+    sta_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaConfig.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "bool processWifiStaConfigCommand(const String& line, Print& out, WifiRuntimeState& ws)" in sta_header
@@ -913,8 +913,8 @@ def test_actuator_output_is_split_from_sketch():
 
 def test_wifi_ota_status_helpers_are_split_from_sketch():
     source = firmware_source_text()
-    ota_header = (PROJECT_ROOT / "WifiOta.h").read_text(encoding="utf-8")
-    ota_source = (PROJECT_ROOT / "WifiOta.cpp").read_text(encoding="utf-8")
+    ota_header = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiOta.h").read_text(encoding="utf-8")
+    ota_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiOta.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "#include \"WifiOta.h\"" in sketch_source
@@ -1132,8 +1132,8 @@ def test_web_console_ap_ssid_modal_and_api_are_present():
 
 def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
     source = firmware_source_text()
-    identity_header = (PROJECT_ROOT / "WifiIdentity.h").read_text(encoding="utf-8")
-    identity_source = (PROJECT_ROOT / "WifiIdentity.cpp").read_text(encoding="utf-8")
+    identity_header = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiIdentity.h").read_text(encoding="utf-8")
+    identity_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiIdentity.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "bool isMdnsSafeHostnameChar(char c)" in identity_header
@@ -1162,8 +1162,8 @@ def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
 
 def test_wifi_ap_ssid_prefix_is_limited_to_six_chars_with_dev_mode_suffix():
     wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
-    manager_header = (PROJECT_ROOT / "WifiManager.h").read_text(encoding="utf-8")
-    manager_source = (PROJECT_ROOT / "WifiManager.cpp").read_text(encoding="utf-8")
+    manager_header = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.h").read_text(encoding="utf-8")
+    manager_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
     assets_source = (PROJECT_ROOT / "WebConsoleAssets.h").read_text(encoding="utf-8")
     source = firmware_source_text()
 

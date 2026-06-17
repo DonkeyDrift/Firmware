@@ -11,22 +11,22 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "StringPrint.h",
     PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "JsonUtil.h",
     PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "JsonUtil.cpp",
-    PROJECT_ROOT / "I2CBusTools.h",
-    PROJECT_ROOT / "I2CBusTools.cpp",
-    PROJECT_ROOT / "LedStatus.h",
-    PROJECT_ROOT / "LedStatus.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_i2c" / "src" / "I2CBusTools.h",
+    PROJECT_ROOT / "libraries" / "mus4_i2c" / "src" / "I2CBusTools.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_ui" / "src" / "LedStatus.h",
+    PROJECT_ROOT / "libraries" / "mus4_ui" / "src" / "LedStatus.cpp",
     PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "Mus4Log.h",
     PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "Mus4Log.cpp",
     PROJECT_ROOT / "SteeringCalibration.h",
     PROJECT_ROOT / "SteeringCalibration.cpp",
-    PROJECT_ROOT / "Sensors.h",
-    PROJECT_ROOT / "Sensors.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_i2c" / "src" / "Sensors.h",
+    PROJECT_ROOT / "libraries" / "mus4_i2c" / "src" / "Sensors.cpp",
     PROJECT_ROOT / "GamepadMode.h",
     PROJECT_ROOT / "GamepadMode.cpp",
-    PROJECT_ROOT / "RcFilter.h",
-    PROJECT_ROOT / "RcFilter.cpp",
-    PROJECT_ROOT / "RcPwmCapture.h",
-    PROJECT_ROOT / "RcPwmCapture.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcFilter.h",
+    PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcFilter.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcPwmCapture.h",
+    PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcPwmCapture.cpp",
     PROJECT_ROOT / "ControlMixer.h",
     PROJECT_ROOT / "ControlMixer.cpp",
     PROJECT_ROOT / "SafetyState.h",
@@ -842,7 +842,7 @@ def test_rc_interrupt_state_keeps_iram_and_volatile_guards():
 
 def test_rc_pwm_capture_is_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
-    capture_source = (PROJECT_ROOT / "RcPwmCapture.cpp").read_text(encoding="utf-8")
+    capture_source = (PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcPwmCapture.cpp").read_text(encoding="utf-8")
 
     assert "#include \"RcPwmCapture.h\"" in sketch_source
     assert "static void IRAM_ATTR acceptRcPulse" not in sketch_source

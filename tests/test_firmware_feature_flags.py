@@ -29,10 +29,10 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "libraries" / "mus4_rc" / "src" / "RcPwmCapture.cpp",
     PROJECT_ROOT / "ControlMixer.h",
     PROJECT_ROOT / "ControlMixer.cpp",
-    PROJECT_ROOT / "SafetyState.h",
-    PROJECT_ROOT / "SafetyState.cpp",
-    PROJECT_ROOT / "ActuatorOutput.h",
-    PROJECT_ROOT / "ActuatorOutput.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "SafetyState.h",
+    PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "SafetyState.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "ActuatorOutput.h",
+    PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "ActuatorOutput.cpp",
     PROJECT_ROOT / "CommandParser.h",
     PROJECT_ROOT / "CommandParser.cpp",
     PROJECT_ROOT / "CommandDispatcher.h",
@@ -875,8 +875,8 @@ def test_control_mixer_is_split_from_sketch():
 
 def test_safety_state_is_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
-    safety_header = (PROJECT_ROOT / "SafetyState.h").read_text(encoding="utf-8")
-    safety_source = (PROJECT_ROOT / "SafetyState.cpp").read_text(encoding="utf-8")
+    safety_header = (PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "SafetyState.h").read_text(encoding="utf-8")
+    safety_source = (PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "SafetyState.cpp").read_text(encoding="utf-8")
 
     assert "#include \"SafetyState.h\"" in sketch_source
     assert "void emergencyStop()" not in sketch_source
@@ -894,7 +894,7 @@ def test_safety_state_is_split_from_sketch():
 
 def test_actuator_output_is_split_from_sketch():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
-    actuator_source = (PROJECT_ROOT / "ActuatorOutput.cpp").read_text(encoding="utf-8")
+    actuator_source = (PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "ActuatorOutput.cpp").read_text(encoding="utf-8")
 
     assert "#include \"ActuatorOutput.h\"" in sketch_source
     assert "ledcAttachChannel(STEERING_PIN" not in sketch_source

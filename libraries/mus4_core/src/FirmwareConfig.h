@@ -122,7 +122,7 @@
 
 // Output control parameters
 #define SENSOR_UPDATE_INTERVAL 2     // Sensor data update interval (ms) - ~500Hz
-#define RC_DATA_UPDATE_INTERVAL 2    // RC data update interval (ms) - ~500Hz
+#define RC_DATA_UPDATE_INTERVAL 16   // Serial1 telemetry update interval (ms) - ~60Hz
 #define RC_FILTER_UPDATE_INTERVAL 2   // RC filter update interval (ms) - ~500Hz, balances response and stability
 #define UI_UPDATE_INTERVAL 2         // UI update interval (ms) - smooth 500Hz experience
 

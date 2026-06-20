@@ -474,10 +474,12 @@ def test_serial1_telemetry_has_dedicated_web_log_buffer():
     web_log_source = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebLogBuffer.cpp").read_text(encoding="utf-8")
     wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
 
-    # Serial1 telemetry must always be logged, even when the OTA window keeps
-    # the hardware line silent.
+    # Serial1 telemetry is only emitted in MANUAL mode, but when it is emitted
+    # the web log must still record it even if the OTA window keeps the
+    # hardware line silent.
     assert "appendWebLog(\"serial1\", telem)" in sketch_source
-    assert "if (shouldEmitSerial1Telemetry(otaRuntime)) {\n            Serial1.println(telem);" in sketch_source
+    assert "if (shouldEmitSerial1Telemetry(otaRuntime)) {\n                Serial1.println(telem);" in sketch_source
+    assert "if (car_output.mode == CAR_MODE_MANUAL)" in sketch_source
 
     # Dedicated compact buffer for high-rate Serial1 telemetry.
     assert "static const uint8_t SERIAL1_WEB_LOG_CAPACITY = 64;" in wifi_types

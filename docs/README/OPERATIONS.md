@@ -12,9 +12,15 @@
     - `STRESS` 输出异常压力统计
     - `REGRESS` 输出回归校验结果
 - 数据帧
-  - 基本：`T:S\n`，范围−100..100
+  - 基本：`Throttle:Steering\n`，范围−100..100
   - 可选：`payload*CS\n`，CS为两位十六进制校验
   - 回执：`ACK`/`NACK`
+- Serial1 遥测回传帧
+  - 格式：`T:S\n`，范围−100..100
+  - `T` 代表 Throttle，`S` 代表 Steering
+  - 仅在 MANUAL 模式下发送；ASSIST / AUTO 模式下关闭 TX 遥测
+  - 刷新率约 60 Hz
+  - 含义：回传最近一次从 Serial1 接收到的控制指令数值
 - 维护
   - 传感器异常不阻塞主循环
   - 自适应刷新频率自动调节

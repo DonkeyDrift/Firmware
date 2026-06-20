@@ -27,7 +27,7 @@ void evalDegrade()
     degradeReason = 0;
     if (!ina219Data.valid) degradeReason |= 0x01;
     if (!mpu6050Data.valid) degradeReason |= 0x02;
-    if (lastUICycleDuration > 150) degradeReason |= 0x04;
+    if (lastUICycleDuration > 250) degradeReason |= 0x04;
     if (degradeReason != 0 && !degradeMode)
     {
         degradeMode = true;

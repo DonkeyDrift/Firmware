@@ -121,7 +121,7 @@ bool ansiDetected = false;            // Auto-detected ANSI support state
 bool uiInitialized = false;
 unsigned long uiIntervalCurrent = UI_UPDATE_INTERVAL;
 const unsigned long uiIntervalMin = 100;
-const unsigned long uiIntervalMax = 500;
+const unsigned long uiIntervalMax = 250;
 unsigned long lastPerfEval = 0;
 unsigned long lastUICycleDuration = 0;
 unsigned long sensorTTL = 1000;
@@ -548,11 +548,13 @@ void loop()
 
     updateActuatorOutput();
 
+    buzzer.update();
+
     scanLEDToggle();
     if (now - lastPerfEval >= 1000)
     {
         evalDegrade();
-        if (lastUICycleDuration > 150) uiIntervalCurrent = min(uiIntervalCurrent + 50, uiIntervalMax);
+        if (lastUICycleDuration > 250) uiIntervalCurrent = min(uiIntervalCurrent + 30, uiIntervalMax);
         else uiIntervalCurrent = (uiIntervalCurrent > uiIntervalMin ? uiIntervalCurrent - 20 : uiIntervalMin);
         lastPerfEval = now;
     }

@@ -38,6 +38,7 @@ Buzzer::Buzzer(int pin) {
     _pin = pin;
     _channel = _channelCounter++;
     _volume = BUZZER_VOLUME;
+    _soundEnabled = BUZZER_SOUND_ENABLED;
 #if BUZZER_SOUND_ENABLED
     ledcAttachChannel(_pin, 2000, 8, _channel);
     setVolume(_volume);
@@ -51,59 +52,98 @@ void Buzzer::setVolume(int volume) {
     _volume = constrain(volume, 0, 100);
 }
 
-void Buzzer::playNoteWithVolume(int pitch, int durationMs) {
+void Buzzer::stopTone() {
 #if BUZZER_SOUND_ENABLED
-    if (pitch == 0) {
+    ledcWriteChannel(_channel, 0);
+#else
+    digitalWrite(_pin, LOW);
+#endif
+}
+
+void Buzzer::startNote(int pitch, unsigned long durationMs) {
+    _lastPitch = pitch;
+    _noteDurationMs = durationMs;
+    _noteStartMs = millis();
+#if BUZZER_SOUND_ENABLED
+    if (pitch == NOTE_REST) {
         ledcWriteChannel(_channel, 0);
     } else {
         ledcChangeFrequency(_pin, pitch, 8);
         int dutyCycle = _volume * 255 / 100;
         ledcWriteChannel(_channel, dutyCycle);
-        delay(durationMs);
-        ledcWriteChannel(_channel, 0);
     }
 #else
     digitalWrite(_pin, LOW);
 #endif
 }
 
-void Buzzer::playMelody(const BuzzerNote* melody, int length) {
-#if BUZZER_SOUND_ENABLED
+void Buzzer::startMelody(const BuzzerNote* melody, int length) {
+    if (melody == nullptr || length <= 0) return;
+    // Stop any currently playing melody and start the new one immediately.
+    stopTone();
+    _currentMelody = melody;
+    _melodyLength = length;
+    _noteIndex = 0;
     _playing = true;
     int beatMs = 60000 / 120;
-    for (int i = 0; i < length; i++) {
-        int durMs = beatMs * 4 / melody[i].duration;
-        playNoteWithVolume(melody[i].pitch, durMs);
-        delay(durMs * 0.3);
-    }
-    _playing = false;
-#else
-    _playing = false;
-    digitalWrite(_pin, LOW);
-#endif
+    unsigned long durMs = (unsigned long)beatMs * 4 / melody[0].duration;
+    _restDurationMs = (unsigned long)(durMs * 0.3f);
+    startNote(melody[0].pitch, durMs);
 }
 
 void Buzzer::playModeSound(int mode) {
     switch (mode) {
         case CAR_MODE_MANUAL:
-            playMelody(melodyManual, sizeof(melodyManual) / sizeof(BuzzerNote));
+            startMelody(melodyManual, sizeof(melodyManual) / sizeof(BuzzerNote));
             break;
         case CAR_MODE_SEMI_AUTO:
-            playMelody(melodySemiAuto, sizeof(melodySemiAuto) / sizeof(BuzzerNote));
+            startMelody(melodySemiAuto, sizeof(melodySemiAuto) / sizeof(BuzzerNote));
             break;
         case CAR_MODE_FULL_AUTO:
-            playMelody(melodyFullAuto, sizeof(melodyFullAuto) / sizeof(BuzzerNote));
+            startMelody(melodyFullAuto, sizeof(melodyFullAuto) / sizeof(BuzzerNote));
             break;
     }
 }
 
 void Buzzer::playParkLockSound() {
-    playMelody(melodyParkLock, sizeof(melodyParkLock) / sizeof(BuzzerNote));
+    startMelody(melodyParkLock, sizeof(melodyParkLock) / sizeof(BuzzerNote));
 }
 
 void Buzzer::playParkUnlockSound() {
-    playMelody(melodyParkUnlock, sizeof(melodyParkUnlock) / sizeof(BuzzerNote));
+    startMelody(melodyParkUnlock, sizeof(melodyParkUnlock) / sizeof(BuzzerNote));
 }
 
 void Buzzer::update() {
+    if (!_playing || _currentMelody == nullptr) return;
+
+    unsigned long now = millis();
+    unsigned long elapsed = now - _noteStartMs;
+
+    // Still playing the active tone.
+    if (elapsed < _noteDurationMs) return;
+
+    // Tone finished; handle inter-note rest.
+    unsigned long restElapsed = elapsed - _noteDurationMs;
+    if (restElapsed < _restDurationMs) {
+        if (_lastPitch != NOTE_REST) {
+            stopTone();
+            _lastPitch = NOTE_REST;
+        }
+        return;
+    }
+
+    // Move to the next note.
+    _noteIndex++;
+    if (_noteIndex >= _melodyLength) {
+        stopTone();
+        _playing = false;
+        _currentMelody = nullptr;
+        return;
+    }
+
+    const BuzzerNote& note = _currentMelody[_noteIndex];
+    int beatMs = 60000 / 120;
+    unsigned long durMs = (unsigned long)beatMs * 4 / note.duration;
+    _restDurationMs = (unsigned long)(durMs * 0.3f);
+    startNote(note.pitch, durMs);
 }

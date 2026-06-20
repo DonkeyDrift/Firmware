@@ -78,7 +78,9 @@ void TUI::setOutput(int throttle, int steering, int mode, bool park) {
         _outputStateInitialized = true;
     }
 
-    updateWaveformData();
+    if (_waveformEnabled) {
+        updateWaveformData();
+    }
 }
 
 void TUI::setSensors(const SensorData& data) {

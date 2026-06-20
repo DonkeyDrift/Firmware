@@ -31,14 +31,25 @@ struct BuzzerNote {
 class Buzzer {
 private:
     bool _playing = false;
+    bool _soundEnabled;
     int _pin;
     int _channel;
     int _volume;
     static int _channelCounter;
-    
-    void playNoteWithVolume(int pitch, int durationMs);
-    void playMelody(const BuzzerNote* melody, int length);
-    
+
+    // Non-blocking melody state machine
+    const BuzzerNote* _currentMelody = nullptr;
+    int _melodyLength = 0;
+    int _noteIndex = 0;
+    unsigned long _noteStartMs = 0;
+    unsigned long _noteDurationMs = 0;
+    unsigned long _restDurationMs = 0;
+    int _lastPitch = NOTE_REST;
+
+    void startNote(int pitch, unsigned long durationMs);
+    void startMelody(const BuzzerNote* melody, int length);
+    void stopTone();
+
 public:
     Buzzer(int pin);
     void playModeSound(int mode);

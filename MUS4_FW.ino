@@ -530,18 +530,18 @@ void loop()
     if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
     {
         // In MANUAL mode the RC receiver is the active control source, so echo
-        // the last Pilot/Serial1 value as telemetry. In ASSIST/AUTO the host
-        // already sends control frames at its own rate; suppress TX telemetry
-        // to avoid duplicating traffic in the Serial1 log.
+        // the last output value as telemetry. In ASSIST/AUTO the host already
+        // sends control frames at its own rate; suppress TX telemetry to avoid
+        // duplicating traffic in the Serial1 log.
         if (car_output.mode == CAR_MODE_MANUAL)
         {
-            String telem = String("T") + pilot_data.throttle + ":S" + pilot_data.steering;
             if (shouldEmitSerial1Telemetry(otaRuntime)) {
+                String telem = String("T") + car_output.throttle + ":S" + car_output.steering;
                 Serial1.println(telem); // RC => Type-C
-            }
 #ifdef ENABLE_WIFI_CONSOLE
-            appendWebLog("serial1", telem);
+                appendWebLog("serial1", telem);
 #endif
+            }
         }
         lastRCDataUpdate = millis();
     }

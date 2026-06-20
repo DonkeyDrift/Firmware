@@ -31,7 +31,10 @@ void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)
 #endif
             String response;
             StringPrint out(response);
-            dispatchCommandLine(line, out, sb);
+            // Pilot throttle/steering packets are sent at high rate by host
+            // software and should not generate ACK replies, otherwise the host
+            // logs them as unrecognized data.
+            dispatchCommandLine(line, out, sb, /*pilotSilent=*/true);
             ser.print(response);
 #ifdef ENABLE_WIFI_CONSOLE
             appendWebLogLines(serialSourceFor(ser), response);

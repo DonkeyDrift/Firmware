@@ -74,7 +74,7 @@ void updateControlOutput()
             setLEDColor(CRGB::Blue); // set LED to Red
             car_output.throttle = pilot_data.throttle;
         }
-        car_output.steering = pilot_data.steering;
+        car_output.steering = apply_drift_assist(pilot_data.steering);
 
         #ifdef ENABLE_GAMEPAD_MODE
             sendGamepadPacket();
@@ -96,7 +96,7 @@ void updateControlOutput()
             setLEDColor(CRGB::Yellow); // set LED to blue
             car_output.throttle = map(rc_data.throttle, RC_THROTTLE_MIN, RC_THROTTLE_MAX, -100, 100);
         }
-        car_output.steering = pilot_data.steering;
+        car_output.steering = apply_drift_assist(pilot_data.steering);
     }
     else
     {
@@ -121,7 +121,7 @@ void updateControlOutput()
         } else {
             car_output.steering = map(rc_data.steering, RC_STEERING_MIN, RC_STEERING_MAX, -100, 100);
         }
-        // Drift Assist: add counter-steer compensation only in manual mode
+        // Drift Assist: add counter-steer compensation when enabled
         car_output.steering = apply_drift_assist(car_output.steering);
     }
 }

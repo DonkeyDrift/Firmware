@@ -29,7 +29,7 @@ void setCommandDispatcherRuntimeStates(OtaRuntimeState& os, WifiRuntimeState& ws
 extern bool processWifiStaConfigCommand(const String& line, Print& out);
 #endif
 
-bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb)
+bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pilotSilent)
 {
 #ifdef ENABLE_WIFI_CONSOLE
     if (g_otaState && g_wifiState && processLocalOtaMaintenanceCommand(line, out, sb, *g_otaState, *g_wifiState)) {
@@ -113,12 +113,16 @@ bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb)
         pilot_data.throttle = t;
         pilot_data.steering = s;
         lastSeq = seq;
-        if (seq >= 0) out.printf("ACK:%d\n", seq);
-        else out.println("ACK");
+        if (!pilotSilent) {
+            if (seq >= 0) out.printf("ACK:%d\n", seq);
+            else out.println("ACK");
+        }
         sb.frames++;
     } else {
-        if (seq >= 0) out.printf("NACK:%d\n", seq);
-        else out.println("NACK");
+        if (!pilotSilent) {
+            if (seq >= 0) out.printf("NACK:%d\n", seq);
+            else out.println("NACK");
+        }
         sb.errors++;
     }
     return ok;

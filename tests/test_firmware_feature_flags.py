@@ -417,8 +417,8 @@ def test_command_dispatcher_replaces_command_line_macro_after_module_split():
     dispatcher_source = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.cpp").read_text(encoding="utf-8")
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
-    assert "bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb)" in dispatcher_header
-    assert "bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb)" in dispatcher_source
+    assert "bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pilotSilent = false)" in dispatcher_header
+    assert "bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pilotSilent)" in dispatcher_source
     assert "extern ControlData pilot_data;" in dispatcher_source
     assert "struct struct_message" not in dispatcher_source
     assert "ControlData esp_now_data" in sketch_source
@@ -426,7 +426,7 @@ def test_command_dispatcher_replaces_command_line_macro_after_module_split():
     assert "ControlData pilot_data" in sketch_source
     assert "ControlData car_output" in sketch_source
     assert "struct struct_message" not in sketch_source
-    assert "dispatchCommandLine(line, out, sb);" in source
+    assert "dispatchCommandLine(line, out, sb, /*pilotSilent=*/true);" in source
     assert "dispatchCommandLine(String(sb.buf), ser, sb);" not in source
     assert "#define PROCESS_COMMAND_LINE" not in sketch_source
     assert "PROCESS_COMMAND_LINE" not in sketch_source
@@ -455,7 +455,7 @@ def test_serial_line_reader_is_split_from_sketch():
 
     assert "void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)" in reader_header
     assert "void readSerialBuf(HardwareSerial& ser, SerialBuf& sb)" in reader_source
-    assert "dispatchCommandLine(line, out, sb);" in reader_source
+    assert "dispatchCommandLine(line, out, sb, /*pilotSilent=*/true);" in reader_source
     assert "if (c == '\\r') continue;" in reader_source
     assert "if (c == '\\n')" in reader_source
     assert "sb.overflow = true;" in reader_source
@@ -676,7 +676,7 @@ def test_drift_assist_helpers_remain_available_after_module_split():
         "#define DRIFT_ASSIST_ENABLED     1",
         "void update_drift_assist_control(bool driftValid, bool driftScaleValid)",
         "int apply_drift_assist(int driver_steering)",
-        "car_output.mode != CAR_MODE_MANUAL || !drift_assist_enabled",
+        "if (!drift_assist_enabled)",
         "constrain(final_steering, -100, 100)",
     ]:
         assert symbol in source

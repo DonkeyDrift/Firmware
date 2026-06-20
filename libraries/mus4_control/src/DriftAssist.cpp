@@ -45,8 +45,8 @@ void update_drift_assist_control(bool driftValid, bool driftScaleValid)
 // 输出：叠加漂移补偿后的最终转向值（-100~100）。
 int apply_drift_assist(int driver_steering) {
 #if DRIFT_ASSIST_ENABLED
-    // 仅在手动模式且漂移辅助已启用时介入。
-    if (car_output.mode != CAR_MODE_MANUAL || !drift_assist_enabled) {
+    // 当漂移辅助已启用时介入（手动/半自动/全自动均可）。
+    if (!drift_assist_enabled) {
         drift_assist_active = false;
         drift_compensation = 0.0f;
         return driver_steering;

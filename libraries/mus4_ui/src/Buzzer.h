@@ -8,7 +8,7 @@
 #define BUZZER_PARK_UNLOCK 4
 
 #define BUZZER_VOLUME 40
-#define BUZZER_SOUND_ENABLED 0
+#define BUZZER_SOUND_ENABLED 1
 
 // 音符定义
 #define NOTE_REST 0

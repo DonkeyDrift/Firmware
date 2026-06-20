@@ -84,6 +84,11 @@
 #define PARK_LOCKED true     // Locked state
 #define PARK_UNLOCKED false  // Unlocked state
 
+// Park channel (CH3) hysteresis thresholds to avoid accidental park/unpark
+// caused by PWM noise around the midpoint.
+#define PARK_PWM_PRESS_THRESHOLD   1700  // µs: above this is considered pressed
+#define PARK_PWM_RELEASE_THRESHOLD 1300  // µs: below this is considered released
+
 #define RC_SIGNAL_TIMEOUT 1000000UL  // RC signal timeout (µs)
 #define RC_PWM_MIN 800   // Minimum valid PWM (µs)
 #define RC_PWM_MAX 2200  // Maximum valid PWM (µs)

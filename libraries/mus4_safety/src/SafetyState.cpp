@@ -21,7 +21,7 @@ unsigned long parkBtnPressStartTime = 0;
 bool parkBtnPressed = false;
 bool parkActionTaken = false;
 const unsigned long PARK_UNLOCK_HOLD_TIME = 1000; // 1s to Unlock
-const unsigned long PARK_LOCK_HOLD_TIME = 500;    // 0.5s to Lock
+const unsigned long PARK_LOCK_HOLD_TIME = 1000;   // 1s to Lock (increased to avoid accidental park)
 
 void emergencyStop()
 {
@@ -76,9 +76,19 @@ void emergencyStop()
 
 void park_change()
 {
-    // PWM > 1500 considered Pressed (Button value 2000)
-    // PWM < 1500 considered Released (Button value 1000)
-    bool isPressed = (pwm_filtered[CH_PARK] > 1500);
+    // Park channel hysteresis: use separate press/release thresholds to avoid
+    // accidental state changes caused by PWM noise around the midpoint.
+    static bool lastPressed = false;
+    uint16_t parkPwm = pwm_filtered[CH_PARK];
+    bool isPressed;
+    if (lastPressed) {
+        // Currently pressed: only release when clearly below the release threshold.
+        isPressed = (parkPwm >= PARK_PWM_RELEASE_THRESHOLD);
+    } else {
+        // Currently released: only press when clearly above the press threshold.
+        isPressed = (parkPwm > PARK_PWM_PRESS_THRESHOLD);
+    }
+    lastPressed = isPressed;
 
     if (isPressed)
     {

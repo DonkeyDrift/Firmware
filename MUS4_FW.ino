@@ -482,7 +482,14 @@ void loop()
     }
 
     // Apply similar handling to the Park, Mode, and Drift channels
-    if (!parkValid && !aux_stable_initialized[CH_PARK]) pwm_filtered[CH_PARK] = 1500;
+    if (!parkValid) {
+        // Force Park channel to a clearly released value when RC signal is lost
+        // to prevent accidental park locking from stale or last-known pressed PWM.
+        pwm_filtered[CH_PARK] = 1000;
+        aux_stable_pwm[CH_PARK] = 1000;
+        aux_candidate_pwm[CH_PARK] = 1000;
+        aux_candidate_count[CH_PARK] = 0;
+    }
     if (!driftValid && !aux_stable_initialized[CH_DRIFT]) pwm_filtered[CH_DRIFT] = 1000;
     if (!driftScaleValid && !aux_stable_initialized[CH_DRIFT_SCALE]) pwm_filtered[CH_DRIFT_SCALE] = 1500;
 

@@ -1,9 +1,9 @@
-<!-- From: C:/Dev/DDC/MUS4_FW/AGENTS.md -->
+<!-- AGENTS.md - MUS4 项目编码指南 -->
 > **Agent 阅读说明**：本文件面向 AI 编码代理。项目的主要人类文档是 `README.md`，而本文件补充构建、测试、代码风格与安全等代理需要快速掌握的约定。若本文件与源码冲突，**以源码和 `CHANGELOG.md` 为准**。
 
-# AGENTS.md - MUS4 项目编码指南
+# MUS4（LP-MU-S4）项目编码指南
 
-MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件。当前主 Sketch 为根目录 `MUS4_FW.ino`（约 560 行），固件版本 `v1.7.6`（定义于 `libraries/mus4_core/src/BuildInfo.h`），目标硬件为 MUS4-v2.4.2 PCB（兼容 v2.3）。固件负责 RC 接收机 PWM 输入采集、Pilot 上位机串口控制、多模式驾驶控制融合、Park/紧急制动状态机、I2C 传感器采集、TUI 状态显示，以及可选的 Wi-Fi 控制台、OTA 更新和 BLE 游戏手柄输出。
+MUS4 是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件。当前主 Sketch 为根目录 `MUS4_FW.ino`，固件版本 `v1.7.6`（定义于 `libraries/mus4_core/src/BuildInfo.h`），目标硬件为 MUS4-v2.4.2 PCB（兼容 v2.3）。固件负责 RC 接收机 PWM 输入采集、Pilot 上位机串口控制、多模式驾驶控制融合、Park/紧急制动状态机、I2C 传感器采集、TUI 状态显示，以及可选的 Wi-Fi 控制台、OTA 更新和 BLE 游戏手柄输出。
 
 > **重要结构变更**：自 2026-06 起，原根目录下成对的 `.h/.cpp` 业务模块已按功能域抽取为本地 Arduino 库，位于 `libraries/mus4_*/src/`。主 Sketch 仅保留全局变量装配、`setup()` / `loop()` 与 Wi-Fi 运行时状态别名。任何新增业务模块都应优先考虑以 `libraries/mus4_<domain>/` 本地库形式存在，而不是放回根目录。
 
@@ -331,7 +331,7 @@ python provisioning_system/tests/test_agent.py -v
 | 任务 | 间隔 | 频率 |
 |------|------|------|
 | 传感器读取（INA219 / MPU6050） | 2 ms | ~500 Hz |
-| RC 数据更新与 Serial1 遥测 | 2 ms | ~500 Hz |
+| RC 数据更新与 Serial1 遥测 | 16 ms | ~60 Hz |
 | RC 滑动窗口中值滤波 | 2 ms | ~500 Hz |
 | TUI 渲染 | 基准 2 ms，动态 100–500 ms | 自适应降级 |
 | 波形图刷新 | 250 ms | 4 Hz |
@@ -347,7 +347,8 @@ python provisioning_system/tests/test_agent.py -v
    - **半自动 (1)**: 转向来自 Pilot，油门来自 RC
    - **全自动 (2)**: 转向/油门均来自 Pilot
 4. **安全层**: Park 状态机（长按 CH3 锁定/解锁）、紧急制动状态机（`EST_IDLE → READY → BRAKING → DONE`）、Drift Assist 条件判断、转向信号故障安全模式、OTA 期间的强制 Park 保护。
-5. **输出层**: `ledcAttachChannel` / `ledcWriteChannel` 生成 PWM（300 Hz / 14 bit）驱动舵机（GPIO 23）与电调（GPIO 25），Serial1 回传 `Txx:Sxx\n`，WS2812B LED 显示模式颜色。
+5. **输出层**: `ledcAttachChannel` / `ledcWriteChannel` 生成 PWM（300 Hz / 14 bit）驱动舵机（GPIO 23）与电调（GPIO 25），Serial1 回传 `Txx:Sxx
+`，WS2812B LED 显示模式颜色。
 
 ### 4.3 中断约束
 

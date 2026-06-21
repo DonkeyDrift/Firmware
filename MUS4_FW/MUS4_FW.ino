@@ -17,10 +17,11 @@
 
 [Experience]
 1. Firmware upload baud rate is 115200.
-2. Serial protocol: T:S\n
-  T means Throttle
-  S means Steering
-  Ends with "\n
+2. Serial1 上行协议（对齐上位机 DonkeyCar `ArdImu` / `Arduino` part，v1.7.9 起）：
+  - MANUAL: T<t>S<s>\n          (~60Hz, 人工油门转向, 无冒号)
+  - MANUAL: M<m>:P<p>\n         (状态变化时立即发 + 1Hz 心跳)
+  - ALL:    $IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n  (~100Hz, m/s² + rad/s)
+  Serial1 下行协议（保留）：<thr>:<str>[:seq][*CRC]\n
 */
 
 #include "FirmwareConfig.h"
@@ -110,6 +111,11 @@ unsigned long lastRCFilterUpdate = 0;
 unsigned long lastUIUpdate = 0;
 unsigned long lastWaveUpdate = 0;     // Independent waveform refresh timer
 const unsigned long WAVE_UPDATE_INTERVAL = 250; // 4Hz refresh rate
+// Serial1 上行节流状态：$IMU 和 M:P 帧的发送时钟与去抖。
+unsigned long lastImuEmitMs = 0;          // 上一次 $IMU 帧发送时间
+unsigned long lastModeParkEmitMs = 0;     // 上一次 M:P 帧发送时间
+int lastEmittedMode = -1;                 // -1 表示尚未发过；强制首次发
+int lastEmittedPark = -1;                 // 同上
 bool toggleActive = false;
 CRGB toggleColor1, toggleColor2;
 unsigned long toggleTime = 0;
@@ -536,21 +542,53 @@ void loop()
 
     if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
     {
-        // In MANUAL mode the RC receiver is the active control source, so echo
-        // the last output value as telemetry. In ASSIST/AUTO the host already
-        // sends control frames at its own rate; suppress TX telemetry to avoid
-        // duplicating traffic in the Serial1 log.
+        // 仅 MANUAL 模式下推送 T<t>S<s> 与 M<m>:P<p>。
+        // 在 ASSIST/AUTO 下 host 已在主动下发 <thr>:<str>，再回显会污染上位机日志，
+        // 也会被 Pilot 当成噪声丢弃，因此抑制；$IMU 仍在所有模式持续发送。
         if (car_output.mode == CAR_MODE_MANUAL)
         {
             if (shouldEmitSerial1Telemetry(otaRuntime)) {
-                String telem = String("T") + car_output.throttle + ":S" + car_output.steering;
-                Serial1.println(telem); // RC => Type-C
+                String telem = String("T") + car_output.throttle + "S" + car_output.steering + "\n";
+                Serial1.print(telem); // RC => Type-C
 #ifdef ENABLE_WIFI_CONSOLE
                 appendWebLog("serial1", telem);
 #endif
+
+                // M<m>:P<p>：模式或 Park 状态变化时立即发，否则 1Hz 心跳。
+                bool modeChanged = (car_output.mode != lastEmittedMode);
+                bool parkChanged = ((int)car_output.park != lastEmittedPark);
+                bool heartbeatDue = (millis() - lastModeParkEmitMs) >= MODE_PARK_HEARTBEAT_MS;
+                if (modeChanged || parkChanged || heartbeatDue) {
+                    String mp = String("M") + car_output.mode + ":P" + ((int)car_output.park) + "\n";
+                    Serial1.print(mp);
+#ifdef ENABLE_WIFI_CONSOLE
+                    appendWebLog("serial1", mp);
+#endif
+                    lastEmittedMode = car_output.mode;
+                    lastEmittedPark = (int)car_output.park;
+                    lastModeParkEmitMs = millis();
+                }
             }
         }
         lastRCDataUpdate = millis();
+    }
+
+    // $IMU 上行：~100Hz，所有模式都发，仅在 MPU 在线且 OTA 未传输时推送。
+    // 上位机 `donkeycar/parts/actuator.py::ArdImu` 按 `$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz`
+    // 解析，seq 16-bit 自然回绕仅用于丢帧检测，无校验。
+    if (millis() - lastImuEmitMs >= IMU_TELEMETRY_INTERVAL_MS) {
+        if (mpu6050Data.valid && shouldEmitSerial1Telemetry(otaRuntime)) {
+            static uint16_t imuSeq = 0;
+            String imuLine = String("$IMU,") + imuSeq + "," + millis() + ","
+                + String(mpu6050Data.accelX, 4) + "," + String(mpu6050Data.accelY, 4) + "," + String(mpu6050Data.accelZ, 4) + ","
+                + String(mpu6050Data.gyroX, 4) + "," + String(mpu6050Data.gyroY, 4) + "," + String(mpu6050Data.gyroZ, 4) + "\n";
+            Serial1.print(imuLine);
+#ifdef ENABLE_WIFI_CONSOLE
+            appendWebLog("serial1", imuLine);
+#endif
+            imuSeq++; // uint16_t 自然回绕
+        }
+        lastImuEmitMs = millis();
     }
 
 #ifdef DEBUG // Print the values for debugging

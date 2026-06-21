@@ -347,8 +347,7 @@ python provisioning_system/tests/test_agent.py -v
    - **半自动 (1)**: 转向来自 Pilot，油门来自 RC
    - **全自动 (2)**: 转向/油门均来自 Pilot
 4. **安全层**: Park 状态机（长按 CH3 锁定/解锁）、紧急制动状态机（`EST_IDLE → READY → BRAKING → DONE`）、Drift Assist 条件判断、转向信号故障安全模式、OTA 期间的强制 Park 保护。
-5. **输出层**: `ledcAttachChannel` / `ledcWriteChannel` 生成 PWM（300 Hz / 14 bit）驱动舵机（GPIO 23）与电调（GPIO 25），Serial1 回传 `Txx:Sxx
-`，WS2812B LED 显示模式颜色。
+5. **输出层**: `ledcAttachChannel` / `ledcWriteChannel` 生成 PWM（300 Hz / 14 bit）驱动舵机（GPIO 23）与电调（GPIO 25），Serial1 上行 `T<t>S<s>` / `M<m>:P<p>` / `$IMU,...`（详见 §6.3），WS2812B LED 显示模式颜色。
 
 ### 4.3 中断约束
 
@@ -406,13 +405,15 @@ Throttle:Steering*XX\n      # XX = 两位十六进制校验和
 - 成功：`ACK` 或 `ACK:Seq`
 - 失败：`NACK` 或 `NACK:Seq`
 
-### 6.3 Serial1 状态回传
+### 6.3 Serial1 上行（v1.7.13+，对齐上位机 DonkeyCar `ArdImu` / `Arduino` part）
 
 ```text
-Txx:Sxx\n
+T<t>S<s>\n                                # MANUAL 模式，~60Hz，无冒号
+M<m>:P<p>\n                               # MANUAL 模式，状态变化时立即发 + 1Hz 心跳
+$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n        # 所有模式，~100Hz，m/s² + rad/s
 ```
 
-OTA 窗口打开或 OTA 传输进行时会暂停 Serial1 遥测。
+仅在 OTA 真正传输期间暂停三类上行帧；ASSIST/AUTO 模式抑制 `T..S..` 与 `M:P`，`$IMU` 不受模式影响。
 
 ---
 

@@ -136,13 +136,13 @@ def test_websocket_curve_data_feature_is_enabled_and_streams_logs():
     assert r'\"type\":\"log\"' in web_telemetry
 
 
-def test_firmware_version_is_v1_7_12_and_changelog_is_current():
+def test_firmware_version_is_v1_7_13_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.12"' in build_info
-    assert "## 2026-06-21 v1.7.12" in changelog
-    assert changelog.index("## 2026-06-21 v1.7.12") < changelog.index("## 2026-06-21 v1.7.11")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.13"' in build_info
+    assert "## 2026-06-21 v1.7.13" in changelog
+    assert changelog.index("## 2026-06-21 v1.7.13") < changelog.index("## 2026-06-21 v1.7.12")
 
 
 def test_web_console_serial_log_display_is_limited_to_20_lines():
@@ -478,7 +478,7 @@ def test_serial1_telemetry_has_dedicated_web_log_buffer():
     # web console when the hardware telemetry line is also emitted.
     assert "appendWebLog(\"serial1\", telem)" in sketch_source
     assert "if (shouldEmitSerial1Telemetry(otaRuntime)) {" in sketch_source
-    assert "Serial1.println(telem);" in sketch_source
+    assert "Serial1.print(telem);" in sketch_source
     assert "if (car_output.mode == CAR_MODE_MANUAL)" in sketch_source
 
     # Dedicated compact buffer for high-rate Serial1 telemetry.
@@ -492,6 +492,57 @@ def test_serial1_telemetry_has_dedicated_web_log_buffer():
     assert "(uint32_t seq, unsigned long t, const char* source, const char* line)" in web_log_header
     assert "void webLogBufferSetSocketSink(WebLogSocketSink sink)" in web_log_header
     assert "webLogBufferSetSocketSink" in web_log_source
+
+
+def test_serial1_uplink_matches_host_pilot_protocol():
+    """v1.7.9 起 Serial1 上行协议对齐上位机 DonkeyCar `ArdImu` / `Arduino` part：
+
+    - MANUAL 模式以 `T<t>S<s>\n` 推送人工油门转向（去掉历史 `:` 分隔符）。
+    - MANUAL 模式以 `M<m>:P<p>\n` 推送模式 + Park，状态变化时立即发 + 1 Hz 心跳。
+    - 所有模式以 `$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n` 推送 MPU6050 6 轴，
+      seq 用 `uint16_t` 自然回绕；MPU 未在线时静默不发。
+    - 三类上行帧都受 `shouldEmitSerial1Telemetry(otaRuntime)` 闸门保护。
+    """
+
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    config_source = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h").read_text(encoding="utf-8")
+
+    # 无冒号 T..S.. 字面量，旧的 ":S" 拼装必须消失。
+    assert 'String("T") + car_output.throttle + "S" + car_output.steering' in sketch_source
+    assert 'String("T") + car_output.throttle + ":S" + car_output.steering' not in sketch_source
+
+    # M:P 触发条件：维护 last 状态 + 心跳节流。
+    assert "lastEmittedMode" in sketch_source
+    assert "lastEmittedPark" in sketch_source
+    assert "lastModeParkEmitMs" in sketch_source
+    assert "MODE_PARK_HEARTBEAT_MS" in sketch_source
+    # 状态变化或 1Hz 心跳到期才会触发；保证两条件二选一。
+    assert re.search(
+        r"car_output\.mode\s*!=\s*lastEmittedMode|car_output\.park\s*!=\s*lastEmittedPark",
+        sketch_source,
+    )
+
+    # $IMU 帧组装：固定前缀 + seq + ts_ms + 6 轴。
+    assert '"$IMU,"' in sketch_source
+    assert "static uint16_t imuSeq" in sketch_source
+    assert "lastImuEmitMs" in sketch_source
+    assert "IMU_TELEMETRY_INTERVAL_MS" in sketch_source
+    # MPU 未在线时静默：必须显式判 valid。
+    assert "mpu6050Data.valid" in sketch_source
+
+    # 节奏常量。
+    assert re.search(r"^#define\s+IMU_TELEMETRY_INTERVAL_MS\s+10\b", config_source, re.MULTILINE)
+    assert re.search(r"^#define\s+MODE_PARK_HEARTBEAT_MS\s+1000\b", config_source, re.MULTILINE)
+
+
+def test_wireless_console_policy_mirrors_serial1_uplink_format():
+    """桌面侧 `wireless_console_policy.py` 必须提供与固件一一对应的格式化函数，
+    供 Tub 录制回放、上位机解析单测、桌面仿真使用。"""
+
+    policy_source = (PROJECT_ROOT / "wireless_console_policy.py").read_text(encoding="utf-8")
+    assert "def format_serial1_manual_frame(" in policy_source
+    assert "def format_serial1_mode_park_frame(" in policy_source
+    assert "def format_imu_telemetry_line(" in policy_source
 
 
 def test_web_console_serial_targets_are_disabled():

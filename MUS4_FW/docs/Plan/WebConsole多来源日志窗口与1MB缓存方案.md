@@ -110,10 +110,10 @@ Serial.println(line);
 
 1. `SerialLineReader.cpp` 中收到的 `Serial1` 完整行追加 `src = "serial1"`。
 2. `Serial1` 命令响应同样用 `StringPrint` 收集后追加 `src = "serial1"`。
-3. `MUS4_FW.ino` 中的周期性遥测 `Serial1.printf("T%d:S%d\n", ...)` 同步追加：
+3. `MUS4_FW.ino` 中的周期性 Serial1 上行帧同步追加（v1.7.13 起 `T..S..` 已去冒号、并新增 `M:P` / `$IMU`，详见 CHANGELOG）：
    ```cpp
-   String telem = String("T") + car_output.throttle + ":S" + car_output.steering;
-   Serial1.println(telem);
+   String telem = String("T") + car_output.throttle + "S" + car_output.steering + "\n";
+   Serial1.print(telem);
    appendWebLog("serial1", telem);
    ```
 4. `handleWifiWebCommand()` 中 `target == "serial1"` 时追加 `src = "serial1"`。

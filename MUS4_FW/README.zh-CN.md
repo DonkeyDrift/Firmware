@@ -73,13 +73,15 @@ ACK:Seq
 NACK:Seq
 ```
 
-Serial1 遥测：
+Serial1 上行遥测（对接上位机 DonkeyCar `ArdImu` / `Arduino` part，v1.7.13 起）：
 
 ```text
-Txx:Sxx\n
+T<t>S<s>\n                                # 仅 MANUAL，~60Hz，无冒号
+M<m>:P<p>\n                               # 仅 MANUAL，状态变化时立即发 + 1Hz 心跳
+$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n        # 所有模式，~100Hz，m/s² + rad/s
 ```
 
-OTA 窗口打开或 OTA 传输中会暂停 Serial1 遥测。
+仅在 OTA 真正传输期间暂停 Serial1 上行。
 
 ## 快速开始
 

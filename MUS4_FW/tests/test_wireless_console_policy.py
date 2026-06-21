@@ -408,6 +408,56 @@ class TestWirelessConsolePolicy(unittest.TestCase):
     def test_select_log_target_serial_when_configured(self):
         self.assertEqual(POLICY.select_log_target("serial", wifi_console_enabled=True), "serial")
 
+    # --- Serial1 上行协议镜像（与 ESP32 固件一对一）---
+    # 上位机（DonkeyCar `actuator.py::Arduino` / `ArdImu`）按下表解析 Serial1 上行帧。
+    # 这些纯格式函数让桌面侧测试 / 仿真 / 录制重放 不必启动固件即可拼出相同字节流。
+
+    def test_format_serial1_manual_frame_uses_no_colon(self):
+        # 上位机文档明确写 `T<t>S<s>`，与历史固件里的 `T<t>:S<s>` 不兼容；
+        # 镜像层强制无冒号，避免桌面回放污染下行解析。
+        self.assertEqual(POLICY.format_serial1_manual_frame(100, -50), "T100S-50\n")
+        self.assertEqual(POLICY.format_serial1_manual_frame(0, 0), "T0S0\n")
+
+    def test_format_serial1_manual_frame_rejects_out_of_range(self):
+        with self.assertRaises(ValueError):
+            POLICY.format_serial1_manual_frame(101, 0)
+        with self.assertRaises(ValueError):
+            POLICY.format_serial1_manual_frame(0, -101)
+
+    def test_format_serial1_mode_park_frame(self):
+        # m=0/1/2 对应 MANUAL/SEMI_AUTO/FULL_AUTO，p=0/1 对应 PARK_UNLOCKED/LOCKED。
+        self.assertEqual(POLICY.format_serial1_mode_park_frame(0, 1), "M0:P1\n")
+        self.assertEqual(POLICY.format_serial1_mode_park_frame(2, 0), "M2:P0\n")
+
+    def test_format_serial1_mode_park_frame_rejects_invalid_values(self):
+        with self.assertRaises(ValueError):
+            POLICY.format_serial1_mode_park_frame(3, 0)
+        with self.assertRaises(ValueError):
+            POLICY.format_serial1_mode_park_frame(0, 2)
+
+    def test_format_imu_telemetry_line_round_trip(self):
+        # 协议表写明 `$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz`，无校验，seq 仅丢帧检测。
+        line = POLICY.format_imu_telemetry_line(
+            seq=42,
+            ts_ms=123456,
+            ax=0.1, ay=-0.2, az=9.81,
+            gx=0.0, gy=0.0123, gz=-0.0456,
+        )
+        self.assertTrue(line.startswith("$IMU,42,123456,"))
+        self.assertTrue(line.endswith("\n"))
+        # 字段数 = 6 数值 + 帧头 + seq + ts = 9 段，逗号分隔。
+        body = line.rstrip("\n")
+        self.assertEqual(body.count(","), 8)
+
+    def test_format_imu_telemetry_line_wraps_seq_to_uint16(self):
+        # ESP32 端 seq 用 uint16_t 自然回绕；镜像层在 65536 处回 0，保持解析一致。
+        self.assertIn(",0,", POLICY.format_imu_telemetry_line(
+            seq=65536, ts_ms=0, ax=0, ay=0, az=0, gx=0, gy=0, gz=0,
+        ))
+        self.assertIn(",1,", POLICY.format_imu_telemetry_line(
+            seq=65537, ts_ms=0, ax=0, ay=0, az=0, gx=0, gy=0, gz=0,
+        ))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -219,7 +219,7 @@ Python 测试集中在 `tests/`：
 2. USB `Serial`、`Serial1`、TCP Console 与 Web Console 接收命令，解析 `Throttle:Steering`、序列号与校验和格式——解析与无线权限分发仍在 `MUS4_FW.ino` 中。
 3. 控制逻辑按模式融合 RC 与 Pilot 数据，更新 `car_output`，Drift Assist 可在条件满足时叠加转向补偿——实现位于 `libraries/mus4_control/src/ControlMixer.*`。
 4. Park/紧急制动状态机可覆盖油门输出并控制 LED 闪烁；OTA 窗口或 OTA 传输期间会暂停 Serial1 遥测——实现位于 `libraries/mus4_safety/src/SafetyState.*`。
-5. 输出层通过 ESP32 `ledc` 产生 PWM，驱动转向舵机与油门电调，并通过 Serial1 回传 `Txx:Sxx`——PWM 映射、限幅、`ledcWriteChannel` 调用位于 `libraries/mus4_safety/src/ActuatorOutput.*`。
+5. 输出层通过 ESP32 `ledc` 产生 PWM，驱动转向舵机与油门电调，并通过 Serial1 上行 `T<t>S<s>` / `M<m>:P<p>` / `$IMU,...`（详见下文"串口协议"）——PWM 映射、限幅、`ledcWriteChannel` 调用位于 `libraries/mus4_safety/src/ActuatorOutput.*`。
 6. TUI、I2C 传感器、Web 数据曲线/日志缓冲、WebSocket 遥测和 BLE Gamepad 作为旁路功能读取状态并输出显示或手柄轴数据——TUI/Buzzer 位于 `libraries/mus4_ui/src/`。
 
 ### 核心模块
@@ -271,7 +271,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 ### 串口协议
 
-输入：
+下行（上位机 → ESP32，Serial1 / USB / Web / TCP Console 通用）：
 - `Throttle:Steering\n`
 - `Throttle:Steering:Seq\n`
 - `Throttle:Steering*XX\n`，其中 `XX` 为两位十六进制校验和。
@@ -279,9 +279,15 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 响应：
 - `ACK` / `NACK`
 - 带序列号时返回 `ACK:Seq` / `NACK:Seq`
+- Pilot 高频下发的 `Throttle:Steering` 在 Serial / Serial1 上 `pilotSilent=true`，不回 ACK，避免上位机日志噪声。
 
-状态回传：
-- Serial1 输出 `Txx:Sxx\n`；OTA 窗口打开或 OTA 进行中时暂停。
+Serial1 上行（ESP32 → 上位机 DonkeyCar `actuator.py::Arduino` / `ArdImu` part，v1.7.13 起对齐）：
+- `T<thr>S<str>\n`：MANUAL 模式人工油门转向，`RC_DATA_UPDATE_INTERVAL=16ms`（~60Hz）。**无冒号**，与历史 `Txx:Sxx` 不兼容。
+- `M<m>:P<p>\n`：MANUAL 模式模式 + Park，m∈{0,1,2}（MANUAL/SEMI/FULL），p∈{0,1}（UNLOCKED/LOCKED）；状态变化时立即发，否则 `MODE_PARK_HEARTBEAT_MS=1000ms` 心跳。
+- `$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n`：MPU6050 6 轴，**所有模式**都发，`IMU_TELEMETRY_INTERVAL_MS=10ms`（~100Hz）。加速度 m/s²、角速度 rad/s（`Adafruit_MPU6050` 直接产出），seq 用 `uint16_t` 自然回绕仅作丢帧检测，无校验；MPU6050 未在线时静默不发。
+- ASSIST/AUTO 模式抑制 `T..S..` 与 `M:P`（host 主动下发，回显会污染日志）；`$IMU` 不受模式影响。
+- OTA 真正传输期间（`otaRuntime.inProgress`）三类上行帧全部暂停，由 `shouldEmitSerial1Telemetry(otaRuntime)` 闸门控制；OTA 结束自动恢复。Park Guard 仍由 `forceWifiOtaParkLocked()` 托底。
+- 桌面侧仿真 / 回放 / 单元测试可调用 `wireless_console_policy.format_serial1_manual_frame` / `format_serial1_mode_park_frame` / `format_imu_telemetry_line` 拼出与固件一致的字节流。
 
 ### 当前 v2.4.2 / v2.3 引脚
 

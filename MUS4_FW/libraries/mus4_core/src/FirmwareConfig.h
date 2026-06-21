@@ -122,7 +122,9 @@
 
 // Output control parameters
 #define SENSOR_UPDATE_INTERVAL 2     // Sensor data update interval (ms) - ~500Hz
-#define RC_DATA_UPDATE_INTERVAL 16   // Serial1 telemetry update interval (ms) - ~60Hz
+#define RC_DATA_UPDATE_INTERVAL 16   // MANUAL 模式下 T<t>S<s> 帧节奏 (ms) - ~60Hz
+#define IMU_TELEMETRY_INTERVAL_MS 10 // Serial1 $IMU 帧节奏 (ms) - ~100Hz，对齐上位机 GRU W=16 ring buffer
+#define MODE_PARK_HEARTBEAT_MS 1000  // Serial1 M<m>:P<p> 心跳 (ms) - 1Hz，状态变化时立即发
 #define RC_FILTER_UPDATE_INTERVAL 2   // RC filter update interval (ms) - ~500Hz, balances response and stability
 #define UI_UPDATE_INTERVAL 2         // UI update interval (ms) - smooth 500Hz experience
 

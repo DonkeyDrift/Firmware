@@ -179,6 +179,50 @@ def should_emit_serial1_telemetry(ota_window_open, ota_in_progress):
     return not ota_in_progress
 
 
+# --- Serial1 上行协议格式化（镜像 ESP32 固件 v1.7.9）---
+# 上位机 DonkeyCar `donkeycar/parts/actuator.py::Arduino` / `ArdImu` 按下列字面量解析。
+# 桌面侧仿真 / Tub 录制回放 / 单元测试可以直接拼出与固件一致的字节流。
+
+def format_serial1_manual_frame(throttle, steering):
+    """MANUAL 模式下人工油门转向帧：`T<t>S<s>\\n`，无冒号。
+
+    取值范围与固件 ACK/NACK 范围一致（[-100, 100]）。
+    """
+    if not isinstance(throttle, int) or not isinstance(steering, int):
+        raise TypeError("throttle/steering 必须是整数")
+    if throttle < -100 or throttle > 100 or steering < -100 or steering > 100:
+        raise ValueError(f"超出范围：throttle={throttle} steering={steering}")
+    return f"T{throttle}S{steering}\n"
+
+
+def format_serial1_mode_park_frame(mode, park):
+    """模式+Park 帧：`M<m>:P<p>\\n`，状态变化时立即发 + 1 Hz 心跳。
+
+    m ∈ {0,1,2} 对应 MANUAL/SEMI_AUTO/FULL_AUTO；p ∈ {0,1} 对应 UNLOCKED/LOCKED。
+    """
+    if mode not in (0, 1, 2):
+        raise ValueError(f"mode 必须是 0/1/2：{mode}")
+    if park not in (0, 1):
+        raise ValueError(f"park 必须是 0/1：{park}")
+    return f"M{mode}:P{park}\n"
+
+
+def format_imu_telemetry_line(*, seq, ts_ms, ax, ay, az, gx, gy, gz):
+    """IMU 上行帧：`$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\\n`。
+
+    - 单位：加速度 m/s²，角速度 rad/s（与 Adafruit_MPU6050 输出一致）。
+    - seq 用 uint16_t 自然回绕（0..65535）。
+    - 浮点字段保留 4 位小数，与现有 Tub JSON 精度一致。
+    - 无校验位：上位机仅靠 seq 单调检测丢帧。
+    """
+    seq_u16 = int(seq) & 0xFFFF
+    return (
+        f"$IMU,{seq_u16},{int(ts_ms)},"
+        f"{float(ax):.4f},{float(ay):.4f},{float(az):.4f},"
+        f"{float(gx):.4f},{float(gy):.4f},{float(gz):.4f}\n"
+    )
+
+
 def should_force_park_for_ota(park_guard_active, ota_in_progress, *, dev_mode=False):
     return park_guard_active or ota_in_progress
 

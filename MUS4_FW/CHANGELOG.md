@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-06-21 v1.7.13
+
+- 固件版本号从 `v1.7.12` 更新到 `v1.7.13`。
+- feat(Serial1 协议): 对齐上位机 DonkeyCar 真车 101 的 `ArdImu` / `Arduino` part 与 GRU drift pilot 推理链路：
+  - **MANUAL 上行人工油门/转向帧**：`T<t>:S<s>\n` → `T<t>S<s>\n`（去掉历史冒号分隔符），匹配上位机 `Arduino` part 的正则解析。
+  - **MANUAL 上行新增 `M<m>:P<p>\n`**：m∈{0,1,2}（MANUAL/SEMI/FULL），p∈{0,1}（UNLOCKED/LOCKED），状态变化时立即发，否则 1Hz 心跳；新增 `MODE_PARK_HEARTBEAT_MS=1000`。
+  - **所有模式上行新增 `$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n`**：MPU6050 6 轴 m/s²+rad/s（由 `Adafruit_MPU6050` 直接产出，无 ESP32 端二次换算），seq 用 `uint16_t` 自然回绕仅作丢帧检测，无校验；新增 `IMU_TELEMETRY_INTERVAL_MS=10`（~100Hz）；MPU 不在线（`mpu6050Data.valid==false`）时静默不发。
+  - **OTA 闸门复用 `shouldEmitSerial1Telemetry(otaRuntime)`**：三类上行帧在 OTA 真正传输期间一并暂停，避免与 OTA 抢占 UART；OTA 结束自动恢复。下行 `<thr>:<str>[:seq][*CRC]` 解析不变。
+- 同步更新 `wireless_console_policy.py` 新增 `format_serial1_manual_frame` / `format_serial1_mode_park_frame` / `format_imu_telemetry_line` 三个镜像格式化函数（桌面侧 Tub 回放、单元测试无需启动固件即可拼出与 ESP32 一致的字节流）。
+- 同步更新 `tests/test_firmware_feature_flags.py::test_serial1_telemetry_has_dedicated_web_log_buffer`、新增 `test_serial1_uplink_matches_host_pilot_protocol` 与 `test_wireless_console_policy_mirrors_serial1_uplink_format`；`tests/test_wireless_console_policy.py` 新增 6 项镜像格式化测试；190 项 pytest 全绿。
+
 ## 2026-06-21 v1.7.12
 
 - 固件版本号从 `v1.7.11` 更新到 `v1.7.12`。

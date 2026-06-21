@@ -73,13 +73,15 @@ ACK:Seq
 NACK:Seq
 ```
 
-Serial1 telemetry:
+Serial1 telemetry (uplink to host DonkeyCar `ArdImu` / `Arduino` part, v1.7.13+):
 
 ```text
-Txx:Sxx\n
+T<t>S<s>\n                                # MANUAL only, ~60Hz, no colon
+M<m>:P<p>\n                               # MANUAL only, on state change + 1Hz heartbeat
+$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n        # All modes, ~100Hz, m/s² + rad/s
 ```
 
-Serial1 telemetry is paused while the OTA window is open or an OTA transfer is in progress.
+Serial1 uplink is paused only while an OTA transfer is in progress.
 
 ## Quick Start
 

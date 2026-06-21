@@ -502,7 +502,10 @@ def test_web_console_serial_targets_are_disabled():
     assert "Serial.println(line);" not in server_source
     assert "Serial1.println(line);" not in server_source
     assert 'target.equalsIgnoreCase("serial")' in server_source
-    assert 'NACK:" + target.toUpperCase() + "_DISABLED"' in server_source
+    # ESP32 Arduino core 3.x 起 String::toUpperCase() 返回 void（in-place），
+    # 不能直接拼到字符串表达式里；必须先在临时变量上转换再拼接。
+    assert "targetUpper.toUpperCase();" in server_source
+    assert 'String("NACK:") + targetUpper + "_DISABLED"' in server_source
 
 
 def test_wifi_console_types_are_split_from_sketch():

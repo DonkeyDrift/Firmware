@@ -240,8 +240,13 @@ static void handleWifiWebCommand()
     StringPrint out(response);
     if (target.equalsIgnoreCase("serial") || target.equalsIgnoreCase("serial1")) {
         appendWebLog("web", String("> [") + target + " disabled] " + redactWirelessConsoleLine(line));
-        out.println("NACK:" + target.toUpperCase() + "_DISABLED");
-        appendWebLog("web", "NACK:" + target.toUpperCase() + "_DISABLED");
+        // String::toUpperCase() 在 ESP32 Arduino core 3.x 返回 void（in-place 修改），
+        // 不能直接出现在 "NACK:" + target.toUpperCase() 这样的拼接表达式里。
+        String targetUpper = target;
+        targetUpper.toUpperCase();
+        String nack = String("NACK:") + targetUpper + "_DISABLED";
+        out.println(nack);
+        appendWebLog("web", nack);
     } else {
         appendWebLog("web", String("> ") + redactWirelessConsoleLine(line));
         processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_WEB);

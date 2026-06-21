@@ -136,13 +136,13 @@ def test_websocket_curve_data_feature_is_enabled_and_streams_logs():
     assert r'\"type\":\"log\"' in web_telemetry
 
 
-def test_firmware_version_is_v1_7_6_and_changelog_is_current():
+def test_firmware_version_is_v1_7_8_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.6"' in build_info
-    assert "## 2026-06-12 v1.7.6" in changelog
-    assert changelog.index("## 2026-06-12 v1.7.6") < changelog.index("## 2026-06-11 v1.7.4")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.8"' in build_info
+    assert "## 2026-06-21 v1.7.8" in changelog
+    assert changelog.index("## 2026-06-21 v1.7.8") < changelog.index("## 2026-06-21 v1.7.7")
 
 
 def test_web_console_serial_log_display_is_limited_to_20_lines():
@@ -989,7 +989,8 @@ def test_wifi_ota_status_helpers_are_split_from_sketch():
     assert "ensureWifiOtaStarted()" in ota_source
     assert "os.windowOpen = true" in ota_source
     assert "os.deadlineMs = millis() + WIFI_OTA_WINDOW_MS" in ota_source
-    assert "return !os.windowOpen && !os.inProgress" in ota_source
+    # v1.7.8 起：仅在 OTA 真正传输期间暂停 Serial1，避免 DEV ON 时窗口长期打开阻塞通信。
+    assert "return !os.inProgress;" in ota_source
     assert "line.substring(11).equals(WIFI_CONSOLE_AP_PASSWORD)" in ota_source
     assert "out.println(\"NACK:AUTH_REQUIRED\")" in ota_source
     assert "sb.errors++" in ota_source
@@ -1032,7 +1033,8 @@ def test_wireless_ota_and_control_safety_guards_remain_present():
     assert "t < -100 || t > 100 || s < -100 || s > 100" in source
     assert "isWirelessOtaOpenCommand(line)" in source
     assert "car_output.park == PARK_LOCKED" in source
-    assert "return !os.windowOpen && !os.inProgress" in source
+    # v1.7.8 起：Serial1 暂停语义仅看 inProgress（见 WifiOta.cpp::shouldEmitSerial1Telemetry）
+    assert "return !os.inProgress;" in source
     assert "forceWifiOtaParkLocked" in source
     assert "AUTH:<redacted>" in source
     assert "WIFI_STA_PASSWORD:<redacted>" in source
@@ -1190,7 +1192,10 @@ def test_wifi_ap_ssid_prefix_is_limited_to_six_chars_with_dev_mode_suffix():
     assert "buildWifiDevApSsid" in manager_source
     assert "wifiStaSsidShortUpper" in manager_source
     assert "wifiStaIpTailText" in manager_source
-    assert "!wifiDevModeEnabled || !wifiStaConnected" in manager_source
+    # v1.7.8 起：AP SSID 派生只看 STA 是否已连接，不再读 wifiDevModeEnabled，
+    # 避免切换 DEV 状态时引起 AP 重启与广播 SSID 跳变。
+    assert "if (!wifiStaConnected) return String(wifiApSsid);" in manager_source
+    assert "!wifiDevModeEnabled || !wifiStaConnected" not in manager_source
     assert 'maxlength="6"' in assets_source
     assert '/^([A-Za-z0-9]{1,6})$/' in assets_source
     assert "长度为 1-6 位" in assets_source
@@ -1585,9 +1590,10 @@ def test_web_console_keeps_ap_running_after_successful_wifi_sta_connection():
     assert "scheduleWifiApStopAfterStaConnected" not in connected_branch
     assert "WiFi.softAP(" not in connected_branch
     assert "restartWifiAp()" not in connected_branch
-    # Dev mode may schedule an AP restart to reflect STA info in the AP SSID.
+    # v1.7.8 起：STA 连接成功仍可能触发 AP 重启（让 AP SSID 反映 STA 信息），
+    # 但不再读 wifiDevModeEnabled——派生 SSID 仅看 STA 是否已连接。
     if "scheduleWifiApRestart()" in connected_branch:
-        assert "wifiDevModeEnabled" in connected_branch
+        assert "wifiDevModeEnabled" not in connected_branch
         assert "getActiveWifiApSsid()" in connected_branch
 
 

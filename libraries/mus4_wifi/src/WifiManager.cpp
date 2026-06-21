@@ -214,7 +214,8 @@ bool saveDevModePreference(bool enabled)
         closeWifiOtaWindow("DEV_MODE_OFF", otaRuntime);
     }
     mus4Logf("wifi", "dev_mode saved=%d", wifiDevModeEnabled ? 1 : 0);
-    scheduleWifiApRestart();
+    // v1.7.8 起：切换 DEV 不再触发 AP 重启——AP SSID 派生只看 STA 连接状态，
+    // 与 DEV 状态无关，避免切换 DEV 时丢一次 AP/Web Console 连接。
     return true;
 }
 
@@ -378,7 +379,10 @@ static String buildWifiDevApSsid(const String& baseSsid)
 
 String getActiveWifiApSsid()
 {
-    if (!wifiDevModeEnabled || !wifiStaConnected) return String(wifiApSsid);
+    // v1.7.8 起：AP 广播 SSID 派生只看 STA 是否已连接，不再读 wifiDevModeEnabled。
+    // STA 已连接 → 广播 "<前缀>-ESP-<STA 短码>-<STA IP 尾两段>"，便于扫描时识别；
+    // STA 未连接 → 回退到基础 SSID。详见 docs/Plan/DEV模式影响面与运行逻辑映射.md §4。
+    if (!wifiStaConnected) return String(wifiApSsid);
     return buildWifiDevApSsid(wifiApSsid);
 }
 
@@ -542,10 +546,12 @@ void updateWifiSta()
             wifiWebServer.begin();
             mus4LogLine("wifi", "WebServer re-bound for STA");
             mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
-            if (wifiDevModeEnabled) {
+            // v1.7.8 起：STA 一旦连接，AP SSID 即派生为 "<前缀>-ESP-<短码>-<尾段>"，
+            // 与 DEV 无关。若派生 SSID 与当前广播 SSID 不一致则排队一次 AP 重启。
+            {
                 String targetSsid = getActiveWifiApSsid();
                 if (!targetSsid.equals(WiFi.softAPSSID())) {
-                    mus4Logf("wifi", "dev AP SSID update: %s", targetSsid.c_str());
+                    mus4Logf("wifi", "AP SSID update: %s", targetSsid.c_str());
                     scheduleWifiApRestart();
                 }
             }

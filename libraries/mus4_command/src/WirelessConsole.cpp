@@ -133,14 +133,19 @@ bool isParkLockedWirelessCommand(const String& line)
 
 bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, WifiRuntimeState& ws)
 {
+    // DEV ON 仅对 Web 来源放权 "OTA + Web 配置 + 显示/日志切换 + WIFI_STA_*"；
+    // 控制命令与 Park 锁定诊断命令始终要求认证。详见
+    // docs/Plan/DEV模式影响面与运行逻辑映射.md §3。
     bool webDevMode = ws.devModeEnabled && origin == WIRELESS_ORIGIN_WEB;
     if (line.equalsIgnoreCase("PING") || line.equalsIgnoreCase("STATUS") || line.equalsIgnoreCase("WIFI_STA_STATUS")) return true;
     if (line.startsWith("AUTH:")) return true;
     if (isWirelessOtaOpenCommand(line)) return (webDevMode || ws.consoleAuthenticated) && car_output.park == PARK_LOCKED;
     if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || ws.consoleAuthenticated;
-    if (!ws.consoleAuthenticated && !webDevMode) return false;
+    // DEV ON 显式白名单：显示/日志切换、Wi-Fi STA 配置类命令。
+    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || isWifiStaConfigCommand(line)) return ws.consoleAuthenticated || webDevMode;
+    // 其余命令（控制 / 诊断）严格要求认证，不读 webDevMode。
+    if (!ws.consoleAuthenticated) return false;
     if (isParkLockedWirelessCommand(line)) return car_output.park == PARK_LOCKED;
-    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || isWifiStaConfigCommand(line)) return true;
     return isWirelessControlCommand(line);
 }
 
@@ -160,8 +165,9 @@ void processWirelessConsoleLine(const String& line, Print& out, WirelessCommandO
         return;
     }
     if (!isWirelessCommandAllowed(line, origin, wifiRuntime)) {
-        bool webDevMode = wifiRuntime.devModeEnabled && origin == WIRELESS_ORIGIN_WEB;
-        if (isParkLockedWirelessCommand(line) && car_output.park != PARK_LOCKED && (wifiRuntime.consoleAuthenticated || webDevMode)) {
+        // NACK 错误码分流：只有已认证用户在 Park 未锁定时收到 PARK_REQUIRED；
+        // 未认证用户（即使 DEV ON）一律 UNAUTHORIZED，避免暗示"锁 Park 就能用"。
+        if (isParkLockedWirelessCommand(line) && car_output.park != PARK_LOCKED && wifiRuntime.consoleAuthenticated) {
             out.println("NACK:PARK_REQUIRED");
         } else {
             out.println("NACK:UNAUTHORIZED");

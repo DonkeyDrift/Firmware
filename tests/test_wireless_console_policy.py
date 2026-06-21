@@ -62,9 +62,12 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertTrue(POLICY.is_ota_window_active(now_ms=2500, deadline_ms=2000, dev_mode=True))
         self.assertTrue(POLICY.is_ota_window_active(now_ms=1000, deadline_ms=0, dev_mode=True))
 
-    def test_serial1_telemetry_pauses_during_ota_window_or_transfer(self):
+    def test_serial1_telemetry_pauses_only_during_active_transfer(self):
+        # v1.7.8 起：仅在 OTA 真正传输（in_progress=True）期间暂停 Serial1 遥测，
+        # 避免 DEV ON 时 windowOpen 持续为 True 阻塞与上位机通信。Park Guard
+        # 仍由 forceWifiOtaParkLocked() 在传输期内托底。
         self.assertTrue(POLICY.should_emit_serial1_telemetry(ota_window_open=False, ota_in_progress=False))
-        self.assertFalse(POLICY.should_emit_serial1_telemetry(ota_window_open=True, ota_in_progress=False))
+        self.assertTrue(POLICY.should_emit_serial1_telemetry(ota_window_open=True, ota_in_progress=False))
         self.assertFalse(POLICY.should_emit_serial1_telemetry(ota_window_open=False, ota_in_progress=True))
         self.assertFalse(POLICY.should_emit_serial1_telemetry(ota_window_open=True, ota_in_progress=True))
 
@@ -217,10 +220,21 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertTrue(POLICY.is_web_command_allowed("OTA_STATUS", authenticated=False, park_locked=False, dev_mode=True))
         self.assertTrue(POLICY.is_web_command_allowed("DISABLE_OTA", authenticated=False, park_locked=False, dev_mode=True))
 
-    def test_web_dev_mode_bypasses_authentication_but_not_park_restricted_commands(self):
-        self.assertTrue(POLICY.is_web_command_allowed("10:20", authenticated=False, park_locked=False, dev_mode=True))
+    def test_web_dev_mode_does_not_bypass_authentication_for_control_or_diagnostic(self):
+        # DEV ON 仅放权 OTA / Web 配置 / 显示与日志切换 / WIFI_STA_*；
+        # 控制命令、Park 锁定诊断命令仍要求认证。详见
+        # docs/Plan/DEV模式影响面与运行逻辑映射.md §3 与
+        # docs/Plan/DEV模式安全边界收敛RFC.md。
+        self.assertFalse(POLICY.is_web_command_allowed("10:20", authenticated=False, park_locked=False, dev_mode=True))
+        self.assertFalse(POLICY.is_web_command_allowed("10:20", authenticated=False, park_locked=True, dev_mode=True))
         self.assertFalse(POLICY.is_web_command_allowed("TEST", authenticated=False, park_locked=False, dev_mode=True))
-        self.assertTrue(POLICY.is_web_command_allowed("TEST", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertFalse(POLICY.is_web_command_allowed("TEST", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertFalse(POLICY.is_web_command_allowed("BENCH", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertFalse(POLICY.is_web_command_allowed("REGRESS", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertFalse(POLICY.is_web_command_allowed("STEER_CAL", authenticated=False, park_locked=True, dev_mode=True))
+        # 认证后仍按原有规则：控制命令允许、诊断命令需 Park 锁定。
+        self.assertTrue(POLICY.is_web_command_allowed("10:20", authenticated=True, park_locked=False, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("TEST", authenticated=True, park_locked=True, dev_mode=True))
 
     def test_wifi_sta_status_is_public(self):
         self.assertTrue(POLICY.is_wireless_command_allowed("WIFI_STA_STATUS", authenticated=False, park_locked=False))

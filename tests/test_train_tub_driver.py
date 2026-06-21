@@ -172,6 +172,42 @@ class TestTrainTubDriver(unittest.TestCase):
             self.assertIn("窗口数", result.stdout)
             self.assertNotIn("No module named 'torch'", result.stderr)
 
+    def test_preferred_feature_order_contains_imu_five_axes(self):
+        """
+        刀 4 (v1.7.12)：训练工具必须把 Tub v2 新增的 IMU 五轴
+        gx/gy/ax/ay/az 纳入 PREFERRED_FEATURE_ORDER，确保 GRU baseline
+        默认特征列里包含漂移信号；同时不能被加进 DEFAULT_EXCLUDE_COLUMNS
+        （它们不是泄漏列，是真实物理观测）。
+        """
+        for column in ("gx", "gy", "ax", "ay", "az"):
+            self.assertIn(column, TRAIN_TUB_DRIVER.PREFERRED_FEATURE_ORDER)
+            self.assertNotIn(column, TRAIN_TUB_DRIVER.DEFAULT_EXCLUDE_COLUMNS)
+
+    def test_select_feature_columns_includes_imu_five_axes_when_present(self):
+        """含完整 IMU 五轴的 sample 经默认 select_feature_columns 后必须包含它们。"""
+        samples_v2 = []
+        for i in range(1, 4):
+            sample = make_sample(i, 1000 + i * 22)
+            sample.update({
+                "gx": 0.01 * i,
+                "gy": -0.02 * i,
+                "ax": 0.1 * i,
+                "ay": -0.1 * i,
+                "az": 9.8 + 0.01 * i,
+            })
+            samples_v2.append(sample)
+        normalized = TRAIN_TUB_DRIVER.normalize_samples(make_tub(samples_v2))
+
+        feature_columns = TRAIN_TUB_DRIVER.select_feature_columns(
+            normalized,
+            label_columns=["thr", "str"],
+            exclude_columns=TRAIN_TUB_DRIVER.DEFAULT_EXCLUDE_COLUMNS,
+            add_exclude_columns=[],
+        )
+
+        for column in ("gx", "gy", "ax", "ay", "az"):
+            self.assertIn(column, feature_columns)
+
 
 if __name__ == "__main__":
     unittest.main()

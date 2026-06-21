@@ -66,6 +66,11 @@ struct WebDataPoint {
     float currentMa;
     float voltage;
     float gyroZ;
+    float gyroX;
+    float gyroY;
+    float accelX;
+    float accelY;
+    float accelZ;
     bool driftEnabled;
     bool driftActive;
     float driftCompensation;

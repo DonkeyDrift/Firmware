@@ -1,5 +1,31 @@
 # CHANGELOG.md
 
+## 2026-06-21 v1.7.12
+
+- 固件版本号从 `v1.7.11` 更新到 `v1.7.12`。
+- feat(web tub): 前端 `TUB_SCHEMA` 从 `mus4.web_data_point.tub.v1` 升级到 **v2**，显式宣告 Tub JSON 字段集合扩展，避免下游训练脚本误把 v1（缺 IMU 五轴）与 v2 混在同一批次。
+- feat(tools train): `tools/train_tub_driver.py::PREFERRED_FEATURE_ORDER` 在 `gzf` 之后追加 `gx/gy/ax/ay/az`，GRU baseline 默认特征列含完整 IMU 五轴；`DEFAULT_EXCLUDE_COLUMNS` 保持不变（新字段是真实物理观测，非泄漏列）。
+- 同步更新 `tests/test_firmware_feature_flags.py::test_tub_schema_bumps_to_v2_with_imu_five_axes` 与 `tests/test_train_tub_driver.py::test_preferred_feature_order_contains_imu_five_axes`、`test_select_feature_columns_includes_imu_five_axes_when_present` 及版本号断言。
+
+## 2026-06-21 v1.7.11
+
+- 固件版本号从 `v1.7.10` 更新到 `v1.7.11`。
+- feat(web 遥测 WS): WebSocket 二进制遥测帧升级到 schema **v2**，在 `latest` 区 `gz` 之后追加 `gx/gy/ax/ay/az` 五个 float32。前端 `decodeBinaryDataPayload` 同步把版本校验从 `version!==1` 改为 `version!==2`，并解出新字段写入 `latest`，确保 WS 路径下 `tp(latest)` 也能让 Tub 录制拿到完整 IMU 通道。
+- `wifiWebSocketBinaryPayload` 缓冲扩容 `256 → 384` B：header+latest v2 ≈100 B + 8 个点 × 24 B = 192 B 合计 ≈292 B 已突破原 256 B 上限，扩到 384 留出余量。
+- 同步更新 `tests/test_firmware_feature_flags.py::test_websocket_binary_frame_schema_v2_carries_imu_five_axes` 与版本号断言。
+
+## 2026-06-21 v1.7.10
+
+- 固件版本号从 `v1.7.9` 更新到 `v1.7.10`。
+- feat(web 遥测): `/api/data` 的 `latest` 对象新增 `gx`/`gy`/`ax`/`ay`/`az` 五个 IMU 缩写键，三位小数与现有 `gz` 精度一致；polling 路径下浏览器 `tp(latest)` 写入 `tubSamples` 后下载的 `mus4-tub.json` 立即携带漂移建模所需通道。`/api/data` 的 plot 点数组未扩，避免每帧广播放大。
+- 同步更新 `tests/test_firmware_feature_flags.py::test_http_api_data_latest_exposes_imu_five_axes` 与版本号断言。
+
+## 2026-06-21 v1.7.9
+
+- 固件版本号从 `v1.7.8` 更新到 `v1.7.9`。
+- refactor(web 遥测): `WebDataPoint` 扩展承载 IMU 五轴 (`gyroX/gyroY/accelX/accelY/accelZ`)，`sampleWifiWebData` 把 `mpu6050Data` 已采样的五轴一并写入；HTTP / WS / Tub 三条对外链路本刀暂不暴露新字段，仅做后端缓冲铺垫，对外行为零变化。
+- 同步更新 `tests/test_firmware_feature_flags.py::test_web_data_point_carries_imu_five_axes_for_tub_export` 与版本号断言。
+
 ## 2026-06-21 v1.7.8
 
 - 固件版本号从 `v1.7.7` 更新到 `v1.7.8`。

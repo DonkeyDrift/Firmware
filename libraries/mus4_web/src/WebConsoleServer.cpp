@@ -605,6 +605,16 @@ static void appendWifiWebStateJson(String& response, WebDataPoint& point)
     response += String(point.voltage, 2);
     response += ",\"gz\":";
     response += String(point.gyroZ, 3);
+    response += ",\"gx\":";
+    response += String(point.gyroX, 3);
+    response += ",\"gy\":";
+    response += String(point.gyroY, 3);
+    response += ",\"ax\":";
+    response += String(point.accelX, 3);
+    response += ",\"ay\":";
+    response += String(point.accelY, 3);
+    response += ",\"az\":";
+    response += String(point.accelZ, 3);
     response += ",\"de\":";
     response += point.driftEnabled ? 1 : 0;
     response += ",\"da\":";

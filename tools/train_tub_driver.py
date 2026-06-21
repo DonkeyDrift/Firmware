@@ -24,6 +24,13 @@ PREFERRED_FEATURE_ORDER = (
     "dt",
     "gz",
     "gzf",
+    # Tub schema v2 起新增的 IMU 五轴：gx/gy 是 roll/pitch 角速度，
+    # ax/ay/az 是三轴加速度（az 含重力 ~9.8 m/s²，去重力交给后续标准化阶段处理）。
+    "gx",
+    "gy",
+    "ax",
+    "ay",
+    "az",
     "mode",
     "park",
     "ch3",

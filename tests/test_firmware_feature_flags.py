@@ -136,13 +136,13 @@ def test_websocket_curve_data_feature_is_enabled_and_streams_logs():
     assert r'\"type\":\"log\"' in web_telemetry
 
 
-def test_firmware_version_is_v1_7_8_and_changelog_is_current():
+def test_firmware_version_is_v1_7_12_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.8"' in build_info
-    assert "## 2026-06-21 v1.7.8" in changelog
-    assert changelog.index("## 2026-06-21 v1.7.8") < changelog.index("## 2026-06-21 v1.7.7")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.12"' in build_info
+    assert "## 2026-06-21 v1.7.12" in changelog
+    assert changelog.index("## 2026-06-21 v1.7.12") < changelog.index("## 2026-06-21 v1.7.11")
 
 
 def test_web_console_serial_log_display_is_limited_to_20_lines():
@@ -1443,7 +1443,7 @@ def test_web_console_explains_auth_and_park_rejections():
 def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
     source = firmware_source_text()
 
-    assert "mus4.web_data_point.tub.v1" in source
+    assert "mus4.web_data_point.tub.v2" in source
     assert "tubRecording" in source
     assert "tubSamples" in source
     assert "function ts()" in source
@@ -2002,3 +2002,120 @@ def test_wifi_sta_credentials_set_dhcp_hostname():
     assert "WiFi.setHostname(" in apply_body
     assert "wifiMdnsHostText().c_str()" in apply_body
     assert apply_body.index("WiFi.setHostname(") < apply_body.index("WiFi.begin(")
+
+
+def test_web_data_point_carries_imu_five_axes_for_tub_export():
+    """
+    刀 1 (v1.7.9)：为 DonkeyDrift 漂移模型数据采集做铺垫，
+    WebDataPoint 必须把 mpu6050Data 里已经在采的 gyroX/gyroY/accelX/accelY/accelZ
+    透传到 Web 遥测缓冲。结构体扩字段后，sampleWifiWebData 必须把这 5 个 float
+    一并写入，否则 HTTP/WS/Tub 三条链路都拿不到完整 IMU 数据。
+    """
+    wifi_console_types = (
+        PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h"
+    ).read_text(encoding="utf-8")
+    sketch = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    # WebDataPoint 结构体新增 5 轴
+    for field in ("float gyroX;", "float gyroY;", "float accelX;", "float accelY;", "float accelZ;"):
+        assert field in wifi_console_types, f"WifiConsoleTypes.h 缺少字段 {field}"
+
+    # sampleWifiWebData 把 mpu6050Data 的 5 轴抄进 point
+    for assignment in (
+        "point.gyroX = mpu6050Data.gyroX;",
+        "point.gyroY = mpu6050Data.gyroY;",
+        "point.accelX = mpu6050Data.accelX;",
+        "point.accelY = mpu6050Data.accelY;",
+        "point.accelZ = mpu6050Data.accelZ;",
+    ):
+        assert assignment in sketch, f"MUS4_FW.ino sampleWifiWebData 缺少赋值 {assignment}"
+
+
+def test_http_api_data_latest_exposes_imu_five_axes():
+    """
+    刀 2 (v1.7.10)：/api/data 的 latest 对象必须把 gx/gy/ax/ay/az 五个 float
+    缩写键透出，前端 tp(latest) 写入 tubSamples 后，下载的 mus4-tub.json 在
+    polling 路径下立刻能携带漂移建模所需的 IMU 通道。
+    采用 String(.., 3) 三位小数与现有 gz 保持精度一致。
+    """
+    server = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+
+    state_body = re.search(
+        r"appendWifiWebStateJson\(String& response, WebDataPoint& point\)\s*\{(?P<body>.*?)\n\}",
+        server,
+        re.DOTALL,
+    )
+    assert state_body, "找不到 appendWifiWebStateJson 函数体"
+    body = state_body.group("body")
+
+    for key in ('\\"gx\\":', '\\"gy\\":', '\\"ax\\":', '\\"ay\\":', '\\"az\\":'):
+        assert key in body, f"appendWifiWebStateJson 缺少 JSON 键 {key}"
+
+    # 五个新字段都要走 String(..., 3) 三位小数（与 gz 保持一致）
+    for field in ("point.gyroX", "point.gyroY", "point.accelX", "point.accelY", "point.accelZ"):
+        assert f"String({field}, 3)" in body, f"appendWifiWebStateJson 缺少 String({field}, 3)"
+
+    # 新字段必须出现在 gz 之后、de 之前，保证 JSON 顺序贴近 IMU 块
+    assert body.index('\\"gx\\":') > body.index('\\"gz\\":')
+    assert body.index('\\"az\\":') < body.index('\\"de\\":')
+
+
+def test_websocket_binary_frame_schema_v2_carries_imu_five_axes():
+    """
+    刀 3 (v1.7.11)：WS 二进制遥测帧升级到 schema v2，latest 区在 gyroZ 之后追加
+    gyroX/gyroY/accelX/accelY/accelZ 五个 float32；缓冲区扩容到 ≥384 B，避免
+    header+latest(v2) ≈100B + 8 个点×24B 共 ≈292 B 超过原 256 B 限制。
+    前端 decodeBinaryDataPayload 同步升级 version 检查并解出新字段，保证 WS 路径
+    下 tp(latest) 也能拿到完整 IMU 通道（Tub 录制不再依赖 polling 路径）。
+    """
+    telemetry = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.cpp"
+    ).read_text(encoding="utf-8")
+    assets = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
+    ).read_text(encoding="utf-8")
+
+    # schema version 1 → 2
+    assert "writeU8(2);" in telemetry, "WebTelemetry.cpp 应把 schema version 写为 2"
+    assert "writeU8(1);" not in telemetry, "WebTelemetry.cpp 还残留 writeU8(1) 的旧 schema"
+
+    # latest 区追加 5 个 float
+    for write in (
+        "writeF32(latest.gyroX);",
+        "writeF32(latest.gyroY);",
+        "writeF32(latest.accelX);",
+        "writeF32(latest.accelY);",
+        "writeF32(latest.accelZ);",
+    ):
+        assert write in telemetry, f"WebTelemetry.cpp 缺少 {write}"
+
+    # 缓冲区扩容到 ≥384 B
+    capacity_match = re.search(r"wifiWebSocketBinaryPayload\[(\d+)\]", telemetry)
+    assert capacity_match, "找不到 wifiWebSocketBinaryPayload 容量声明"
+    capacity = int(capacity_match.group(1))
+    assert capacity >= 384, f"wifiWebSocketBinaryPayload 容量 {capacity} < 384"
+
+    # 前端解码同步升级
+    assert "version!==2" in assets, "前端 decodeBinaryDataPayload 应严格校验 version!==2"
+    assert "version!==1" not in assets, "前端仍残留旧的 version!==1 判断"
+    # 与原 gz=f32() 一致的逗号链赋值风格
+    for token in ("gx=f32()", "gy=f32()", "ax=f32()", "ay=f32()", "az=f32()"):
+        assert token in assets, f"前端 decodeBinaryDataPayload 缺少 {token}"
+    # 解码后必须注入 latest 对象供 tp(latest) 录制
+    for key in (",gx,", ",gy,", ",ax,", ",ay,", ",az,"):
+        assert key in assets, f"前端 latest 对象缺少键 {key}"
+
+
+def test_tub_schema_bumps_to_v2_with_imu_five_axes():
+    """
+    刀 4 (v1.7.12)：前端 Tub schema 升级到 v2 显式宣告字段集合扩展，
+    避免下游训练脚本误把 v1 与 v2 混在同一批次（v1 缺 gx/gy/ax/ay/az）。
+    """
+    assets = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
+    ).read_text(encoding="utf-8")
+
+    assert "TUB_SCHEMA='mus4.web_data_point.tub.v2'" in assets, "前端 TUB_SCHEMA 应升级到 v2"
+    assert "TUB_SCHEMA='mus4.web_data_point.tub.v1'" not in assets, "前端仍残留旧版 v1 TUB_SCHEMA"

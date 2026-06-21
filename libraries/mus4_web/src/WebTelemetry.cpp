@@ -40,7 +40,7 @@ uint32_t wifiWebSocketMaxDtMs = 0;
 
 static unsigned long lastWifiWebSocketPushMs = 0;
 static String wifiWebSocketPayload;
-static uint8_t wifiWebSocketBinaryPayload[256];
+static uint8_t wifiWebSocketBinaryPayload[384];
 
 static uint16_t wifiWebDataIndexForSeq(uint32_t seq)
 {
@@ -176,7 +176,7 @@ static void pushWifiWebSocketData()
     WebDataPoint& latest = wifiWebData[latestIndex];
     writeU8('M');
     writeU8('4');
-    writeU8(1);
+    writeU8(2);
     writeU8(0);
     writeU32(wifiWebSocketDroppedPoints);
     writeU32(latest.seq);
@@ -185,6 +185,13 @@ static void pushWifiWebSocketData()
     writeI16((int16_t)latest.throttle);
     writeI16((int16_t)latest.steering);
     writeF32(latest.gyroZ);
+    // IMU 五轴（schema v2 新增）：与 HTTP /api/data latest 的 gx/gy/ax/ay/az 一一对应，
+    // 仅写 latest 区，逐点 history 仍保持紧凑（不为漂移模型增加每帧广播体积）。
+    writeF32(latest.gyroX);
+    writeF32(latest.gyroY);
+    writeF32(latest.accelX);
+    writeF32(latest.accelY);
+    writeF32(latest.accelZ);
     writeU8((uint8_t)latest.mode);
     writeU8(latest.park ? 1 : 0);
     for (uint8_t i = 0; i < RC_CHANNEL_COUNT; i++) writeU16((uint16_t)latest.rcChannels[i]);

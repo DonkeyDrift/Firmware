@@ -242,6 +242,13 @@ void sampleWifiWebData()
     point.currentMa = ina219Data.current_mA;
     point.voltage = ina219Data.loadVoltage;
     point.gyroZ = mpu6050Data.gyroZ;
+    // IMU 五轴透传：为 Donkey 漂移模型采集 gyro_x/y 与 accel_x/y/z（已在 mpu6050Data 中采样，
+    // 此处仅做结构体搬运，归一化与去重力交给训练侧 tools/train_tub_driver.py 处理）。
+    point.gyroX = mpu6050Data.gyroX;
+    point.gyroY = mpu6050Data.gyroY;
+    point.accelX = mpu6050Data.accelX;
+    point.accelY = mpu6050Data.accelY;
+    point.accelZ = mpu6050Data.accelZ;
     point.driftEnabled = drift_assist_enabled;
     point.driftActive = drift_assist_active;
     point.driftCompensation = drift_compensation;

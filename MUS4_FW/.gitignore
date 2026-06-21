@@ -1,0 +1,54 @@
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Icon must end with two \r
+Icon
+
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+build
+settings.json
+node_modules/
+.superpowers/
+
+# Log files
+*.log
+
+mus4/ArduinoCLI.log
+__pycache__/arduino-cli.cpython-313.pyc
+build_wsl/
+provisioning_system/playwright_tests/
+.arduino_cli_state.json
+
+.tmp_serial_state_test.json
+tests/__pycache__/
+__pycache__/
+WirelessSecrets.h
+
+# Local OTA target configuration
+.mus4_ota_target
+ArduFlux.json
+.cache/
+.pyc
+.worktrees/
+build_verbose/
+data/

@@ -114,6 +114,7 @@ const unsigned long WAVE_UPDATE_INTERVAL = 250; // 4Hz refresh rate
 // Serial1 上行节流状态：$IMU 和 M:P 帧的发送时钟与去抖。
 unsigned long lastImuEmitMs = 0;          // 上一次 $IMU 帧发送时间
 unsigned long lastModeParkEmitMs = 0;     // 上一次 M:P 帧发送时间
+unsigned long lastTelemWebLogMs = 0;      // 上一次 T..S.. 写入 Web 日志的时间（10Hz 节流）
 int lastEmittedMode = -1;                 // -1 表示尚未发过；强制首次发
 int lastEmittedPark = -1;                 // 同上
 bool toggleActive = false;
@@ -551,7 +552,12 @@ void loop()
                 String telem = String("T") + car_output.throttle + "S" + car_output.steering + "\n";
                 Serial1.print(telem); // RC => Type-C
 #ifdef ENABLE_WIFI_CONSOLE
-                appendWebLog("serial1", telem);
+                // Serial1 上行 60Hz 给上位机；Web 日志只需 10Hz，避免和曲线二进制
+                // 帧（~60Hz）一起把 AsyncWebSocket 8 槽队列顶爆。
+                if (millis() - lastTelemWebLogMs >= TELEM_WEB_LOG_INTERVAL_MS) {
+                    appendWebLog("serial1", telem);
+                    lastTelemWebLogMs = millis();
+                }
 #endif
 
                 // M<m>:P<p>：模式或 Park 状态变化时立即发，否则 1Hz 心跳。
@@ -576,16 +582,24 @@ void loop()
     // $IMU 上行：~100Hz，所有模式都发，仅在 MPU 在线且 OTA 未传输时推送。
     // 上位机 `donkeycar/parts/actuator.py::ArdImu` 按 `$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz`
     // 解析，seq 16-bit 自然回绕仅用于丢帧检测，无校验。
+    // v1.7.15：用 snprintf 写到固定栈缓冲再 Serial1.write 一次发出，消除 100Hz 下
+    // 由 `String +` 拼装造成的 ~900 次/秒 堆 alloc/free——之前观察到几十秒后
+    // 堆碎片化引发 `Failed to fetch` 与 ws disconnect 风暴并最终 OOM 重启。
+    // 注意：不要把 $IMU 镜像进 appendWebLog("serial1", ...) —— 100Hz 文本通过 WebSocket
+    // 推到浏览器会顶爆 AsyncWebSocket 发送队列，引起 ws disconnect 与曲线卡顿；
+    // IMU 数据走 WebSocket 二进制 schema v2 的 latest 区已经覆盖 Web Console 需求。
     if (millis() - lastImuEmitMs >= IMU_TELEMETRY_INTERVAL_MS) {
         if (mpu6050Data.valid && shouldEmitSerial1Telemetry(otaRuntime)) {
             static uint16_t imuSeq = 0;
-            String imuLine = String("$IMU,") + imuSeq + "," + millis() + ","
-                + String(mpu6050Data.accelX, 4) + "," + String(mpu6050Data.accelY, 4) + "," + String(mpu6050Data.accelZ, 4) + ","
-                + String(mpu6050Data.gyroX, 4) + "," + String(mpu6050Data.gyroY, 4) + "," + String(mpu6050Data.gyroZ, 4) + "\n";
-            Serial1.print(imuLine);
-#ifdef ENABLE_WIFI_CONSOLE
-            appendWebLog("serial1", imuLine);
-#endif
+            char imuBuf[96];
+            int imuLen = snprintf(imuBuf, sizeof(imuBuf),
+                "$IMU,%u,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n",
+                (unsigned)imuSeq, (unsigned long)millis(),
+                mpu6050Data.accelX, mpu6050Data.accelY, mpu6050Data.accelZ,
+                mpu6050Data.gyroX, mpu6050Data.gyroY, mpu6050Data.gyroZ);
+            if (imuLen > 0 && imuLen < (int)sizeof(imuBuf)) {
+                Serial1.write((const uint8_t*)imuBuf, (size_t)imuLen);
+            }
             imuSeq++; // uint16_t 自然回绕
         }
         lastImuEmitMs = millis();
@@ -617,5 +631,5 @@ void loop()
         else uiIntervalCurrent = (uiIntervalCurrent > uiIntervalMin ? uiIntervalCurrent - 20 : uiIntervalMin);
         lastPerfEval = now;
     }
-    delay(3);
+    delay(5);
 }

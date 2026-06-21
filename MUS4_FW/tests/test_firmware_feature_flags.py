@@ -136,13 +136,109 @@ def test_websocket_curve_data_feature_is_enabled_and_streams_logs():
     assert r'\"type\":\"log\"' in web_telemetry
 
 
-def test_firmware_version_is_v1_7_13_and_changelog_is_current():
+def test_websocket_event_callback_does_not_invoke_log_sink_in_async_task():
+    """v1.7.16：AsyncTCP task 上的 onEvent 回调不得直接调用 mus4LogLine / mus4Logf /
+    appendWebLog —— 否则会触发 sendWebLogToSocket 在 AsyncTCP task 上写共享 String
+    `wifiWebSocketPayload`，与 main loop 上的同一 String 操作并发 realloc 撕裂堆，
+    最终表现为 `bad magic` 与设备 reboot。改为只在 main loop 消费连接事件标志。
+
+    v1.7.17 进一步：onEvent 回调也不得调 sendWifiWebSocketHello —— 它内部也写
+    共享 String。Hello 帧改由 main loop 在消费 pendingWsConnectEvent 时发出。"""
+
+    web_telemetry = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.cpp").read_text(encoding="utf-8")
+
+    handler_match = re.search(
+        r"static void handleWifiWebSocketEvent\([^)]*\)\s*\{(.*?)^\}",
+        web_telemetry,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert handler_match is not None, "未找到 handleWifiWebSocketEvent 函数体"
+    body = handler_match.group(1)
+    assert "mus4LogLine(" not in body, "handleWifiWebSocketEvent 不得调 mus4LogLine（会在 AsyncTCP task 触发 sink）"
+    assert "mus4Logf(" not in body, "handleWifiWebSocketEvent 不得调 mus4Logf（同上）"
+    assert "appendWebLog(" not in body, "handleWifiWebSocketEvent 不得调 appendWebLog（同上）"
+    # v1.7.17：hello 帧也不能在 AsyncTCP task 发，否则继续与 main loop 撕共享 String。
+    assert "sendWifiWebSocketHello(" not in body, "handleWifiWebSocketEvent 不得调 sendWifiWebSocketHello（共享 String race）"
+
+    # 改用主循环消费的 volatile 标志。
+    assert "volatile bool pendingWsConnectEvent" in web_telemetry
+    assert "volatile bool pendingWsDisconnectEvent" in web_telemetry
+    # updateWifiWebSocket 主循环里读标志后打日志 + 发 hello（sink/hello 唯一安全的触发点）。
+    update_match = re.search(
+        r"void updateWifiWebSocket\(\)\s*\{(.*?)^\}",
+        web_telemetry,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert update_match is not None
+    update_body = update_match.group(1)
+    assert "pendingWsConnectEvent" in update_body
+    assert "pendingWsDisconnectEvent" in update_body
+    assert 'mus4LogLine("web", "ws connected")' in update_body
+    assert 'mus4LogLine("web", "ws disconnected")' in update_body
+    assert "sendWifiWebSocketHello(" in update_body, "main loop 必须在消费 pendingWsConnectEvent 时发 hello"
+
+
+def test_websocket_text_payloads_never_share_a_static_string():
+    """v1.7.17：杀掉 race 的根本一刀 —— 不再保留任何跨函数/跨上下文共享的 text 缓冲
+    `static String wifiWebSocketPayload`。hello 和 log JSON 各自用栈上局部 String，
+    Arduino `String::operator+=` 的 realloc 只触碰本函数私有堆块，永远不会被另一
+    上下文 realloc 同一块。"""
+
+    web_telemetry = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.cpp").read_text(encoding="utf-8")
+
+    # 共享 String 必须消失（任何形式的命名 / 任何作用域）。
+    assert "static String wifiWebSocketPayload" not in web_telemetry, (
+        "static String wifiWebSocketPayload 必须删除：跨上下文共享会撕堆"
+    )
+    assert "wifiWebSocketPayload.reserve" not in web_telemetry, (
+        "v1.7.17 后不再有共享 String，setup 也不应再 reserve 它"
+    )
+
+    # 两个发送函数体内必须各自声明 `String payload`（局部）。
+    hello_match = re.search(
+        r"static void sendWifiWebSocketHello\([^)]*\)\s*\{(.*?)^\}",
+        web_telemetry,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert hello_match, "找不到 sendWifiWebSocketHello 函数体"
+    assert "String payload" in hello_match.group(1), (
+        "sendWifiWebSocketHello 必须用栈上局部 String payload"
+    )
+
+    sink_match = re.search(
+        r"static void sendWebLogToSocket\([^)]*\)\s*\{(.*?)^\}",
+        web_telemetry,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert sink_match, "找不到 sendWebLogToSocket 函数体"
+    assert "String payload" in sink_match.group(1), (
+        "sendWebLogToSocket 必须用栈上局部 String payload"
+    )
+
+
+def test_websocket_send_paths_use_id_not_raw_client_pointer():
+    """v1.7.16：消除裸 `wifiWebSocketClient` 指针 deref —— `WS_EVT_DISCONNECT` 在
+    AsyncTCP task 上把指针置 nullptr 与 main loop 在 pushWifiWebSocketData /
+    sendWebLogToSocket 中的检查 + 调用之间存在 TOCTOU；改走 wifiWebSocket.text(id,...)
+    和 wifiWebSocket.binary(id,...)，ESPAsyncWebServer 内部锁会兜底。"""
+
+    web_telemetry = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.cpp").read_text(encoding="utf-8")
+
+    # sendWebLogToSocket / pushWifiWebSocketData 必须用 id 路径
+    assert "wifiWebSocket.text(wifiWebSocketClientId," in web_telemetry
+    assert "wifiWebSocket.binary(wifiWebSocketClientId," in web_telemetry
+    # 不再出现裸指针 ->text / ->binary
+    assert "wifiWebSocketClient->text(" not in web_telemetry
+    assert "wifiWebSocketClient->binary(" not in web_telemetry
+
+
+def test_firmware_version_is_v1_7_17_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.13"' in build_info
-    assert "## 2026-06-21 v1.7.13" in changelog
-    assert changelog.index("## 2026-06-21 v1.7.13") < changelog.index("## 2026-06-21 v1.7.12")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.17"' in build_info
+    assert "## 2026-06-21 v1.7.17" in changelog
+    assert changelog.index("## 2026-06-21 v1.7.17") < changelog.index("## 2026-06-21 v1.7.16")
 
 
 def test_web_console_serial_log_display_is_limited_to_20_lines():
@@ -523,12 +619,29 @@ def test_serial1_uplink_matches_host_pilot_protocol():
     )
 
     # $IMU 帧组装：固定前缀 + seq + ts_ms + 6 轴。
-    assert '"$IMU,"' in sketch_source
+    # v1.7.15：用 snprintf 写到固定 char 缓冲，再 Serial1.write 一次发出。
+    # 不能用 `String("$IMU,") + ... + String(x, 4)` 拼装——100Hz 下每秒约 900 次
+    # 堆 alloc/free 会在十几秒内把堆打成碎片，配合 AsyncTCP/AsyncWebSocket 触发
+    # `Failed to fetch` 与 ws disconnect 风暴，最终 OOM 重启。
+    assert '"$IMU,%u,%lu,' in sketch_source  # snprintf 格式串前缀（含逗号）
     assert "static uint16_t imuSeq" in sketch_source
     assert "lastImuEmitMs" in sketch_source
     assert "IMU_TELEMETRY_INTERVAL_MS" in sketch_source
+    assert "char imuBuf[96]" in sketch_source
+    assert "snprintf(imuBuf, sizeof(imuBuf)," in sketch_source
+    assert "Serial1.write((const uint8_t*)imuBuf" in sketch_source
     # MPU 未在线时静默：必须显式判 valid。
     assert "mpu6050Data.valid" in sketch_source
+    # $IMU 文本流不能镜像进 Web Console 日志窗口：100Hz JSON 会顶爆 AsyncWebSocket
+    # 发送队列，导致前端 ws 不断断连重连、曲线卡顿。IMU 走 WebSocket 二进制
+    # schema v2 的 latest 区即可（见 test_websocket_binary_frame_schema_v2_carries_imu_five_axes）。
+    assert 'appendWebLog("serial1", imuLine)' not in sketch_source
+    assert 'appendWebLog("serial1", imuBuf)' not in sketch_source
+
+    # T..S.. 文本 web log 推送 100ms 节流（~10Hz）：Serial1 上行仍 60Hz 给上位机，
+    # 浏览器日志窗口降频，避免和曲线二进制帧抢 AsyncWebSocket 队列。
+    assert "lastTelemWebLogMs" in sketch_source
+    assert "TELEM_WEB_LOG_INTERVAL_MS" in sketch_source
 
     # 节奏常量。
     assert re.search(r"^#define\s+IMU_TELEMETRY_INTERVAL_MS\s+10\b", config_source, re.MULTILINE)
@@ -1987,10 +2100,35 @@ def test_web_console_handles_common_captive_portal_probes_locally():
 
 def test_wifi_discovery_compile_switches_exist():
     source = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h").read_text(encoding="utf-8")
-    assert "#define ENABLE_WIFI_NETBIOS_DISCOVERY" in source
-    assert "#define ENABLE_WIFI_LLMNR_DISCOVERY" in source
-    assert "#ifdef ENABLE_WIFI_CONSOLE" in source
-    assert source.index("#define ENABLE_WIFI_NETBIOS_DISCOVERY") > source.index("#ifdef ENABLE_WIFI_CONSOLE")
+    # v1.7.14 起默认关闭三种主机名发现（mDNS / NetBIOS / LLMNR），避免它们在弱 Wi-Fi
+    # 下的查询风暴 + 周期重启对 AsyncWebSocket 的干扰。代码路径与 STATUS 字段全部保留，
+    # 通过 DISABLE_WIFI_NAME_DISCOVERY 这一个总开关短路实际启动。
+    assert "#define DISABLE_WIFI_NAME_DISCOVERY" in source
+    # NetBIOS / LLMNR 编译开关仍存在，但被 DISABLE_WIFI_NAME_DISCOVERY 包住，
+    # 默认编译不再生成相关 ISR/包处理代码。
+    assert "#ifndef DISABLE_WIFI_NAME_DISCOVERY" in source
+    netbios_idx = source.index("#define ENABLE_WIFI_NETBIOS_DISCOVERY")
+    llmnr_idx = source.index("#define ENABLE_WIFI_LLMNR_DISCOVERY")
+    gate_idx = source.index("#ifndef DISABLE_WIFI_NAME_DISCOVERY")
+    assert gate_idx < netbios_idx < llmnr_idx, (
+        "NETBIOS / LLMNR define 必须位于 DISABLE_WIFI_NAME_DISCOVERY gate 之内"
+    )
+
+
+def test_wifi_mdns_startup_short_circuits_when_name_discovery_disabled():
+    """v1.7.14：startWifiMdnsIfNeeded 在 DISABLE_WIFI_NAME_DISCOVERY 下短路返回，
+    保留函数与状态字段 (wifiMdnsStarted=0 / mdns_url="") 让 STATUS 不变。"""
+
+    wifi_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
+    # 函数仍存在
+    assert "void startWifiMdnsIfNeeded()" in wifi_source
+    # 短路：在 begin 之前显式 return
+    short_circuit_pattern = (
+        "#ifdef DISABLE_WIFI_NAME_DISCOVERY\n"
+        "    return;\n"
+        "#endif"
+    )
+    assert short_circuit_pattern in wifi_source, "startWifiMdnsIfNeeded 必须在 DISABLE_WIFI_NAME_DISCOVERY 下首行短路"
 
 
 def test_wifi_netbios_lifecycle_follows_sta_connection():

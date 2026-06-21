@@ -221,6 +221,9 @@ bool saveDevModePreference(bool enabled)
 
 void startWifiMdnsIfNeeded()
 {
+#ifdef DISABLE_WIFI_NAME_DISCOVERY
+    return;
+#endif
     if (wifiMdnsStarted) return;
     if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) return;
     if (!MDNS.begin(wifiMdnsHostText().c_str())) {

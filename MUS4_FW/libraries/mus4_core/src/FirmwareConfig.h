@@ -12,8 +12,14 @@
 #endif
 
 #ifdef ENABLE_WIFI_CONSOLE
+// v1.7.14 起默认禁用三种主机名发现（mDNS / NetBIOS / LLMNR）：在弱 Wi-Fi 下它们
+// 的多播查询风暴 + mDNS 周期重启会和 AsyncWebSocket 的曲线/日志通道争资源，
+// 实测会引发 ws disconnect 与曲线卡顿。注释掉本行即可恢复 .local 主机名发现。
+#define DISABLE_WIFI_NAME_DISCOVERY
+#ifndef DISABLE_WIFI_NAME_DISCOVERY
 #define ENABLE_WIFI_NETBIOS_DISCOVERY
 #define ENABLE_WIFI_LLMNR_DISCOVERY
+#endif
 #endif
 
 #define MUS4_LOG_TARGET_SERIAL 0
@@ -125,6 +131,7 @@
 #define RC_DATA_UPDATE_INTERVAL 16   // MANUAL 模式下 T<t>S<s> 帧节奏 (ms) - ~60Hz
 #define IMU_TELEMETRY_INTERVAL_MS 10 // Serial1 $IMU 帧节奏 (ms) - ~100Hz，对齐上位机 GRU W=16 ring buffer
 #define MODE_PARK_HEARTBEAT_MS 1000  // Serial1 M<m>:P<p> 心跳 (ms) - 1Hz，状态变化时立即发
+#define TELEM_WEB_LOG_INTERVAL_MS 100 // T..S.. 写 Web 日志的节流 (ms) - 10Hz，避免和曲线 WS 帧抢队列
 #define RC_FILTER_UPDATE_INTERVAL 2   // RC filter update interval (ms) - ~500Hz, balances response and stability
 #define UI_UPDATE_INTERVAL 2         // UI update interval (ms) - smooth 500Hz experience
 

@@ -1,5 +1,48 @@
 # CHANGELOG.md
 
+## 2026-06-21 v1.7.17
+
+- 固件版本号从 `v1.7.16` 更新到 `v1.7.17`。
+- fix(WebSocket race 收尾): 上一刀 v1.7.16 把 `mus4LogLine` 从 AsyncTCP task 撤出，但 `sendWifiWebSocketHello` 在 `WS_EVT_CONNECT` 回调里仍然在 AsyncTCP task 上写**同一个**共享 `static String wifiWebSocketPayload`，与 main loop 上的 `sendWebLogToSocket` 写同一个 String 并发 realloc —— race 没消除，bad magic 与 reboot 复现。
+- **修复**：
+  - **彻底删掉** `static String wifiWebSocketPayload` —— 不再有跨函数/跨上下文共享的 text 缓冲。
+  - `sendWifiWebSocketHello(uint32_t clientId)` 与 `sendWebLogToSocket(...)` 都改为在函数体内声明**栈上局部 `String payload`** 并 `reserve()`，Arduino `String::operator+=` 的 realloc 只触碰本函数私有堆块。
+  - `handleWifiWebSocketEvent::WS_EVT_CONNECT` 不再调 `sendWifiWebSocketHello`；改翻新增的 `volatile uint32_t pendingWsConnectClientId` 与原有 `pendingWsConnectEvent` 标志。
+  - `updateWifiWebSocket()` 在 main loop 里消费 `pendingWsConnectEvent` 时**先 `sendWifiWebSocketHello(pendingWsConnectClientId)` 再 `mus4LogLine("web", "ws connected")`** —— 所有 text JSON 写入永远只在 main loop 单一上下文发生。
+  - `setupWifiWebSocket` 删去无用的 `wifiWebSocketPayload.reserve(1536)`。
+- 同步更新 `tests/test_firmware_feature_flags.py`：
+  - `test_websocket_event_callback_does_not_invoke_log_sink_in_async_task` 新增 `handleWifiWebSocketEvent` 内**不得**出现 `sendWifiWebSocketHello(` 的负断言，以及 `updateWifiWebSocket` 体内**必须**出现 `sendWifiWebSocketHello(` 的正断言。
+  - 新增 `test_websocket_text_payloads_never_share_a_static_string`：禁止 `static String wifiWebSocketPayload` 与 `wifiWebSocketPayload.reserve` 出现；强制 `sendWifiWebSocketHello` / `sendWebLogToSocket` 体内出现 `String payload`。
+  - 版本号断言更新到 v1.7.17。
+
+## 2026-06-21 v1.7.16
+
+- 固件版本号从 `v1.7.15` 更新到 `v1.7.16`。
+- fix(WebSocket race / heap 腐蚀): 实机上 v1.7.15 部署后浏览器 Web Console 报 `ws parse error: Error: bad magic` + 设备周期性 reboot（`[3632][web] ws connected` 时间戳回零）。Explore 子代理静态分析定位到 main loop 与 AsyncTCP task 之间对 `wifiWebSocketPayload` 这个 `static String` 的无锁并发写：
+  - `handleWifiWebSocketEvent` 在 `WS_EVT_CONNECT` / `WS_EVT_DISCONNECT` 里直接调 `mus4LogLine("web", "ws connected/disconnected")`，sink 在 AsyncTCP task 上下文写共享 String；同时 main loop 上的 `appendWebLog`（T..S.. / M:P 等）也在 sink 这条路径写同一个 String。两个上下文并发 realloc 撕裂堆元数据 → AsyncTCP 内部 `_queueMessage` 拿到的 message buffer 内容/opcode 被踩 → 浏览器解码到前 2 字节非 `'M','4'` 的"binary"帧（bad magic）→ 不久 `std::__throw_bad_alloc` 或 LoadProhibited 触发 panic reboot。
+  - 二次风险：`pushWifiWebSocketData` / `sendWebLogToSocket` 持裸 `wifiWebSocketClient` 指针并 deref，AsyncTCP task 上 `WS_EVT_DISCONNECT` 把指针置 nullptr 之间存在 TOCTOU，叠加 `cleanupClients()` 真正 free 客户端对象后是 use-after-free。
+- **修复**：
+  - `libraries/mus4_web/src/WebTelemetry.cpp::handleWifiWebSocketEvent` 不再调 `mus4LogLine`；新增 `volatile bool pendingWsConnectEvent` / `pendingWsDisconnectEvent` 标志，由 AsyncTCP task 翻起，main loop 在 `updateWifiWebSocket()` 里读到后再 `mus4LogLine`。sink (`sendWebLogToSocket`) 现在永远只在 main loop 单一上下文运行。
+  - 全部走 id 路径：`sendWifiWebSocketHello(uint32_t clientId)`、`sendWebLogToSocket`、`pushWifiWebSocketData` 改用 `wifiWebSocket.text(id, ...)` / `wifiWebSocket.binary(id, ..., len)`，让 ESPAsyncWebServer 内部 `_ws_clients_lock` 兜底 dangling client；不再持 `wifiWebSocketClient->...` 调用。
+  - `pushWifiWebSocketData` 入口的 `canSend() || queueIsFull()` 检查改为只调 `wifiWebSocket.availableForWrite(id)`（同样锁下检查 client 存活 + 队列容量），消除裸指针 deref。
+- 同步更新 `tests/test_firmware_feature_flags.py`：新增 `test_websocket_event_callback_does_not_invoke_log_sink_in_async_task` 与 `test_websocket_send_paths_use_id_not_raw_client_pointer`；版本号断言更新到 v1.7.16。
+
+## 2026-06-21 v1.7.15
+
+- 固件版本号从 `v1.7.14` 更新到 `v1.7.15`。
+- fix(稳定性): 排查实机上 v1.7.14 部署后再次出现的 `Failed to fetch`（`/api/sta`、`/api/data`、`/api/log` 三 API 同时无响应）+ `ws disconnect/connect` 循环 + 设备周期性自重启（`[3440][web] ws connected` 时间戳回零）现象，定位到两个叠加因素并修复：
+  - 根因 A：v1.7.13 的 100Hz `$IMU` 帧用 `String("$IMU,") + ... + String(x, 4)` 拼装，每秒约 900 次堆 `malloc/free`，十几秒后堆碎片化与 AsyncTCP 内部 PCB tx queue 抢资源 → 某次 `malloc` 失败触发 AsyncWebSocket 异常 → ws 断连风暴 → 最终 OOM 重启。**修复**：`MUS4_FW.ino` 改为 `char imuBuf[96]` + `snprintf` + `Serial1.write` 一次写入，每帧零堆分配。
+  - 根因 B：60Hz `T..S..` 通过 `appendWebLog → sendWebLogToSocket` 每秒推 60 条 JSON 到浏览器 WS，叠加 ~60Hz 曲线二进制帧后顶满 AsyncWebSocket 8 槽队列（即使 v1.7.14 已经把 `$IMU` 不入 web log）。**修复**：新增 `TELEM_WEB_LOG_INTERVAL_MS=100`（10Hz），通过 `lastTelemWebLogMs` 节流 T..S.. 写 Web 日志的频率；Serial1 上行给上位机仍是 60Hz，HTTP `/api/log?source=serial1` 的 64 条环形缓冲不受影响，前端日志窗口实际可见的 T..S.. 由约 ~每秒 60 条降到 ~10 条。
+- 同步更新 `tests/test_firmware_feature_flags.py::test_serial1_uplink_matches_host_pilot_protocol` 新增 `char imuBuf[96]` / `snprintf` / `Serial1.write` 三项正向断言，`appendWebLog("serial1", imuBuf)` 负断言，与 `lastTelemWebLogMs` / `TELEM_WEB_LOG_INTERVAL_MS` 节流断言；版本号断言更新到 v1.7.15。
+
+## 2026-06-21 v1.7.14
+
+- 固件版本号从 `v1.7.13` 更新到 `v1.7.14`。
+- fix(web ws 稳定性): 排查 v1.7.13 上车后 Web Console 持续出现的 `ws disconnected` / `ws connected` 循环和曲线卡顿：
+  - 根因 A：100Hz 的 `$IMU` 行被同时镜像到 `appendWebLog("serial1", imuLine)`，经 `sendWebLogToSocket` 包成 ~90 字节 JSON 推到浏览器 WS，配合 60Hz `T..S..` 与曲线二进制帧顶爆 AsyncWebSocket 发送队列（默认 8 条），触发 `queueIsFull()` → 主动断连 → 浏览器重连 → 再次堵塞，1–3s 一轮。修复方式：`$IMU` 不再写 Web 日志，Web Console 通过 WebSocket 二进制 schema v2 的 `latest` 区获取 IMU（v1.7.11 已实装的 `gx/gy/ax/ay/az`）。`T..S..` / `M:P` 仍保留日志旁路。
+  - 根因 B：mDNS / NetBIOS / LLMNR 三种主机名发现协议在弱 Wi-Fi 下的多播查询风暴 + mDNS 每 60s 周期重启会和 AsyncWebSocket 抢资源。v1.7.14 起 `FirmwareConfig.h` 新增 `DISABLE_WIFI_NAME_DISCOVERY` 总开关并默认启用：`startWifiMdnsIfNeeded()` 首行短路返回，`ENABLE_WIFI_NETBIOS_DISCOVERY` / `ENABLE_WIFI_LLMNR_DISCOVERY` 由该开关 gating（默认不再定义，对应 NetBIOS/LLMNR 包处理函数体在编译期被剪掉）。`wifiMdnsStarted` 恒为 false，因此 `WifiManager.cpp` 末尾的 60s mDNS 周期重启块自然不触发，无须额外改动。STATUS / `/api/sta` 中的 `mdns_host` / `mdns_url` / `mdns_started` 字段保留，Web UI 网络面板表现为 `mdns_started=0` 与空 `mdns_url`，便于将来注释掉 `DISABLE_WIFI_NAME_DISCOVERY` 一行恢复。
+- 同步更新 `tests/test_firmware_feature_flags.py` 新增 `test_wifi_mdns_startup_short_circuits_when_name_discovery_disabled` 与对 `appendWebLog("serial1", imuLine)` 的负断言；改写 `test_wifi_discovery_compile_switches_exist` 验证 NetBIOS/LLMNR 受 `DISABLE_WIFI_NAME_DISCOVERY` gating；版本号断言更新到 v1.7.14。
+
 ## 2026-06-21 v1.7.13
 
 - 固件版本号从 `v1.7.12` 更新到 `v1.7.13`。

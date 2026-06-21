@@ -38,8 +38,18 @@ uint32_t wifiWebSocketConnects = 0;
 uint32_t wifiWebSocketDisconnects = 0;
 uint32_t wifiWebSocketMaxDtMs = 0;
 
+// v1.7.16：AsyncTCP task 上的 onEvent 回调不得直接 mus4LogLine —— 那会触发
+// sendWebLogToSocket 在 AsyncTCP task 上写共享 String，与 main loop 的同一 String
+// 写入并发 realloc 撕裂堆。改为只在回调里翻 volatile 标志，main loop 在
+// `updateWifiWebSocket()` 里读到后再打日志。
+// v1.7.17：上一刀还漏了 hello —— 它在 CONNECT 回调里直接调，也写共享 String。
+// 把 hello 一起搬到 main loop 消费 pendingWsConnectEvent 时发出；并彻底删掉
+// 共享 String，让所有 text JSON 都用栈上局部 String，杜绝跨上下文 realloc 同一块。
+static volatile bool pendingWsConnectEvent = false;
+static volatile bool pendingWsDisconnectEvent = false;
+static volatile uint32_t pendingWsConnectClientId = 0;
+
 static unsigned long lastWifiWebSocketPushMs = 0;
-static String wifiWebSocketPayload;
 static uint8_t wifiWebSocketBinaryPayload[384];
 
 static uint16_t wifiWebDataIndexForSeq(uint32_t seq)
@@ -51,32 +61,37 @@ static uint16_t wifiWebDataIndexForSeq(uint32_t seq)
     return WIFI_WEB_DATA_CAPACITY;
 }
 
-static void sendWifiWebSocketHello(AsyncWebSocketClient* client)
+static void sendWifiWebSocketHello(uint32_t clientId)
 {
-    if (!client) return;
-    wifiWebSocketPayload = "{\"type\":\"hello\",\"seq\":";
-    wifiWebSocketPayload += wifiWebDataSeq;
-    wifiWebSocketPayload += '}';
-    client->text(wifiWebSocketPayload);
+    // 栈上局部 String：realloc 只触碰本函数私有堆块，不会被另一上下文撕。
+    String payload;
+    payload.reserve(64);
+    payload = "{\"type\":\"hello\",\"seq\":";
+    payload += wifiWebDataSeq;
+    payload += '}';
+    wifiWebSocket.text(clientId, payload);
 }
 
 static void sendWebLogToSocket(uint32_t seq, unsigned long t, const char* source, const char* line)
 {
-    if (!wifiWebSocketClientConnected || !wifiWebSocketClient) return;
-    if (!wifiWebSocketClient->canSend() || wifiWebSocketClient->queueIsFull()) return;
+    if (!wifiWebSocketClientConnected) return;
+    if (!wifiWebSocket.availableForWrite(wifiWebSocketClientId)) return;
     if (otaRuntime.inProgress) return;
     if (ESP.getFreeHeap() < WIFI_WEB_TELEMETRY_MIN_FREE_HEAP) return;
 
-    wifiWebSocketPayload = "{\"type\":\"log\",\"seq\":";
-    wifiWebSocketPayload += seq;
-    wifiWebSocketPayload += ",\"t\":";
-    wifiWebSocketPayload += t;
-    wifiWebSocketPayload += ",\"src\":\"";
-    wifiWebSocketPayload += source;
-    wifiWebSocketPayload += "\",\"line\":";
-    appendJsonString(wifiWebSocketPayload, line);
-    wifiWebSocketPayload += '}';
-    wifiWebSocketClient->text(wifiWebSocketPayload);
+    // 栈上局部 String：v1.7.17 起不再使用共享 static String。
+    String payload;
+    payload.reserve(192);
+    payload = "{\"type\":\"log\",\"seq\":";
+    payload += seq;
+    payload += ",\"t\":";
+    payload += t;
+    payload += ",\"src\":\"";
+    payload += source;
+    payload += "\",\"line\":";
+    appendJsonString(payload, line);
+    payload += '}';
+    wifiWebSocket.text(wifiWebSocketClientId, payload);
 }
 
 static void handleWifiWebSocketMessage(AsyncWebSocketClient* client, uint8_t* data, size_t length)
@@ -108,8 +123,10 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
         wifiWebSocketConnects++;
         client->keepAlivePeriod(WIFI_WEB_SOCKET_KEEPALIVE_SECONDS);
         client->setCloseClientOnQueueFull(false);
-        sendWifiWebSocketHello(client);
-        mus4LogLine("web", "ws connected");
+        // v1.7.17：不再在 AsyncTCP task 上下文做任何 String 写入。
+        // hello 和日志都由 main loop 单一上下文发出，杜绝跨上下文撕堆。
+        pendingWsConnectClientId = client->id();
+        pendingWsConnectEvent = true;
         return;
     }
     if (type == WS_EVT_DISCONNECT) {
@@ -119,7 +136,7 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
             wifiWebSocketClientLastSeq = wifiWebDataSeq;
             wifiWebSocketDisconnects++;
             lastWifiWebSocketPushMs = millis();
-            mus4LogLine("web", "ws disconnected");
+            pendingWsDisconnectEvent = true;
         }
         return;
     }
@@ -134,10 +151,8 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
 static void pushWifiWebSocketData()
 {
     if (!wifiWebSocketClientConnected) return;
-    if (!wifiWebSocketClient || !wifiWebSocketClient->canSend() || wifiWebSocketClient->queueIsFull()) {
-        wifiWebSocketQueueFullSkips++;
-        return;
-    }
+    // v1.7.16：用 id 查表，不再持裸 wifiWebSocketClient 指针。availableForWrite(id)
+    // 内部在锁下检查 _client、_status、queue 容量，找不到 / 已断开就返回 false。
     if (!wifiWebSocket.availableForWrite(wifiWebSocketClientId)) {
         wifiWebSocketQueueFullSkips++;
         return;
@@ -219,8 +234,9 @@ static void pushWifiWebSocketData()
         lastSentSeq = seq;
     }
     *pointCountSlot = pointCount;
-    if (pointCount > 0 && wifiWebSocketClient && wifiWebSocketClient->canSend()) {
-        wifiWebSocketClient->binary(wifiWebSocketBinaryPayload, cursor - wifiWebSocketBinaryPayload);
+    if (pointCount > 0) {
+        // 走 id 路径：内部会再次锁下查 client，已断开就 no-op，不会 use-after-free。
+        wifiWebSocket.binary(wifiWebSocketClientId, wifiWebSocketBinaryPayload, cursor - wifiWebSocketBinaryPayload);
         wifiWebSocketClientLastSeq = lastSentSeq;
         wifiWebSocketFramesSent++;
         lastWifiWebSocketPushMs = now;
@@ -229,7 +245,8 @@ static void pushWifiWebSocketData()
 
 void setupWifiWebSocket()
 {
-    wifiWebSocketPayload.reserve(1536);
+    // v1.7.17：共享 static String 删除后，setup 不再需要预 reserve；
+    // 各 send 路径自己用栈上局部 String。
     wifiWebSocket.onEvent(handleWifiWebSocketEvent);
     wifiWebSocketServer.addHandler(&wifiWebSocket);
     wifiWebSocketServer.begin();
@@ -241,6 +258,21 @@ void updateWifiWebSocket()
 {
     unsigned long stageStart = millis();
     wifiWebSocket.cleanupClients();
+    // 消费 AsyncTCP task 通过 volatile 标志报来的连接事件，由 main loop 单一上下文
+    // 处理 hello + 日志 —— 保证 String 写入永远只在 main loop 执行，与
+    // pushWifiWebSocketData / appendWebLog 走同一条线性时间线，不再有共享/撕堆 race。
+    // 先消费 disconnect 再消费 connect：避免短时间断连重连的两条日志倒序。
+    if (pendingWsDisconnectEvent) {
+        pendingWsDisconnectEvent = false;
+        mus4LogLine("web", "ws disconnected");
+    }
+    if (pendingWsConnectEvent) {
+        pendingWsConnectEvent = false;
+        uint32_t helloId = pendingWsConnectClientId;
+        // 先发 hello，让前端尽早拿到 seq 起点；再打日志（也会触发 sink）。
+        sendWifiWebSocketHello(helloId);
+        mus4LogLine("web", "ws connected");
+    }
     pushWifiWebSocketData();
     uint32_t stageDt = (uint32_t)(millis() - stageStart);
     if (stageDt > wifiWebSocketMaxDtMs) wifiWebSocketMaxDtMs = stageDt;

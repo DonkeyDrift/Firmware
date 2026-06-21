@@ -259,7 +259,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 ### 版本与发布记录
 
-当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.7.6`。README 中部分硬件与路径描述可能滞后，硬件细节以 `MUS4_FW.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
+当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.7.8`。README 中部分硬件与路径描述可能滞后，硬件细节以 `MUS4_FW.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
 
 ### 控制模式
 
@@ -351,7 +351,7 @@ Web UI 的 HTML/CSS/JS 目前内嵌在 `MUS4_FW.ino` 的 `WIFI_WEB_CONSOLE_HTML`
 - `Doc/Tools/mus4_pilot_infer.md`：Pilot 模型推理控制器、安全门控和部署说明。
 - `Doc/README/OPERATIONS.md`：串口运行时操作命令与数据帧。
 - `provisioning_system/docs/deployment_and_testing.md`：独立配网系统的 ESP32 固件、Linux agent 和测试部署说明。
-- `Doc/Plan/`：方案、设计方案、实施路线和历史实施方案目录；新增方案类内容应写入此目录，使用清晰的中文文件名，使用前需对照当前代码验证。其中 `Doc/Plan/MUS4_FW模块化拆分方案.md`（3.0 修订稿）记录了 v1.7.4 把 `MUS4_FW.ino` 拆到 `libraries/mus4_*` 的模块边界与切片完成情况，是理解当前模块布局来源的最佳入口。
+- `Doc/Plan/`：方案、设计方案、实施路线和历史实施方案目录；新增方案类内容应写入此目录，使用清晰的中文文件名，使用前需对照当前代码验证。其中 `Doc/Plan/MUS4_FW模块化拆分方案.md`（3.0 修订稿）记录了 v1.7.4 把 `MUS4_FW.ino` 拆到 `libraries/mus4_*` 的模块边界与切片完成情况，是理解当前模块布局来源的最佳入口。`docs/Plan/DEV模式影响面与运行逻辑映射.md` 是 DEV 开关在 v1.7.6 实现下的事实映射（放权清单、执行链路、与设计稿的已知偏差），修改 DEV / OTA / 无线权限相关代码前应先读。
 - `README.md`：项目介绍与快速开始，部分构建命令、硬件引脚和文档路径可能滞后；引用前必须对照 `MUS4_FW.ino`、`Doc/Hardware/pin_definitions.md`、`Doc/Arch/architecture.md` 和本文件验证。
 - `AGENTS.md`：其他代理工具的历史指南，包含旧版本号、MiniClaw 专属身份指令和外部工具流程；Claude Code 操作本仓库时不要继承其中的代理身份或工具专属规则，优先遵循本文件、源码和当前项目文档。
 

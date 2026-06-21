@@ -34,7 +34,10 @@ void keepDevModeOtaWindowActive(OtaRuntimeState& os, WifiRuntimeState& ws)
 
 bool shouldEmitSerial1Telemetry(OtaRuntimeState& os)
 {
-    return !os.windowOpen && !os.inProgress;
+    // v1.7.8 起：仅在 OTA 真正传输期间暂停 Serial1，避免 DEV ON 时 windowOpen
+    // 长期为 true 阻塞与上位机通信。Park Guard 仍由 forceWifiOtaParkLocked()
+    // 在传输期内托底。详见 docs/Plan/DEV模式影响面与运行逻辑映射.md §2.3。
+    return !os.inProgress;
 }
 
 void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin, OtaRuntimeState& os, WifiRuntimeState& ws)

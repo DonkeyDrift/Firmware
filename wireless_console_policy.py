@@ -25,6 +25,9 @@ def is_control_command(line):
 
 def is_wireless_command_allowed(line, authenticated, park_locked, *, dev_mode=False, origin="tcp"):
     command = normalize_wireless_command(line)
+    # DEV ON 仅对 Web 来源放权"OTA + Web 配置 + 显示/日志切换 + WIFI_STA_*"。
+    # 控制命令与 Park 锁定诊断命令始终要求 authenticated；见
+    # docs/Plan/DEV模式影响面与运行逻辑映射.md §3。
     web_dev_mode = dev_mode and origin == "web"
     if command in PUBLIC_COMMANDS:
         return True
@@ -32,12 +35,14 @@ def is_wireless_command_allowed(line, authenticated, park_locked, *, dev_mode=Fa
         return (web_dev_mode or authenticated) and park_locked
     if command in OTA_STATUS_COMMANDS or command in OTA_CLOSE_COMMANDS:
         return web_dev_mode or authenticated
-    if not authenticated and not web_dev_mode:
+    # DEV ON 显式白名单：显示/日志切换、Wi-Fi STA 配置类命令。
+    if command in GENERAL_AUTHENTICATED_COMMANDS or command in WIFI_STA_CONFIG_COMMANDS:
+        return authenticated or web_dev_mode
+    # 其余命令（控制 / 诊断）不读 webDevMode，严格要求认证。
+    if not authenticated:
         return False
     if command in PARK_LOCKED_COMMANDS:
         return park_locked
-    if command in GENERAL_AUTHENTICATED_COMMANDS or command in WIFI_STA_CONFIG_COMMANDS:
-        return True
     return is_control_command(line)
 
 
@@ -167,6 +172,10 @@ def is_ota_window_active(now_ms, deadline_ms, *, dev_mode=False):
 
 
 def should_emit_serial1_telemetry(ota_window_open, ota_in_progress):
+    # v1.7.8 起：仅在 OTA 真正传输期间暂停 Serial1，避免 DEV ON 时 windowOpen
+    # 长期为 True 阻塞与上位机通信。窗口仅打开但未传输不影响 Serial1。
+    # 详见 docs/Plan/DEV模式影响面与运行逻辑映射.md §2.3。
+    _ = ota_window_open  # 保留参数以维持调用方签名稳定
     return not ota_in_progress
 
 

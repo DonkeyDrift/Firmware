@@ -68,7 +68,7 @@ bool ansiDetected = false;            // Auto-detected ANSI support state
 bool uiInitialized = false;
 unsigned long uiIntervalCurrent = UI_UPDATE_INTERVAL;
 const unsigned long uiIntervalMin = 100;
-const unsigned long uiIntervalMax = 500;
+const unsigned long uiIntervalMax = 250;
 unsigned long lastPerfEval = 0;
 unsigned long lastUICycleDuration = 0;
 unsigned long sensorTTL = 1000;
@@ -425,7 +425,14 @@ void loop()
     }
 
     // Apply similar handling to the Park, Mode, and Drift channels
-    if (!parkValid && !aux_stable_initialized[CH_PARK]) pwm_filtered[CH_PARK] = 1500;
+    if (!parkValid) {
+        // Force Park channel to a clearly released value when RC signal is lost
+        // to prevent accidental park locking from stale or last-known pressed PWM.
+        pwm_filtered[CH_PARK] = 1000;
+        aux_stable_pwm[CH_PARK] = 1000;
+        aux_candidate_pwm[CH_PARK] = 1000;
+        aux_candidate_count[CH_PARK] = 0;
+    }
     if (!driftValid && !aux_stable_initialized[CH_DRIFT]) pwm_filtered[CH_DRIFT] = 1000;
     if (!driftScaleValid && !aux_stable_initialized[CH_DRIFT_SCALE]) pwm_filtered[CH_DRIFT_SCALE] = 1500;
 
@@ -465,13 +472,20 @@ void loop()
 
     if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
     {
-        String telem = String("T") + car_output.throttle + ":S" + car_output.steering;
-        if (shouldEmitSerial1Telemetry(otaRuntime)) {
-            Serial1.println(telem); // RC => Type-C
-        }
+        // In MANUAL mode the RC receiver is the active control source, so echo
+        // the last output value as telemetry. In ASSIST/AUTO the host already
+        // sends control frames at its own rate; suppress TX telemetry to avoid
+        // duplicating traffic in the Serial1 log.
+        if (car_output.mode == CAR_MODE_MANUAL)
+        {
+            if (shouldEmitSerial1Telemetry(otaRuntime)) {
+                String telem = String("T") + car_output.throttle + ":S" + car_output.steering;
+                Serial1.println(telem); // RC => Type-C
 #ifdef ENABLE_WIFI_CONSOLE
-        appendWebLog("serial1", telem);
+                appendWebLog("serial1", telem);
 #endif
+            }
+        }
         lastRCDataUpdate = millis();
     }
 
@@ -491,13 +505,15 @@ void loop()
 
     updateActuatorOutput();
 
+    buzzer.update();
+
     scanLEDToggle();
     if (now - lastPerfEval >= 1000)
     {
         evalDegrade();
-        if (lastUICycleDuration > 150) uiIntervalCurrent = min(uiIntervalCurrent + 50, uiIntervalMax);
+        if (lastUICycleDuration > 250) uiIntervalCurrent = min(uiIntervalCurrent + 30, uiIntervalMax);
         else uiIntervalCurrent = (uiIntervalCurrent > uiIntervalMin ? uiIntervalCurrent - 20 : uiIntervalMin);
         lastPerfEval = now;
     }
-    delay(2);
+    delay(3);
 }

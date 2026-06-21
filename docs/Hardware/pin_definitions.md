@@ -68,8 +68,8 @@
 
 *   **硬件连接**：
     *   连接至上位机 (Pilot) 或 RS232 转换模块。
-    *   **GPIO 16 (RX)**：接收来自上位机的 `Throttle:Steering\n` 指令。
-    *   **GPIO 17 (TX)**：向上位机回传当前的控制状态 `T:S\n`。
+    *   **GPIO 16 (RX)**：接收来自上位机的 `Throttle:Steering\n` 控制指令。
+    *   **GPIO 17 (TX)**：仅在 MANUAL 模式下向上位机回传最近一次从串口接收到的控制指令 `T:S\n`（约 60 Hz）；ASSIST / AUTO 模式下关闭 TX 遥测。
 
 *   **软件配置**：
     *   使用 `Serial1` 对象初始化。

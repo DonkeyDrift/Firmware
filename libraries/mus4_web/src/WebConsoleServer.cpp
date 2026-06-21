@@ -238,16 +238,10 @@ static void handleWifiWebCommand()
     target.trim();
     String response;
     StringPrint out(response);
-    if (target.equalsIgnoreCase("serial")) {
-        appendWebLog("serial", String("> ") + redactWirelessConsoleLine(line));
-        Serial.println(line);
-        out.println("ACK:SERIAL");
-        appendWebLog("serial", "ACK:SERIAL");
-    } else if (target.equalsIgnoreCase("serial1")) {
-        appendWebLog("serial1", String("> ") + redactWirelessConsoleLine(line));
-        Serial1.println(line);
-        out.println("ACK:SERIAL1");
-        appendWebLog("serial1", "ACK:SERIAL1");
+    if (target.equalsIgnoreCase("serial") || target.equalsIgnoreCase("serial1")) {
+        appendWebLog("web", String("> [") + target + " disabled] " + redactWirelessConsoleLine(line));
+        out.println("NACK:" + target.toUpperCase() + "_DISABLED");
+        appendWebLog("web", "NACK:" + target.toUpperCase() + "_DISABLED");
     } else {
         appendWebLog("web", String("> ") + redactWirelessConsoleLine(line));
         processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_WEB);

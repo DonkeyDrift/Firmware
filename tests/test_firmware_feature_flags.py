@@ -158,8 +158,8 @@ def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
     assert 'id="cmdTarget"' in source
     assert 'id="logSource"' not in source
     assert '<option value="web">Web</option>' in source
-    assert '<option value="serial">Serial</option>' in source
-    assert '<option value="serial1">Serial1</option>' in source
+    assert '<option value="serial">Serial</option>' not in source
+    assert '<option value="serial1">Serial1</option>' not in source
     assert "const LOG_SOURCE_MAX_BYTES=1024*1024" in source
     assert "const LOG_DISPLAY_MAX_BYTES=16000" in source
     assert "sourceBuffers={web:'',serial:'',serial1:''}" in source
@@ -208,7 +208,7 @@ def test_web_console_has_help_floating_modal():
     assert "状态卡片：查看模式、Park、OTA、连接状态" in source
     assert "Network：查看 AP/STA IP，配置 Wi-Fi" in source
     assert "Diagnostics：运行测试、回归、维护命令" in source
-    assert "Serial Log：查看设备日志和命令反馈" in source
+    assert "Serial Log：查看设备日志" in source
     assert "Tub JSON：记录并下载遥测样本" in source
     assert "OTA / DEV：固件更新与开发模式开关" in source
     assert "Status Cards: view mode, Park, OTA, and connection status" in source
@@ -492,6 +492,17 @@ def test_serial1_telemetry_has_dedicated_web_log_buffer():
     assert "(uint32_t seq, unsigned long t, const char* source, const char* line)" in web_log_header
     assert "void webLogBufferSetSocketSink(WebLogSocketSink sink)" in web_log_header
     assert "webLogBufferSetSocketSink" in web_log_source
+
+
+def test_web_console_serial_targets_are_disabled():
+    server_source = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+
+    # Serial/Serial1 command forwarding from Web Console is disabled to avoid
+    # interfering with hardware serial processing.
+    assert "Serial.println(line);" not in server_source
+    assert "Serial1.println(line);" not in server_source
+    assert 'target.equalsIgnoreCase("serial")' in server_source
+    assert 'NACK:" + target.toUpperCase() + "_DISABLED"' in server_source
 
 
 def test_wifi_console_types_are_split_from_sketch():

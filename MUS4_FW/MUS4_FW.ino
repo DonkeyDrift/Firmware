@@ -174,6 +174,7 @@ bool& wifiStaConnecting = wifiRuntime.staConnecting;
 extern char* const wifiStaLastError = wifiRuntime.staLastError;
 extern char* const wifiStaLastErrorMessage = wifiRuntime.staLastErrorMessage;
 bool& wifiStaApplyPending = wifiRuntime.staApplyPending;
+bool& wifiStaApplyFromAp = wifiRuntime.staApplyFromAp;
 bool& wifiApRestartPending = wifiRuntime.apRestartPending;
 bool& wifiMdnsStarted = wifiRuntime.mdnsStarted;
 bool& wifiStaHandoffActive = wifiRuntime.staHandoffActive;

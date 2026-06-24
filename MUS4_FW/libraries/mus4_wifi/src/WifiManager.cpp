@@ -45,6 +45,7 @@ extern bool& wifiStaConnecting;
 extern char* const wifiStaLastError;
 extern char* const wifiStaLastErrorMessage;
 extern bool& wifiStaApplyPending;
+extern bool& wifiStaApplyFromAp;
 extern bool& wifiApRestartPending;
 extern bool& wifiMdnsStarted;
 extern bool& wifiStaHandoffActive;
@@ -428,24 +429,38 @@ bool restartWifiAp()
     wifiCaptiveDnsServer.stop();
     WiFi.softAPdisconnect(true);
     delay(100);
-    // v1.7.18 起 AP/STA 互斥切换：AP 重启前根据当前 STA 是否在线决定模式——
-    // STA 已连接（用户从 STA IP 改 AP SSID）→ WIFI_AP_STA；否则纯 WIFI_AP。
-    WiFi.mode(wifiStaConnected ? WIFI_AP_STA : WIFI_AP);
+    // 保持 WIFI_AP_STA 不变，避免 AP-only ↔ AP_STA 反复切换重置 SoftAP、踢掉客户端。
+    // STA 是否在线由 wifiStaConnected / wifiInApOnlyMode 语义管理，不依赖 mode。
+    if (WiFi.getMode() != WIFI_AP_STA) {
+        WiFi.mode(WIFI_AP_STA);
+        delay(50);
+    }
     wifiInApOnlyMode = !wifiStaConnected;
     return startWifiApServices("AP restarted");
 }
 
-// v1.7.18 起 AP/STA 互斥切换：STA 稳定 grace 通过后，主动把 AP 关掉、切到 WIFI_STA。
-// 这是 STA_ONLY 状态的唯一入口。Captive DNS 与 wifiConsoleServer 都依赖 SoftAP，
-// AP 关闭时一并停掉，避免出现「socket 还监听但 AP 已下线」的悬空状态。
+// STA 稳定 grace 通过后，主动把 SoftAP 关掉；保持底层 mode 为 WIFI_AP_STA，
+// 避免后续从 STA-only 再切回 AP_STA 时重置接口、踢掉客户端。
+// Captive DNS 与 wifiConsoleServer 都依赖 SoftAP，AP 关闭时一并停掉，避免
+// 出现「socket 还监听但 AP 已下线」的悬空状态。
 static void stopWifiApForStaOnly()
 {
     wifiStaUpGraceDeadlineMs = 0;
+    wifiStaApplyFromAp = false;
     wifiApRestartPending = false;
     wifiCaptiveDnsServer.stop();
     WiFi.softAPdisconnect(true);
-    WiFi.mode(WIFI_STA);
-    // 关 AP 后 SoftAP 端的 TCP/HTTP 监听句柄已失效；这里把 wifiConsoleStarted
+    // 保持 WIFI_AP_STA：STA 接口继续使用，AP 接口已停用，对外等效于 STA-only。
+    if (WiFi.getMode() != WIFI_AP_STA) {
+        WiFi.mode(WIFI_AP_STA);
+        delay(50);
+    }
+    // 切到 STA-only 后重新绑定 WebServer，让监听套接字包含 STA 接口。
+    // 同时避免在 AP 仍在线的 grace 窗口内 close/begin，导致配置页面中断。
+    wifiWebServer.close();
+    wifiWebServer.begin();
+    mus4LogLine("wifi", "WebServer re-bound for STA");
+    // 关 AP 后 SoftAP 端的 TCP 控制台监听句柄已失效；这里把 wifiConsoleStarted
     // 置 false 让 updateWifiConsole() 不再尝试 accept，但 wifiWebServer 仍可在
     // STA 接口上响应。
     wifiConsoleStarted = false;
@@ -453,14 +468,16 @@ static void stopWifiApForStaOnly()
     mus4LogLine("wifi", "AP stopped after STA connected");
 }
 
-// v1.7.18 起 AP/STA 互斥切换：STA 持续断开 / STA 失败 / WIFI_STA_CLEAR 路径都
-// 收敛到这一刀——切回 WIFI_AP 并重启 AP 服务，让设备彻底落回 AP-only。
+// STA 持续断开 / STA 失败 / WIFI_STA_CLEAR 路径都收敛到这里：停止 STA 并
+// 确保 AP 兜底可用。保持底层 mode 为 WIFI_AP_STA，不再切到 WIFI_AP，避免
+// 下一次从 AP-only 保存 STA 时做破坏性的 AP↔AP_STA 切换、踢掉配置客户端。
 // v1.7.20 起本函数不再写 lastError，由调用方按场景决定错误码；这样四条失败路径
 // （down grace 后的 sta_lost / timeout / auth_failed / no_ssid）能各自保留语义。
 static void restoreApAfterStaLost()
 {
     wifiStaUpGraceDeadlineMs = 0;
     wifiStaDownGraceDeadlineMs = 0;
+    wifiStaApplyFromAp = false;
     wifiStaConnected = false;
     wifiStaConnecting = false;
     stopWifiMdnsIfNeeded();
@@ -473,9 +490,12 @@ static void restoreApAfterStaLost()
     // esp_wifi_disconnect() 把 ESP32 自带的 STA 自动重连机制停掉，避免设备在
     // AP-only 下后台不断重试错误密码、干扰 RF 调度。
     esp_wifi_disconnect();
-    WiFi.mode(WIFI_AP);
+    if (WiFi.getMode() != WIFI_AP_STA) {
+        WiFi.mode(WIFI_AP_STA);
+        delay(50);
+    }
     wifiInApOnlyMode = true;
-    startWifiApServices("AP restored");
+    ensureWifiApAvailable();
 }
 
 void loadWifiApPreference()
@@ -533,26 +553,22 @@ void setupWifiConsole()
     wifiStaTimedOut = false;
     wifiStaConnecting = false;
     wifiApRestartPending = false;
-    // v1.7.18 起 AP/STA 互斥切换：开机默认进入 AP-only 模式；只有当 STA 配置存在
-    // 时，下面的 applyWifiStaCredentials 调用会显式把模式切到 WIFI_AP_STA。
+    // 底层 mode 始终维持 WIFI_AP_STA；AP/STA 的「互斥」通过启用/停用 SoftAP
+    // 以及 STA 连接状态来管理，避免 AP-only ↔ AP_STA 反复切换重置接口、踢掉客户端。
     wifiStaUpGraceDeadlineMs = 0;
     wifiStaDownGraceDeadlineMs = 0;
-    // v1.7.21 起：开机模式为 WIFI_AP_STA，wifiInApOnlyMode 据实初始化为 false。
-    // 该标志只用于 applyWifiStaCredentials 与 updateWifiConsole 判断「当前是否
-    // 真的处于 AP-only」，与 mode 严格对齐。
+    // wifiInApOnlyMode 表示「当前是否按 AP-only 行为运行」（STA 不活跃），
+    // 不再与底层 WiFi mode 严格一一对应。
     wifiInApOnlyMode = false;
     clearWifiStaLastError();
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
     delay(100);
-    // v1.7.21 起：开机改回 WIFI_AP_STA。互斥语义只在
-    //   - stopWifiApForStaOnly() 落地 STA-only 时 WiFi.mode(WIFI_STA)
-    //   - restoreApAfterStaLost() 回到 AP-only 时 WiFi.mode(WIFI_AP)
-    // 两个事件点切换；开机阶段强行 WIFI_AP 反而会让 applyWifiStaCredentials
-    // 立刻又切到 WIFI_AP_STA，ESP-IDF 在 WIFI_AP ⇄ WIFI_AP_STA 反复切换时
-    // STA netif 重建有 race，导致 STA 拿不到信道、15 秒后 timeout。
+    // 全程保持 WIFI_AP_STA。SoftAP 负责 AP 兜底入口，STA 部分在配置存在时才
+    // begin；AP 关闭（stopWifiApForStaOnly）或 STA 失败（restoreApAfterStaLost）
+    // 时不再切 mode，只启停对应接口。这样彻底避免 AP↔AP_STA 反复切换导致的
+    // SoftAP 重置、配置页面断连和 STA netif race。
     // 历史 v1.7.17 全程 WIFI_AP_STA 已验证 newhome_iot 等路由器可正常连接。
-    // STA 没配置时 STA 部分不 begin，对外等效于 AP-only。
     WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);
     {
@@ -604,14 +620,8 @@ void updateWifiSta()
 #ifdef ENABLE_WIFI_LLMNR_DISCOVERY
             startWifiLlmnrIfNeeded();
 #endif
-            // Re-bind WebServer so the STA interface is included in the listen
-            // socket. LwIP may not auto-add new interfaces to an existing
-            // INADDR_ANY socket on some Arduino-ESP32 builds.
-            wifiWebServer.close();
-            wifiWebServer.begin();
-            mus4LogLine("wifi", "WebServer re-bound for STA");
             mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
-            wifiStaUpGraceDeadlineMs = millis() + WIFI_STA_GRACE_UP_MS;
+            wifiStaUpGraceDeadlineMs = millis() + (wifiStaApplyFromAp ? WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS : WIFI_STA_GRACE_UP_MS);
             wifiStaDownGraceDeadlineMs = 0;
             // handoff 在新方案里已经退役；保留 finish 调用是为了把残留字段清空。
             finishWifiStaHandoff();

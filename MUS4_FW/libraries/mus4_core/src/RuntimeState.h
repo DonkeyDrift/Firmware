@@ -23,6 +23,7 @@ struct WifiRuntimeState {
     char staLastError[24] = {0};
     char staLastErrorMessage[128] = {0};
     bool staApplyPending = false;
+    bool staApplyFromAp = false;
     bool staPasswordSet = false;
     char staSsid[WIFI_STA_SSID_MAX_LEN + 1] = {0};
     char staPassword[WIFI_STA_PASSWORD_MAX_LEN + 1] = {0};
@@ -48,7 +49,8 @@ struct WifiRuntimeState {
     // v1.7.18 起 AP/STA 互斥切换的去抖锚点：
     // staUpGraceDeadlineMs   - STA 首次 WL_CONNECTED 后等待关 AP 的截止时间，0 表示未武装；
     // staDownGraceDeadlineMs - STA 脱离 WL_CONNECTED 后等待起 AP 的截止时间，0 表示未武装；
-    // inApOnlyMode           - 当前是否已经切到 WIFI_AP（AP-only），用于驱动状态机分支。
+    // inApOnlyMode           - 当前是否按 AP-only 行为运行（STA 不活跃），用于驱动状态机分支；
+    //                          底层 WiFi mode 始终为 WIFI_AP_STA，不再与该标志一一对应。
     unsigned long staUpGraceDeadlineMs = 0;
     unsigned long staDownGraceDeadlineMs = 0;
     bool inApOnlyMode = true;

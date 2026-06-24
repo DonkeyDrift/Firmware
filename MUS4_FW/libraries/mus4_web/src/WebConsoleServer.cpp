@@ -26,6 +26,7 @@ extern WebServer wifiWebServer;
 // Runtime state aggregates defined in MUS4_FW.ino
 extern WifiRuntimeState wifiRuntime;
 extern OtaRuntimeState otaRuntime;
+extern bool& wifiStaApplyFromAp;
 
 // Wi-Fi runtime state aliases (kept in MUS4_FW.ino via reference aliases)
 #define ws wifiRuntime
@@ -514,6 +515,7 @@ static void handleWifiWebStaSet()
     } else {
         clearWifiStaHandoff();
     }
+    wifiStaApplyFromAp = sourceArg == "ap";
     appendWebLog("web", String("wifi sta saved ssid=") + ws.staSsid + " password=<redacted>");
     wifiWebServer.send(200, "application/json", String("{\"saved\":true,\"applied\":true,\"state\":") + wifiStaJson() + "}");
     scheduleWifiStaApply();

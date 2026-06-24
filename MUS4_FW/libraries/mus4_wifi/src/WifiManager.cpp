@@ -368,42 +368,12 @@ void scheduleWifiApRestart()
     wifiApRestartDeadlineMs = millis() + WIFI_STA_APPLY_DELAY_MS;
 }
 
-static String wifiStaSsidShortUpper()
-{
-    String sta = WiFi.SSID();
-    if (sta.length() == 0) return String();
-    String out;
-    out.reserve(3);
-    for (uint8_t i = 0; i < sta.length() && out.length() < 3; i++) {
-        char c = sta[i];
-        if (c & 0x80) continue; // Skip non-ASCII bytes to keep SSID printable
-        out += (char)toupper(c);
-    }
-    return out.length() == 3 ? out : String();
-}
-
-static String wifiStaIpTailText()
-{
-    IPAddress ip = WiFi.localIP();
-    return String(ip[2]) + "." + String(ip[3]);
-}
-
-static String buildWifiDevApSsid(const String& baseSsid)
-{
-    if (!baseSsid.endsWith(WIFI_AP_SSID_SUFFIX)) return baseSsid;
-    String prefix = baseSsid.substring(0, baseSsid.length() - strlen(WIFI_AP_SSID_SUFFIX));
-    String staShort = wifiStaSsidShortUpper();
-    if (staShort.length() == 0) return baseSsid;
-    return prefix + WIFI_AP_SSID_SUFFIX + "-" + staShort + "-" + wifiStaIpTailText();
-}
-
 String getActiveWifiApSsid()
 {
-    // v1.7.8 起：AP 广播 SSID 派生只看 STA 是否已连接，不再读 wifiDevModeEnabled。
-    // STA 已连接 → 广播 "<前缀>-ESP-<STA 短码>-<STA IP 尾两段>"，便于扫描时识别；
-    // STA 未连接 → 回退到基础 SSID。详见 docs/Plan/DEV模式影响面与运行逻辑映射.md §4。
-    if (!wifiStaConnected) return String(wifiApSsid);
-    return buildWifiDevApSsid(wifiApSsid);
+    // v1.7.22 起：AP/STA 互斥切换下 AP 与 STA 永远不会同时广播，原本用于在
+    // STA 上线后给 AP 名称追加「短码 + IP 尾段」的派生逻辑失去意义；统一返回
+    // 基础 AP SSID。三个历史辅助函数（短码 / IP 尾段 / 派生组装）已删除。
+    return String(wifiApSsid);
 }
 
 bool configureWifiSoftApNetwork()

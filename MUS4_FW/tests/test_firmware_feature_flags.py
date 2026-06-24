@@ -232,13 +232,13 @@ def test_websocket_send_paths_use_id_not_raw_client_pointer():
     assert "wifiWebSocketClient->binary(" not in web_telemetry
 
 
-def test_firmware_version_is_v1_7_21_and_changelog_is_current():
+def test_firmware_version_is_v1_7_22_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.21"' in build_info
-    assert "v1.7.21" in changelog
-    assert changelog.index("v1.7.21") < changelog.index("v1.7.20")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.22"' in build_info
+    assert "v1.7.22" in changelog
+    assert changelog.index("v1.7.22") < changelog.index("v1.7.21")
 
 
 def test_apply_wifi_sta_credentials_restores_ap_before_begin():
@@ -1365,29 +1365,40 @@ def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
     assert "invalid_ssid" in source
 
 
-def test_wifi_ap_ssid_prefix_is_limited_to_six_chars_with_dev_mode_suffix():
+def test_wifi_ap_ssid_prefix_is_limited_to_six_chars():
+    """v1.7.22 起：AP/STA 互斥切换下 AP 与 STA 不会同时广播，派生 SSID 失去意义，
+    getActiveWifiApSsid() 简化为直接返回基础 wifiApSsid；
+    `buildWifiDevApSsid` / `wifiStaSsidShortUpper` / `wifiStaIpTailText` 三个
+    辅助函数与对应文案一并退役。"""
+
     wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
     manager_header = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.h").read_text(encoding="utf-8")
     manager_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
     assets_source = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
     source = firmware_source_text()
 
+    # 基础 AP SSID 命名规则保留：6 位前缀 + "-ESP" 后缀
     assert 'const uint8_t WIFI_AP_SSID_PREFIX_MAX_LEN = 6;' in wifi_types
     assert 'const char* WIFI_AP_SSID_SUFFIX = "-ESP";' in wifi_types
     assert "String getActiveWifiApSsid()" in manager_header
     assert "String getActiveWifiApSsid()" in manager_source
-    assert "buildWifiDevApSsid" in manager_source
-    assert "wifiStaSsidShortUpper" in manager_source
-    assert "wifiStaIpTailText" in manager_source
-    # v1.7.8 起：AP SSID 派生只看 STA 是否已连接，不再读 wifiDevModeEnabled，
-    # 避免切换 DEV 状态时引起 AP 重启与广播 SSID 跳变。
-    assert "if (!wifiStaConnected) return String(wifiApSsid);" in manager_source
-    assert "!wifiDevModeEnabled || !wifiStaConnected" not in manager_source
+
+    # 派生函数与派生分支均被移除
+    assert "buildWifiDevApSsid" not in manager_source
+    assert "wifiStaSsidShortUpper" not in manager_source
+    assert "wifiStaIpTailText" not in manager_source
+    assert "if (!wifiStaConnected) return String(wifiApSsid);" not in manager_source
+
+    # 前端输入校验保留
     assert 'maxlength="6"' in assets_source
     assert '/^([A-Za-z0-9]{1,6})$/' in assets_source
     assert "长度为 1-6 位" in assets_source
-    assert "前 3 位大写" in source
-    assert "last two IP octets" in source
+
+    # UI 文案中派生说明已删除
+    assert "前 3 位大写" not in source
+    assert "last two IP octets" not in source
+    assert "追加 STA" not in source
+    assert "appends the first 3 uppercase chars of STA SSID" not in source
 
 
 def test_web_console_exposes_ap_name_mdns_lan_console_entry():

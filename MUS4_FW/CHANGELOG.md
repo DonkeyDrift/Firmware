@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-06-24 v1.7.22
+
+- 固件版本号从 `v1.7.21` 更新到 `v1.7.22`。
+- refactor(AP SSID 派生退役): AP/STA 自 v1.7.18 起已互斥切换（STA 上线后 AP 关闭），AP 与 STA 永远不会同时广播，历史在 STA 连接后给 AP SSID 追加「STA 短码 + IP 尾两段」的派生逻辑失去意义。
+- **删除**：
+  - `libraries/mus4_wifi/src/WifiManager.cpp` 中 `wifiStaSsidShortUpper()` / `wifiStaIpTailText()` / `buildWifiDevApSsid()` 三个 static 辅助函数；`getActiveWifiApSsid()` 简化为直接返回基础 `wifiApSsid`。
+  - Web Console 中文与英文 AP 配置面板文案中「开启 DEV 模式且 STA 连接成功后，AP 名称会自动追加 STA SSID 前 3 位大写和 IP 后两段」的说明。
+  - `tests/test_firmware_feature_flags.py::test_wifi_ap_ssid_prefix_is_limited_to_six_chars_with_dev_mode_suffix` 中对派生函数与文案的断言。
+- `WIFI_AP_SSID_SUFFIX` (`"-ESP"`) 与 `WIFI_AP_SSID_PREFIX_MAX_LEN`（6 字符）常量保留——它们是 AP SSID 命名规则的基础，与派生无关。
+- 同步更新 `tests/test_firmware_feature_flags.py` 版本号断言到 v1.7.22。
+
 ## 2026-06-24 v1.7.21
 
 - 固件版本号从 `v1.7.20` 更新到 `v1.7.21`。

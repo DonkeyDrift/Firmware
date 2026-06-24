@@ -1,5 +1,7 @@
 # STA 连接失败悬浮警告方案
 
+> **历史方案（v1.7.x 早期）**：本文写于 AP+STA 长期共存设计下，部分前提（AP 常驻、并行可达）已被 v1.7.18 起的 **AP/STA 互斥切换**覆盖。失败提示语义仍有效——`last_error` 字段、悬浮警告 UI、文案分级未变；但「失败后用户回到 AP 重配」的隐含路径，在新设计下意味着设备主动落回 AP-only（STA timeout → `restoreApAfterStaLost()`），而不是 AP 一直在旁边等。互斥切换的完整描述见 [`docs/Plan/AP_STA互斥切换方案.md`](./AP_STA互斥切换方案.md) 与 [`docs/Inspect/wifi-ap-sta-lifecycle-inspection.md`](../Inspect/wifi-ap-sta-lifecycle-inspection.md)。
+
 ## 背景
 
 MUS4 Web Console 已支持在页面中配置 STA Wi-Fi，并通过 `/api/wifi-sta` 查询 `configured`、`connected`、`timed_out`、`ssid`、`password_set`、`ap_ip`、`sta_ip` 等状态。当前体验存在两个问题：

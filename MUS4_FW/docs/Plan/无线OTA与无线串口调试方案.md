@@ -1,5 +1,7 @@
 # 无线 OTA 与无线串口调试方案
 
+> **历史方案（v1.7.x 早期）**：本文以「AP + STA 双模式同时支持户外直连和室内局域网调试」为前提撰写，已被 v1.7.18 起的 **AP/STA 互斥切换**覆盖。新生命周期下 AP 与 STA 不会同时广播：STA 上线后 1s 关 AP，STA 失败 / 断开 / 主动清除后回到 AP-only。OTA 入口（TCP 2323 + ArduinoOTA 3232 + Web `/update`）与权限模型保留不变，但 OTA 上传只能选当前活跃的接口（STA 模式下用 STA IP，AP 模式下用 192.168.4.1）。详见 [`docs/Plan/AP_STA互斥切换方案.md`](./AP_STA互斥切换方案.md) 与 [`docs/Inspect/wifi-ap-sta-lifecycle-inspection.md`](../Inspect/wifi-ap-sta-lifecycle-inspection.md)。
+
 ## 背景
 
 MUS4 当前主固件已经具备 USB `Serial`、RS232 `Serial1` 和 BLE Gamepad 能力，但尚未在主控制链路中集成 Wi-Fi、OTA 或无线串口调试能力。

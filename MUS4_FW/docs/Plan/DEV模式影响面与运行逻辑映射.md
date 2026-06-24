@@ -169,34 +169,19 @@ bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, 
 `tests/test_wireless_console_policy.py::test_web_dev_mode_does_not_bypass_authentication_for_control_or_diagnostic`
 锁定新行为，覆盖 `10:20`、`TEST`、`BENCH`、`REGRESS`、`STEER_CAL` 等命令在 DEV ON + 未认证下应被拒绝。
 
-## 4. AP 广播 SSID 动态变形
+## 4. AP 广播 SSID 派生（已退役 v1.7.22）
 
-**触发条件**：仅看 `wifiStaConnected == true`（v1.7.8 起与 DEV 状态**完全解耦**）。
+历史 v1.7.7 / v1.7.8 引入过"STA 连接后，AP SSID 自动追加 STA 短码 + IP 尾段"（如 `MU04-ESP-DON-3.43`）的派生逻辑。**v1.7.22 起整体移除**：
 
-- 位置：`libraries/mus4_wifi/src/WifiManager.cpp:370-383`
-- 关键代码：
-  ```cpp
-  String getActiveWifiApSsid()
-  {
-      if (!wifiStaConnected) return String(wifiApSsid);
-      return buildWifiDevApSsid(wifiApSsid);
-  }
-  ```
-- 派生格式：`<前缀>-ESP-<STA短码3字符大写>-<STA IP 后两段>`
-  - 示例：基础 SSID = `MU04-ESP`、STA SSID = `DonkeyCar`、STA IP = `192.168.3.43` → 广播 SSID = `MU04-ESP-DON-3.43`。
-  - 派生函数 `buildWifiDevApSsid()`：保留旧函数名以保持代码兼容，但语义上现在与 DEV 无关。
-  - 短码生成 `wifiStaSsidShortUpper()`：取前 3 个 ASCII 字符并转大写；非 ASCII 字节跳过；不足 3 字符返回空串，回退基础 SSID。
-- 触发流程（v1.7.8 收敛后）：
-  1. `saveDevModePreference()` **不再** 调用 `scheduleWifiApRestart()` —— 切换 DEV 不影响 AP 广播 SSID。
-  2. STA 状态变化时（`WifiManager.cpp:545-557`）：若派生 SSID 与当前广播 SSID 不一致，仍排队一次 AP 重启。这条逻辑现在与 DEV 状态无关。
-  3. `restartWifiAp()`（`WifiManager.cpp:431-439`）：`softAPdisconnect(true)` → `delay(100)` → `WIFI_AP_STA` → `startWifiApServices()` 重新 `softAP(activeSsid)`。
-- 实用价值：扫 Wi-Fi 列表就能定位"当前调试机连了哪个 STA、IP 是多少"，免登设备直接判断目标。
+- 触发前提（v1.7.18 起 AP/STA 互斥切换）：AP 与 STA 永远不会同时广播——STA 上线后 1s grace 通过即 `stopWifiApForStaOnly()` 关 AP。STA 在线时根本扫不到 AP，派生 SSID 失去意义。
+- 实现移除：`buildWifiDevApSsid()` / `wifiStaSsidShortUpper()` / `wifiStaIpTailText()` 三个 static 函数删除；`getActiveWifiApSsid()` 简化为直接 `return String(wifiApSsid);`。
+- UI 文案同步删除：Web Console AP 配置面板不再出现「开启 DEV 模式且 STA 连接成功后，AP 名称会自动追加 STA SSID 前 3 位大写和 IP 后两段」。
+- 保留：`WIFI_AP_SSID_SUFFIX="-ESP"` / `WIFI_AP_SSID_PREFIX_MAX_LEN=6` 是基础命名规则，与派生无关。
+- 兼容性：DEV 模式与 AP SSID 完全解耦——这一点 v1.7.8 时已断开，本次只是把"始终派生"也一起去掉。`/api/wifi-ap` 与 `/api/status` 返回的 `ap_ssid` 始终是基础名。
 
-> 注意：派生 SSID 仅影响**广播名**，`ws.apSsid`（NVS 持久化值）保持基础名不变。`/api/wifi-ap`
-> 返回的也是基础名（`WebConsoleServer.cpp:288-302` 注释明确说明）。
->
-> **v1.7.8 起：切换 DEV 不再丢一次 AP/Web Console 连接**。因为 `saveDevModePreference` 不再触发 AP 重启，
-> 切 DEV 只更新 NVS 标志和 OTA 窗口状态，AP 广播保持稳定。
+> 历史细节（已不存在于代码）：派生格式曾为 `<前缀>-ESP-<STA短码3字符大写>-<STA IP 后两段>`，
+> 由 `updateWifiSta()` 在 STA 上线分支里通过 `scheduleWifiApRestart()` 排队重启 AP 切换广播。
+> v1.7.22 起 STA 上线分支不再排队 AP 重启（也不再调 `getActiveWifiApSsid()` 比对），分支退化为只武装 up grace。
 
 ## 5. `DEV ON` 完整执行链（典型 HTTP OTA 场景）
 

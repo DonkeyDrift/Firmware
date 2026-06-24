@@ -234,15 +234,24 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 
 ## Wi-Fi Console、Web Console 与 OTA
 
-启用 `ENABLE_WIFI_CONSOLE` 时，固件以 AP+STA 模式启动：
+启用 `ENABLE_WIFI_CONSOLE` 时，固件默认以 **AP-only**（`WIFI_AP`）启动，并视 STA 配置情况进入 **AP/STA 互斥切换**生命周期（v1.7.18 起）：
 
-- AP SSID：`MUS4-DEBUG`
+- AP SSID：`MUS4-DEBUG`（基础名固定；v1.7.22 起不再追加 STA 短码 / IP 派生后缀）
 - TCP Console：端口 `2323`
 - Web Console / Donkey Console：端口 `80`
 - WebSocket 遥测：端口 `81`
 - ArduinoOTA：主机名 `mus4-ota`，端口 `3232`
 
-调试 AP 默认可用并保持常驻。如果已经配置 STA 凭据，固件会先启动 DNS、TCP Console 和 Web Console，再尝试连接 STA。STA 连接成功并取得有效 IP 后，AP 仍保持开启，Web UI 会尝试跳转到 `http://<sta_ip>/`；用户也可以继续连接设备 AP 并打开 `http://192.168.4.1/` 查看状态或修改配置。如果设备已经通过 STA 接入一个 Wi-Fi，并在 Web Console 中切换到另一个 STA SSID，当前页面可能会因为设备离开旧网络而断开；此时请连接设备 AP，打开 `http://192.168.4.1/`，页面会显示新 STA 的 SSID 和 IP；随后将电脑/手机切换到对应 SSID，并打开显示的 `http://<sta_ip>/`。固件还会通过 mDNS 发布 Web Console，局域网入口为 `http://<AP名称小写>.local/`；例如 AP 名称 `MUS4-DEBUG` 会发布为 `http://mus4-debug.local/`，前提是客户端和网络支持 mDNS。如果 `.local` 无法解析，请使用页面显示的 STA IP。为保证 hostname 合法，AP 名称限制为字母、数字和短横线，且不能以短横线开头或结尾。如果 STA 连接失败、超时或运行中断开，AP 会保持或恢复，用户可通过 `http://192.168.4.1/` 重新配置。
+互斥切换状态机：
+
+- 设备启动后若已有 STA 配置，临时切到 `WIFI_AP_STA` 发起连接；STA 进入 `WL_CONNECTED` 后等待 `WIFI_STA_GRACE_UP_MS=1000ms`，由 `stopWifiApForStaOnly()` 主动关 AP、切到 `WIFI_STA`（STA-only），用户通过 `http://<sta_ip>/` 访问。
+- STA 在 STA-only 状态下断开后等待 `WIFI_STA_GRACE_DOWN_MS=1000ms`，由 `restoreApAfterStaLost()` 切回 `WIFI_AP` 并恢复 AP 服务（AP-only），用户回到 `http://192.168.4.1/`；grace 期间链路恢复则取消重启。
+- STA 三类失败（`no_ssid` / `auth_failed` / `timeout`）也走 `restoreApAfterStaLost()` 回到 AP-only，避免设备卡死。
+- STA 正在尝试连接（未确认成功）期间 AP 保留，避免连接失败把用户踢出。
+- AP 模式下不再后台轮询重连 STA，用户必须在 AP 页面手动重连或重新保存。
+- STA→STA 切换：保存新 SSID → `applyWifiStaCredentials()` 在 AP_STA 下重新 `WiFi.begin()` → 新 STA 成功 1s grace 后切到新 STA-only。浏览器随旧 STA 断开后，可重新连接 AP `http://192.168.4.1/` 或扫到新 STA 后用 `http://<新sta_ip>/` 访问。
+
+mDNS：固件按当前 AP 名称发布 Web Console 为 `http://<AP名称小写>.local/`（如 `http://mus4-debug.local/`）。AP 名称限制为字母、数字和短横线，不能以短横线开头或结尾。`.local` 解析失败时改用页面显示的 STA IP。
 
 无线命令权限分层：
 

@@ -234,15 +234,24 @@ See [`Doc/Arch/architecture.md`](Doc/Arch/architecture.md) for more details.
 
 ## Wi-Fi Console, Web Console, and OTA
 
-When `ENABLE_WIFI_CONSOLE` is enabled, the firmware starts in AP+STA mode:
+When `ENABLE_WIFI_CONSOLE` is enabled, the firmware boots in **AP-only** (`WIFI_AP`) and follows an **AP/STA mutually-exclusive switching** lifecycle (since v1.7.18):
 
-- AP SSID: `MUS4-DEBUG`
+- AP SSID: `MUS4-DEBUG` (base name; since v1.7.22 the AP SSID is no longer decorated with a STA-derived short code or IP tail)
 - TCP Console: port `2323`
 - Web Console / Donkey Console: port `80`
 - WebSocket telemetry: port `81`
 - ArduinoOTA: host `mus4-ota`, port `3232`
 
-The debug AP is available by default and stays available. If STA credentials are configured, the firmware starts the DNS, TCP, and Web Console services first, then attempts STA connection. After STA connects and receives a valid IP, the AP remains enabled and the Web UI tries to jump to `http://<sta_ip>/`; users can also keep using the device AP and open `http://192.168.4.1/` to inspect status or change configuration. If the device is already reachable through one STA network and the Web Console is used to switch to another STA SSID, the current page may disconnect because the device leaves the old network. In that case, connect to the device AP, open `http://192.168.4.1/`, read the new STA SSID and IP shown on the page, then switch the computer or phone to that SSID and open the displayed `http://<sta_ip>/`. The firmware also publishes the Web Console through mDNS as `http://<ap-name-lowercase>.local/`; for example, AP name `MUS4-DEBUG` is published as `http://mus4-debug.local/` when the client and network support mDNS. If `.local` does not resolve, use the displayed STA IP. To keep this hostname valid, the AP name is limited to letters, digits, and hyphens, and it cannot start or end with a hyphen. If STA connection fails, times out, or later disconnects, the AP is kept or restored so the device can be reconfigured through `http://192.168.4.1/`.
+Lifecycle:
+
+- On boot, if STA credentials exist the firmware temporarily switches to `WIFI_AP_STA` and calls `WiFi.begin()`. Once STA reaches `WL_CONNECTED`, the firmware waits `WIFI_STA_GRACE_UP_MS=1000ms`, then `stopWifiApForStaOnly()` shuts down the SoftAP and switches to `WIFI_STA` (STA-only); access the device at `http://<sta_ip>/`.
+- When STA drops in STA-only state, the firmware arms `WIFI_STA_GRACE_DOWN_MS=1000ms`. If the link does not recover, `restoreApAfterStaLost()` switches back to `WIFI_AP` and restarts AP services (AP-only); access the device at `http://192.168.4.1/`.
+- STA failures (`no_ssid` / `auth_failed` / `timeout`) all converge to `restoreApAfterStaLost()` so the device never stalls in `WIFI_AP_STA` with both interfaces broken.
+- The AP stays up while STA is still trying (not yet `WL_CONNECTED`), so users are never locked out during a failed attempt.
+- The firmware does not auto-retry STA in AP-only state; users must reapply credentials manually.
+- STA→STA switch: saving a new SSID triggers `applyWifiStaCredentials()` which calls `WiFi.begin()` again inside `WIFI_AP_STA`. After the new STA succeeds and clears the 1s grace, the firmware moves to the new STA-only.
+
+mDNS: the Web Console is published as `http://<ap-name-lowercase>.local/` (e.g. `http://mus4-debug.local/`). The AP name is limited to letters, digits, and hyphens, and cannot start or end with a hyphen. If `.local` does not resolve, use the STA IP shown on the page.
 
 Wireless command permissions are layered:
 

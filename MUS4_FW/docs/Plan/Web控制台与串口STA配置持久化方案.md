@@ -1,5 +1,7 @@
 # Web 控制台与串口 STA 配置持久化方案
 
+> **历史方案（v1.7.x 早期）**：本文写于 AP+STA 长期共存设计下，描述中的「AP+STA 模式状态查询」「AP 始终可见」等措辞已被 v1.7.18 起的 **AP/STA 互斥切换**覆盖。STA 凭据 NVS 持久化、`/api/wifi-sta` 接口形态、`WIFI_STA_*` 串口命令集仍有效；只是 STA 连接成功后 AP 会在 1s grace 通过后自动关闭，用户走 STA IP 访问。详见 [`docs/Plan/AP_STA互斥切换方案.md`](./AP_STA互斥切换方案.md)。
+
 ## 背景
 
 MUS4 当前 Web Console 已支持 AP+STA 模式状态查询，但 STA SSID 和 Wi-Fi 密码主要来自编译期 `WirelessSecrets.h`，缺少运行时配置与持久化能力。此次优化目标是让 Web Console 明确显示 AP/STA IP，并允许通过 Web Console 与串口配置 STA 凭据，配置重启后仍生效。

@@ -779,7 +779,12 @@ void setupWebConsoleServer()
 
 void updateWebConsoleServer()
 {
-    if (!ws.consoleStarted) return;
+    // v1.7.18 起 AP/STA 互斥切换：STA-only 状态下 wifiConsoleStarted 会被
+    // stopWifiApForStaOnly() 主动置 false（含义聚焦到「AP 服务是否就绪」），
+    // 但 wifiWebServer 仍在 STA 接口监听，HTTP 必须继续被驱动；否则浏览器
+    // 通过 STA IP 访问会被 TCP RST。Web Console 的驱动门槛改为「AP 或 STA
+    // 有一个就绪」，与 AP 入口生命周期解耦。
+    if (!ws.consoleStarted && !ws.staConnected) return;
     unsigned long now = millis();
     if (lastWifiWebUpdateMs != 0) {
         uint32_t dt = (uint32_t)(now - lastWifiWebUpdateMs);

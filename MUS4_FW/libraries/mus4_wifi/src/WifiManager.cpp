@@ -240,6 +240,7 @@ void startWifiMdnsIfNeeded()
 
 bool ensureWifiApAvailable();
 bool restartWifiAp();
+bool startWifiApServices(const char* logPrefix);
 
 void stopWifiMdnsIfNeeded()
 {
@@ -336,18 +337,25 @@ void applyWifiStaCredentials()
     wifiStaConnected = false;
     wifiStaTimedOut = false;
     wifiStaConnecting = true;
-    // v1.7.18 起：发起新一轮 STA 连接前清空两个 grace 锚点，避免上一轮残留触发误关 AP。
+    // v1.7.18 起 AP/STA 互斥切换：发起新一轮 STA 连接前清空两个 grace 锚点，避免上一轮残留触发误关 AP。
     wifiStaUpGraceDeadlineMs = 0;
     wifiStaDownGraceDeadlineMs = 0;
     clearWifiStaLastError();
     wifiStaConnectStartMs = millis();
-    // v1.7.18 起 AP/STA 互斥切换：若当前处于 AP-only，需要先切回 AP_STA 才能发起
-    // STA 连接。AP 仍保留，等到 STA 真正连上 + grace 通过后才会关闭。
-    if (wifiInApOnlyMode) {
+    // v1.7.21 起：开机模式即为 WIFI_AP_STA，常态下不会触发 mode 切换。
+    // 仅当当前在 STA-only（落地后用户在 web 端发起重新连接）时才需要切回 AP_STA；
+    // 同时确保 AP 服务在线，给 STA 失败提供兜底入口。
+    if (WiFi.getMode() != WIFI_AP_STA) {
         WiFi.mode(WIFI_AP_STA);
-        wifiInApOnlyMode = false;
-        mus4LogLine("wifi", "STA apply: switching back to AP_STA");
+        mus4LogLine("wifi", "STA apply: switching to AP_STA");
+        // ESP-IDF 切到 AP_STA 后 STA netif 需要一小段时间初始化；不加这个延时
+        // 紧接着的 STA begin 可能拿不到信道，会导致 timeout。
+        delay(50);
     }
+    if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
+        startWifiApServices("AP restored for STA apply");
+    }
+    wifiInApOnlyMode = false;
     disconnectWifiStaOnly();
     WiFi.setHostname(wifiMdnsHostText().c_str());
     WiFi.begin(wifiStaSsid, wifiStaPassword);
@@ -475,21 +483,16 @@ static void stopWifiApForStaOnly()
     mus4LogLine("wifi", "AP stopped after STA connected");
 }
 
-// v1.7.18 起 AP/STA 互斥切换：STA 持续断开 grace 通过后，切回 WIFI_AP 并重启
-// AP 服务。不再自动重新发起 STA 连接——用户必须从 AP 页面手动重连或重新保存。
-// withErrorReason=true 用于"链路意外断开"路径，会写入 sta_lost 错误；
-// withErrorReason=false 用于"用户主动清除 STA"路径，不报错。
-static void restoreApAfterStaLost(bool withErrorReason)
+// v1.7.18 起 AP/STA 互斥切换：STA 持续断开 / STA 失败 / WIFI_STA_CLEAR 路径都
+// 收敛到这一刀——切回 WIFI_AP 并重启 AP 服务，让设备彻底落回 AP-only。
+// v1.7.20 起本函数不再写 lastError，由调用方按场景决定错误码；这样四条失败路径
+// （down grace 后的 sta_lost / timeout / auth_failed / no_ssid）能各自保留语义。
+static void restoreApAfterStaLost()
 {
+    wifiStaUpGraceDeadlineMs = 0;
     wifiStaDownGraceDeadlineMs = 0;
     wifiStaConnected = false;
     wifiStaConnecting = false;
-    if (withErrorReason) {
-        clearWifiStaLastError();
-        setWifiStaLastError("sta_lost", "STA 连接已断开，已切回 AP 模式。", true);
-    } else {
-        clearWifiStaLastError();
-    }
     stopWifiMdnsIfNeeded();
 #ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
     stopWifiNetbiosIfNeeded();
@@ -497,10 +500,12 @@ static void restoreApAfterStaLost(bool withErrorReason)
 #ifdef ENABLE_WIFI_LLMNR_DISCOVERY
     stopWifiLlmnrIfNeeded();
 #endif
+    // esp_wifi_disconnect() 把 ESP32 自带的 STA 自动重连机制停掉，避免设备在
+    // AP-only 下后台不断重试错误密码、干扰 RF 调度。
     esp_wifi_disconnect();
     WiFi.mode(WIFI_AP);
     wifiInApOnlyMode = true;
-    startWifiApServices(withErrorReason ? "AP restored after STA lost" : "AP restored after STA cleared");
+    startWifiApServices("AP restored");
 }
 
 void loadWifiApPreference()
@@ -562,12 +567,23 @@ void setupWifiConsole()
     // 时，下面的 applyWifiStaCredentials 调用会显式把模式切到 WIFI_AP_STA。
     wifiStaUpGraceDeadlineMs = 0;
     wifiStaDownGraceDeadlineMs = 0;
-    wifiInApOnlyMode = true;
+    // v1.7.21 起：开机模式为 WIFI_AP_STA，wifiInApOnlyMode 据实初始化为 false。
+    // 该标志只用于 applyWifiStaCredentials 与 updateWifiConsole 判断「当前是否
+    // 真的处于 AP-only」，与 mode 严格对齐。
+    wifiInApOnlyMode = false;
     clearWifiStaLastError();
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
     delay(100);
-    WiFi.mode(WIFI_AP);
+    // v1.7.21 起：开机改回 WIFI_AP_STA。互斥语义只在
+    //   - stopWifiApForStaOnly() 落地 STA-only 时 WiFi.mode(WIFI_STA)
+    //   - restoreApAfterStaLost() 回到 AP-only 时 WiFi.mode(WIFI_AP)
+    // 两个事件点切换；开机阶段强行 WIFI_AP 反而会让 applyWifiStaCredentials
+    // 立刻又切到 WIFI_AP_STA，ESP-IDF 在 WIFI_AP ⇄ WIFI_AP_STA 反复切换时
+    // STA netif 重建有 race，导致 STA 拿不到信道、15 秒后 timeout。
+    // 历史 v1.7.17 全程 WIFI_AP_STA 已验证 newhome_iot 等路由器可正常连接。
+    // STA 没配置时 STA 部分不 begin，对外等效于 AP-only。
+    WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);
     {
         String host = wifiMdnsHostText();
@@ -594,7 +610,9 @@ void updateWifiSta()
     // WIFI_STA_CLEAR 清空，而设备此时还在 STA_ONLY，需要立即恢复 AP。
     if (!wifiStaConfigured) {
         if (!wifiInApOnlyMode) {
-            restoreApAfterStaLost(false);
+            clearWifiStaLastError();
+            restoreApAfterStaLost();
+            mus4LogLine("wifi", "AP restored after STA cleared");
         }
         return;
     }
@@ -645,22 +663,33 @@ void updateWifiSta()
             mus4LogLine("wifi", "STA link lost, arming down grace");
         }
         if ((long)(millis() - wifiStaDownGraceDeadlineMs) >= 0) {
-            restoreApAfterStaLost(true);
+            setWifiStaLastError("sta_lost", "STA 连接已断开，已切回 AP 模式。", true);
+            restoreApAfterStaLost();
+            mus4LogLine("wifi", "AP restored after STA lost");
         }
         return;
     }
 
     if (!wifiStaConnecting) return;
+    // v1.7.20 起：三种失败路径（no_ssid / auth_failed / timeout）都先写 lastError，
+    // 再走 restoreApAfterStaLost() 切回 AP-only。否则设备会卡在 AP_STA + ESP32
+    // 后台 auto-reconnect 错密码的死循环里，AP 也不会重启。
     if (status == WL_NO_SSID_AVAIL) {
         setWifiStaLastError("no_ssid", "未找到目标 SSID，请检查网络名称或距离。", false);
+        restoreApAfterStaLost();
+        mus4LogLine("wifi", "AP restored after STA no_ssid");
         return;
     }
     if (status == WL_CONNECT_FAILED) {
         setWifiStaLastError("auth_failed", "STA 认证失败，请检查 Wi-Fi 密码。", false);
+        restoreApAfterStaLost();
+        mus4LogLine("wifi", "AP restored after STA auth_failed");
         return;
     }
     if (!wifiStaTimedOut && millis() - wifiStaConnectStartMs >= WIFI_STA_CONNECT_TIMEOUT_MS) {
         setWifiStaLastError("timeout", "STA 连接超时，请检查 SSID、密码与路由器信号。", true);
+        restoreApAfterStaLost();
+        mus4LogLine("wifi", "AP restored after STA timeout");
     }
 }
 
@@ -693,7 +722,9 @@ void updateWifiConsole()
         // v1.7.18 起 AP/STA 互斥切换：STA_ONLY 状态下 AP 已主动关闭，wifiConsoleStarted
         // 也跟着置 false，但这并非异常，不能用 WIFI_CONSOLE_RETRY_INTERVAL_MS 周期
         // 重新拉起整个 console（那会把 AP 又开回来，破坏互斥语义）。
-        if (wifiInApOnlyMode && millis() - lastWifiConsoleStartAttemptMs >= WIFI_CONSOLE_RETRY_INTERVAL_MS) {
+        // v1.7.21 调整：STA 在线即认为不需要重试 console；其它情况（包括开机 AP 起不来
+        // 在 AP_STA 模式下、AP-only 下 AP 异常）都按 WIFI_CONSOLE_RETRY_INTERVAL_MS 重试。
+        if (!wifiStaConnected && millis() - lastWifiConsoleStartAttemptMs >= WIFI_CONSOLE_RETRY_INTERVAL_MS) {
             setupWifiConsole();
         }
         return;

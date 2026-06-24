@@ -1,5 +1,36 @@
 # CHANGELOG.md
 
+## 2026-06-24 v1.7.21
+
+- 固件版本号从 `v1.7.20` 更新到 `v1.7.21`。
+- fix(STA 实际连不上 → 全部 timeout): 实机验证 v1.7.20 后即便正确 SSID/密码也持续 timeout。串口日志显示路径走到 `[wifi] STA apply: switching to AP_STA` → `STA connecting:` → 15s 后 `STA failed: timeout`。根因：v1.7.18 把开机模式从历史的 `WIFI_AP_STA` 改为 `WIFI_AP`，`applyWifiStaCredentials` 每次都得做 `WIFI_AP → WIFI_AP_STA` 的反复切换；ESP-IDF 在这条切换路径上 STA netif 重建有 race，导致 `WiFi.begin()` 拿不到信道、握手永不开始。历史 v1.7.17 全程 `WIFI_AP_STA` 已验证 newhome_iot 等路由器可正常连接。
+- **修复**：
+  - `setupWifiConsole()` 开机模式改回 `WIFI_AP_STA`。互斥语义只在 `stopWifiApForStaOnly()` 落 STA-only 和 `restoreApAfterStaLost()` 回 AP-only 两个事件点切 mode；开机阶段如果 STA 未配置，STA 部分不会 begin，对外等效于 AP-only。
+  - `applyWifiStaCredentials()` 在 `WiFi.mode(WIFI_AP_STA)` 之后插入 `delay(50)`，给 STA netif 留出初始化窗口；常态（已是 AP_STA）不触发 mode 切换，没有额外开销。
+  - `wifiInApOnlyMode` 初始化对齐开机模式（开机 = `WIFI_AP_STA` → false）；`updateWifiConsole()` 的 retry 闸门改为「STA 未在线即可重试」，覆盖开机 AP 起不来和 AP-only 下 AP 异常两种情况。
+- 同步更新 `tests/test_firmware_feature_flags.py`：
+  - `test_apply_wifi_sta_credentials_restores_ap_before_begin` 新增 `delay(50)` 断言。
+  - `setupWifiConsole` 中 `WiFi.mode(WIFI_AP_STA)` 出现位置断言更新。
+  - 版本号断言更新到 v1.7.21。
+
+## 2026-06-24 v1.7.20
+
+- 固件版本号从 `v1.7.19` 更新到 `v1.7.20`。
+- fix(STA 失败不回 AP): 实机验证发现在 STA-only 状态下保存错误密码，15 秒后 STA timeout 但**设备并未回到 AP-only**——`updateWifiSta()` 的三个失败分支（`WL_NO_SSID_AVAIL` / `WL_CONNECT_FAILED` / connect timeout）只调用 `setWifiStaLastError()` 把 `staConnecting=false`，**没有触发任何模式切换**。结果设备卡在 `WIFI_AP_STA` 但 SoftAP 又已经在 `stopWifiApForStaOnly()` 阶段被 `softAPdisconnect(true)` 关掉，同时 ESP32 内置的 STA 自动重连还在后台用错密码反复重试。
+- **修复**：三条失败路径（`no_ssid` / `auth_failed` / `timeout`）写完 `lastError` 后立即调 `restoreApAfterStaLost()` 切回 `WIFI_AP` 并 `startWifiApServices()`，与 down-grace 后的 `sta_lost` 路径收敛到同一刀。`restoreApAfterStaLost()` 内部 `esp_wifi_disconnect()` 把自动重连关掉，避免 RF 调度持续被错密码扰动。
+- `restoreApAfterStaLost()` 签名由 `(bool withErrorReason)` 改回无参——错误码 / 日志文案改由 4 处调用方按场景写入（`sta_lost` / `no_ssid` / `auth_failed` / `timeout` / `WIFI_STA_CLEAR`），收敛点更清晰。
+- 同步更新 `tests/test_firmware_feature_flags.py`：
+  - `restoreApAfterStaLost(bool)` → `restoreApAfterStaLost()` 签名断言更新。
+  - 新增 `test_update_wifi_sta_failure_paths_restore_ap` 保护 4 条失败 / 清除路径都调 `restoreApAfterStaLost()`。
+  - 版本号断言更新到 v1.7.20。
+
+## 2026-06-24 v1.7.19
+
+- 固件版本号从 `v1.7.18` 更新到 `v1.7.19`。
+- fix(STA 应用时丢失 AP 兜底): 实机验证发现在 STA-only 状态下保存一个错误的 STA 密码会让设备彻底失联（AP 不广播，STA 失败也不恢复 AP）。根因：v1.7.18 的 `applyWifiStaCredentials()` 只在 `wifiInApOnlyMode=true` 时才 `WiFi.mode(WIFI_AP_STA)`，STA-only 状态下保持 `WIFI_STA`、且 SoftAP 已被 `softAPdisconnect(true)` 关停。此时 `WiFi.begin()` 失败后 `updateWifiSta()` 走的是「未连接 → 等待 connect timeout」分支，**没有任何路径恢复 AP**——`restoreApAfterStaLost()` 仅在曾经 `wifiStaConnected=true` 后断链时触发。
+- **修复**：`applyWifiStaCredentials()` 改为：发起 `WiFi.begin()` 前先无条件确认 `WiFi.getMode()==WIFI_AP_STA` 且 `WiFi.softAPIP()!=0.0.0.0`；若任一不满足，立即 `WiFi.mode(WIFI_AP_STA)` + `startWifiApServices("AP restored for STA apply")`。这样 STA 连接失败时 AP 仍是兜底入口，与「STA 正在尝试连接期间 AP 保留」的设计一致。
+- 串口烧写恢复路径：当 AP/STA 都不可达时，可走 USB 串口（COM20/COM21）的 `python arduino-cli.py -u -i build_wsl/MUS4_FW.ino.bin --port COMxx` 重新烧写。
+
 ## 2026-06-23 v1.7.18
 
 - 固件版本号从 `v1.7.17` 更新到 `v1.7.18`。
@@ -13,6 +44,7 @@
   - `updateWifiConsole()` 不再在 STA-only 状态下周期重启整个 console（否则会把 AP 又拉起来破坏互斥）。
   - 新增 `WifiRuntimeState` 字段 `staUpGraceDeadlineMs` / `staDownGraceDeadlineMs` / `inApOnlyMode`，与之配套的 extern 别名在 `MUS4_FW.ino` 中补齐。
 - Web Console STA Modal 文案微调：`AP 保持开启` → `AP 将在 1 秒后关闭，请用新 IP 继续`。
+- fix(web console gating): `updateWebConsoleServer()` 的 `if (!ws.consoleStarted) return;` 闸门改为 `if (!ws.consoleStarted && !ws.staConnected) return;`——v1.7.18 互斥切换下 `wifiConsoleStarted` 的语义聚焦到「AP 服务是否就绪」，STA-only 状态下它会被 `stopWifiApForStaOnly()` 置 false，但 HTTP 必须继续在 STA 接口响应，否则浏览器通过 STA IP 访问会被立刻 TCP RST。本次先用最小改动恢复服务面，后续可考虑把 `wifiConsoleStarted` 进一步拆成 `apServicesReady` / `webServerRunning` 两个独立标志。
 - 同步更新 `tests/test_firmware_feature_flags.py`：
   - `test_web_console_keeps_ap_running_after_successful_wifi_sta_connection` 重写为 `test_web_console_closes_ap_after_sta_grace`，断言 `stopWifiApForStaOnly` 体内 `WiFi.softAPdisconnect(true)` + `WiFi.mode(WIFI_STA)` + `WIFI_STA_GRACE_UP_MS=1000`。
   - `test_sta_disconnect_keeps_soft_ap_clients_connected_and_services_available` 重写为 `test_sta_disconnect_restores_ap_after_grace`，断言 `restoreApAfterStaLost(bool)` 体内 `WiFi.mode(WIFI_AP)` + `startWifiApServices` + grace deadline 武装。

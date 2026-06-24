@@ -232,13 +232,36 @@ def test_websocket_send_paths_use_id_not_raw_client_pointer():
     assert "wifiWebSocketClient->binary(" not in web_telemetry
 
 
-def test_firmware_version_is_v1_7_18_and_changelog_is_current():
+def test_firmware_version_is_v1_7_21_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.18"' in build_info
-    assert "v1.7.18" in changelog
-    assert changelog.index("v1.7.18") < changelog.index("## 2026-06-21 v1.7.17")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.21"' in build_info
+    assert "v1.7.21" in changelog
+    assert changelog.index("v1.7.21") < changelog.index("v1.7.20")
+
+
+def test_apply_wifi_sta_credentials_restores_ap_before_begin():
+    """v1.7.19 起：发起 STA 连接前必须确保 AP_STA + AP 服务在线，否则 STA 在
+    STA-only 状态下保存错误密码后会彻底失联（既无 AP 也无 STA）。"""
+
+    source = firmware_source_text()
+    apply_body = re.search(
+        r"(?:static )?void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "WiFi.getMode() != WIFI_AP_STA" in apply_body
+    assert "WiFi.mode(WIFI_AP_STA)" in apply_body
+    assert "WiFi.softAPIP() == IPAddress(0, 0, 0, 0)" in apply_body
+    assert 'startWifiApServices("AP restored for STA apply")' in apply_body
+    assert apply_body.index("WiFi.mode(WIFI_AP_STA)") < apply_body.index("WiFi.begin")
+    assert apply_body.index("startWifiApServices") < apply_body.index("WiFi.begin")
+    # v1.7.21：mode 切换后需要一小段时间让 STA netif 完成重建，否则 WiFi.begin()
+    # 拿不到信道导致 timeout。
+    assert "delay(50)" in apply_body
+    assert apply_body.index("WiFi.mode(WIFI_AP_STA)") < apply_body.index("delay(50)") < apply_body.index("WiFi.begin")
 
 
 def test_web_console_serial_log_display_is_limited_to_20_lines():
@@ -1886,12 +1909,12 @@ def test_wifi_mdns_lifecycle_follows_sta_connection():
     # v1.7.18 起：mDNS 停止迁到 restoreApAfterStaLost()，disconnected_branch
     # 只武装 down grace；grace 通过后由 restore 函数统一停 mDNS。
     restore_body = re.search(
-        r"static void restoreApAfterStaLost\(bool withErrorReason\)\s*\{(?P<body>.*?)\n\}",
+        r"static void restoreApAfterStaLost\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
     assert "stopWifiMdnsIfNeeded()" in restore_body
-    assert "restoreApAfterStaLost(true)" in disconnected_branch
+    assert "restoreApAfterStaLost()" in disconnected_branch
     assert "stopWifiApAfterStaConnected" not in source
 
 
@@ -1953,7 +1976,7 @@ def test_sta_disconnect_restores_ap_after_grace():
     source = firmware_source_text()
 
     restore_body = re.search(
-        r"static void restoreApAfterStaLost\(bool withErrorReason\)\s*\{(?P<body>.*?)\n\}",
+        r"static void restoreApAfterStaLost\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -1973,7 +1996,7 @@ def test_sta_disconnect_restores_ap_after_grace():
     assert "STA recovered within grace window" in connected_branch
 
     assert "wifiStaDownGraceDeadlineMs = millis() + WIFI_STA_GRACE_DOWN_MS" in disconnected_branch
-    assert "restoreApAfterStaLost(true)" in disconnected_branch
+    assert "restoreApAfterStaLost()" in disconnected_branch
     assert "STA link lost, arming down grace" in disconnected_branch
 
     start_services_body = re.search(
@@ -1992,6 +2015,55 @@ def test_sta_disconnect_restores_ap_after_grace():
     assert "wifiConsoleServer.setNoDelay(true)" in console_services_body
     assert "wifiWebServer.begin()" in console_services_body
     assert "wifiConsoleStarted = true" in console_services_body
+
+
+def test_update_wifi_sta_failure_paths_restore_ap():
+    """v1.7.20 起：STA 失败三条路径（no_ssid / auth_failed / timeout）以及
+    WIFI_STA_CLEAR 路径都必须调 restoreApAfterStaLost() 切回 AP-only；否则
+    设备会卡在 WIFI_AP_STA + SoftAP 已停 + ESP32 自动重连错密码的死局里。"""
+
+    source = firmware_source_text()
+    update_sta_body = re.search(
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    # 四条收敛路径都必须调 restoreApAfterStaLost()（注释里出现的也算字符串匹配；
+    # 这里只保证 ≥4 次，分别由四个独立分支断言精确覆盖位置）。
+    assert update_sta_body.count("restoreApAfterStaLost()") >= 4
+
+    # WL_NO_SSID_AVAIL 路径
+    no_ssid_block = update_sta_body.split("if (status == WL_NO_SSID_AVAIL)", 1)[1].split("if (status == WL_CONNECT_FAILED)", 1)[0]
+    assert 'setWifiStaLastError("no_ssid"' in no_ssid_block
+    assert "restoreApAfterStaLost()" in no_ssid_block
+    assert no_ssid_block.index("setWifiStaLastError") < no_ssid_block.index("restoreApAfterStaLost")
+
+    # WL_CONNECT_FAILED 路径
+    auth_failed_block = update_sta_body.split("if (status == WL_CONNECT_FAILED)", 1)[1].split("if (!wifiStaTimedOut", 1)[0]
+    assert 'setWifiStaLastError("auth_failed"' in auth_failed_block
+    assert "restoreApAfterStaLost()" in auth_failed_block
+
+    # 超时路径
+    timeout_block = update_sta_body.split("if (!wifiStaTimedOut && millis() - wifiStaConnectStartMs", 1)[1]
+    assert 'setWifiStaLastError("timeout"' in timeout_block
+    assert "restoreApAfterStaLost()" in timeout_block
+
+    # WIFI_STA_CLEAR / staConfigured=false 路径
+    cleared_block = update_sta_body.split("if (!wifiStaConfigured)", 1)[1].split("wl_status_t status", 1)[0]
+    assert "restoreApAfterStaLost()" in cleared_block
+    assert "AP restored after STA cleared" in cleared_block
+
+    # restoreApAfterStaLost() 内不应再写 lastError；错误码由调用方按场景写入。
+    restore_body = re.search(
+        r"static void restoreApAfterStaLost\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "setWifiStaLastError(" not in restore_body
+    assert "esp_wifi_disconnect()" in restore_body
+    assert "WiFi.mode(WIFI_AP)" in restore_body
+    assert 'startWifiApServices("AP restored")' in restore_body
 
 
 def test_runtime_sta_disconnect_does_not_reset_soft_ap():
@@ -2195,12 +2267,12 @@ def test_wifi_netbios_lifecycle_follows_sta_connection():
     # v1.7.18 起：NetBIOS 停止迁到 restoreApAfterStaLost()，disconnected_branch
     # 只武装 down grace；grace 通过后由 restore 函数统一停 NetBIOS。
     restore_body = re.search(
-        r"static void restoreApAfterStaLost\(bool withErrorReason\)\s*\{(?P<body>.*?)\n\}",
+        r"static void restoreApAfterStaLost\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
     assert "stopWifiNetbiosIfNeeded()" in restore_body
-    assert "restoreApAfterStaLost(true)" in disconnected_branch
+    assert "restoreApAfterStaLost()" in disconnected_branch
 
 
 def test_wifi_llmnr_lifecycle_follows_sta_connection():
@@ -2229,12 +2301,12 @@ def test_wifi_llmnr_lifecycle_follows_sta_connection():
     # v1.7.18 起：LLMNR 停止迁到 restoreApAfterStaLost()，disconnected_branch
     # 只武装 down grace；grace 通过后由 restore 函数统一停 LLMNR。
     restore_body = re.search(
-        r"static void restoreApAfterStaLost\(bool withErrorReason\)\s*\{(?P<body>.*?)\n\}",
+        r"static void restoreApAfterStaLost\(\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
     assert "stopWifiLlmnrIfNeeded()" in restore_body
-    assert "restoreApAfterStaLost(true)" in disconnected_branch
+    assert "restoreApAfterStaLost()" in disconnected_branch
     assert "processLlmnrPacket()" in update_console_body
 
 

@@ -61,6 +61,9 @@ extern unsigned long& lastWifiConsoleStartAttemptMs;
 extern unsigned long& wifiStaConnectStartMs;
 extern unsigned long& wifiStaApplyDeadlineMs;
 extern unsigned long& wifiApRestartDeadlineMs;
+extern unsigned long& wifiStaUpGraceDeadlineMs;
+extern unsigned long& wifiStaDownGraceDeadlineMs;
+extern bool& wifiInApOnlyMode;
 extern bool& wifiOtaStarted;
 extern bool& wifiOtaWindowOpen;
 extern bool& wifiOtaInProgress;
@@ -291,6 +294,10 @@ void stopWifiLlmnrIfNeeded()
 }
 #endif
 
+// v1.7.18 起 AP/STA 互斥切换：STA→STA 切换由「保存新配置 → applyWifiStaCredentials()
+// 直接接管」处理，handoff 三态共存逻辑退役。保留下面三个接口和 staHandoff*
+// 字段是为了让 WebConsoleServer.cpp 与 wifiStaJson() 的调用面继续编译通过；
+// handoff_active 永远停留在 false，前端 wifiStaHandoffModal 不会再被触发。
 void clearWifiStaHandoff()
 {
     wifiStaHandoffActive = false;
@@ -302,20 +309,12 @@ void clearWifiStaHandoff()
 
 void finishWifiStaHandoff()
 {
-    if (!wifiStaHandoffActive) return;
-    snprintf(wifiStaHandoffStaIp, sizeof(wifiStaHandoffStaIp), "%s", WiFi.localIP().toString().c_str());
-    mus4Logf("wifi", "STA handoff ready ssid=%s ip=%s", wifiStaHandoffTargetSsid, wifiStaHandoffStaIp);
+    clearWifiStaHandoff();
 }
 
-void startWifiStaHandoff(const String& targetSsid)
+void startWifiStaHandoff(const String& /*targetSsid*/)
 {
-    wifiStaHandoffActive = true;
-    targetSsid.toCharArray(wifiStaHandoffTargetSsid, sizeof(wifiStaHandoffTargetSsid));
-    snprintf(wifiStaHandoffApSsid, sizeof(wifiStaHandoffApSsid), "%s", getActiveWifiApSsid().c_str());
-    wifiStaHandoffStaIp[0] = 0;
-    wifiStaHandoffStartedMs = millis();
-    ensureWifiApAvailable();
-    mus4Logf("wifi", "STA handoff started target=%s", wifiStaHandoffTargetSsid);
+    clearWifiStaHandoff();
 }
 
 void disconnectWifiStaOnly()
@@ -337,8 +336,18 @@ void applyWifiStaCredentials()
     wifiStaConnected = false;
     wifiStaTimedOut = false;
     wifiStaConnecting = true;
+    // v1.7.18 起：发起新一轮 STA 连接前清空两个 grace 锚点，避免上一轮残留触发误关 AP。
+    wifiStaUpGraceDeadlineMs = 0;
+    wifiStaDownGraceDeadlineMs = 0;
     clearWifiStaLastError();
     wifiStaConnectStartMs = millis();
+    // v1.7.18 起 AP/STA 互斥切换：若当前处于 AP-only，需要先切回 AP_STA 才能发起
+    // STA 连接。AP 仍保留，等到 STA 真正连上 + grace 通过后才会关闭。
+    if (wifiInApOnlyMode) {
+        WiFi.mode(WIFI_AP_STA);
+        wifiInApOnlyMode = false;
+        mus4LogLine("wifi", "STA apply: switching back to AP_STA");
+    }
     disconnectWifiStaOnly();
     WiFi.setHostname(wifiMdnsHostText().c_str());
     WiFi.begin(wifiStaSsid, wifiStaPassword);
@@ -441,8 +450,57 @@ bool restartWifiAp()
     wifiCaptiveDnsServer.stop();
     WiFi.softAPdisconnect(true);
     delay(100);
-    WiFi.mode(WIFI_AP_STA);
+    // v1.7.18 起 AP/STA 互斥切换：AP 重启前根据当前 STA 是否在线决定模式——
+    // STA 已连接（用户从 STA IP 改 AP SSID）→ WIFI_AP_STA；否则纯 WIFI_AP。
+    WiFi.mode(wifiStaConnected ? WIFI_AP_STA : WIFI_AP);
+    wifiInApOnlyMode = !wifiStaConnected;
     return startWifiApServices("AP restarted");
+}
+
+// v1.7.18 起 AP/STA 互斥切换：STA 稳定 grace 通过后，主动把 AP 关掉、切到 WIFI_STA。
+// 这是 STA_ONLY 状态的唯一入口。Captive DNS 与 wifiConsoleServer 都依赖 SoftAP，
+// AP 关闭时一并停掉，避免出现「socket 还监听但 AP 已下线」的悬空状态。
+static void stopWifiApForStaOnly()
+{
+    wifiStaUpGraceDeadlineMs = 0;
+    wifiApRestartPending = false;
+    wifiCaptiveDnsServer.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    // 关 AP 后 SoftAP 端的 TCP/HTTP 监听句柄已失效；这里把 wifiConsoleStarted
+    // 置 false 让 updateWifiConsole() 不再尝试 accept，但 wifiWebServer 仍可在
+    // STA 接口上响应。
+    wifiConsoleStarted = false;
+    wifiInApOnlyMode = false;
+    mus4LogLine("wifi", "AP stopped after STA connected");
+}
+
+// v1.7.18 起 AP/STA 互斥切换：STA 持续断开 grace 通过后，切回 WIFI_AP 并重启
+// AP 服务。不再自动重新发起 STA 连接——用户必须从 AP 页面手动重连或重新保存。
+// withErrorReason=true 用于"链路意外断开"路径，会写入 sta_lost 错误；
+// withErrorReason=false 用于"用户主动清除 STA"路径，不报错。
+static void restoreApAfterStaLost(bool withErrorReason)
+{
+    wifiStaDownGraceDeadlineMs = 0;
+    wifiStaConnected = false;
+    wifiStaConnecting = false;
+    if (withErrorReason) {
+        clearWifiStaLastError();
+        setWifiStaLastError("sta_lost", "STA 连接已断开，已切回 AP 模式。", true);
+    } else {
+        clearWifiStaLastError();
+    }
+    stopWifiMdnsIfNeeded();
+#ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
+    stopWifiNetbiosIfNeeded();
+#endif
+#ifdef ENABLE_WIFI_LLMNR_DISCOVERY
+    stopWifiLlmnrIfNeeded();
+#endif
+    esp_wifi_disconnect();
+    WiFi.mode(WIFI_AP);
+    wifiInApOnlyMode = true;
+    startWifiApServices(withErrorReason ? "AP restored after STA lost" : "AP restored after STA cleared");
 }
 
 void loadWifiApPreference()
@@ -500,11 +558,16 @@ void setupWifiConsole()
     wifiStaTimedOut = false;
     wifiStaConnecting = false;
     wifiApRestartPending = false;
+    // v1.7.18 起 AP/STA 互斥切换：开机默认进入 AP-only 模式；只有当 STA 配置存在
+    // 时，下面的 applyWifiStaCredentials 调用会显式把模式切到 WIFI_AP_STA。
+    wifiStaUpGraceDeadlineMs = 0;
+    wifiStaDownGraceDeadlineMs = 0;
+    wifiInApOnlyMode = true;
     clearWifiStaLastError();
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
     delay(100);
-    WiFi.mode(WIFI_AP_STA);
+    WiFi.mode(WIFI_AP);
     WiFi.setSleep(false);
     {
         String host = wifiMdnsHostText();
@@ -524,13 +587,24 @@ void setupWifiConsole()
 
 void updateWifiSta()
 {
-    if (!wifiStaConfigured) return;
     if (wifiStaApplyPending && (long)(millis() - wifiStaApplyDeadlineMs) >= 0) {
         applyWifiStaCredentials();
     }
+    // v1.7.18 起 AP/STA 互斥切换：未配置 STA 时停留在 AP-only；但若刚被
+    // WIFI_STA_CLEAR 清空，而设备此时还在 STA_ONLY，需要立即恢复 AP。
+    if (!wifiStaConfigured) {
+        if (!wifiInApOnlyMode) {
+            restoreApAfterStaLost(false);
+        }
+        return;
+    }
+
     wl_status_t status = WiFi.status();
     if (status == WL_CONNECTED) {
         if (!wifiStaConnected) {
+            // 首次进入 WL_CONNECTED：标记 STA 在线，启动 mDNS，并武装 up grace。
+            // 关 AP 的动作要等 WIFI_STA_GRACE_UP_MS 后由本函数下一轮触发，
+            // 避免连接刚握手就被 softAP 抖动干扰。
             wifiStaConnected = true;
             wifiStaTimedOut = false;
             wifiStaConnecting = false;
@@ -549,35 +623,33 @@ void updateWifiSta()
             wifiWebServer.begin();
             mus4LogLine("wifi", "WebServer re-bound for STA");
             mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
-            // v1.7.8 起：STA 一旦连接，AP SSID 即派生为 "<前缀>-ESP-<短码>-<尾段>"，
-            // 与 DEV 无关。若派生 SSID 与当前广播 SSID 不一致则排队一次 AP 重启。
-            {
-                String targetSsid = getActiveWifiApSsid();
-                if (!targetSsid.equals(WiFi.softAPSSID())) {
-                    mus4Logf("wifi", "AP SSID update: %s", targetSsid.c_str());
-                    scheduleWifiApRestart();
-                }
-            }
+            wifiStaUpGraceDeadlineMs = millis() + WIFI_STA_GRACE_UP_MS;
+            wifiStaDownGraceDeadlineMs = 0;
+            // handoff 在新方案里已经退役；保留 finish 调用是为了把残留字段清空。
             finishWifiStaHandoff();
+        } else if (wifiStaDownGraceDeadlineMs != 0) {
+            // STA 抖动后又恢复（grace 窗口内），取消 down grace，保持 STA_ONLY。
+            wifiStaDownGraceDeadlineMs = 0;
+            mus4LogLine("wifi", "STA recovered within grace window");
+        }
+        if (wifiStaUpGraceDeadlineMs != 0 && (long)(millis() - wifiStaUpGraceDeadlineMs) >= 0) {
+            stopWifiApForStaOnly();
         }
         return;
     }
+
     if (wifiStaConnected) {
-        wifiStaConnected = false;
-        stopWifiMdnsIfNeeded();
-#ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
-        stopWifiNetbiosIfNeeded();
-#endif
-#ifdef ENABLE_WIFI_LLMNR_DISCOVERY
-        stopWifiLlmnrIfNeeded();
-#endif
-        mus4LogLine("wifi", "STA disconnected");
-        if (!String(wifiApSsid).equals(WiFi.softAPSSID())) {
-            scheduleWifiApRestart();
-        } else {
-            ensureWifiApAvailable();
+        // 进入 down grace：先不关闭 mDNS、也不切模式；只武装截止时间，等下一轮判定。
+        if (wifiStaDownGraceDeadlineMs == 0) {
+            wifiStaDownGraceDeadlineMs = millis() + WIFI_STA_GRACE_DOWN_MS;
+            mus4LogLine("wifi", "STA link lost, arming down grace");
         }
+        if ((long)(millis() - wifiStaDownGraceDeadlineMs) >= 0) {
+            restoreApAfterStaLost(true);
+        }
+        return;
     }
+
     if (!wifiStaConnecting) return;
     if (status == WL_NO_SSID_AVAIL) {
         setWifiStaLastError("no_ssid", "未找到目标 SSID，请检查网络名称或距离。", false);
@@ -618,7 +690,10 @@ void updateWifiConsole()
         }
     }
     if (!wifiConsoleStarted) {
-        if (millis() - lastWifiConsoleStartAttemptMs >= WIFI_CONSOLE_RETRY_INTERVAL_MS) {
+        // v1.7.18 起 AP/STA 互斥切换：STA_ONLY 状态下 AP 已主动关闭，wifiConsoleStarted
+        // 也跟着置 false，但这并非异常，不能用 WIFI_CONSOLE_RETRY_INTERVAL_MS 周期
+        // 重新拉起整个 console（那会把 AP 又开回来，破坏互斥语义）。
+        if (wifiInApOnlyMode && millis() - lastWifiConsoleStartAttemptMs >= WIFI_CONSOLE_RETRY_INTERVAL_MS) {
             setupWifiConsole();
         }
         return;

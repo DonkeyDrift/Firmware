@@ -259,7 +259,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 ### 版本与发布记录
 
-当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.7.8`。README 中部分硬件与路径描述可能滞后，硬件细节以 `MUS4_FW.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
+当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.7.18`。README 中部分硬件与路径描述可能滞后，硬件细节以 `MUS4_FW.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
 
 ### 控制模式
 
@@ -316,11 +316,18 @@ README 中部分历史描述可能滞后；以 `MUS4_FW.ino`、`Doc/Hardware/pin
 
 ### Wi-Fi Console、Web Console 与 OTA
 
-`MUS4_FW.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`，并在该路径下启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY`。启用后 ESP32 以 AP+STA 模式启动：默认 AP SSID 为 `MUS4-DEBUG`（可通过 Web Console 持久化修改），TCP 控制台端口为 `2323`，Web Console/Donkey Console 端口为 `80`，WebSocket 遥测端口为 `81`，ArduinoOTA 默认主机名为 `mus4-ota`、端口 `3232`。
+`MUS4_FW.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`，并在该路径下启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY`。启用后 ESP32 默认以 **AP-only** 启动：默认 AP SSID 为 `MUS4-DEBUG`（可通过 Web Console 持久化修改），TCP 控制台端口为 `2323`，Web Console/Donkey Console 端口为 `80`，WebSocket 遥测端口为 `81`，ArduinoOTA 默认主机名为 `mus4-ota`、端口 `3232`。
+
+v1.7.18 起 AP/STA 改为**互斥切换**（不再长期共存）：
+- 设备启动时若已有 STA 配置，会临时切到 `WIFI_AP_STA` 发起连接；STA 进入 `WL_CONNECTED` 后等待 `WIFI_STA_GRACE_UP_MS=1000ms`，再由 `stopWifiApForStaOnly()` 关闭 AP、切到 `WIFI_STA`（STA-only）。
+- STA 在 STA-only 状态下断开后，`updateWifiSta()` 武装 `WIFI_STA_GRACE_DOWN_MS=1000ms`；grace 内若链路恢复则取消重启，否则由 `restoreApAfterStaLost(true)` 切回 `WIFI_AP` 并 `startWifiApServices()`，**不再自动重新发起 STA 连接**，用户需在 AP 页面手动重连或重新保存。
+- STA 连接尝试期间（未确认成功）AP 始终保留，避免连接失败把用户踢出。
+- STA→STA 切换（已在 STA 模式时改 SSID）走「保存新配置 → applyWifiStaCredentials 短暂回到 `WIFI_AP_STA` → 新 STA 1s grace 后切 STA-only」统一链路；旧 `wifiStaHandoff*` 三态共存逻辑退役（接口保留为 no-op，JSON 字段保留以兼容前端解析）。
+- 详见 `docs/Inspect/wifi-ap-sta-lifecycle-inspection.md` 与 `docs/Plan/AP_STA互斥切换方案.md`；修改该状态机时同步更新 `tests/test_firmware_feature_flags.py` 中的源码断言。
 
 无线命令权限分层：`PING`、`STATUS`、`AUTH`、`WIFI_STA_STATUS` 可未认证访问；控制指令和 `ANSI`/`NOANSI`/`FILTER_DEBUG`/`LOG_WEB`/`LOG_SERIAL`/Wi-Fi STA 配置命令需要认证；`TEST`、`BENCH`、`REGRESS`、转向标定等诊断/维护命令还要求 Park 锁定；`ENABLE_OTA` 要求认证且 Park 锁定，`OTA_STATUS` 与 `DISABLE_OTA` 要求认证。修改这部分逻辑时，同步更新 `wireless_console_policy.py` 与 `tests/test_wireless_console_policy.py`。
 
-AP 常驻作为调试和 STA 切换兜底入口：设备连接 STA 后仍保留 AP；通过 STA 页面切换到新 SSID 时，当前 STA 页面可能断开，应回到 AP 默认地址 `http://192.168.4.1/` 查看新 STA 状态。固件会按当前 AP 名称生成小写 mDNS 主机名并发布 Web Console（例如 `http://mus4-debug.local/`），但 Web UI 网络面板不再提供 `.local` 入口；`.local` 不可用时以页面显示的 STA IP 为准。
+AP 模式下作为调试和配网入口；STA-only 模式下 AP 不可见，用户需通过 STA IP 或 mDNS `<AP名称小写>.local` 访问 Web Console。固件会按当前 AP 名称生成小写 mDNS 主机名并发布 Web Console（例如 `http://mus4-debug.local/`），但 Web UI 网络面板不再提供 `.local` 入口；`.local` 不可用时以页面显示的 STA IP 为准。
 
 Web UI 的 HTML/CSS/JS 目前内嵌在 `MUS4_FW.ino` 的 `WIFI_WEB_CONSOLE_HTML` 中，页面品牌已显示为 `Drifter Console`。修改标题、顶部 DEV/OTA 区、Network 面板、Diagnostics 面板、状态卡片、串口日志、Tub JSON 或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
 

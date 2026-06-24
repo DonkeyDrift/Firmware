@@ -1,5 +1,25 @@
 # CHANGELOG.md
 
+## 2026-06-23 v1.7.18
+
+- 固件版本号从 `v1.7.17` 更新到 `v1.7.18`。
+- refactor(wifi 生命周期): AP+STA 长期共存稳定性差（共享 RF / 内部调度冲突，表现为 Web Console 卡顿、TCP Console 掉线、WebSocket 推送被抢占），把 `WIFI_AP_STA` 改为**AP/STA 互斥切换**：
+  - **STA 进入 `WL_CONNECTED` 后等待 `WIFI_STA_GRACE_UP_MS=1000ms`**，由 `updateWifiSta()` 调用新增的 `stopWifiApForStaOnly()` 主动 `WiFi.softAPdisconnect(true)` + `WiFi.mode(WIFI_STA)`，落地为 STA-only。
+  - **STA 脱离 `WL_CONNECTED` 后等待 `WIFI_STA_GRACE_DOWN_MS=1000ms`**，由 `updateWifiSta()` 调用新增的 `restoreApAfterStaLost(bool)` 切回 `WIFI_AP` 并 `startWifiApServices()`，恢复 AP-only；grace 期间链路恢复则取消重启。
+  - **STA 正在尝试连接（未确认成功）期间 AP 仍保留**，避免连接失败时把用户踢出。
+  - **AP 模式下不再后台轮询重连 STA**，必须用户在 AP 页面重新保存或重连。
+  - **STA→STA 切换**（旧设计的 `wifiStaHandoff*` 三态共存）退役：`startWifiStaHandoff` / `finishWifiStaHandoff` / `clearWifiStaHandoff` 改为 no-op，新 SSID 由 `applyWifiStaCredentials()` 走「短暂回到 `WIFI_AP_STA` → 1s grace 后切 STA_ONLY」的统一链路；JSON `handoff_*` 字段保留以兼容前端解析，`handoff_active` 永远为 false。
+  - `setupWifiConsole()` 开机直接进入 `WIFI_AP`，仅在 `wifiStaConfigured` 时由 `applyWifiStaCredentials()` 切回 `WIFI_AP_STA`。
+  - `updateWifiConsole()` 不再在 STA-only 状态下周期重启整个 console（否则会把 AP 又拉起来破坏互斥）。
+  - 新增 `WifiRuntimeState` 字段 `staUpGraceDeadlineMs` / `staDownGraceDeadlineMs` / `inApOnlyMode`，与之配套的 extern 别名在 `MUS4_FW.ino` 中补齐。
+- Web Console STA Modal 文案微调：`AP 保持开启` → `AP 将在 1 秒后关闭，请用新 IP 继续`。
+- 同步更新 `tests/test_firmware_feature_flags.py`：
+  - `test_web_console_keeps_ap_running_after_successful_wifi_sta_connection` 重写为 `test_web_console_closes_ap_after_sta_grace`，断言 `stopWifiApForStaOnly` 体内 `WiFi.softAPdisconnect(true)` + `WiFi.mode(WIFI_STA)` + `WIFI_STA_GRACE_UP_MS=1000`。
+  - `test_sta_disconnect_keeps_soft_ap_clients_connected_and_services_available` 重写为 `test_sta_disconnect_restores_ap_after_grace`，断言 `restoreApAfterStaLost(bool)` 体内 `WiFi.mode(WIFI_AP)` + `startWifiApServices` + grace deadline 武装。
+  - `test_soft_ap_disconnect_is_limited_to_explicit_ap_restart` 放宽：`softAPdisconnect(true)` 出现两次（restart / stopForStaOnly），允许 `WiFi.mode(WIFI_STA)` 出现。
+  - `test_wifi_mdns_lifecycle_follows_sta_connection` / NetBIOS / LLMNR 改为断言停止动作在 `restoreApAfterStaLost` 体内。
+  - 文案断言更新到 `AP 将在 1 秒后关闭`；版本号断言更新到 v1.7.18。
+
 ## 2026-06-21 v1.7.17
 
 - 固件版本号从 `v1.7.16` 更新到 `v1.7.17`。

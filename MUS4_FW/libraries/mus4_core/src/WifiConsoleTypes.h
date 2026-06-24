@@ -25,6 +25,11 @@ static const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;
 static const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;
 static const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;
 static const unsigned long WIFI_STA_APPLY_DELAY_MS = 800;
+// v1.7.18 起：AP/STA 互斥切换的去抖窗口。STA 进入 WL_CONNECTED 后等待
+// WIFI_STA_GRACE_UP_MS 才关闭 AP；STA 脱离 WL_CONNECTED 后等待
+// WIFI_STA_GRACE_DOWN_MS 才启动 AP，避免短暂抖动反复切换。
+static const unsigned long WIFI_STA_GRACE_UP_MS = 1000;
+static const unsigned long WIFI_STA_GRACE_DOWN_MS = 1000;
 static const char* WIFI_OTA_HOSTNAME = "mus4-ota";
 static const char* WIFI_OTA_PASSWORD = "mus4-debug";
 static const uint16_t WIFI_OTA_PORT = 3232;

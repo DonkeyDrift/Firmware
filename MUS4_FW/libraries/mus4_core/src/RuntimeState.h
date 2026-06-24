@@ -45,6 +45,13 @@ struct WifiRuntimeState {
     unsigned long staApplyDeadlineMs = 0;
     unsigned long apRestartDeadlineMs = 0;
     unsigned long lastConsoleStartAttemptMs = 0;
+    // v1.7.18 起 AP/STA 互斥切换的去抖锚点：
+    // staUpGraceDeadlineMs   - STA 首次 WL_CONNECTED 后等待关 AP 的截止时间，0 表示未武装；
+    // staDownGraceDeadlineMs - STA 脱离 WL_CONNECTED 后等待起 AP 的截止时间，0 表示未武装；
+    // inApOnlyMode           - 当前是否已经切到 WIFI_AP（AP-only），用于驱动状态机分支。
+    unsigned long staUpGraceDeadlineMs = 0;
+    unsigned long staDownGraceDeadlineMs = 0;
+    bool inApOnlyMode = true;
 
     // Shared Preferences instance (pointer to the global Preferences in MUS4_FW.ino)
     Preferences* prefs = nullptr;

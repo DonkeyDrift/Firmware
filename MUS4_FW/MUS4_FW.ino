@@ -190,6 +190,9 @@ unsigned long& lastWifiConsoleStartAttemptMs = wifiRuntime.lastConsoleStartAttem
 unsigned long& wifiStaConnectStartMs = wifiRuntime.staConnectStartMs;
 unsigned long& wifiStaApplyDeadlineMs = wifiRuntime.staApplyDeadlineMs;
 unsigned long& wifiApRestartDeadlineMs = wifiRuntime.apRestartDeadlineMs;
+unsigned long& wifiStaUpGraceDeadlineMs = wifiRuntime.staUpGraceDeadlineMs;
+unsigned long& wifiStaDownGraceDeadlineMs = wifiRuntime.staDownGraceDeadlineMs;
+bool& wifiInApOnlyMode = wifiRuntime.inApOnlyMode;
 
 // OTA runtime state aliases
 bool& wifiOtaStarted = otaRuntime.started;

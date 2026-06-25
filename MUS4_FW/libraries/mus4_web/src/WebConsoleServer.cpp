@@ -154,6 +154,7 @@ static void redirectWifiWebCaptivePortalToRoot()
 
 static void handleWifiWebRoot()
 {
+    wifiWebServer.sendHeader("Cache-Control", "no-store");
     wifiWebServer.send_P(200, "text/html", WIFI_WEB_CONSOLE_HTML);
 }
 
@@ -660,6 +661,7 @@ static void handleWifiWebData()
 
 static void handleWifiWebUpdateGet()
 {
+    wifiWebServer.sendHeader("Cache-Control", "no-store");
     wifiWebServer.send_P(200, "text/html", WIFI_WEB_UPDATE_HTML);
 }
 

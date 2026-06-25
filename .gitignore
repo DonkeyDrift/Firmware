@@ -5,16 +5,3 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
-
-# 历史孤儿：下沉前在仓库根产生的本地构建 / IDE / 工具产物。
-# 真正的构建产物已迁移到 MUS4_FW/ 子目录，由 MUS4_FW/.gitignore 管理。
-.arduino_cli_state.json
-.cache/
-.claude-last-build.log
-.pytest_cache/
-.tmp_serial_state_test.json
-.worktrees/
-__pycache__/
-ArduinoCLI.log
-build/
-build_wsl/

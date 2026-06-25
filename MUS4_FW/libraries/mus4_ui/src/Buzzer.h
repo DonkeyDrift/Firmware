@@ -55,6 +55,10 @@ public:
     void playModeSound(int mode);
     void playParkLockSound();
     void playParkUnlockSound();
+    void playWifiApStartSound();
+    void playWifiApStopSound();
+    void playWifiStaConnectedSound();
+    void playWifiStaDisconnectedSound();
     bool isPlaying() { return _playing; }
     void update();
     void setVolume(int volume);

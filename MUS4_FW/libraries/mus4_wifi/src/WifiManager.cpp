@@ -11,6 +11,7 @@
 #include "Mus4Log.h"
 #include "RuntimeState.h"
 #include "StringPrint.h"
+#include "Buzzer.h"
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <WiFi.h>
@@ -30,6 +31,7 @@ extern WiFiServer wifiConsoleServer;
 extern WiFiClient wifiConsoleClient;
 extern WebServer wifiWebServer;
 extern DNSServer wifiCaptiveDnsServer;
+extern Buzzer buzzer;
 
 // Runtime state defined in MUS4_FW.ino
 extern WifiRuntimeState wifiRuntime;
@@ -386,9 +388,17 @@ bool configureWifiSoftApNetwork()
 
 bool startWifiConsoleServices(const char* logPrefix)
 {
+    // 先关闭再重新打开监听套接字，确保接口变化（如 STA 断开、AP 重启）后
+    // 服务端能绑定到当前活动的网络接口，避免 AP 恢复后 HTTP/TCP 无法访问。
+    mus4LogLine("wifi", "console services: close old sockets");
+    wifiWebServer.close();
+    wifiConsoleServer.stop();
+    mus4LogLine("wifi", "console services: DNS start");
     wifiCaptiveDnsServer.start(53, "*", WiFi.softAPIP());
+    mus4LogLine("wifi", "console services: TCP begin");
     wifiConsoleServer.begin();
     wifiConsoleServer.setNoDelay(true);
+    mus4LogLine("wifi", "console services: HTTP begin");
     wifiWebServer.begin();
     wifiConsoleStarted = true;
     mus4Logf("wifi", "%s ssid=%s IP: %s", logPrefix, getActiveWifiApSsid().c_str(), WiFi.softAPIP().toString().c_str());
@@ -397,7 +407,9 @@ bool startWifiConsoleServices(const char* logPrefix)
 
 bool startWifiApServices(const char* logPrefix)
 {
+    mus4LogLine("wifi", "AP services: config network");
     configureWifiSoftApNetwork();
+    mus4LogLine("wifi", "AP services: softAP begin");
     String activeSsid = getActiveWifiApSsid();
     bool started = WiFi.softAP(
         activeSsid.c_str(),
@@ -406,21 +418,35 @@ bool startWifiApServices(const char* logPrefix)
         false,
         WIFI_CONSOLE_MAX_CLIENTS
     );
+    mus4LogLine("wifi", "AP services: softAP done");
     if (!started) {
         wifiConsoleStarted = false;
         mus4Logf("wifi", "%s failed", logPrefix);
         return false;
     }
-    return startWifiConsoleServices(logPrefix);
+    bool ok = startWifiConsoleServices(logPrefix);
+    if (ok) {
+        buzzer.playWifiApStartSound();
+    }
+    return ok;
 }
 
 bool ensureWifiApAvailable()
 {
     wifiApRestartPending = false;
-    if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
-        return startWifiApServices("AP ensured");
+    // AP 接口可能仍在（WiFi.softAPIP() != 0），但 STA 扫描/连接阶段会把 SoftAP
+    // 信道带跑；直接复用旧接口只重启 console 服务无法让 AP 回到正确信道，
+    // 客户端重连后会出现「ping 通但 HTTP 无响应」。
+    // 这里用 softAPdisconnect(false) 清掉当前 AP 配置并重启一次 AP 接口
+    //（不切换底层 WIFI_AP_STA mode），再由 startWifiApServices() 重新下发
+    // 正确配置、启动完整服务。
+    if (WiFi.softAPIP() != IPAddress(0, 0, 0, 0)) {
+        mus4LogLine("wifi", "AP interface up, soft reset before reconfigure");
+        wifiCaptiveDnsServer.stop();
+        WiFi.softAPdisconnect(false);
+        delay(100);
     }
-    return startWifiConsoleServices("AP ensured");
+    return startWifiApServices("AP ensured");
 }
 
 bool restartWifiAp()
@@ -466,6 +492,7 @@ static void stopWifiApForStaOnly()
     wifiConsoleStarted = false;
     wifiInApOnlyMode = false;
     mus4LogLine("wifi", "AP stopped after STA connected");
+    buzzer.playWifiApStopSound();
 }
 
 // STA 持续断开 / STA 失败 / WIFI_STA_CLEAR 路径都收敛到这里：停止 STA 并
@@ -478,6 +505,7 @@ static void restoreApAfterStaLost()
     wifiStaUpGraceDeadlineMs = 0;
     wifiStaDownGraceDeadlineMs = 0;
     wifiStaApplyFromAp = false;
+    buzzer.playWifiStaDisconnectedSound();
     wifiStaConnected = false;
     wifiStaConnecting = false;
     stopWifiMdnsIfNeeded();
@@ -546,6 +574,7 @@ void updateWifiWebConsole()
 
 void setupWifiConsole()
 {
+    mus4LogLine("wifi", "setup: entered");
     webLogBufferInit();
     mus4SetWebLogSink(appendWebLog);
     lastWifiConsoleStartAttemptMs = millis();
@@ -561,7 +590,9 @@ void setupWifiConsole()
     // 不再与底层 WiFi mode 严格一一对应。
     wifiInApOnlyMode = false;
     clearWifiStaLastError();
+    mus4LogLine("wifi", "setup: disconnect");
     WiFi.disconnect(true, true);
+    mus4LogLine("wifi", "setup: mode OFF");
     WiFi.mode(WIFI_OFF);
     delay(100);
     // 全程保持 WIFI_AP_STA。SoftAP 负责 AP 兜底入口，STA 部分在配置存在时才
@@ -569,6 +600,7 @@ void setupWifiConsole()
     // 时不再切 mode，只启停对应接口。这样彻底避免 AP↔AP_STA 反复切换导致的
     // SoftAP 重置、配置页面断连和 STA netif race。
     // 历史 v1.7.17 全程 WIFI_AP_STA 已验证 newhome_iot 等路由器可正常连接。
+    mus4LogLine("wifi", "setup: mode AP_STA");
     WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);
     {
@@ -577,12 +609,15 @@ void setupWifiConsole()
             WiFi.setHostname(host.c_str());
         }
     }
+    mus4LogLine("wifi", "setup: web console");
     setupWifiWebConsole();
+    mus4LogLine("wifi", "setup: start AP services");
     if (!startWifiApServices("AP started")) {
         return;
     }
     mus4Logf("wifi", "AP %s IP: %s Port: %u Web: %u", getActiveWifiApSsid().c_str(), WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT);
     if (wifiStaConfigured) {
+        mus4LogLine("wifi", "setup: apply STA credentials");
         applyWifiStaCredentials();
     }
 }
@@ -605,6 +640,12 @@ void updateWifiSta()
 
     wl_status_t status = WiFi.status();
     if (status == WL_CONNECTED) {
+        if (WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
+            // ESP-IDF 偶尔会出现 Wi-Fi 事件先报告 WL_CONNECTED、netif IP 尚未写入的
+            // 短暂窗口；此时若标记 connected，/api/wifi-sta 会把 sta_ip 填成 0.0.0.0，
+            // Web Console 就没办法在 AP 关闭前把局域网访问地址展示给用户。等待下一轮。
+            return;
+        }
         if (!wifiStaConnected) {
             // 首次进入 WL_CONNECTED：标记 STA 在线，启动 mDNS，并武装 up grace。
             // 关 AP 的动作要等 WIFI_STA_GRACE_UP_MS 后由本函数下一轮触发，
@@ -613,6 +654,7 @@ void updateWifiSta()
             wifiStaTimedOut = false;
             wifiStaConnecting = false;
             clearWifiStaLastError();
+            buzzer.playWifiStaConnectedSound();
             startWifiMdnsIfNeeded();
 #ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
             startWifiNetbiosIfNeeded();

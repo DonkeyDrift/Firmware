@@ -38,4 +38,4 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [`README.md`](README.md) — 仓库根 README，只说明当前在驻子项目清单。
 - [`MUS4_FW/README.md`](MUS4_FW/README.md) / [`MUS4_FW/README.zh-CN.md`](MUS4_FW/README.zh-CN.md) — MUS4 子项目对外介绍。
 - [`MUS4_FW/CLAUDE.md`](MUS4_FW/CLAUDE.md) — MUS4 子项目的权威工作指南；进入该子项目工作前优先读它。
-- [`MUS4_FW/Doc/`](MUS4_FW/Doc/) — MUS4 架构、硬件引脚、工具、计划文档目录（部分历史描述可能滞后，引用前对照源码）。
+- [`MUS4_FW/docs/`](MUS4_FW/docs/) — MUS4 架构、硬件引脚、工具、计划文档目录（部分历史描述可能滞后，引用前对照源码）。

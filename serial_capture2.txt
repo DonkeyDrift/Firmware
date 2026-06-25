@@ -25,3 +25,4 @@ entry 0x400805b4
 [boot] ESP32 Receiver Serial Ready!
 [wifi] dev_mode=1
 [cal] steer_cal enabled=0 min=872 mid=1488 max=2113
+[05:12:43] Done

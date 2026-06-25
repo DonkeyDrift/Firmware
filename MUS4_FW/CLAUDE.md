@@ -7,11 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件，当前固件源码以根目录 `MUS4_FW.ino` 为主 sketch。固件负责 RC PWM 输入采集、Pilot 上位机串口控制、多模式控制融合、Park/紧急制动、I2C 传感器采集、TUI 状态显示、Wi-Fi/TCP/Web Console、OTA 更新，以及在未启用 Wi-Fi Console 时可选的 BLE Gamepad 输出。
 
 根目录包含三类主线代码：
-- Arduino/C++ 固件：根目录主 sketch `MUS4_FW.ino`（v1.7.4 模块化拆分后收敛到 ~556 行）。其余 C/C++ 模块全部位于 `libraries/mus4_*/src/`（见下文"核心模块"段），根目录除 sketch 外仅保留 `WirelessSecrets.h` 等凭据文件。
+- Arduino/C++ 固件：根目录主 sketch `MUS4_FW.ino`（v1.7.4 起持续模块化拆分，当前约 640 行，仅负责装配与调度）。其余 C/C++ 模块全部位于 `libraries/mus4_*/src/`（见下文"核心模块"段），根目录除 sketch 外仅保留 `WirelessSecrets.h` 等凭据文件。
 - 构建与烧录工具：`arduino-cli.py` 与 `arduino-cli-wsl.ps1` 负责编译、上传、串口检测、OTA 上传和 WSL 加速构建。
 - Python 工具与测试：无线权限策略镜像、Tub JSON 训练工具、Pilot 推理工具及 pytest 测试。
 
-第三方 Arduino 依赖包括 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050、WebServer、ArduinoOTA、AsyncTCP、ESPAsyncWebServer，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。根目录 `libraries/` 同时承担两种角色：一是存放上述第三方库的本地副本（`arduino-cli.py` 与 WSL 脚本检测到该目录存在时优先使用）；二是承载项目自有模块 `libraries/mus4_core`、`libraries/mus4_ui`、`libraries/mus4_rc`、`libraries/mus4_control`、`libraries/mus4_safety`，这些是 v1.7.4 模块化拆分后的固件主链路代码，不是外部依赖。
+第三方 Arduino 依赖包括 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050、WebServer、ArduinoOTA、AsyncTCP、ESPAsyncWebServer，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。根目录 `libraries/` 同时承担两种角色：一是存放上述第三方库的本地副本（`arduino-cli.py` 与 WSL 脚本检测到该目录存在时优先使用）；二是承载项目自有模块 `libraries/mus4_core`、`mus4_rc`、`mus4_control`、`mus4_safety`、`mus4_ui`、`mus4_command`、`mus4_diag`、`mus4_i2c`、`mus4_log`、`mus4_web`、`mus4_wifi`（共 11 个），这些是 v1.7.4 起持续模块化拆分后的固件主链路代码，不是外部依赖。
 
 ## Commands
 
@@ -211,12 +211,13 @@ Python 测试集中在 `tests/`：
 - `tests/test_firmware_feature_flags.py` 用源码断言保护关键编译开关、Web Console/Donkey Console UI、状态卡片布局、曲线实现形态和前端安全门控。
 - `tests/test_train_tub_driver.py` 覆盖 Tub JSON 读取、数据质量报告、特征防泄漏和窗口数据集构造。
 - `tests/test_mus4_pilot_infer.py` 覆盖模型推理控制器的标准化校验、安全门控、串口命令和 ACK 解析。
+- `tests/test_transform_mus4_tub_to_donkey.py` 覆盖 MUS4 Tub JSON 转 DonkeyCar 数据格式的转换逻辑。
 
 ### 固件应用层
 
 `MUS4_FW.ino` 是主状态机，v1.7.4 拆分后大量子系统迁移到 `libraries/mus4_*/src/`，主 sketch 只负责装配与调度。关键数据流是：
 1. RC 接收机通过 CH1-CH6 PWM 输入触发中断或 MCPWM 捕获路径，计算脉宽并滤波——实现位于 `libraries/mus4_rc/src/RcPwmCapture.*`；CH5/CH6 当前用于 Drift Assist 开关与强度比例。
-2. USB `Serial`、`Serial1`、TCP Console 与 Web Console 接收命令，解析 `Throttle:Steering`、序列号与校验和格式——解析与无线权限分发仍在 `MUS4_FW.ino` 中。
+2. USB `Serial`、`Serial1`、TCP Console 与 Web Console 接收命令，解析 `Throttle:Steering`、序列号与校验和格式——命令解析、分发与无线权限分发已迁出 sketch，位于 `libraries/mus4_command/src/`（`CommandParser`、`CommandDispatcher`、`WirelessConsole`、`SerialLineReader`、`LocalCommands`）。
 3. 控制逻辑按模式融合 RC 与 Pilot 数据，更新 `car_output`，Drift Assist 可在条件满足时叠加转向补偿——实现位于 `libraries/mus4_control/src/ControlMixer.*`。
 4. Park/紧急制动状态机可覆盖油门输出并控制 LED 闪烁；OTA 窗口或 OTA 传输期间会暂停 Serial1 遥测——实现位于 `libraries/mus4_safety/src/SafetyState.*`。
 5. 输出层通过 ESP32 `ledc` 产生 PWM，驱动转向舵机与油门电调，并通过 Serial1 上行 `T<t>S<s>` / `M<m>:P<p>` / `$IMU,...`（详见下文"串口协议"）——PWM 映射、限幅、`ledcWriteChannel` 调用位于 `libraries/mus4_safety/src/ActuatorOutput.*`。
@@ -224,24 +225,50 @@ Python 测试集中在 `tests/`：
 
 ### 核心模块
 
-所有项目自有 C/C++ 模块都在 `libraries/mus4_*/src/` 下，按职责分库：
+所有项目自有 C/C++ 模块都在 `libraries/mus4_*/src/` 下，按职责分库（共 11 个，下列文件名以 `.h/.cpp` 成对存在）：
 
 - `libraries/mus4_core/src/`：跨模块共享类型与构建信息。
   - `SharedTypes.h`：`SensorData`、`ControlData` 等跨模块共享的数据结构与状态枚举。
   - `BuildInfo.h`：固件名称、版本（`MUS4_FIRMWARE_VERSION`）和构建时间宏。
+  - `WifiConsoleTypes.h`：无线 Console 共享类型。
+  - `WirelessSecrets.example.h`：Wi-Fi STA 凭据模板。
 - `libraries/mus4_rc/src/`：RC 输入子系统。
-  - `RcPwmCapture.h/.cpp`：CH1-CH6 PWM 捕获、滤波、超时检测；中断处理保留 `IRAM_ATTR`。
+  - `RcPwmCapture`：CH1-CH6 PWM 捕获、滤波、超时检测；中断处理保留 `IRAM_ATTR`。
 - `libraries/mus4_control/src/`：控制融合层。
-  - `ControlMixer.h/.cpp`：驾驶模式切换、RC/Pilot 混控、Drift Assist 转向补偿。
+  - `ControlMixer`：驾驶模式切换、RC/Pilot 混控、Drift Assist 转向补偿。
 - `libraries/mus4_safety/src/`：安全关键执行层。
-  - `SafetyState.h/.cpp`：Park 状态机、紧急制动 FSM、OTA 窗口下的输出抑制。
-  - `ActuatorOutput.h/.cpp`：PWM 映射（300Hz/14bit, 1000-2000µs）、限幅、`ledcWriteChannel` 调用。
+  - `SafetyState`：Park 状态机、紧急制动 FSM、OTA 窗口下的输出抑制。
+  - `ActuatorOutput`：PWM 映射（300Hz/14bit, 1000-2000µs）、限幅、`ledcWriteChannel` 调用。
+- `libraries/mus4_command/src/`：命令解析与分发层（v1.7.4 后从 sketch 拆出）。
+  - `CommandParser` / `CommandDispatcher`：`Throttle:Steering`、序列号、校验和解析与命令路由。
+  - `SerialLineReader`：USB/Serial1 行读取。
+  - `WirelessConsole`：TCP/Web Console 命令入口与认证/Park 权限分层。
+  - `LocalCommands`：本地诊断/标定命令实现。
+- `libraries/mus4_diag/src/`：诊断与可选输出旁路。
+  - `Diagnostics`：`TEST`/`BENCH`/`STRESS`/`REGRESS`/`FILTER_TEST` 等内置自检入口。
+  - `GamepadMode`：BLE Gamepad 输出（仅 `ENABLE_WIFI_CONSOLE` 未启用时编译）。
+- `libraries/mus4_i2c/src/`：I2C 传感器采集。
+  - `Sensors`：INA219 电流/电压、MPU6050 IMU 读取。
+  - `I2CBusTools`：I2C 总线扫描与诊断。
+- `libraries/mus4_log/src/`：日志与 JSON 工具。
+  - `Mus4Log`：MUS4 日志输出目标切换（`LOG_WEB`/`LOG_SERIAL`）。
+  - `JsonUtil`：轻量 JSON 拼装/转义辅助。
 - `libraries/mus4_ui/src/`：人机接口旁路。
-  - `TUI.h/.cpp`：ANSI 终端仪表盘渲染，支持降级模式和增量刷新。
-  - `Buzzer.h/.cpp`：蜂鸣器状态机，硬件支持时使用。
+  - `TUI`：ANSI 终端仪表盘渲染，支持降级模式和增量刷新。
+  - `Buzzer`：蜂鸣器状态机，硬件支持时使用。
+- `libraries/mus4_web/src/`：Web Console 与遥测前端。
+  - `WebConsoleServer`：端口 80 Web Console / Donkey Console 服务。
+  - `WebConsoleAssets.h`：内嵌的 `Drifter Console` 前端 HTML/CSS/JS。
+  - `WebTelemetry`：端口 81 WebSocket 遥测推送。
+  - `WebLogBuffer`：Web 串口日志环形缓冲。
+- `libraries/mus4_wifi/src/`：Wi-Fi 生命周期与 OTA。
+  - `WifiManager`：AP/STA 互斥切换状态机（见下文 Wi-Fi Console 段）。
+  - `WifiStaConfig`：STA 凭据持久化（Preferences）。
+  - `WifiIdentity`：AP SSID / mDNS 主机名派生。
+  - `WifiOta`：ArduinoOTA（3232）与 HTTP `/update` OTA 窗口管理。
 - `wireless_console_policy.py`（根目录 Python）：Wi-Fi/TCP/Web Console 权限策略的 Python 镜像，用于在桌面测试中覆盖认证、Park 锁定、OTA 窗口、STA 状态、日志脱敏和行缓冲行为。
 
-修改任一 `libraries/mus4_*` 模块时，建议同步检查 `tests/test_firmware_feature_flags.py` 中对应的源码断言（v1.7.4 已扩展到 75 项），以及 `Doc/Plan/MUS4_FW模块化拆分方案.md`（3.0 修订稿）中的模块边界定义。
+修改任一 `libraries/mus4_*` 模块时，建议同步检查 `tests/test_firmware_feature_flags.py` 中对应的源码断言，以及 `docs/Plan/MUS4_FW模块化拆分方案.md`（3.0 修订稿）中的模块边界定义。
 
 ### 数据采集与 Pilot 工具链
 
@@ -259,7 +286,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 ### 版本与发布记录
 
-当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.7.18`。README 中部分硬件与路径描述可能滞后，硬件细节以 `MUS4_FW.ino` 与 `Doc/Hardware/pin_definitions.md` 为准。
+当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.7.22`。README 中部分硬件与路径描述可能滞后，硬件细节以 `MUS4_FW.ino` 与 `docs/Hardware/pin_definitions.md` 为准。
 
 ### 控制模式
 
@@ -312,7 +339,7 @@ Serial1 上行（ESP32 → 上位机 DonkeyCar `actuator.py::Arduino` / `ArdImu`
 
 GPIO 34、35、36、39 是 ESP32 仅输入引脚，不能配置为输出，也没有内部上拉/下拉。
 
-README 中部分历史描述可能滞后；以 `MUS4_FW.ino`、`Doc/Hardware/pin_definitions.md` 和本文件为准。
+README 中部分历史描述可能滞后；以 `MUS4_FW.ino`、`docs/Hardware/pin_definitions.md` 和本文件为准。
 
 ### Wi-Fi Console、Web Console 与 OTA
 
@@ -329,7 +356,7 @@ v1.7.18 起 AP/STA 改为**互斥切换**（不再长期共存）：
 
 AP 模式下作为调试和配网入口；STA-only 模式下 AP 不可见，用户需通过 STA IP 或 mDNS `<AP名称小写>.local` 访问 Web Console。固件会按当前 AP 名称生成小写 mDNS 主机名并发布 Web Console（例如 `http://mus4-debug.local/`），但 Web UI 网络面板不再提供 `.local` 入口；`.local` 不可用时以页面显示的 STA IP 为准。
 
-Web UI 的 HTML/CSS/JS 目前内嵌在 `MUS4_FW.ino` 的 `WIFI_WEB_CONSOLE_HTML` 中，页面品牌已显示为 `Drifter Console`。修改标题、顶部 DEV/OTA 区、Network 面板、Diagnostics 面板、状态卡片、串口日志、Tub JSON 或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
+Web UI 的 HTML/CSS/JS 目前内嵌在 `libraries/mus4_web/src/WebConsoleAssets.h` 中，由 `mus4_web/src/WebConsoleServer.*` 提供服务，页面品牌已显示为 `Drifter Console`。修改标题、顶部 DEV/OTA 区、Network 面板、Diagnostics 面板、状态卡片、串口日志、Tub JSON 或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
 
 ### BLE Gamepad Mode
 
@@ -355,17 +382,17 @@ Web UI 的 HTML/CSS/JS 目前内嵌在 `MUS4_FW.ino` 的 `WIFI_WEB_CONSOLE_HTML`
 
 ## Documentation Map
 
-- `Doc/Arch/architecture.md`：固件主循环、状态机和数据流；部分频率或旧路径可能滞后，引用前对照源码。
-- `Doc/Hardware/pin_definitions.md`：MUS4-v2.3 / v2.4.2 权威引脚定义。
-- `Doc/Hardware/CONFIG.md`：硬件配置说明。
-- `Doc/Tools/ArduinoCLI.md`：`arduino-cli.py` 使用说明。
-- `Doc/Tools/arduino-cli-wsl_manual.md`：WSL 构建脚本背景与排障。
-- `Doc/Tools/train_tub_driver.md`：Tub JSON 报告与 GRU baseline 训练说明。
-- `Doc/Tools/mus4_pilot_infer.md`：Pilot 模型推理控制器、安全门控和部署说明。
-- `Doc/README/OPERATIONS.md`：串口运行时操作命令与数据帧。
+- `docs/Arch/architecture.md`：固件主循环、状态机和数据流；部分频率或旧路径可能滞后，引用前对照源码。
+- `docs/Hardware/pin_definitions.md`：MUS4-v2.3 / v2.4.2 权威引脚定义。
+- `docs/Hardware/CONFIG.md`：硬件配置说明。
+- `docs/Tools/ArduinoCLI.md`：`arduino-cli.py` 使用说明。
+- `docs/Tools/arduino-cli-wsl_manual.md`：WSL 构建脚本背景与排障。
+- `docs/Tools/train_tub_driver.md`：Tub JSON 报告与 GRU baseline 训练说明。
+- `docs/Tools/mus4_pilot_infer.md`：Pilot 模型推理控制器、安全门控和部署说明。
+- `docs/README/OPERATIONS.md`：串口运行时操作命令与数据帧。
 - `provisioning_system/docs/deployment_and_testing.md`：独立配网系统的 ESP32 固件、Linux agent 和测试部署说明。
-- `Doc/Plan/`：方案、设计方案、实施路线和历史实施方案目录；新增方案类内容应写入此目录，使用清晰的中文文件名，使用前需对照当前代码验证。其中 `Doc/Plan/MUS4_FW模块化拆分方案.md`（3.0 修订稿）记录了 v1.7.4 把 `MUS4_FW.ino` 拆到 `libraries/mus4_*` 的模块边界与切片完成情况，是理解当前模块布局来源的最佳入口。`docs/Plan/DEV模式影响面与运行逻辑映射.md` 是 DEV 开关在 v1.7.6 实现下的事实映射（放权清单、执行链路、与设计稿的已知偏差），修改 DEV / OTA / 无线权限相关代码前应先读。
-- `README.md`：项目介绍与快速开始，部分构建命令、硬件引脚和文档路径可能滞后；引用前必须对照 `MUS4_FW.ino`、`Doc/Hardware/pin_definitions.md`、`Doc/Arch/architecture.md` 和本文件验证。
+- `docs/Plan/`：方案、设计方案、实施路线和历史实施方案目录；新增方案类内容应写入此目录，使用清晰的中文文件名，使用前需对照当前代码验证。其中 `docs/Plan/MUS4_FW模块化拆分方案.md`（3.0 修订稿）记录了 v1.7.4 把 `MUS4_FW.ino` 拆到 `libraries/mus4_*` 的模块边界与切片完成情况，是理解当前模块布局来源的最佳入口。`docs/Plan/DEV模式影响面与运行逻辑映射.md` 是 DEV 开关在 v1.7.6 实现下的事实映射（放权清单、执行链路、与设计稿的已知偏差），修改 DEV / OTA / 无线权限相关代码前应先读。
+- `README.md`：项目介绍与快速开始，部分构建命令、硬件引脚和文档路径可能滞后；引用前必须对照 `MUS4_FW.ino`、`docs/Hardware/pin_definitions.md`、`docs/Arch/architecture.md` 和本文件验证。
 - `AGENTS.md`：其他代理工具的历史指南，包含旧版本号、MiniClaw 专属身份指令和外部工具流程；Claude Code 操作本仓库时不要继承其中的代理身份或工具专属规则，优先遵循本文件、源码和当前项目文档。
 
 ## Git Conventions

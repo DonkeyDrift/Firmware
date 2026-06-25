@@ -34,6 +34,35 @@ BuzzerNote melodyParkUnlock[] = {
     { NOTE_REST, N8 }
 };
 
+// Wi-Fi AP 启动提示音 - 上升音阶 C4-E4-G4
+BuzzerNote melodyWifiApStart[] = {
+    { NOTE_C4, N8 },
+    { NOTE_E4, N8 },
+    { NOTE_G4, N4 },
+    { NOTE_REST, N8 }
+};
+
+// Wi-Fi AP 关闭提示音 - 下降音阶 G4-E4-C4
+BuzzerNote melodyWifiApStop[] = {
+    { NOTE_G4, N8 },
+    { NOTE_E4, N8 },
+    { NOTE_C4, N4 },
+    { NOTE_REST, N8 }
+};
+
+// Wi-Fi STA 连接成功提示音 - 双短高音 G4-G4
+BuzzerNote melodyWifiStaConnected[] = {
+    { NOTE_G4, N8 },
+    { NOTE_G4, N8 },
+    { NOTE_REST, N8 }
+};
+
+// Wi-Fi STA 断开/失败提示音 - 单长低音 C4
+BuzzerNote melodyWifiStaDisconnected[] = {
+    { NOTE_C4, N4 },
+    { NOTE_REST, N8 }
+};
+
 Buzzer::Buzzer(int pin) {
     _pin = pin;
     _channel = _channelCounter++;
@@ -146,4 +175,20 @@ void Buzzer::update() {
     unsigned long durMs = (unsigned long)beatMs * 4 / note.duration;
     _restDurationMs = (unsigned long)(durMs * 0.3f);
     startNote(note.pitch, durMs);
+}
+
+void Buzzer::playWifiApStartSound() {
+    startMelody(melodyWifiApStart, sizeof(melodyWifiApStart) / sizeof(BuzzerNote));
+}
+
+void Buzzer::playWifiApStopSound() {
+    startMelody(melodyWifiApStop, sizeof(melodyWifiApStop) / sizeof(BuzzerNote));
+}
+
+void Buzzer::playWifiStaConnectedSound() {
+    startMelody(melodyWifiStaConnected, sizeof(melodyWifiStaConnected) / sizeof(BuzzerNote));
+}
+
+void Buzzer::playWifiStaDisconnectedSound() {
+    startMelody(melodyWifiStaDisconnected, sizeof(melodyWifiStaDisconnected) / sizeof(BuzzerNote));
 }

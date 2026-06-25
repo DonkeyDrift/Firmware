@@ -711,7 +711,7 @@ def test_wifi_console_types_are_split_from_sketch():
         "const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;",
         "const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;",
         "const unsigned long WIFI_STA_APPLY_DELAY_MS = 800;",
-        "const unsigned long WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS = 15000;",
+        "const unsigned long WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS = 60000;",
         "const char* WIFI_OTA_HOSTNAME = \"mus4-ota\";",
         "const char* WIFI_OTA_PASSWORD = \"mus4-debug\";",
         "const uint16_t WIFI_OTA_PORT = 3232;",
@@ -1535,7 +1535,7 @@ def test_web_console_sta_success_shows_lan_url_before_ap_closes():
     assert "staNotice.textContent='STA 已连接\\n局域网 IP：'+j.sta_ip+'\\n访问地址：http://'+j.sta_ip+'/'" in wait_body
     assert "wifiStaModal.classList.remove('show')" not in wait_body
     assert "closeWifiStaModal();return true" not in wait_body
-    assert "await new Promise(resolve=>setTimeout(resolve,250))" in wait_body
+    assert "await new Promise(resolve=>setTimeout(resolve,800))" in wait_body
     assert "await new Promise(resolve=>setTimeout(resolve,1000))" not in wait_body
 
     assert "(j&&j.sta_ip)||(j&&j.handoff_sta_ip)||''" in handoff_url_body
@@ -1836,7 +1836,7 @@ def test_web_console_closes_ap_after_sta_grace():
 
     assert "WIFI_STA_GRACE_UP_MS = 1000" in wifi_types
     assert "WIFI_STA_GRACE_DOWN_MS = 1000" in wifi_types
-    assert "WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS = 15000" in wifi_types
+    assert "WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS = 60000" in wifi_types
 
     stop_body = re.search(
         r"static void stopWifiApForStaOnly\(\)\s*\{(?P<body>.*?)\n\}",
@@ -1932,7 +1932,7 @@ def test_ap_sta_configuration_keeps_ap_open_long_enough_to_show_ip():
 
     assert "bool staApplyFromAp = false" in runtime_header
     assert "bool& wifiStaApplyFromAp = wifiRuntime.staApplyFromAp" in source
-    assert "WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS = 15000" in wifi_types
+    assert "WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS = 60000" in wifi_types
 
     handler_body = re.search(
         r"static void handleWifiWebStaSet\(\)\s*\{(?P<body>.*?)\n\}",

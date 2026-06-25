@@ -367,6 +367,7 @@ void setup()
       bleGamepad.begin();
     #endif
     #ifdef ENABLE_WIFI_CONSOLE
+      pinMode(WIFI_BOOT_RESET_PIN, INPUT_PULLUP);
       loadDevModePreference();
       loadWifiApPreference();
       loadWifiStaPreference();
@@ -420,6 +421,7 @@ void loop()
       updateWifiConsole();
       updateWifiWebConsole();
       updateWifiSta();
+      updateWifiBootResetButton();
       updateWifiOta(otaRuntime, wifiRuntime);
     #endif
 

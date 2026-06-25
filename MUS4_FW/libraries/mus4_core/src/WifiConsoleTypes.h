@@ -26,6 +26,8 @@ static const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;
 static const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;
 static const unsigned long WIFI_STA_APPLY_DELAY_MS = 800;
 static const unsigned long WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS = 60000;
+static const uint8_t WIFI_BOOT_RESET_PIN = 0;
+static const unsigned long WIFI_BOOT_RESET_HOLD_MS = 3000;
 // v1.7.18 起：AP/STA 互斥切换的去抖窗口。STA 进入 WL_CONNECTED 后等待
 // WIFI_STA_GRACE_UP_MS 才关闭 AP；STA 脱离 WL_CONNECTED 后等待
 // WIFI_STA_GRACE_DOWN_MS 才启动 AP，避免短暂抖动反复切换。

@@ -31,6 +31,8 @@ void applyWifiStaCredentials();
 void scheduleWifiApRestart();
 bool ensureWifiApAvailable();
 bool restartWifiAp();
+bool clearWifiStaAndRestoreAp();
+void updateWifiBootResetButton();
 
 void loadWifiApPreference();
 bool saveWifiApPreference(const String& ssid);

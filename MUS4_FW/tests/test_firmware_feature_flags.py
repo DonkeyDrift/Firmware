@@ -1473,8 +1473,9 @@ def test_wifi_sta_to_sta_handoff_keeps_ap_as_transition_page():
     assert "ensureWifiApAvailable()" not in handoff_body
     assert "restartWifiAp()" not in handoff_body
 
-    # 调用方仍保留，HTTP POST 时按需触发但实际只是 no-op
-    assert "body.set('source',location.hostname==='192.168.4.1'?'ap':'sta')" in source
+    # 调用方仍保留，HTTP POST 时按需触发但实际只是 no-op；source 仅作为后端 AP 判定的提示。
+    assert "function wifiStaSaveSource()" in source
+    assert "body.set('source',wifiStaSaveSource())" in source
     assert "wifiWebServer.arg(\"source\")" in source
     assert "startWifiStaHandoff(ssid)" in source
 
@@ -1955,10 +1956,52 @@ def test_ap_sta_configuration_keeps_ap_open_long_enough_to_show_ip():
         re.DOTALL,
     ).group("body")
 
-    assert "wifiStaApplyFromAp = sourceArg == \"ap\"" in handler_body
+    assert "wifiStaApplyFromAp = sourceArg == \"ap\"" not in handler_body
+    assert "isWifiWebRequestFromAp()" in source
+    assert "bool requestFromAp = isWifiWebRequestFromAp()" in handler_body
+    assert "wifiStaApplyFromAp = requestFromAp" in handler_body
+    assert "function wifiStaSaveSource()" in source
+    assert "body.set('source',wifiStaSaveSource())" in source
+    assert "location.hostname==='192.168.4.1'?'ap':'sta'" not in source
     assert "wifiStaUpGraceDeadlineMs = millis() + (wifiStaApplyFromAp ? WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS : WIFI_STA_GRACE_UP_MS)" in connected_branch
     assert "wifiStaApplyFromAp = false" in stop_body
     assert "wifiStaApplyFromAp = false" in restore_body
+
+
+def test_boot_button_long_press_clears_sta_and_restores_ap_without_restart():
+    source = firmware_source_text()
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+    wifi_manager_header = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.h").read_text(encoding="utf-8")
+
+    assert "WIFI_BOOT_RESET_PIN = 0" in wifi_types
+    assert "WIFI_BOOT_RESET_HOLD_MS = 3000" in wifi_types
+    assert "pinMode(WIFI_BOOT_RESET_PIN, INPUT_PULLUP)" in sketch_source
+    assert "updateWifiBootResetButton()" in sketch_source
+    assert "bool clearWifiStaAndRestoreAp()" in wifi_manager_header
+    assert "void updateWifiBootResetButton()" in wifi_manager_header
+
+    reset_body = re.search(
+        r"void updateWifiBootResetButton\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    clear_body = re.search(
+        r"bool clearWifiStaAndRestoreAp\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "digitalRead(WIFI_BOOT_RESET_PIN)" in reset_body
+    assert "WIFI_BOOT_RESET_HOLD_MS" in reset_body
+    assert "bootWifiResetPressedAtMs" in source
+    assert "bootWifiResetTriggered" in source
+    assert "clearWifiStaAndRestoreAp()" in reset_body
+    assert "wifiOtaInProgress" in reset_body
+    assert "ESP.restart()" not in reset_body
+    assert "clearWifiStaPreference()" in clear_body
+    assert "restoreApAfterStaLost()" in clear_body
+    assert "STA cleared by BOOT long press" in clear_body
 
 
 def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():

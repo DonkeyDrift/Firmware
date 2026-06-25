@@ -91,6 +91,9 @@ extern uint8_t wifiScanCacheCount;
 static bool wifiNetbiosStarted = false;
 #endif
 
+static unsigned long bootWifiResetPressedAtMs = 0;
+static bool bootWifiResetTriggered = false;
+
 #ifdef ENABLE_WIFI_LLMNR_DISCOVERY
 static WiFiUDP wifiLlmnrUdp;
 static bool wifiLlmnrStarted = false;
@@ -524,6 +527,37 @@ static void restoreApAfterStaLost()
     }
     wifiInApOnlyMode = true;
     ensureWifiApAvailable();
+}
+
+bool clearWifiStaAndRestoreAp()
+{
+    if (!clearWifiStaPreference()) {
+        mus4LogLine("wifi", "BOOT long press: STA clear failed");
+        return false;
+    }
+    restoreApAfterStaLost();
+    mus4LogLine("wifi", "STA cleared by BOOT long press");
+    return true;
+}
+
+void updateWifiBootResetButton()
+{
+    bool pressed = digitalRead(WIFI_BOOT_RESET_PIN) == LOW;
+    unsigned long now = millis();
+    if (!pressed) {
+        bootWifiResetPressedAtMs = 0;
+        bootWifiResetTriggered = false;
+        return;
+    }
+    if (bootWifiResetPressedAtMs == 0) {
+        bootWifiResetPressedAtMs = now;
+        return;
+    }
+    if (wifiOtaInProgress) return;
+    if (!bootWifiResetTriggered && now - bootWifiResetPressedAtMs >= WIFI_BOOT_RESET_HOLD_MS) {
+        bootWifiResetTriggered = true;
+        clearWifiStaAndRestoreAp();
+    }
 }
 
 void loadWifiApPreference()

@@ -442,10 +442,13 @@ static void cacheWifiStaScanResults(int count)
     }
 }
 
-static bool isWifiWebRequestFromAp()
+static bool isWifiWebRequestFromAp(const String& sourceArg)
 {
+    if (sourceArg == "ap") return true;
     IPAddress apIp = WiFi.softAPIP();
     if (apIp == IPAddress(0, 0, 0, 0)) return false;
+    if (WiFi.softAPgetStationNum() > 0) return true;
+    if (!ws.staConnected) return true;
     WiFiClient client = wifiWebServer.client();
     if (client && client.localIP() == apIp) return true;
     String host = wifiWebServer.hostHeader();
@@ -495,7 +498,7 @@ static void handleWifiWebStaSet()
     String ssid = wifiWebServer.arg("ssid");
     String password = wifiWebServer.arg("password");
     String sourceArg = wifiWebServer.arg("source");
-    bool requestFromAp = isWifiWebRequestFromAp();
+    bool requestFromAp = isWifiWebRequestFromAp(sourceArg);
     bool keepPassword = wifiWebServer.arg("keep_password") == "1";
     ssid.trim();
     if (ssid.length() == 0 || ssid.length() > WIFI_STA_SSID_MAX_LEN) {
@@ -527,7 +530,7 @@ static void handleWifiWebStaSet()
     } else {
         clearWifiStaHandoff();
     }
-    wifiStaApplyFromAp = requestFromAp || (sourceArg == "ap" && WiFi.softAPIP() != IPAddress(0, 0, 0, 0));
+    wifiStaApplyFromAp = requestFromAp;
     appendWebLog("web", String("wifi sta saved ssid=") + ws.staSsid + " password=<redacted>");
     wifiWebServer.send(200, "application/json", String("{\"saved\":true,\"applied\":true,\"state\":") + wifiStaJson() + "}");
     scheduleWifiStaApply();

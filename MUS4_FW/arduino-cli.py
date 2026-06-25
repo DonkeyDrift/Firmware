@@ -915,13 +915,20 @@ class ArduinoAutomation:
 
     def normalize_precompiled_input_file(self, input_file):
         lower = os.path.basename(input_file).lower()
-        suffixes = (".bootloader.bin", ".partitions.bin", ".merged.bin")
+        suffixes = (
+            ".bootloader_flashed.bin",
+            ".partitions_flashed.bin",
+            "_flashed.bin",
+            ".bootloader.bin",
+            ".partitions.bin",
+            ".merged.bin",
+        )
         if not lower.endswith(suffixes):
             return input_file
 
         directory = os.path.dirname(input_file) or "."
         stem = os.path.basename(input_file)
-        for suffix in (".bootloader.bin", ".partitions.bin", ".merged.bin"):
+        for suffix in suffixes:
             if stem.lower().endswith(suffix):
                 candidate = os.path.join(directory, stem[:-len(suffix)] + ".bin")
                 if os.path.exists(candidate):

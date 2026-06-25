@@ -96,6 +96,23 @@ def test_local_libraries_path_is_configured_for_build_tools():
     assert "$WSLProjectRoot/$script:LibrariesPath" in wsl_script
 
 
+def test_wsl_upload_prefers_app_firmware_bin_and_excludes_auxiliary_bins():
+    wsl_script = ARDUINO_WSL_SCRIPT.read_text(encoding="utf-8")
+
+    assert "function Test-IsAppFirmwareBin" in wsl_script
+    assert "function Get-AppFirmwareBin" in wsl_script
+    for excluded in [
+        "*_flashed.bin",
+        "*.partitions.bin",
+        "*.bootloader.bin",
+        "*.merged.bin",
+        "boot_app0*.bin",
+    ]:
+        assert excluded in wsl_script
+    assert "Sort-Object @{Expression = { if ($_.Name -eq $PreferredName) { 0 } else { 1 } }}" in wsl_script
+    assert "Get-AppFirmwareBin -SearchDirs $candidateBuildDirs -PreferredName $PreferredBinName" in wsl_script
+
+
 def test_smart_provisioning_example_returns_ip_before_closing_ap():
     source = SMART_PROVISIONING_SKETCH.read_text(encoding="utf-8")
 
@@ -1957,8 +1974,17 @@ def test_ap_sta_configuration_keeps_ap_open_long_enough_to_show_ip():
     ).group("body")
 
     assert "wifiStaApplyFromAp = sourceArg == \"ap\"" not in handler_body
-    assert "isWifiWebRequestFromAp()" in source
-    assert "bool requestFromAp = isWifiWebRequestFromAp()" in handler_body
+    request_source_body = re.search(
+        r"static bool isWifiWebRequestFromAp\(const String& sourceArg\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "sourceArg == \"ap\"" in request_source_body
+    assert "WiFi.softAPIP()" in request_source_body
+    assert "IPAddress(0, 0, 0, 0)" in request_source_body
+    assert "WiFi.softAPgetStationNum() > 0" in request_source_body
+    assert "!ws.staConnected" in request_source_body
+    assert "bool requestFromAp = isWifiWebRequestFromAp(sourceArg)" in handler_body
     assert "wifiStaApplyFromAp = requestFromAp" in handler_body
     assert "function wifiStaSaveSource()" in source
     assert "body.set('source',wifiStaSaveSource())" in source

@@ -149,6 +149,19 @@ class TestPrecompiledFirmwareSelection(unittest.TestCase):
 
         self.assertEqual(selected, str(main_firmware))
 
+    def test_replaces_flashed_fragment_with_main_firmware_when_available(self):
+        automation = make_automation()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            main_firmware = root / "MUS4_FW.ino.bin"
+            flashed_partition = root / "MUS4_FW.ino.partitions_flashed.bin"
+            main_firmware.write_bytes(b"app")
+            flashed_partition.write_bytes(b"partition")
+
+            selected = automation.normalize_precompiled_input_file(str(flashed_partition))
+
+        self.assertEqual(selected, str(main_firmware))
+
     def test_keeps_main_firmware_input_file(self):
         automation = make_automation()
         selected = automation.normalize_precompiled_input_file("build_wsl/mus4.ino.bin")

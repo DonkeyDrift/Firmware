@@ -407,32 +407,53 @@ function Get-AppPartitionSize {
     return 0
 }
 
+function Test-IsAppFirmwareBin {
+    param([Parameter(Mandatory=$true)][System.IO.FileInfo]$File)
+
+    $name = $File.Name
+    if ($name -like "*_flashed.bin") { return $false }
+    if ($name -like "*.partitions.bin") { return $false }
+    if ($name -like "*.bootloader.bin") { return $false }
+    if ($name -like "*.merged.bin") { return $false }
+    if ($name -like "boot_app0*.bin") { return $false }
+    return $name -like "*.bin"
+}
+
+function Get-AppFirmwareBin {
+    param(
+        [Parameter(Mandatory=$true)][string[]]$SearchDirs,
+        [Parameter(Mandatory=$true)][string]$PreferredName
+    )
+
+    $candidates = $SearchDirs |
+        Where-Object { Test-Path $_ } |
+        ForEach-Object {
+            Get-ChildItem -Path $_ -Filter "*.bin" -File -ErrorAction SilentlyContinue |
+                Where-Object { Test-IsAppFirmwareBin $_ }
+        } |
+        Sort-Object @{Expression = { if ($_.Name -eq $PreferredName) { 0 } else { 1 } }}, LastWriteTime -Descending
+
+    return $candidates | Select-Object -First 1
+}
+
 <#
 .SYNOPSIS
     获取固件大小估算值（字节）。优先编译产物，其次历史 build 目录
 #>
 function Get-FirmwareSizeEstimate {
-    param([string]$ProjectRoot, [string]$BuildDir = "build_wsl")
+    param([string]$ProjectRoot, [string]$BuildDir = "build_wsl", [string]$PreferredName = "")
 
     $searchDirs = @(
         (Join-Path $ProjectRoot $BuildDir)
         (Join-Path $ProjectRoot "build")
     )
 
-    foreach ($dir in $searchDirs) {
-        if (Test-Path $dir) {
-            $bin = Get-ChildItem -Path $dir -Filter "*.bin" -File -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -notmatch '\.(bootloader|partitions|merged)\.bin$' } |
-                Sort-Object LastWriteTime -Descending |
-                Select-Object -First 1
-
-            if ($bin) {
-                return @{
-                    Size = $bin.Length
-                    Path = $bin.FullName
-                    LastWrite = $bin.LastWriteTime
-                }
-            }
+    $bin = Get-AppFirmwareBin -SearchDirs $searchDirs -PreferredName $PreferredName
+    if ($bin) {
+        return @{
+            Size = $bin.Length
+            Path = $bin.FullName
+            LastWrite = $bin.LastWriteTime
         }
     }
     return $null
@@ -1160,6 +1181,7 @@ if ([string]::IsNullOrWhiteSpace($Sketch) -and $projectConfig["sketch"]) {
 }
 $Sketch = Resolve-SketchFile -Root $ProjectRoot -Sketch $Sketch
 $SketchPath = $Sketch.Replace('\', '/')
+$PreferredBinName = "$(Split-Path $Sketch -Leaf).bin"
 Write-Verbose "Using sketch: $SketchPath"
 
 # FQBN：优先参数，其次配置文件，其次 sketch.yaml / config.yaml
@@ -1311,13 +1333,13 @@ if ($Compile) {
         $syncBackTime = ((Get-Date) - $syncBackStart).TotalSeconds
     }
 
-    # 4. Get actual bin filename from build output
-    $actualBinFile = Invoke-WslCommand -Command "find ""$WSLBuildDir"" -maxdepth 1 -type f -name '*.bin' ! -name '*.bootloader.bin' ! -name '*.partitions.bin' ! -name '*.merged.bin' | sort | head -1 | xargs -r basename"
-    if ([string]::IsNullOrWhiteSpace($actualBinFile)) {
-        Write-Error "No .bin file found in build output: $WSLBuildDir"
+    # 4. Get actual app firmware bin filename from synced build output
+    $localBin = Get-AppFirmwareBin -SearchDirs @((Join-Path $ProjectRoot $BuildDir)) -PreferredName $PreferredBinName
+    if (-not $localBin) {
+        Write-Error "No app .bin file found in build output: $WSLBuildDir"
         exit 1
     }
-    $BinPath = Join-Path (Join-Path $ProjectRoot $BuildDir) $actualBinFile
+    $BinPath = $localBin.FullName
 
     # Output Performance Report
     Write-Host "`n=== Performance Report ===" -ForegroundColor Yellow
@@ -1352,23 +1374,12 @@ if ($Upload -and (-not $BinPath -or -not (Test-Path $BinPath))) {
         (Join-Path $ProjectRoot $BuildDir),
         (Join-Path $ProjectRoot "build")
     )
-    $localBin = $candidateBuildDirs |
-        Where-Object { Test-Path $_ } |
-        ForEach-Object {
-            Get-ChildItem -Path $_ -Filter "*.bin" -File -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -notmatch '\.(bootloader|partitions|merged)\.bin$' }
-        } |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1
+    $localBin = Get-AppFirmwareBin -SearchDirs $candidateBuildDirs -PreferredName $PreferredBinName
     if ($localBin) {
         $BinPath = $localBin.FullName
     } else {
-        $actualBinFile = Invoke-WslCommand -Command "find ""$WSLBuildDir"" -maxdepth 1 -type f -name '*.bin' ! -name '*.bootloader.bin' ! -name '*.partitions.bin' ! -name '*.merged.bin' | sort | head -1 | xargs -r basename"
-        if ([string]::IsNullOrWhiteSpace($actualBinFile)) {
-            Write-Error "No app .bin file found in build output: $($candidateBuildDirs -join ', ') or $WSLBuildDir"
-            exit 1
-        }
-        $BinPath = Join-Path (Join-Path $ProjectRoot $BuildDir) $actualBinFile
+        Write-Error "No app .bin file found in build output: $($candidateBuildDirs -join ', ') or $WSLBuildDir"
+        exit 1
     }
 }
 

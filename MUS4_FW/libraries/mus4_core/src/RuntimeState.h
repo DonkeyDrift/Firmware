@@ -27,6 +27,9 @@ struct WifiRuntimeState {
     bool staPasswordSet = false;
     char staSsid[WIFI_STA_SSID_MAX_LEN + 1] = {0};
     char staPassword[WIFI_STA_PASSWORD_MAX_LEN + 1] = {0};
+    // 一次性 AP 配网目标信道：0 表示未知/不预对齐，1..14 为本次从 scan 选中的目标路由器信道。
+    // 仅运行时使用，不持久化；STA apply 前消费，成功关闭 AP 或失败恢复 AP 时清零。
+    uint8_t staTargetChannel = 0;
 
     // AP / mDNS / handoff
     bool apRestartPending = false;

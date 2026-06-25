@@ -422,7 +422,7 @@ function Test-IsAppFirmwareBin {
 function Get-AppFirmwareBin {
     param(
         [Parameter(Mandatory=$true)][string[]]$SearchDirs,
-        [Parameter(Mandatory=$true)][string]$PreferredName
+        [Parameter(Mandatory=$false)][AllowEmptyString()][string]$PreferredName = ""
     )
 
     $candidates = $SearchDirs |

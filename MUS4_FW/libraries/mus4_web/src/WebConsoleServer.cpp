@@ -27,6 +27,7 @@ extern WebServer wifiWebServer;
 extern WifiRuntimeState wifiRuntime;
 extern OtaRuntimeState otaRuntime;
 extern bool& wifiStaApplyFromAp;
+extern uint8_t& wifiStaTargetChannel;
 
 // Wi-Fi runtime state aliases (kept in MUS4_FW.ino via reference aliases)
 #define ws wifiRuntime
@@ -499,6 +500,7 @@ static void handleWifiWebStaSet()
     String password = wifiWebServer.arg("password");
     String sourceArg = wifiWebServer.arg("source");
     bool requestFromAp = isWifiWebRequestFromAp(sourceArg);
+    int targetChannel = wifiWebServer.arg("channel").toInt();
     bool keepPassword = wifiWebServer.arg("keep_password") == "1";
     ssid.trim();
     if (ssid.length() == 0 || ssid.length() > WIFI_STA_SSID_MAX_LEN) {
@@ -531,6 +533,7 @@ static void handleWifiWebStaSet()
         clearWifiStaHandoff();
     }
     wifiStaApplyFromAp = requestFromAp;
+    wifiStaTargetChannel = (requestFromAp && targetChannel >= 1 && targetChannel <= 14) ? (uint8_t)targetChannel : 0;
     appendWebLog("web", String("wifi sta saved ssid=") + ws.staSsid + " password=<redacted>");
     wifiWebServer.send(200, "application/json", String("{\"saved\":true,\"applied\":true,\"state\":") + wifiStaJson() + "}");
     scheduleWifiStaApply();

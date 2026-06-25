@@ -728,7 +728,7 @@ def test_wifi_console_types_are_split_from_sketch():
         "const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;",
         "const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;",
         "const unsigned long WIFI_STA_APPLY_DELAY_MS = 800;",
-        "const unsigned long WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS = 60000;",
+        "const unsigned long WIFI_STA_IP_DISPLAY_MS = 10000;",
         "const char* WIFI_OTA_HOSTNAME = \"mus4-ota\";",
         "const char* WIFI_OTA_PASSWORD = \"mus4-debug\";",
         "const uint16_t WIFI_OTA_PORT = 3232;",
@@ -1759,7 +1759,7 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
 
     assert 'id="staNotice"' in source
     assert "注意只能连接2.4G WiFi" in source
-    assert "staNotice.textContent='正在连接'" in source
+    assert "Wi-Fi 列表" in source
     assert "staNotice.textContent='STA 已连接\\n局域网 IP：'+j.sta_ip+'\\n访问地址：http://'+j.sta_ip+'/'" in source
     assert "staNotice.textContent='连接失败'" in source
     assert ">连接</button>" in source
@@ -1775,7 +1775,7 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
     assert "setInterval(refreshWifiScan,1000)" in source
     assert "fetch('/api/wifi-sta/scan')" in source
     select_body = re.search(
-        r"function selectWifiSsid\(ssid\)\{(?P<body>.*?)\}\n",
+        r"function selectWifiSsid\(ssid,channel\)\{(?P<body>.*?)\}\n",
         source,
         re.DOTALL,
     ).group("body")
@@ -1854,7 +1854,7 @@ def test_web_console_closes_ap_after_sta_grace():
 
     assert "WIFI_STA_GRACE_UP_MS = 1000" in wifi_types
     assert "WIFI_STA_GRACE_DOWN_MS = 1000" in wifi_types
-    assert "WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS = 60000" in wifi_types
+    assert "WIFI_STA_IP_DISPLAY_MS = 10000" in wifi_types
 
     stop_body = re.search(
         r"static void stopWifiApForStaOnly\(\)\s*\{(?P<body>.*?)\n\}",
@@ -1875,7 +1875,8 @@ def test_web_console_closes_ap_after_sta_grace():
         re.DOTALL,
     ).group("body")
     connected_branch = update_sta_body.split("if (status == WL_CONNECTED)", 1)[1].split("if (wifiStaConnected)", 1)[0]
-    assert "wifiStaUpGraceDeadlineMs = millis() + (wifiStaApplyFromAp ? WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS : WIFI_STA_GRACE_UP_MS)" in connected_branch
+    assert "wifiStaUpGraceDeadlineMs = millis() + WIFI_STA_IP_DISPLAY_MS" in connected_branch
+    assert "showStaIpInApName()" in connected_branch
     assert "stopWifiApForStaOnly()" in connected_branch
     assert "finishWifiStaHandoff()" in connected_branch
     # 不应该在连接成功分支里再次调度 AP 重启——AP 即将被关闭，没有重启意义。
@@ -1950,7 +1951,7 @@ def test_ap_sta_configuration_keeps_ap_open_long_enough_to_show_ip():
 
     assert "bool staApplyFromAp = false" in runtime_header
     assert "bool& wifiStaApplyFromAp = wifiRuntime.staApplyFromAp" in source
-    assert "WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS = 60000" in wifi_types
+    assert "WIFI_STA_IP_DISPLAY_MS = 10000" in wifi_types
 
     handler_body = re.search(
         r"static void handleWifiWebStaSet\(\)\s*\{(?P<body>.*?)\n\}",
@@ -1989,9 +1990,151 @@ def test_ap_sta_configuration_keeps_ap_open_long_enough_to_show_ip():
     assert "function wifiStaSaveSource()" in source
     assert "body.set('source',wifiStaSaveSource())" in source
     assert "location.hostname==='192.168.4.1'?'ap':'sta'" not in source
-    assert "wifiStaUpGraceDeadlineMs = millis() + (wifiStaApplyFromAp ? WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS : WIFI_STA_GRACE_UP_MS)" in connected_branch
+    assert "wifiStaUpGraceDeadlineMs = millis() + WIFI_STA_IP_DISPLAY_MS" in connected_branch
+    assert "showStaIpInApName()" in connected_branch
     assert "wifiStaApplyFromAp = false" in stop_body
     assert "wifiStaApplyFromAp = false" in restore_body
+
+
+def test_sta_ip_is_encoded_into_ap_name_for_ten_seconds():
+    source = firmware_source_text()
+    wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+
+    assert "WIFI_STA_IP_DISPLAY_MS = 10000" in wifi_types
+    assert "WIFI_STA_IP_AP_PREFIX = \"MUS4-\"" in wifi_types
+    assert "WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS" not in wifi_types
+
+    show_body = re.search(
+        r"static void showStaIpInApName\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "WiFi.localIP().toString()" in show_body
+    assert "String(WIFI_STA_IP_AP_PREFIX)" in show_body
+    assert "WiFi.channel()" in show_body
+    assert "startWifiApServices(" in show_body
+
+    # getActiveWifiApSsid 在显示窗口返回带 IP 名（override），关闭后恢复基础名
+    active_body = re.search(
+        r"String getActiveWifiApSsid\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "g_staIpApSsidOverride" in active_body
+
+    stop_body = re.search(
+        r"static void stopWifiApForStaOnly\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    restore_body = re.search(
+        r"static void restoreApAfterStaLost\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "g_staIpApSsidOverride = \"\"" in stop_body
+    assert "g_staIpApSsidOverride = \"\"" in restore_body
+
+
+def test_ap_sta_configuration_prealigns_softap_to_scan_channel_before_begin():
+    source = firmware_source_text()
+    runtime_header = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "RuntimeState.h").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    # 运行时一次性目标信道
+    assert "uint8_t staTargetChannel = 0" in runtime_header
+    assert "uint8_t& wifiStaTargetChannel = wifiRuntime.staTargetChannel" in sketch_source
+
+    # 前端扫描结果携带 channel 并提交
+    assert "let staSelectedChannel=0" in source
+    assert "selectWifiSsid(n.ssid,n.channel" in source
+    assert "function selectWifiSsid(ssid,channel)" in source
+    assert "staSelectedChannel=Number(channel)||0" in source
+    assert "body.set('channel',String(staSelectedChannel))" in source
+    assert "staSelectedChannel=0" in source
+
+    # 后端读取并仅在 AP 配网路径记录目标信道
+    handler_body = re.search(
+        r"static void handleWifiWebStaSet\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "wifiWebServer.arg(\"channel\")" in handler_body
+    assert "wifiStaTargetChannel = (requestFromAp && targetChannel >= 1 && targetChannel <= 14)" in handler_body
+
+    # SoftAP 启动支持指定 channel
+    start_ap_body = re.search(
+        r"bool startWifiApServices\(const char\* logPrefix, uint8_t channel\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "WIFI_CONSOLE_CHANNEL" in start_ap_body
+    assert "WiFi.softAP(" in start_ap_body
+    assert "apChannel" in start_ap_body
+
+    # 预对齐函数在 WiFi.begin 之前
+    apply_body = re.search(
+        r"(?:static )?void applyWifiStaCredentials\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "prealignWifiApChannelForStaApply()" in apply_body
+    assert apply_body.index("prealignWifiApChannelForStaApply()") < apply_body.index("WiFi.begin")
+
+    prealign_body = re.search(
+        r"static void prealignWifiApChannelForStaApply\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "wifiStaApplyFromAp" in prealign_body
+    assert "wifiStaTargetChannel" in prealign_body
+    assert "restartWifiApOnChannel" in prealign_body
+
+    restart_channel_body = re.search(
+        r"static bool restartWifiApOnChannel\(uint8_t channel\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "isValidWifiChannel(channel)" in restart_channel_body
+    assert "startWifiApServices(\"AP channel prealigned for STA\", channel)" in restart_channel_body
+
+    # 成功关闭 AP 与失败恢复 AP 路径清理目标信道
+    stop_body = re.search(
+        r"static void stopWifiApForStaOnly\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    restore_body = re.search(
+        r"static void restoreApAfterStaLost\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "wifiStaTargetChannel = 0" in stop_body
+    assert "wifiStaTargetChannel = 0" in restore_body
+
+
+def test_web_console_sta_setup_guides_wifi_list_and_drops_mdns_probe():
+    source = firmware_source_text()
+
+    # mDNS 跨网探测与 CORS 已移除
+    sta_get_body = re.search(
+        r"static void handleWifiWebSta\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "Access-Control-Allow-Origin" not in sta_get_body
+    assert "Access-Control-Allow-Private-Network" not in sta_get_body
+    assert "staProbeMdnsUrl" not in source
+    assert "mode:'cors'" not in source
+
+    # 保存提示引导带外查看 Wi-Fi 列表里的 MUS4-<IP>
+    save_body = re.search(
+        r"async function saveWifiSta\(\)\{(?P<body>.*?)\}\n\s*async function clearWifiSta",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "Wi-Fi 列表" in save_body
+    assert "MUS4-" in save_body
 
 
 def test_boot_button_long_press_clears_sta_and_restores_ap_without_restart():
@@ -2058,7 +2201,16 @@ def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
     assert "AP 可能已关闭，STA 可能已连接" not in wait_body
     assert "showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'AP 可能已关闭" not in wait_body
     assert "Date.now()+17000" not in wait_body
-    assert "Date.now()+22000" in wait_body
+    assert "Date.now()+22000" not in wait_body
+    assert "Date.now()+60000" in wait_body
+    assert "[sta-debug] poll null, retry" in wait_body
+    save_prompt_body = re.search(
+        r"async function saveWifiSta\(\)\{(?P<body>.*?)\}\n\s*async function clearWifiSta",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "Wi-Fi 列表" in save_prompt_body
+    assert "MUS4-" in save_prompt_body
     assert wait_body.index("staNotice.textContent='STA 已连接\\n局域网 IP：'+j.sta_ip+'\\n访问地址：http://'+j.sta_ip+'/'") < wait_body.index("await refreshStatus();cmd.value=''")
 
 
@@ -2132,7 +2284,7 @@ def test_wifi_softap_uses_explicit_ipv4_gateway_configuration():
     assert "IPAddress subnet(255, 255, 255, 0)" in source
     assert "WiFi.softAPConfig(apIp, apIp, subnet)" in source
     start_services_body = re.search(
-        r"(?:static )?bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool startWifiApServices\(const char\* logPrefix, uint8_t channel\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")
@@ -2174,7 +2326,7 @@ def test_sta_disconnect_restores_ap_after_grace():
     assert "STA link lost, arming down grace" in disconnected_branch
 
     start_services_body = re.search(
-        r"(?:static )?bool startWifiApServices\(const char\* logPrefix\)\s*\{(?P<body>.*?)\n\}",
+        r"(?:static )?bool startWifiApServices\(const char\* logPrefix, uint8_t channel\)\s*\{(?P<body>.*?)\n\}",
         source,
         re.DOTALL,
     ).group("body")

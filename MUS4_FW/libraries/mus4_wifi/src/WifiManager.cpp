@@ -48,6 +48,7 @@ extern char* const wifiStaLastError;
 extern char* const wifiStaLastErrorMessage;
 extern bool& wifiStaApplyPending;
 extern bool& wifiStaApplyFromAp;
+extern uint8_t& wifiStaTargetChannel;
 extern bool& wifiApRestartPending;
 extern bool& wifiMdnsStarted;
 extern bool& wifiStaHandoffActive;
@@ -93,6 +94,10 @@ static bool wifiNetbiosStarted = false;
 
 static unsigned long bootWifiResetPressedAtMs = 0;
 static bool bootWifiResetTriggered = false;
+
+// STA 连上后临时覆盖 AP SSID 为 "MUS4-<sta_ip>"；非空时 getActiveWifiApSsid()
+// 返回此名字，配合一次 SoftAP 重启把带 IP 名广播出去。关闭/失败恢复 AP 时清空。
+static String g_staIpApSsidOverride = "";
 
 #ifdef ENABLE_WIFI_LLMNR_DISCOVERY
 static WiFiUDP wifiLlmnrUdp;
@@ -246,7 +251,7 @@ void startWifiMdnsIfNeeded()
 
 bool ensureWifiApAvailable();
 bool restartWifiAp();
-bool startWifiApServices(const char* logPrefix);
+bool startWifiApServices(const char* logPrefix, uint8_t channel = WIFI_CONSOLE_CHANNEL);
 
 void stopWifiMdnsIfNeeded()
 {
@@ -329,6 +334,40 @@ void disconnectWifiStaOnly()
     esp_wifi_disconnect();
 }
 
+static bool isValidWifiChannel(uint8_t channel)
+{
+    return channel >= 1 && channel <= 14;
+}
+
+// 配网前把 SoftAP 预先重启到目标 STA 信道：ESP32 单射频 AP+STA 必须同信道，
+// 提前对齐可避免 STA 连接成功瞬间 SoftAP 被动切信道踢掉 AP 客户端。
+static bool restartWifiApOnChannel(uint8_t channel)
+{
+    if (!isValidWifiChannel(channel)) return false;
+    if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) return false;
+    wifiCaptiveDnsServer.stop();
+    WiFi.softAPdisconnect(false);
+    delay(100);
+    if (WiFi.getMode() != WIFI_AP_STA) {
+        WiFi.mode(WIFI_AP_STA);
+        delay(50);
+    }
+    return startWifiApServices("AP channel prealigned for STA", channel);
+}
+
+static void prealignWifiApChannelForStaApply()
+{
+    if (!wifiStaApplyFromAp) return;
+    uint8_t channel = wifiStaTargetChannel;
+    if (!isValidWifiChannel(channel)) return;
+    if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) return;
+    if (restartWifiApOnChannel(channel)) {
+        mus4Logf("wifi", "STA apply: AP prealigned to channel %u", channel);
+    } else {
+        mus4LogLine("wifi", "STA apply: AP channel prealign skipped");
+    }
+}
+
 void applyWifiStaCredentials()
 {
     if (!wifiStaConfigured) return;
@@ -361,6 +400,7 @@ void applyWifiStaCredentials()
     if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
         startWifiApServices("AP restored for STA apply");
     }
+    prealignWifiApChannelForStaApply();
     wifiInApOnlyMode = false;
     disconnectWifiStaOnly();
     WiFi.setHostname(wifiMdnsHostText().c_str());
@@ -376,9 +416,11 @@ void scheduleWifiApRestart()
 
 String getActiveWifiApSsid()
 {
-    // v1.7.22 起：AP/STA 互斥切换下 AP 与 STA 永远不会同时广播，原本用于在
-    // STA 上线后给 AP 名称追加「短码 + IP 尾段」的派生逻辑失去意义；统一返回
-    // 基础 AP SSID。三个历史辅助函数（短码 / IP 尾段 / 派生组装）已删除。
+    // STA 连上后的 10 秒展示窗口里返回 "MUS4-<sta_ip>"，让用户在 Wi-Fi 列表读到 IP；
+    // 其余时间返回基础 AP SSID。窗口结束/失败恢复时 g_staIpApSsidOverride 被清空。
+    if (g_staIpApSsidOverride.length() > 0) {
+        return g_staIpApSsidOverride;
+    }
     return String(wifiApSsid);
 }
 
@@ -408,16 +450,17 @@ bool startWifiConsoleServices(const char* logPrefix)
     return true;
 }
 
-bool startWifiApServices(const char* logPrefix)
+bool startWifiApServices(const char* logPrefix, uint8_t channel)
 {
     mus4LogLine("wifi", "AP services: config network");
     configureWifiSoftApNetwork();
     mus4LogLine("wifi", "AP services: softAP begin");
     String activeSsid = getActiveWifiApSsid();
+    uint8_t apChannel = (channel >= 1 && channel <= 14) ? channel : WIFI_CONSOLE_CHANNEL;
     bool started = WiFi.softAP(
         activeSsid.c_str(),
         WIFI_CONSOLE_AP_PASSWORD,
-        WIFI_CONSOLE_CHANNEL,
+        apChannel,
         false,
         WIFI_CONSOLE_MAX_CLIENTS
     );
@@ -476,6 +519,8 @@ static void stopWifiApForStaOnly()
 {
     wifiStaUpGraceDeadlineMs = 0;
     wifiStaApplyFromAp = false;
+    wifiStaTargetChannel = 0;
+    g_staIpApSsidOverride = "";
     wifiApRestartPending = false;
     wifiCaptiveDnsServer.stop();
     WiFi.softAPdisconnect(true);
@@ -508,6 +553,8 @@ static void restoreApAfterStaLost()
     wifiStaUpGraceDeadlineMs = 0;
     wifiStaDownGraceDeadlineMs = 0;
     wifiStaApplyFromAp = false;
+    wifiStaTargetChannel = 0;
+    g_staIpApSsidOverride = "";
     buzzer.playWifiStaDisconnectedSound();
     wifiStaConnected = false;
     wifiStaConnecting = false;
@@ -656,6 +703,28 @@ void setupWifiConsole()
     }
 }
 
+// STA 连上拿到有效 IP 后，把 SoftAP 名临时改成 "MUS4-<sta_ip>"，在 STA 信道
+// 广播；用户在 Wi-Fi 列表直接读出设备 IP。随后由 10 秒窗口触发关闭 AP。
+static void showStaIpInApName()
+{
+    String ip = WiFi.localIP().toString();
+    g_staIpApSsidOverride = String(WIFI_STA_IP_AP_PREFIX) + ip;
+    if (g_staIpApSsidOverride.length() > WIFI_AP_SSID_MAX_LEN) {
+        g_staIpApSsidOverride = g_staIpApSsidOverride.substring(0, WIFI_AP_SSID_MAX_LEN);
+    }
+    uint8_t ch = (uint8_t)WiFi.channel();
+    if (ch < 1 || ch > 14) ch = WIFI_CONSOLE_CHANNEL;
+    wifiCaptiveDnsServer.stop();
+    WiFi.softAPdisconnect(false);
+    delay(100);
+    if (WiFi.getMode() != WIFI_AP_STA) {
+        WiFi.mode(WIFI_AP_STA);
+        delay(50);
+    }
+    startWifiApServices("AP shows STA IP", ch);
+    mus4Logf("wifi", "AP name shows STA IP: %s", g_staIpApSsidOverride.c_str());
+}
+
 void updateWifiSta()
 {
     if (wifiStaApplyPending && (long)(millis() - wifiStaApplyDeadlineMs) >= 0) {
@@ -697,7 +766,10 @@ void updateWifiSta()
             startWifiLlmnrIfNeeded();
 #endif
             mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
-            wifiStaUpGraceDeadlineMs = millis() + (wifiStaApplyFromAp ? WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS : WIFI_STA_GRACE_UP_MS);
+            // 把 STA IP 编码进 AP 名广播；不区分首次配网还是重启自动重连，
+            // 统一展示 WIFI_STA_IP_DISPLAY_MS（10 秒）后由本函数下一轮关闭 AP。
+            showStaIpInApName();
+            wifiStaUpGraceDeadlineMs = millis() + WIFI_STA_IP_DISPLAY_MS;
             wifiStaDownGraceDeadlineMs = 0;
             // handoff 在新方案里已经退役；保留 finish 调用是为了把残留字段清空。
             finishWifiStaHandoff();

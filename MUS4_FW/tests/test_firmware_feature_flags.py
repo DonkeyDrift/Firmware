@@ -728,7 +728,7 @@ def test_wifi_console_types_are_split_from_sketch():
         "const unsigned long WIFI_CONSOLE_RETRY_INTERVAL_MS = 5000;",
         "const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;",
         "const unsigned long WIFI_STA_APPLY_DELAY_MS = 800;",
-        "const unsigned long WIFI_STA_IP_DISPLAY_MS = 10000;",
+        "const unsigned long WIFI_STA_IP_DISPLAY_MS = 60000;",
         "const char* WIFI_OTA_HOSTNAME = \"mus4-ota\";",
         "const char* WIFI_OTA_PASSWORD = \"mus4-debug\";",
         "const uint16_t WIFI_OTA_PORT = 3232;",
@@ -1515,7 +1515,7 @@ def test_wifi_sta_handoff_status_api_and_web_prompt_are_present():
     assert "handoff_ap_url" in sta_json_body
     assert "handoff_mdns_url" in sta_json_body
     assert "http://192.168.4.1/" in source
-    assert "连接设备 AP" in source
+    assert "恢复 AP" in source
     assert "打开新地址" in source
     assert "复制地址" in source
 
@@ -1562,7 +1562,12 @@ def test_web_console_sta_success_shows_lan_url_before_ap_closes():
     assert "局域网 IP" in handoff_modal_body
     assert "访问地址" in handoff_modal_body
     assert "请将电脑/手机切换到 Wi-Fi" in handoff_modal_body
-    assert "连接设备 AP" in handoff_modal_body
+    # 带 IP AP 名新方案：引导去 Wi-Fi 列表看 MUS4-<设备IP>，不再让用户连 AP 开 192.168.4.1
+    assert "MUS4-" in handoff_modal_body
+    assert "Wi-Fi 列表" in handoff_modal_body
+    assert "恢复 AP" in handoff_modal_body
+    assert "连接设备 AP" not in handoff_modal_body
+    assert "192.168.4.1" not in handoff_modal_body
 
     assert 'data-i18n="button.copyUrl"' in source
     assert "'button.copyUrl':'复制地址'" in source
@@ -1854,7 +1859,7 @@ def test_web_console_closes_ap_after_sta_grace():
 
     assert "WIFI_STA_GRACE_UP_MS = 1000" in wifi_types
     assert "WIFI_STA_GRACE_DOWN_MS = 1000" in wifi_types
-    assert "WIFI_STA_IP_DISPLAY_MS = 10000" in wifi_types
+    assert "WIFI_STA_IP_DISPLAY_MS = 60000" in wifi_types
 
     stop_body = re.search(
         r"static void stopWifiApForStaOnly\(\)\s*\{(?P<body>.*?)\n\}",
@@ -1951,7 +1956,7 @@ def test_ap_sta_configuration_keeps_ap_open_long_enough_to_show_ip():
 
     assert "bool staApplyFromAp = false" in runtime_header
     assert "bool& wifiStaApplyFromAp = wifiRuntime.staApplyFromAp" in source
-    assert "WIFI_STA_IP_DISPLAY_MS = 10000" in wifi_types
+    assert "WIFI_STA_IP_DISPLAY_MS = 60000" in wifi_types
 
     handler_body = re.search(
         r"static void handleWifiWebStaSet\(\)\s*\{(?P<body>.*?)\n\}",
@@ -2000,7 +2005,7 @@ def test_sta_ip_is_encoded_into_ap_name_for_ten_seconds():
     source = firmware_source_text()
     wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
 
-    assert "WIFI_STA_IP_DISPLAY_MS = 10000" in wifi_types
+    assert "WIFI_STA_IP_DISPLAY_MS = 60000" in wifi_types
     assert "WIFI_STA_IP_AP_PREFIX = \"MUS4-\"" in wifi_types
     assert "WIFI_STA_AP_CONFIG_SUCCESS_GRACE_MS" not in wifi_types
 

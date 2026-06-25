@@ -27,7 +27,7 @@ static const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000;
 static const unsigned long WIFI_STA_APPLY_DELAY_MS = 800;
 // STA 连上拿到 IP 后，把 SoftAP 名临时改成 "MUS4-<sta_ip>" 广播此时长，
 // 让用户在 Wi-Fi 列表直接读出设备 IP，然后自动关闭 AP 进入 STA-only。
-static const unsigned long WIFI_STA_IP_DISPLAY_MS = 10000;
+static const unsigned long WIFI_STA_IP_DISPLAY_MS = 60000;
 static const char* WIFI_STA_IP_AP_PREFIX = "MUS4-";
 static const uint8_t WIFI_BOOT_RESET_PIN = 0;
 static const unsigned long WIFI_BOOT_RESET_HOLD_MS = 3000;

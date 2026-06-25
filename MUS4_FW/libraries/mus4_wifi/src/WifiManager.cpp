@@ -767,7 +767,7 @@ void updateWifiSta()
 #endif
             mus4Logf("wifi", "STA connected IP: %s", WiFi.localIP().toString().c_str());
             // 把 STA IP 编码进 AP 名广播；不区分首次配网还是重启自动重连，
-            // 统一展示 WIFI_STA_IP_DISPLAY_MS（10 秒）后由本函数下一轮关闭 AP。
+            // 统一展示 WIFI_STA_IP_DISPLAY_MS（60 秒）后由本函数下一轮关闭 AP。
             showStaIpInApName();
             wifiStaUpGraceDeadlineMs = millis() + WIFI_STA_IP_DISPLAY_MS;
             wifiStaDownGraceDeadlineMs = 0;

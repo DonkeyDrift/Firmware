@@ -53,7 +53,7 @@
 #include "I2CBusTools.h"
 #include "LedStatus.h"
 #include "Mus4Log.h"
-#include "SteeringCalibration.h"
+#include "JoystickCalibration.h"
 #include "Sensors.h"
 #include "GamepadMode.h"
 #include "RcFilter.h"
@@ -343,7 +343,7 @@ void setup()
     // scattered extern bool/char variables.
     setWifiRuntimeState(wifiRuntime);
     setWifiIdentityRuntimeState(wifiRuntime);
-    setSteeringCalibrationRuntimeState(wifiRuntime);
+    setJoystickCalibrationRuntimeState(wifiRuntime);
     setCommandDispatcherRuntimeStates(otaRuntime, wifiRuntime);
 
     pinMode(UART_SEL, OUTPUT);
@@ -372,7 +372,7 @@ void setup()
       loadDevModePreference();
       loadWifiApPreference();
       loadWifiStaPreference();
-      loadSteeringCalibration();
+      loadJoystickCalibration();
       setupWifiConsole();
       keepDevModeOtaWindowActive(otaRuntime, wifiRuntime);
     #endif
@@ -414,7 +414,7 @@ void loop()
         lastSensorUpdate = millis();
     }
 
-    updateSteerCalibration();
+    updateJoystickCalibration();
 
     readSerialBuf(Serial, serial0Buf);
     readSerialBuf(Serial1, serial1Buf);

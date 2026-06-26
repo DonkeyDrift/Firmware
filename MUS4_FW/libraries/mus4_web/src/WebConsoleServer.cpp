@@ -102,7 +102,7 @@ void printWirelessStatus(Print& out)
         (unsigned long)WIFI_WEB_TELEMETRY_MIN_FREE_HEAP,
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
         WIFI_WEB_SOCKET_PORT,
-        wifiWebSocketClientConnected ? 1 : 0,
+        wifiWebSocket.count(),
         wifiWebSocketDroppedPoints,
         wifiWebSocketQueueFullSkips,
         wifiWebSocketHeapSkips,
@@ -764,6 +764,11 @@ static void handleWifiWebUpdateUpload()
             if (upload.totalSize > 0) {
                 os.lastProgressPct = (uint8_t)((wifiWebUpdateReceived * 100U) / upload.totalSize);
             }
+            // v1.7.26：每收到一块 OTA 数据后让出 CPU，避免长时间连续写 Flash
+            // 阻塞 Wi-Fi/AsyncTCP task 触发 Task WDT，导致上传中途断连。
+            // 使用 yield() 而非 delay(n)，既能让其他任务（包括 idle/WDT）获得时间片，
+            // 又不会人为拖慢 HTTP 上传节奏。
+            yield();
         }
     } else if (upload.status == UPLOAD_FILE_END) {
         if (wifiWebUpdateErrorMsg.length() > 0) {

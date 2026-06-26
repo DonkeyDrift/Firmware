@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-06-26 v1.7.26
+
+- 固件版本号从 `v1.7.25` 更新到 `v1.7.26`。
+- perf(WebSocket 多客户端): 曲线/日志 WebSocket 通道从「仅允许 1 个客户端、第二个强制关闭」改为支持最多 `WIFI_WEB_SOCKET_MAX_CLIENTS`（默认 2）个并发客户端。
+  - `WebTelemetry.cpp` 移除单 client id 状态，改用 `wifiWebSocket.binaryAll()` / `textAll()` 广播同一份序列化好的 payload，避免每个客户端重复打包二进制帧。
+  - 连接事件拒绝超过上限的新客户端，主循环通过 `cleanupClients(WIFI_WEB_SOCKET_MAX_CLIENTS)` 维持上限；OTA 期间使用 `closeAll()` 一次性清场。
+  - 这样第二个浏览器标签/设备不再被踢到 HTTP `/api/data` 轮询，消除因 HTTP 数据接口反复扫描 256 点序列化 JSON 带来的主循环卡顿。
+- fix(OTA 上传): 在 `handleWifiWebUpdateUpload` 的 `UPLOAD_FILE_WRITE` 分支里加入 `yield()`，让出 CPU 给 Wi-Fi/AsyncTCP/idle task，降低长时间连续写 Flash 触发 Task WDT 的概率。
+- 同步更新 `tests/test_firmware_feature_flags.py`：版本号断言、WebSocket 广播路径断言、OTA 关闭断言，并新增多客户端上限断言。
+
 ## 2026-06-26 v1.7.25
 
 - 固件版本号从 `v1.7.24` 更新到 `v1.7.25`。

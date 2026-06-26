@@ -44,7 +44,6 @@ extern uint32_t wifiWebDataMaxDtMs;
 extern uint32_t wifiWebCommandMaxDtMs;
 
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
-extern bool wifiWebSocketClientConnected;
 extern uint32_t wifiWebSocketDroppedPoints;
 extern uint32_t wifiWebSocketQueueFullSkips;
 extern uint32_t wifiWebSocketHeapSkips;

@@ -26,9 +26,7 @@ AsyncWebSocket wifiWebSocket("/");
 
 // WebSocket telemetry state
 bool wifiWebSocketClientConnected = false;
-uint32_t wifiWebSocketClientId = 0;
-AsyncWebSocketClient* wifiWebSocketClient = nullptr;
-uint32_t wifiWebSocketClientLastSeq = 0;
+uint32_t wifiWebSocketBroadcastLastSeq = 0;
 uint32_t wifiWebSocketDroppedPoints = 0;
 uint32_t wifiWebSocketQueueFullSkips = 0;
 uint32_t wifiWebSocketHeapSkips = 0;
@@ -45,9 +43,12 @@ uint32_t wifiWebSocketMaxDtMs = 0;
 // v1.7.17：上一刀还漏了 hello —— 它在 CONNECT 回调里直接调，也写共享 String。
 // 把 hello 一起搬到 main loop 消费 pendingWsConnectEvent 时发出；并彻底删掉
 // 共享 String，让所有 text JSON 都用栈上局部 String，杜绝跨上下文 realloc 同一块。
+// v1.7.26：支持多客户端并发观看曲线，但仍保持「String 写入只在 main loop」
+// 的约束；广播通过 binaryAll/textAll 共享同一份 payload，避免每个客户端重复序列化。
 static volatile bool pendingWsConnectEvent = false;
 static volatile bool pendingWsDisconnectEvent = false;
 static volatile uint32_t pendingWsConnectClientId = 0;
+static volatile uint32_t pendingWsDisconnectClientId = 0;
 
 static unsigned long lastWifiWebSocketPushMs = 0;
 static uint8_t wifiWebSocketBinaryPayload[384];
@@ -75,11 +76,11 @@ static void sendWifiWebSocketHello(uint32_t clientId)
 static void sendWebLogToSocket(uint32_t seq, unsigned long t, const char* source, const char* line)
 {
     if (!wifiWebSocketClientConnected) return;
-    if (!wifiWebSocket.availableForWrite(wifiWebSocketClientId)) return;
     if (otaRuntime.inProgress) return;
     if (ESP.getFreeHeap() < WIFI_WEB_TELEMETRY_MIN_FREE_HEAP) return;
 
     // 栈上局部 String：v1.7.17 起不再使用共享 static String。
+    // 多客户端下通过 textAll 广播，payload 在内部被多个 client 共享，避免重复拼装。
     String payload;
     payload.reserve(192);
     payload = "{\"type\":\"log\",\"seq\":";
@@ -91,21 +92,17 @@ static void sendWebLogToSocket(uint32_t seq, unsigned long t, const char* source
     payload += "\",\"line\":";
     appendJsonString(payload, line);
     payload += '}';
-    wifiWebSocket.text(wifiWebSocketClientId, payload);
+    wifiWebSocket.textAll(payload);
 }
 
 static void handleWifiWebSocketMessage(AsyncWebSocketClient* client, uint8_t* data, size_t length)
 {
-    if (!client || !wifiWebSocketClientConnected || wifiWebSocketClientId != client->id()) return;
-    String message;
-    message.reserve(length + 1);
-    for (size_t i = 0; i < length; i++) message += (char)data[i];
-    message.trim();
-    if (message.startsWith("since:")) {
-        uint32_t seq = (uint32_t)message.substring(6).toInt();
-        uint32_t replayFloor = wifiWebDataSeq > WIFI_WEB_SOCKET_MAX_REPLAY_POINTS ? wifiWebDataSeq - WIFI_WEB_SOCKET_MAX_REPLAY_POINTS : 0;
-        if (seq >= replayFloor && seq <= wifiWebDataSeq) wifiWebSocketClientLastSeq = seq;
-    }
+    // 多客户端模式下，不再按客户端单独维护 lastSeq，避免一个客户端的慢速消费
+    // 拖慢其他客户端。hello + 连续广播已经让每台设备同步到最新 seq。
+    // 这里保留函数入口，仅用于参数消音，避免 -Wunused-parameter 警告。
+    (void)client;
+    (void)data;
+    (void)length;
 }
 
 static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data, size_t length)
@@ -118,14 +115,12 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
             client->close();
             return;
         }
-        if (wifiWebSocketClientConnected && wifiWebSocketClientId != client->id()) {
+        // 允许最多 WIFI_WEB_SOCKET_MAX_CLIENTS 个并发 telemetry 客户端；
+        // 超过上限时关闭新连接，让前台标签保持高效 WS，而不是被迫回退到 HTTP 轮询。
+        if (wifiWebSocket.count() > WIFI_WEB_SOCKET_MAX_CLIENTS) {
             client->close();
             return;
         }
-        wifiWebSocketClientConnected = true;
-        wifiWebSocketClientId = client->id();
-        wifiWebSocketClient = client;
-        wifiWebSocketClientLastSeq = wifiWebDataSeq;
         wifiWebSocketConnects++;
         client->keepAlivePeriod(WIFI_WEB_SOCKET_KEEPALIVE_SECONDS);
         client->setCloseClientOnQueueFull(false);
@@ -136,14 +131,9 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
         return;
     }
     if (type == WS_EVT_DISCONNECT) {
-        if (wifiWebSocketClientConnected && wifiWebSocketClientId == client->id()) {
-            wifiWebSocketClientConnected = false;
-            wifiWebSocketClient = nullptr;
-            wifiWebSocketClientLastSeq = wifiWebDataSeq;
-            wifiWebSocketDisconnects++;
-            lastWifiWebSocketPushMs = millis();
-            pendingWsDisconnectEvent = true;
-        }
+        wifiWebSocketDisconnects++;
+        pendingWsDisconnectClientId = client->id();
+        pendingWsDisconnectEvent = true;
         return;
     }
     if (type == WS_EVT_DATA) {
@@ -157,12 +147,6 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
 static void pushWifiWebSocketData()
 {
     if (!wifiWebSocketClientConnected) return;
-    // v1.7.16：用 id 查表，不再持裸 wifiWebSocketClient 指针。availableForWrite(id)
-    // 内部在锁下检查 _client、_status、queue 容量，找不到 / 已断开就返回 false。
-    if (!wifiWebSocket.availableForWrite(wifiWebSocketClientId)) {
-        wifiWebSocketQueueFullSkips++;
-        return;
-    }
     if (otaRuntime.inProgress) return;
     if (ESP.getFreeHeap() < WIFI_WEB_TELEMETRY_MIN_FREE_HEAP) {
         wifiWebSocketHeapSkips++;
@@ -170,8 +154,8 @@ static void pushWifiWebSocketData()
     }
     unsigned long now = millis();
     if (now - lastWifiWebSocketPushMs < WIFI_WEB_SOCKET_PUSH_INTERVAL_MS) return;
-    if (wifiWebDataCount == 0 || wifiWebDataSeq <= wifiWebSocketClientLastSeq) return;
-    uint32_t firstSeq = wifiWebSocketClientLastSeq + 1;
+    if (wifiWebDataCount == 0 || wifiWebDataSeq <= wifiWebSocketBroadcastLastSeq) return;
+    uint32_t firstSeq = wifiWebSocketBroadcastLastSeq + 1;
     uint32_t oldestSeq = wifiWebDataSeq - wifiWebDataCount + 1;
     if (firstSeq < oldestSeq) {
         wifiWebSocketDroppedPoints += oldestSeq - firstSeq;
@@ -192,7 +176,7 @@ static void pushWifiWebSocketData()
     auto writeI16 = [&](int16_t value) { memcpy(cursor, &value, sizeof(value)); cursor += sizeof(value); };
     auto writeF32 = [&](float value) { memcpy(cursor, &value, sizeof(value)); cursor += sizeof(value); };
     uint8_t pointCount = 0;
-    uint32_t lastSentSeq = wifiWebSocketClientLastSeq;
+    uint32_t lastSentSeq = wifiWebSocketBroadcastLastSeq;
     uint16_t latestIndex = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - 1) % WIFI_WEB_DATA_CAPACITY;
     WebDataPoint& latest = wifiWebData[latestIndex];
     writeU8('M');
@@ -241,11 +225,17 @@ static void pushWifiWebSocketData()
     }
     *pointCountSlot = pointCount;
     if (pointCount > 0) {
-        // 走 id 路径：内部会再次锁下查 client，已断开就 no-op，不会 use-after-free。
-        wifiWebSocket.binary(wifiWebSocketClientId, wifiWebSocketBinaryPayload, cursor - wifiWebSocketBinaryPayload);
-        wifiWebSocketClientLastSeq = lastSentSeq;
-        wifiWebSocketFramesSent++;
-        lastWifiWebSocketPushMs = now;
+        // 多客户端广播：只序列化一次，binaryAll 内部用共享 buffer 分发给所有 client。
+        // 某个 client 队列满时仅跳过该 client，不影响其他客户端。
+        size_t payloadLen = cursor - wifiWebSocketBinaryPayload;
+        AsyncWebSocket::SendStatus status = wifiWebSocket.binaryAll(wifiWebSocketBinaryPayload, payloadLen);
+        if (status != AsyncWebSocket::SendStatus::DISCARDED) {
+            wifiWebSocketBroadcastLastSeq = lastSentSeq;
+            wifiWebSocketFramesSent++;
+            lastWifiWebSocketPushMs = now;
+        } else {
+            wifiWebSocketQueueFullSkips++;
+        }
     }
 }
 
@@ -257,21 +247,26 @@ void setupWifiWebSocket()
     wifiWebSocketServer.addHandler(&wifiWebSocket);
     wifiWebSocketServer.begin();
     webLogBufferSetSocketSink(sendWebLogToSocket);
-    mus4Logf("web", "ws telemetry port=%u", WIFI_WEB_SOCKET_PORT);
+    mus4Logf("web", "ws telemetry port=%u max_clients=%u", WIFI_WEB_SOCKET_PORT, WIFI_WEB_SOCKET_MAX_CLIENTS);
 }
 
 void updateWifiWebSocket()
 {
     unsigned long stageStart = millis();
-    wifiWebSocket.cleanupClients();
+    // 保持并发客户端数量上限，避免资源被无限增长的标签页占满。
+    wifiWebSocket.cleanupClients(WIFI_WEB_SOCKET_MAX_CLIENTS);
+    wifiWebSocketClientConnected = wifiWebSocket.count() > 0;
+
     // OTA 上传期间，主循环里关闭并发的 WebSocket 遥测连接，
     // 并拒绝新的 WS 连接，避免 WS 数据流与 OTA 传输挤占 AsyncTCP 资源。
     // closeWsPending 在 OTA 窗口打开/上传开始时被设置，用于在 inProgress 之前尽早清场。
     if ((otaRuntime.closeWsPending || otaRuntime.inProgress) && wifiWebSocketClientConnected) {
         otaRuntime.closeWsPending = false;
-        wifiWebSocket.close(wifiWebSocketClientId, 1000, "ota");
+        wifiWebSocket.closeAll(1000, "ota");
+        wifiWebSocketClientConnected = false;
         mus4LogLine("web", "ws closed for ota");
     }
+
     // 消费 AsyncTCP task 通过 volatile 标志报来的连接事件，由 main loop 单一上下文
     // 处理 hello + 日志 —— 保证 String 写入永远只在 main loop 执行，与
     // pushWifiWebSocketData / appendWebLog 走同一条线性时间线，不再有共享/撕堆 race。

@@ -13,9 +13,7 @@ extern AsyncWebSocket wifiWebSocket;
 
 // WebSocket telemetry state (extern declarations)
 extern bool wifiWebSocketClientConnected;
-extern uint32_t wifiWebSocketClientId;
-extern AsyncWebSocketClient* wifiWebSocketClient;
-extern uint32_t wifiWebSocketClientLastSeq;
+extern uint32_t wifiWebSocketBroadcastLastSeq;
 extern uint32_t wifiWebSocketDroppedPoints;
 extern uint32_t wifiWebSocketQueueFullSkips;
 extern uint32_t wifiWebSocketHeapSkips;

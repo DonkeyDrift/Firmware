@@ -19,6 +19,7 @@ static const unsigned long WIFI_WEB_SOCKET_PUSH_INTERVAL_MS = 16;
 static const uint8_t WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME = 8;
 static const uint8_t WIFI_WEB_SOCKET_MAX_REPLAY_POINTS = 32;
 static const uint16_t WIFI_WEB_SOCKET_KEEPALIVE_SECONDS = 60;
+static const uint8_t WIFI_WEB_SOCKET_MAX_CLIENTS = 2;
 #endif
 static const uint8_t WIFI_CONSOLE_CHANNEL = 6;
 static const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;

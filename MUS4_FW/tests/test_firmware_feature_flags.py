@@ -233,27 +233,43 @@ def test_websocket_text_payloads_never_share_a_static_string():
     )
 
 
-def test_websocket_send_paths_use_id_not_raw_client_pointer():
+def test_websocket_uses_broadcast_not_raw_client_pointer():
     """v1.7.16：消除裸 `wifiWebSocketClient` 指针 deref —— `WS_EVT_DISCONNECT` 在
     AsyncTCP task 上把指针置 nullptr 与 main loop 在 pushWifiWebSocketData /
-    sendWebLogToSocket 中的检查 + 调用之间存在 TOCTOU；改走 wifiWebSocket.text(id,...)
-    和 wifiWebSocket.binary(id,...)，ESPAsyncWebServer 内部锁会兜底。"""
+    sendWebLogToSocket 中的检查 + 调用之间存在 TOCTOU。
+    v1.7.26：支持多客户端并发观看曲线，日志与数据改为广播
+    `wifiWebSocket.textAll(...)` / `wifiWebSocket.binaryAll(...)`，只序列化一次并
+    通过共享 buffer 分发给所有 client，避免每个客户端重复序列化导致卡顿。"""
 
     web_telemetry = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.cpp").read_text(encoding="utf-8")
 
-    # sendWebLogToSocket / pushWifiWebSocketData 必须用 id 路径
-    assert "wifiWebSocket.text(wifiWebSocketClientId," in web_telemetry
-    assert "wifiWebSocket.binary(wifiWebSocketClientId," in web_telemetry
-    # 不再出现裸指针 ->text / ->binary
+    # sendWebLogToSocket / pushWifiWebSocketData 必须用广播路径
+    assert "wifiWebSocket.textAll(" in web_telemetry
+    assert "wifiWebSocket.binaryAll(" in web_telemetry
+    # 不再出现裸指针 ->text / ->binary，也不再按单 client id 发送
     assert "wifiWebSocketClient->text(" not in web_telemetry
     assert "wifiWebSocketClient->binary(" not in web_telemetry
+    assert "wifiWebSocket.text(wifiWebSocketClientId," not in web_telemetry
+    assert "wifiWebSocket.binary(wifiWebSocketClientId," not in web_telemetry
+
+
+def test_websocket_supports_limited_multi_client():
+    """v1.7.26：WebSocket 曲线通道应支持有限并发客户端（默认 2），避免第二个
+    浏览器标签被强制关闭后回退到 HTTP 轮询，造成曲线卡顿。"""
+
+    types_h = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+    telemetry_cpp = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.cpp").read_text(encoding="utf-8")
+
+    assert "WIFI_WEB_SOCKET_MAX_CLIENTS" in types_h
+    assert "cleanupClients(WIFI_WEB_SOCKET_MAX_CLIENTS)" in telemetry_cpp
+    assert "wifiWebSocket.count() > WIFI_WEB_SOCKET_MAX_CLIENTS" in telemetry_cpp
 
 
 def test_firmware_version_is_v1_7_22_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.25"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.26"' in build_info
     assert "v1.7.23" in changelog
     assert changelog.index("v1.7.23") < changelog.index("v1.7.22")
 
@@ -2828,4 +2844,4 @@ def test_ota_closes_websocket_during_upload():
     assert "os.closeWsPending = false;" in ota_cpp, "OTA 窗口关闭时应清除 closeWsPending"
     assert "os.closeWsPending = true;" in server_cpp, "HTTP OTA 上传开始时应设置 closeWsPending"
     assert "otaRuntime.closeWsPending" in telemetry_cpp, "WebTelemetry 应消费 closeWsPending 标志"
-    assert "wifiWebSocket.close(wifiWebSocketClientId" in telemetry_cpp, "WebTelemetry 应在主循环中关闭 WS 客户端"
+    assert "wifiWebSocket.closeAll(" in telemetry_cpp, "WebTelemetry 应在主循环中广播关闭所有 WS 客户端"

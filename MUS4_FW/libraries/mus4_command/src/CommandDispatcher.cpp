@@ -4,7 +4,7 @@
 #include "FirmwareConfig.h"
 #include "Mus4Log.h"
 #include "SharedTypes.h"
-#include "SteeringCalibration.h"
+#include "JoystickCalibration.h"
 #include "TUI.h"
 #include "RuntimeState.h"
 
@@ -55,55 +55,69 @@ bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pil
         out.println("ACK:LOG_SERIAL");
         return true;
     }
-    if (line.equalsIgnoreCase("STEER_CAL")) {
-        startSteerCalibration(out);
+    if (line.equalsIgnoreCase("JOYSTICK_CAL")) {
+        startJoystickCalibration(out);
         return true;
     }
-    if (line.equalsIgnoreCase("CAL_SAVE")) {
-        if (steer_cal_state == STEER_CAL_DONE) {
-            if (steer_cal.min_pwm < steer_cal.mid_pwm && steer_cal.mid_pwm < steer_cal.max_pwm
-                && (steer_cal.mid_pwm - steer_cal.min_pwm) > 100 && (steer_cal.max_pwm - steer_cal.mid_pwm) > 100) {
-                if (saveSteeringCalibration()) {
-                    steer_cal_state = STEER_CAL_IDLE;
-                    out.println("ACK:CAL_SAVED");
+    if (line.equalsIgnoreCase("JOYSTICK_SAVE")) {
+        if (joystick_cal_state == JoystickCalState::DONE) {
+            bool steer_ok = validateJoystickCalibration(joystick_cal.steering);
+            bool thr_ok = validateJoystickCalibration(joystick_cal.throttle);
+            if (steer_ok && thr_ok) {
+                joystick_cal.steering_enabled = true;
+                joystick_cal.throttle_enabled = true;
+                if (saveJoystickCalibration()) {
+                    joystick_cal_state = JoystickCalState::IDLE;
+                    out.println("ACK:JOYSTICK_SAVED");
                 } else {
-                    out.println("NACK:CAL_SAVE_FAILED");
+                    out.println("NACK:JOYSTICK_SAVE_FAILED");
                 }
             } else {
-                out.println("NACK:CAL_INVALID_RANGE");
+                out.printf("NACK:JOYSTICK_INVALID_RANGE steer_ok=%d thr_ok=%d\n", steer_ok, thr_ok);
             }
         } else {
-            out.println("NACK:CAL_NOT_DONE");
+            out.println("NACK:JOYSTICK_NOT_DONE");
         }
         return true;
     }
-    if (line.equalsIgnoreCase("CAL_RETRY")) {
-        if (steer_cal_state == STEER_CAL_DONE) {
-            steer_cal_state = STEER_CAL_CENTER;
-            steer_cal_stage_start_ms = millis();
-            steer_cal_temp_min = 32767;
-            steer_cal_temp_max = -32768;
-            tui.log("[CAL] Retrying center capture...");
-            out.println("ACK:CAL_RETRY");
+    if (line.equalsIgnoreCase("JOYSTICK_RETRY")) {
+        if (joystick_cal_state == JoystickCalState::DONE || joystick_cal_state == JoystickCalState::MINMAX) {
+            joystick_cal_state = JoystickCalState::CENTERING;
+            joystick_cal_stage_start_ms = millis();
+            joystick_cal_temp_min[0] = INT16_MAX;
+            joystick_cal_temp_min[1] = INT16_MAX;
+            joystick_cal_temp_max[0] = INT16_MIN;
+            joystick_cal_temp_max[1] = INT16_MIN;
+            tui.log("[CAL] Retrying from center capture...");
+            out.println("ACK:JOYSTICK_RETRY");
         } else {
-            out.println("NACK:CAL_NOT_DONE");
+            out.println("NACK:JOYSTICK_NOT_DONE");
         }
         return true;
     }
-    if (line.equalsIgnoreCase("CAL_ABORT")) {
-        steer_cal_state = STEER_CAL_IDLE;
-        loadSteeringCalibration();
-        out.println("ACK:CAL_ABORTED");
+    if (line.equalsIgnoreCase("JOYSTICK_ABORT")) {
+        abortJoystickCalibration();
+        out.println("ACK:JOYSTICK_ABORTED");
         return true;
     }
-    if (line.equalsIgnoreCase("CAL_RESET")) {
-        resetSteeringCalibration();
-        steer_cal_state = STEER_CAL_IDLE;
-        out.println("ACK:CAL_RESET");
+    if (line.equalsIgnoreCase("JOYSTICK_RESET")) {
+        resetJoystickCalibration();
+        joystick_cal_state = JoystickCalState::IDLE;
+        out.println("ACK:JOYSTICK_RESET");
         return true;
+    }
+    if (line.equalsIgnoreCase("JOYSTICK_STATUS")) {
+        printJoystickCalStatus(out);
+        return true;
+    }
+
+    // Legacy aliases
+    if (line.equalsIgnoreCase("STEER_CAL")) {
+        out.println("ACK:DEPRECATED_USE_JOYSTICK_CAL");
+        return startJoystickCalibration(out);
     }
     if (line.equalsIgnoreCase("CAL_STATUS")) {
-        printCalStatus(out);
+        printJoystickCalStatus(out);
         return true;
     }
 

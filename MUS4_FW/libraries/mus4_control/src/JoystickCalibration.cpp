@@ -33,6 +33,74 @@ int16_t joystick_cal_temp_max[2] = {0, 0};
 static constexpr int16_t CAL_CAPTURE_INIT_MIN = 32767;
 static constexpr int16_t CAL_CAPTURE_INIT_MAX = -32768;
 
+static constexpr size_t CENTER_WINDOW_SIZE = 20;
+static constexpr int16_t CENTER_STABLE_THRESHOLD_US = 6;
+static constexpr int16_t CENTER_STABLE_COUNT_REQUIRED = 10;
+
+static int16_t center_samples[2][CENTER_WINDOW_SIZE];
+static size_t center_sample_index[2] = {0, 0};
+static size_t center_sample_count[2] = {0, 0};
+static int16_t center_stable_count[2] = {0, 0};
+
+static int16_t computeWindowMedian(int16_t samples[], size_t count)
+{
+    if (count == 0) {
+        return 0;
+    }
+
+    int16_t sorted[CENTER_WINDOW_SIZE];
+    for (size_t i = 0; i < count; ++i) {
+        sorted[i] = samples[i];
+    }
+
+    for (size_t i = 1; i < count; ++i) {
+        int16_t key = sorted[i];
+        int j = (int)i - 1;
+        while (j >= 0 && sorted[j] > key) {
+            sorted[j + 1] = sorted[j];
+            --j;
+        }
+        sorted[j + 1] = key;
+    }
+
+    if (count % 2 == 1) {
+        return sorted[count / 2];
+    }
+    return (sorted[count / 2 - 1] + sorted[count / 2]) / 2;
+}
+
+static void resetCenteringWindow()
+{
+    center_sample_index[CH_STEERING] = 0;
+    center_sample_index[CH_THROTTLE] = 0;
+    center_sample_count[CH_STEERING] = 0;
+    center_sample_count[CH_THROTTLE] = 0;
+    center_stable_count[CH_STEERING] = 0;
+    center_stable_count[CH_THROTTLE] = 0;
+}
+
+static void captureCenterAndAdvance()
+{
+    joystick_cal.steering.mid_pwm = (int16_t)pwm_filtered[CH_STEERING];
+    joystick_cal.throttle.mid_pwm = (int16_t)pwm_filtered[CH_THROTTLE];
+
+    char buf[96];
+    snprintf(buf, sizeof(buf), "[CAL] Center captured: steer=%d throt=%d",
+             joystick_cal.steering.mid_pwm, joystick_cal.throttle.mid_pwm);
+    tui.log(buf);
+    mus4Logf("cal", "center captured: steer=%d throt=%d",
+             joystick_cal.steering.mid_pwm, joystick_cal.throttle.mid_pwm);
+
+    joystick_cal_state = JoystickCalState::MINMAX;
+    joystick_cal_stage_start_ms = millis();
+    joystick_cal_temp_min[CH_STEERING] = CAL_CAPTURE_INIT_MIN;
+    joystick_cal_temp_max[CH_STEERING] = CAL_CAPTURE_INIT_MAX;
+    joystick_cal_temp_min[CH_THROTTLE] = CAL_CAPTURE_INIT_MIN;
+    joystick_cal_temp_max[CH_THROTTLE] = CAL_CAPTURE_INIT_MAX;
+
+    tui.log("[CAL] Swing both sticks full range within 5s...");
+}
+
 int mapJoystickAxis(int16_t pwm,
                     const AxisCalibration& cal,
                     bool enabled,
@@ -99,7 +167,7 @@ void loadJoystickCalibration()
             joystick_cal.steering.mid_pwm = (int16_t)prefs().getShort(MUS4_PREF_JOYSTICK_STEER_MID_KEY, RC_STEERING_MID);
             joystick_cal.steering.max_pwm = (int16_t)prefs().getShort(MUS4_PREF_JOYSTICK_STEER_MAX_KEY, RC_STEERING_MAX);
         }
-    } else if (prefs().isKey(MUS4_PREF_STEER_CAL_EN_KEY)) {
+    } else if (prefs().isKey(MUS4_PREF_STEER_MIN_KEY)) {
         // Migrate legacy steering calibration to the new unified keys.
         joystick_cal.steering_enabled = prefs().getBool(MUS4_PREF_STEER_CAL_EN_KEY, false);
         if (joystick_cal.steering_enabled) {
@@ -133,6 +201,15 @@ void loadJoystickCalibration()
 
 bool saveJoystickCalibration()
 {
+    if (!validateJoystickCalibration(joystick_cal.steering)) {
+        mus4LogLine("cal", "joystick save failed: steering calibration invalid");
+        return false;
+    }
+    if (!validateJoystickCalibration(joystick_cal.throttle)) {
+        mus4LogLine("cal", "joystick save failed: throttle calibration invalid");
+        return false;
+    }
+
     if (!prefs().begin(MUS4_PREF_NAMESPACE, false)) {
         mus4LogLine("cal", "joystick save: prefs open failed");
         return false;
@@ -208,6 +285,7 @@ bool startJoystickCalibration(Print& out)
     joystick_cal_temp_max[CH_STEERING] = CAL_CAPTURE_INIT_MAX;
     joystick_cal_temp_min[CH_THROTTLE] = CAL_CAPTURE_INIT_MIN;
     joystick_cal_temp_max[CH_THROTTLE] = CAL_CAPTURE_INIT_MAX;
+    resetCenteringWindow();
 
     tui.log("[CAL] Center both sticks, auto-capture in 3s...");
     mus4LogLine("cal", "joystick center stage started");
@@ -222,10 +300,43 @@ void updateJoystickCalibration()
     const unsigned long elapsed = now - joystick_cal_stage_start_ms;
 
     if (joystick_cal_state == JoystickCalState::CENTERING) {
+        const int16_t steer_sample = (int16_t)pwm_filtered[CH_STEERING];
+        const int16_t throt_sample = (int16_t)pwm_filtered[CH_THROTTLE];
+
+        bool all_stable = true;
+        for (int ch = 0; ch < 2; ++ch) {
+            const int16_t sample = (ch == CH_STEERING) ? steer_sample : throt_sample;
+            const size_t idx = center_sample_index[ch];
+            center_samples[ch][idx] = sample;
+            center_sample_index[ch] = (idx + 1) % CENTER_WINDOW_SIZE;
+            if (center_sample_count[ch] < CENTER_WINDOW_SIZE) {
+                ++center_sample_count[ch];
+            }
+
+            const int16_t median = computeWindowMedian(center_samples[ch], center_sample_count[ch]);
+            if (abs(sample - median) <= CENTER_STABLE_THRESHOLD_US) {
+                ++center_stable_count[ch];
+            } else {
+                center_stable_count[ch] = 0;
+            }
+
+            if (center_stable_count[ch] < CENTER_STABLE_COUNT_REQUIRED) {
+                all_stable = false;
+            }
+        }
+
+        if (all_stable) {
+            captureCenterAndAdvance();
+            return;
+        }
+
         if (elapsed < 3000) return;
 
-        joystick_cal.steering.mid_pwm = (int16_t)pwm_filtered[CH_STEERING];
-        joystick_cal.throttle.mid_pwm = (int16_t)pwm_filtered[CH_THROTTLE];
+        tui.log("[CAL] Center capture unstable, using median");
+        mus4LogLine("cal", "center capture unstable, using median");
+
+        joystick_cal.steering.mid_pwm = computeWindowMedian(center_samples[CH_STEERING], center_sample_count[CH_STEERING]);
+        joystick_cal.throttle.mid_pwm = computeWindowMedian(center_samples[CH_THROTTLE], center_sample_count[CH_THROTTLE]);
 
         char buf[96];
         snprintf(buf, sizeof(buf), "[CAL] Center captured: steer=%d throt=%d",

@@ -193,15 +193,17 @@ int mapJoystickAxis(int16_t pwm,
                     int16_t default_min,
                     int16_t default_mid,
                     int16_t default_max) {
-    int16_t min_pwm = enabled ? cal.min_pwm : default_min;
-    int16_t mid_pwm = enabled ? cal.mid_pwm : default_mid;
-    int16_t max_pwm = enabled ? cal.max_pwm : default_max;
+    if (!enabled) {
+        // 未启用校准时，保持原有单段线性映射，确保行为不变。
+        int v = map(pwm, default_min, default_max, -100, 100);
+        return constrain(v, -100, 100);
+    }
 
-    if (pwm < mid_pwm) {
-        int v = map(pwm, min_pwm, mid_pwm, -100, 0);
+    if (pwm < cal.mid_pwm) {
+        int v = map(pwm, cal.min_pwm, cal.mid_pwm, -100, 0);
         return constrain(v, -100, 0);
     }
-    int v = map(pwm, mid_pwm, max_pwm, 0, 100);
+    int v = map(pwm, cal.mid_pwm, cal.max_pwm, 0, 100);
     return constrain(v, 0, 100);
 }
 ```

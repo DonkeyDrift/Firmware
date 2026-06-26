@@ -746,6 +746,7 @@ static void handleWifiWebUpdateUpload()
         forceWifiOtaParkLocked();
         os.inProgress = true;
         os.windowOpen = true;
+        os.closeWsPending = true;
         os.lastProgressPct = 0;
         if (!Update.begin(upload.totalSize > 0 ? upload.totalSize : UPDATE_SIZE_UNKNOWN)) {
             wifiWebUpdateErrorMsg = "NACK:BEGIN_FAILED:" + String(Update.errorString());

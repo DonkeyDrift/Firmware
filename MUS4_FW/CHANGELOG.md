@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-06-26 v1.7.25
+
+- 固件版本号从 `v1.7.24` 更新到 `v1.7.25`。
+- fix(OTA 稳定性): OTA 窗口打开或 HTTP OTA 上传开始时，设置 `OtaRuntimeState.closeWsPending` 标志；主循环在 `updateWifiWebSocket()` 中检测到该标志后关闭并发的 WebSocket 遥测连接，避免 WS 数据流与 OTA 传输挤占 AsyncTCP 资源导致上传中断。
+- 同步更新 `tests/test_firmware_feature_flags.py` 版本号断言与 OTA 关闭 WebSocket 断言到 v1.7.25。
+
 ## 2026-06-26 v1.7.24
 
 - 固件版本号从 `v1.7.23` 更新到 `v1.7.24`。

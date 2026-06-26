@@ -112,6 +112,12 @@ static void handleWifiWebSocketEvent(AsyncWebSocket* server, AsyncWebSocketClien
 {
     (void)server;
     if (type == WS_EVT_CONNECT) {
+        // OTA 实际传输期间拒绝新的 WebSocket 连接，避免 WS 数据流与 OTA 挤占资源。
+        // DEV 模式下 windowOpen 长期为 true，因此只以 inProgress 为准。
+        if (otaRuntime.inProgress) {
+            client->close();
+            return;
+        }
         if (wifiWebSocketClientConnected && wifiWebSocketClientId != client->id()) {
             client->close();
             return;
@@ -258,6 +264,14 @@ void updateWifiWebSocket()
 {
     unsigned long stageStart = millis();
     wifiWebSocket.cleanupClients();
+    // OTA 上传期间，主循环里关闭并发的 WebSocket 遥测连接，
+    // 并拒绝新的 WS 连接，避免 WS 数据流与 OTA 传输挤占 AsyncTCP 资源。
+    // closeWsPending 在 OTA 窗口打开/上传开始时被设置，用于在 inProgress 之前尽早清场。
+    if ((otaRuntime.closeWsPending || otaRuntime.inProgress) && wifiWebSocketClientConnected) {
+        otaRuntime.closeWsPending = false;
+        wifiWebSocket.close(wifiWebSocketClientId, 1000, "ota");
+        mus4LogLine("web", "ws closed for ota");
+    }
     // 消费 AsyncTCP task 通过 volatile 标志报来的连接事件，由 main loop 单一上下文
     // 处理 hello + 日志 —— 保证 String 写入永远只在 main loop 执行，与
     // pushWifiWebSocketData / appendWebLog 走同一条线性时间线，不再有共享/撕堆 race。

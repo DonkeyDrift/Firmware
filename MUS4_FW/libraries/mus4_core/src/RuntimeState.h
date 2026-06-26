@@ -70,6 +70,9 @@ struct OtaRuntimeState {
     bool parkGuardActive = false;
     unsigned long deadlineMs = 0;
     uint8_t lastProgressPct = 0;
+    // v1.7.24：OTA 窗口打开/上传开始时请求关闭并发的 WebSocket 遥测连接，
+    // 避免 WS 数据流挤占 AsyncTCP 资源导致 OTA 传输中断。
+    bool closeWsPending = false;
 };
 
 #endif // ENABLE_WIFI_CONSOLE

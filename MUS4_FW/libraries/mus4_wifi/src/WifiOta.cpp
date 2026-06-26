@@ -66,6 +66,7 @@ void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin, OtaRuntimeState
     forceWifiOtaParkLocked();
     ensureWifiOtaStarted();
     os.windowOpen = true;
+    os.closeWsPending = true;
     os.deadlineMs = millis() + WIFI_OTA_WINDOW_MS;
     os.lastProgressPct = 0;
     out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.localIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
@@ -83,6 +84,7 @@ void openLocalWifiOtaWindow(const String& line, Print& out, SerialBuf& sb, OtaRu
     forceWifiOtaParkLocked();
     ensureWifiOtaStarted();
     os.windowOpen = true;
+    os.closeWsPending = true;
     os.deadlineMs = millis() + WIFI_OTA_WINDOW_MS;
     os.lastProgressPct = 0;
     out.printf("OTA_READY ip=%s port=%u ttl_ms=%lu\n", WiFi.localIP().toString().c_str(), WIFI_OTA_PORT, WIFI_OTA_WINDOW_MS);
@@ -125,6 +127,7 @@ void updateWifiOta(OtaRuntimeState& os, WifiRuntimeState& ws)
 void closeWifiOtaWindow(const char* reason, OtaRuntimeState& os)
 {
     os.windowOpen = false;
+    os.closeWsPending = false;
     os.deadlineMs = 0;
     os.inProgress = false;
     os.parkGuardActive = false;

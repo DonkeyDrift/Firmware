@@ -253,7 +253,7 @@ def test_firmware_version_is_v1_7_22_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.24"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.25"' in build_info
     assert "v1.7.23" in changelog
     assert changelog.index("v1.7.23") < changelog.index("v1.7.22")
 
@@ -2803,3 +2803,29 @@ def test_joystick_cal_modal_handles_auth_and_nack():
     assert "I18N.en['cal.prompt.auth']" in assets, "缺少英文 cal.prompt.auth 提示文案"
     assert "I18N.zh['error.authRequired']" in assets, "缺少中文 error.authRequired 错误文案"
     assert "I18N.en['error.authRequired']" in assets, "缺少英文 error.authRequired 错误文案"
+
+
+def test_ota_closes_websocket_during_upload():
+    """
+    OTA 窗口打开或 HTTP OTA 上传开始时，应请求主循环关闭并发的 WebSocket
+    遥测连接，避免 WS 数据流与 OTA 挤占 AsyncTCP 资源导致传输中断。
+    """
+    runtime_state = (
+        PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "RuntimeState.h"
+    ).read_text(encoding="utf-8")
+    ota_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiOta.cpp"
+    ).read_text(encoding="utf-8")
+    telemetry_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.cpp"
+    ).read_text(encoding="utf-8")
+    server_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "bool closeWsPending = false;" in runtime_state, "OtaRuntimeState 缺少 closeWsPending 标志"
+    assert "os.closeWsPending = true;" in ota_cpp, "OTA 窗口打开时应设置 closeWsPending"
+    assert "os.closeWsPending = false;" in ota_cpp, "OTA 窗口关闭时应清除 closeWsPending"
+    assert "os.closeWsPending = true;" in server_cpp, "HTTP OTA 上传开始时应设置 closeWsPending"
+    assert "otaRuntime.closeWsPending" in telemetry_cpp, "WebTelemetry 应消费 closeWsPending 标志"
+    assert "wifiWebSocket.close(wifiWebSocketClientId" in telemetry_cpp, "WebTelemetry 应在主循环中关闭 WS 客户端"

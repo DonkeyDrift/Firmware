@@ -253,7 +253,7 @@ def test_firmware_version_is_v1_7_22_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.23"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.24"' in build_info
     assert "v1.7.23" in changelog
     assert changelog.index("v1.7.23") < changelog.index("v1.7.22")
 
@@ -2783,3 +2783,23 @@ def test_tub_schema_bumps_to_v2_with_imu_five_axes():
 
     assert "TUB_SCHEMA='mus4.web_data_point.tub.v2'" in assets, "前端 TUB_SCHEMA 应升级到 v2"
     assert "TUB_SCHEMA='mus4.web_data_point.tub.v1'" not in assets, "前端仍残留旧版 v1 TUB_SCHEMA"
+
+
+def test_joystick_cal_modal_handles_auth_and_nack():
+    """
+    手柄校准浮窗的按钮需要在未认证或 Park 未锁定时给出明确反馈，
+    而不是静默失败。
+    """
+    assets = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
+    ).read_text(encoding="utf-8")
+
+    assert "function postJoystickCalAction" in assets, "前端缺少 postJoystickCalAction 统一处理"
+    assert "function sendAuthCommand" in assets, "前端缺少 sendAuthCommand 认证辅助"
+    assert "text.startsWith('NACK')" in assets, "前端应识别 NACK 响应并停止刷新状态"
+    assert "prompt(t('cal.prompt.auth'))" in assets, "未认证时应提示用户输入 AP 密码"
+    assert "showCommandError(text)" in assets, "NACK 响应应通过 showCommandError 提示用户"
+    assert "I18N.zh['cal.prompt.auth']" in assets, "缺少中文 cal.prompt.auth 提示文案"
+    assert "I18N.en['cal.prompt.auth']" in assets, "缺少英文 cal.prompt.auth 提示文案"
+    assert "I18N.zh['error.authRequired']" in assets, "缺少中文 error.authRequired 错误文案"
+    assert "I18N.en['error.authRequired']" in assets, "缺少英文 error.authRequired 错误文案"

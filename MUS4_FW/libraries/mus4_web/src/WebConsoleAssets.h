@@ -84,6 +84,9 @@ I18N.zh['cal.step.done']='校准完成。请检查下方数值，确认后点击
 I18N.zh['cal.action.start']='开始校准';
 I18N.zh['cal.action.save']='保存到设备';
 I18N.zh['cal.action.retry']='重试';
+I18N.zh['cal.prompt.auth']='手柄校准需要认证。请输入 Web Console AP 密码：';
+I18N.zh['error.authRequired']='认证失败或未被授权：请检查 AP 密码，并在 Serial Log 中发送 AUTH:<密码> 后重试。';
+I18N.zh['error.parkRequired']='需要 Park 锁定：请确保车辆已切换到 Park Locked 状态。';
 I18N.en['button.joystickCal']='Calibrate Joystick';
 I18N.en['cal.title']='Joystick Calibration';
 I18N.en['cal.label.steering']='Steering';
@@ -94,6 +97,9 @@ I18N.en['cal.step.done']='Calibration complete. Review the values below, then cl
 I18N.en['cal.action.start']='Start Calibration';
 I18N.en['cal.action.save']='Save to Device';
 I18N.en['cal.action.retry']='Retry';
+I18N.en['cal.prompt.auth']='Joystick calibration requires authentication. Please enter the Web Console AP password:';
+I18N.en['error.authRequired']='Authentication failed or not authorized: please check the AP password and try again after sending AUTH:<password> in Serial Log.';
+I18N.en['error.parkRequired']='Park lock required: make sure the vehicle is in Park Locked state.';
 let uiLang=readStoredLanguage();
 const LOG_SOURCE_MAX_BYTES=1024*1024;
 const sourceBuffers={web:'',serial:'',serial1:''};
@@ -121,9 +127,11 @@ function startCalPoll(){if(calPollTimer)return;calPollTimer=setInterval(refreshJ
 function stopCalPoll(){if(calPollTimer){clearInterval(calPollTimer);calPollTimer=0;}}
 function openJoystickCalModal(){joystickCalModal.classList.add('show');refreshJoystickCalStatus();startCalPoll();}
 async function closeJoystickCalModal(){const r=await fetch('/api/joystick-cal');const text=await r.text();const s=parseJoystickCalStatus(text);if(s&&s.state!==0&&s.state!==3){await fetch('/api/joystick-cal',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'abort'})});}stopCalPoll();joystickCalModal.classList.remove('show');refreshJoystickCalStatus();}
-async function joystickCalAction(){await fetch('/api/joystick-cal',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'start'})});refreshJoystickCalStatus();}
-async function joystickCalRetry(){await fetch('/api/joystick-cal',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'retry'})});refreshJoystickCalStatus();}
-async function joystickCalSave(){await fetch('/api/joystick-cal',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action:'save'})});stopCalPoll();joystickCalModal.classList.remove('show');refreshJoystickCalStatus();}
+async function sendAuthCommand(password){const r=await fetch('/api/cmd?target=web',{method:'POST',headers:{'Content-Type':'text/plain'},body:'AUTH:'+password});return (await r.text()).trim()==='AUTH_OK';}
+async function postJoystickCalAction(action,allowRetry=true){const r=await fetch('/api/joystick-cal',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({action})});const text=await r.text();if(text.startsWith('NACK:UNAUTHORIZED')&&allowRetry){const pwd=prompt(t('cal.prompt.auth'));if(pwd&&await sendAuthCommand(pwd)){return postJoystickCalAction(action,false)}}if(text.startsWith('NACK')){showCommandError(text);return false}return true}
+async function joystickCalAction(){if(await postJoystickCalAction('start'))refreshJoystickCalStatus();}
+async function joystickCalRetry(){if(await postJoystickCalAction('retry'))refreshJoystickCalStatus();}
+async function joystickCalSave(){if(await postJoystickCalAction('save')){stopCalPoll();joystickCalModal.classList.remove('show');refreshJoystickCalStatus();}}
 const LOG_DISPLAY_MAX_BYTES=16000;
 function canonicalLogSource(src){if(src==='serial'||src==='serial1')return src;return 'web';}
 function appendLogLine(t,src){const s=canonicalLogSource(src||'web');let buf=sourceBuffers[s];buf+=t+'\n';while(buf.length>LOG_SOURCE_MAX_BYTES){const idx=buf.indexOf('\n');if(idx<0){buf=buf.slice(-LOG_SOURCE_MAX_BYTES);break;}buf=buf.substring(idx+1);}sourceBuffers[s]=buf;if(s!==currentLogSource||logPaused)return;log.textContent=buf.slice(-LOG_DISPLAY_MAX_BYTES);log.scrollTop=log.scrollHeight;}

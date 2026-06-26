@@ -1,5 +1,11 @@
 # CHANGELOG.md
 
+## 2026-06-26 v1.7.24
+
+- 固件版本号从 `v1.7.23` 更新到 `v1.7.24`。
+- fix(手柄校准浮窗): 修复 Web Console 中“开始校准/重试/保存”按钮在未认证时静默无响应的问题。前端现在会识别 `NACK:UNAUTHORIZED`，弹出 AP 密码输入框自动发送 `AUTH` 命令；若认证失败或 Park 未锁定，则通过 `showCommandError` 明确提示用户。
+- 同步更新 `tests/test_firmware_feature_flags.py` 版本号断言与前端校准错误处理断言到 v1.7.24。
+
 ## 2026-06-26 v1.7.23
 
 - 固件版本号从 `v1.7.22` 更新到 `v1.7.23`。

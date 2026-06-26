@@ -11,6 +11,7 @@
 #include "WebLogBuffer.h"
 #include "WifiConsoleTypes.h"
 #include "WirelessConsole.h"
+#include "JoystickCalibration.h"
 #include "WifiIdentity.h"
 #include "WifiManager.h"
 #include "WifiOta.h"
@@ -286,6 +287,34 @@ static void handleWifiWebDevModeSet()
     }
     String response = String("{\"enabled\":") + (ws.devModeEnabled ? "true" : "false") + ",\"saved\":true}";
     wifiWebServer.send(200, "application/json", response);
+}
+
+static void handleWifiWebJoystickCal()
+{
+    String response;
+    StringPrint out(response);
+    processWirelessConsoleLine("JOYSTICK_STATUS", out, WIRELESS_ORIGIN_WEB);
+    wifiWebServer.send(200, "text/plain", response);
+}
+
+static void handleWifiWebJoystickCalSet()
+{
+    String action = wifiWebServer.arg("action");
+    String cmd;
+    if (action.equalsIgnoreCase("start")) cmd = "JOYSTICK_CAL";
+    else if (action.equalsIgnoreCase("save")) cmd = "JOYSTICK_SAVE";
+    else if (action.equalsIgnoreCase("retry")) cmd = "JOYSTICK_RETRY";
+    else if (action.equalsIgnoreCase("abort")) cmd = "JOYSTICK_ABORT";
+    else if (action.equalsIgnoreCase("reset")) cmd = "JOYSTICK_RESET";
+
+    String response;
+    StringPrint out(response);
+    if (cmd.length() > 0) {
+        processWirelessConsoleLine(cmd, out, WIRELESS_ORIGIN_WEB);
+    } else {
+        out.println("NACK:UNKNOWN_ACTION");
+    }
+    wifiWebServer.send(200, "text/plain", response);
 }
 
 static String wifiApJson()
@@ -783,6 +812,8 @@ void setupWebConsoleServer()
     wifiWebServer.on("/api/cmd", HTTP_POST, handleWifiWebCommand);
     wifiWebServer.on("/api/devmode", HTTP_GET, handleWifiWebDevMode);
     wifiWebServer.on("/api/devmode", HTTP_POST, handleWifiWebDevModeSet);
+    wifiWebServer.on("/api/joystick-cal", HTTP_GET, handleWifiWebJoystickCal);
+    wifiWebServer.on("/api/joystick-cal", HTTP_POST, handleWifiWebJoystickCalSet);
     wifiWebServer.on("/api/wifi-ap", HTTP_GET, handleWifiWebAp);
     wifiWebServer.on("/api/wifi-ap", HTTP_POST, handleWifiWebApSet);
     wifiWebServer.on("/api/wifi-sta", HTTP_GET, handleWifiWebSta);

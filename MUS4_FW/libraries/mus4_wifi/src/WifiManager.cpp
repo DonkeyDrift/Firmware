@@ -511,8 +511,10 @@ bool restartWifiAp()
     return startWifiApServices("AP restarted");
 }
 
-// STA 稳定 grace 通过后，主动把 SoftAP 关掉；保持底层 mode 为 WIFI_AP_STA，
-// 避免后续从 STA-only 再切回 AP_STA 时重置接口、踢掉客户端。
+// STA 稳定 grace 通过后，主动把 SoftAP 关掉并切到纯 STA 模式。
+// 实测在 ESP32 Arduino core 上，若仅调用 softAPdisconnect(true) 而保持底层
+// WIFI_AP_STA，AP 接口常被底层以默认 SSID（如 ESP_48F54D）重新拉起，
+// 192.168.4.1 继续可用。切换到 WIFI_STA 才能彻底关闭 SoftAP。
 // Captive DNS 与 wifiConsoleServer 都依赖 SoftAP，AP 关闭时一并停掉，避免
 // 出现「socket 还监听但 AP 已下线」的悬空状态。
 static void stopWifiApForStaOnly()
@@ -524,12 +526,13 @@ static void stopWifiApForStaOnly()
     wifiApRestartPending = false;
     wifiCaptiveDnsServer.stop();
     WiFi.softAPdisconnect(true);
-    // 保持 WIFI_AP_STA：STA 接口继续使用，AP 接口已停用，对外等效于 STA-only。
-    if (WiFi.getMode() != WIFI_AP_STA) {
-        WiFi.mode(WIFI_AP_STA);
+    delay(100);
+    // 必须切到 WIFI_STA；仅保持 AP_STA 会导致默认 AP 残留。
+    if (WiFi.getMode() != WIFI_STA) {
+        WiFi.mode(WIFI_STA);
         delay(50);
     }
-    // 切到 STA-only 后重新绑定 WebServer，让监听套接字包含 STA 接口。
+    // 切到 STA-only 后重新绑定 WebServer，让监听套接字只绑定 STA 接口。
     // 同时避免在 AP 仍在线的 grace 窗口内 close/begin，导致配置页面中断。
     wifiWebServer.close();
     wifiWebServer.begin();

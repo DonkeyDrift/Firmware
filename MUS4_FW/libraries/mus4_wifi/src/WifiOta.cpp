@@ -2,10 +2,19 @@
 
 #include <ArduinoOTA.h>
 #include <WiFi.h>
+#include <esp_partition.h>
 
 #include "Mus4Log.h"
 #include "SharedTypes.h"
 #include "WirelessConsole.h"
+
+// IDF OTA helpers are linked from the Arduino core but the header is not
+// exposed; declare the small subset we need for boot-time cleanup.
+extern "C" {
+const esp_partition_t* esp_ota_get_running_partition(void);
+const esp_partition_t* esp_ota_get_next_update_partition(const esp_partition_t* start_from);
+esp_err_t esp_ota_get_state_partition(const esp_partition_t* partition, int* out_state);
+}
 
 #ifdef ENABLE_WIFI_CONSOLE
 // WIFI_CONSOLE_AP_PASSWORD, WIFI_OTA_PORT and WIFI_OTA_WINDOW_MS are defined
@@ -147,5 +156,34 @@ void printWifiOtaStatus(Print& out, OtaRuntimeState& os, WifiRuntimeState& ws)
         car_output.park ? 1 : 0,
         ws.devModeEnabled ? 1 : 0,
         os.parkGuardActive ? 1 : 0);
+}
+
+void cleanupInvalidOtaPartition()
+{
+    const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+    if (!next) {
+        mus4LogLine("ota", "no next update partition found");
+        return;
+    }
+
+    int state = 0;
+    esp_err_t err = esp_ota_get_state_partition(next, &state);
+    if (err != ESP_OK) {
+        mus4Logf("ota", "get_state %s failed: 0x%x", next->label, err);
+        return;
+    }
+
+    // ESP_OTA_IMG_INVALID == 1, ESP_OTA_IMG_ABORTED == 3
+    if (state == 1 || state == 3) {
+        mus4Logf("ota", "erasing %s (state=%d)", next->label, state);
+        err = esp_partition_erase_range(next, 0, next->size);
+        if (err != ESP_OK) {
+            mus4Logf("ota", "erase %s failed: 0x%x", next->label, err);
+        } else {
+            mus4LogLine("ota", "invalid/aborted ota partition erased");
+        }
+    } else {
+        mus4Logf("ota", "%s state=%d, no cleanup needed", next->label, state);
+    }
 }
 #endif

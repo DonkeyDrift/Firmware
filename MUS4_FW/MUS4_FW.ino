@@ -373,6 +373,7 @@ void setup()
       loadWifiApPreference();
       loadWifiStaPreference();
       loadJoystickCalibration();
+      cleanupInvalidOtaPartition();
       setupWifiConsole();
       keepDevModeOtaWindowActive(otaRuntime, wifiRuntime);
     #endif

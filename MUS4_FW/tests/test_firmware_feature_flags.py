@@ -1603,6 +1603,9 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "canvas{width:100%;height:auto;aspect-ratio:38/13;" in source
     assert "#chartPanel:fullscreen .chartCanvasWrap{width:min(100%,calc((100vh - 118px) * 38 / 13))}" in source
     assert "#chartPanel:fullscreen canvas{width:100%;height:auto;max-height:calc(100vh - 118px);aspect-ratio:38/13}" in source
+    assert '<div class="chartCanvasWrap">' in source
+    assert '.chartCanvasWrap{position:relative}' in source
+    assert '#chartFullscreenBtn{position:absolute;right:8px;bottom:8px;z-index:2}' in source
     assert "dataMeta.textContent=transport+' realtime seq='+lastDataSeq+' +'+added" not in source
     assert "dataMeta.textContent=transport+' +'+added" not in source
     assert 'id="dataMeta"' not in source

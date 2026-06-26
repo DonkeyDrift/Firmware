@@ -570,13 +570,18 @@ def test_command_dispatcher_replaces_command_line_macro_after_module_split():
     for symbol in [
         "ACK:LOG_WEB",
         "ACK:LOG_SERIAL",
-        "ACK:CAL_SAVED",
-        "NACK:CAL_SAVE_FAILED",
-        "NACK:CAL_INVALID_RANGE",
-        "NACK:CAL_NOT_DONE",
-        "ACK:CAL_RETRY",
-        "ACK:CAL_ABORTED",
-        "ACK:CAL_RESET",
+        "ACK:JOYSTICK_SAVED",
+        "NACK:JOYSTICK_SAVE_FAILED",
+        "NACK:JOYSTICK_INVALID_RANGE",
+        "NACK:JOYSTICK_NOT_DONE",
+        "ACK:JOYSTICK_RETRY",
+        "ACK:JOYSTICK_ABORTED",
+        "ACK:JOYSTICK_RESET",
+        "ACK:DEPRECATED_USE_JOYSTICK_CAL",
+        "ACK:DEPRECATED_USE_JOYSTICK_SAVE",
+        "ACK:DEPRECATED_USE_JOYSTICK_RETRY",
+        "ACK:DEPRECATED_USE_JOYSTICK_ABORT",
+        "ACK:DEPRECATED_USE_JOYSTICK_RESET",
         "ACK:%d\\n",
         "NACK:%d\\n",
     ]:
@@ -1870,7 +1875,8 @@ def test_web_console_closes_ap_after_sta_grace():
         re.DOTALL,
     ).group("body")
     assert "WiFi.softAPdisconnect(true)" in stop_body
-    assert "WiFi.mode(WIFI_AP_STA)" in stop_body
+    # Pre-existing: stopWifiApForStaOnly() switches to WIFI_STA to fully shut down SoftAP.
+    assert "WiFi.mode(WIFI_STA)" in stop_body
     assert "wifiWebServer.close()" in stop_body
     assert "wifiWebServer.begin()" in stop_body
     assert "wifiInApOnlyMode = false" in stop_body

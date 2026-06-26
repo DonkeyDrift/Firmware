@@ -3,7 +3,7 @@
 #include "SharedTypes.h"
 #include "RcFilter.h"
 #include "RcPwmCapture.h"
-#include "SteeringCalibration.h"
+#include "JoystickCalibration.h"
 #include "DriftAssist.h"
 #include "LedStatus.h"
 #include "Mus4Log.h"
@@ -17,7 +17,7 @@ extern ControlData rc_data;
 extern ControlData pilot_data;
 extern ControlData car_output;
 extern uint16_t pwm_filtered[];
-extern bool steer_cal_enabled;
+extern JoystickCalibrationData joystick_cal;
 extern bool toggleActive;
 extern Buzzer buzzer;
 
@@ -94,7 +94,12 @@ void updateControlOutput()
         else
         {
             setLEDColor(CRGB::Yellow); // set LED to blue
-            car_output.throttle = map(rc_data.throttle, RC_THROTTLE_MIN, RC_THROTTLE_MAX, -100, 100);
+            car_output.throttle = mapJoystickAxis(rc_data.throttle,
+                                                    joystick_cal.throttle,
+                                                    joystick_cal.throttle_enabled,
+                                                    RC_THROTTLE_MIN,
+                                                    RC_THROTTLE_MID,
+                                                    RC_THROTTLE_MAX);
         }
         car_output.steering = apply_drift_assist(pilot_data.steering);
     }
@@ -114,13 +119,19 @@ void updateControlOutput()
             setLEDColor(CRGB::Green); // set LED to blue
 
             // RC => CAR
-            car_output.throttle = map(rc_data.throttle, RC_THROTTLE_MIN, RC_THROTTLE_MAX, -100, 100);
+            car_output.throttle = mapJoystickAxis(rc_data.throttle,
+                                                    joystick_cal.throttle,
+                                                    joystick_cal.throttle_enabled,
+                                                    RC_THROTTLE_MIN,
+                                                    RC_THROTTLE_MID,
+                                                    RC_THROTTLE_MAX);
         }
-        if (steer_cal_enabled) {
-            car_output.steering = mapSteeringCalibrated(rc_data.steering);
-        } else {
-            car_output.steering = map(rc_data.steering, RC_STEERING_MIN, RC_STEERING_MAX, -100, 100);
-        }
+        car_output.steering = mapJoystickAxis(rc_data.steering,
+                                                joystick_cal.steering,
+                                                joystick_cal.steering_enabled,
+                                                RC_STEERING_MIN,
+                                                RC_STEERING_MID,
+                                                RC_STEERING_MAX);
         // Drift Assist: add counter-steer compensation when enabled
         car_output.steering = apply_drift_assist(car_output.steering);
     }

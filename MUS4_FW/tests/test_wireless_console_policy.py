@@ -25,6 +25,23 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertFalse(POLICY.is_wireless_command_allowed("TEST", authenticated=True, park_locked=False))
         self.assertTrue(POLICY.is_wireless_command_allowed("TEST", authenticated=True, park_locked=True))
 
+    def test_requires_park_locked_for_joystick_calibration_commands(self):
+        for cmd in [
+            "JOYSTICK_CAL", "JOYSTICK_SAVE", "JOYSTICK_RETRY",
+            "JOYSTICK_ABORT", "JOYSTICK_RESET",
+        ]:
+            with self.subTest(cmd=cmd):
+                self.assertFalse(POLICY.is_wireless_command_allowed(cmd, authenticated=True, park_locked=False))
+                self.assertTrue(POLICY.is_wireless_command_allowed(cmd, authenticated=True, park_locked=True))
+
+    def test_joystick_status_requires_authentication_not_park(self):
+        self.assertFalse(POLICY.is_wireless_command_allowed("JOYSTICK_STATUS", authenticated=False, park_locked=False))
+        self.assertTrue(POLICY.is_wireless_command_allowed("JOYSTICK_STATUS", authenticated=True, park_locked=False))
+        self.assertTrue(POLICY.is_wireless_command_allowed("JOYSTICK_STATUS", authenticated=True, park_locked=True))
+
+    def test_joystick_cal_rejects_unauthenticated(self):
+        self.assertFalse(POLICY.is_wireless_command_allowed("JOYSTICK_CAL", authenticated=False, park_locked=True))
+
     def test_auth_accepts_configured_password_only(self):
         self.assertTrue(POLICY.authenticate_wireless_command("AUTH:mus4-debug", "mus4-debug"))
         self.assertFalse(POLICY.authenticate_wireless_command("AUTH:wrong", "mus4-debug"))

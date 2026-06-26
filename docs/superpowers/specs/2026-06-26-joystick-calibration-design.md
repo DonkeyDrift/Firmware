@@ -146,10 +146,10 @@ enum class JoystickCalState {
 ### 6.1 状态转换
 
 ```text
-IDLE --[JOYSTICK_CAL]--> CENTERING --(timeout/average stable)--> MINMAX --(timeout)--> DONE
- ^                          |                                       |
- |                          v                                       v
- +---[JOYSTICK_ABORT/RESET]----+                          [JOYSTICK_SAVE]
+IDLE --[JOYSTICK_CAL]--> CENTERING --(3s timeout)--> MINMAX --(5s timeout)--> DONE
+ ^                          |                         |
+ |                          v                         v
+ +---[JOYSTICK_ABORT/RESET]----+            [JOYSTICK_SAVE]
 ```
 
 ### 6.2 采集算法
@@ -299,8 +299,7 @@ car_output.steering = mapJoystickAxis(rc_data.steering,
 
 | 命令 | 动作 |
 |---|---|
-| `JOYSTICK_CAL` | 进入 CENTERING 状态 |
-| `JOYSTICK_MINMAX` | 从 CENTERING 进入 MINMAX（或从 IDLE 直接进入 MINMAX） |
+| `JOYSTICK_CAL` | 进入 CENTERING 状态；3 秒后自动进入 MINMAX，再 5 秒后自动 DONE |
 | `JOYSTICK_SAVE` | 保存当前采集值到 NVS |
 | `JOYSTICK_RETRY` | 回到 CENTERING 重新采集 |
 | `JOYSTICK_ABORT` | 放弃采集，回到 IDLE |
@@ -322,7 +321,7 @@ PARK_LOCKED_COMMANDS = {
     # 旧命令保留兼容一个版本
     "STEER_CAL", "CAL_SAVE", "CAL_RETRY", "CAL_ABORT", "CAL_RESET", "CAL_STATUS",
     # 新命令
-    "JOYSTICK_CAL", "JOYSTICK_MINMAX", "JOYSTICK_SAVE", "JOYSTICK_RETRY",
+    "JOYSTICK_CAL", "JOYSTICK_SAVE", "JOYSTICK_RETRY",
     "JOYSTICK_ABORT", "JOYSTICK_RESET", "JOYSTICK_STATUS",
 }
 ```

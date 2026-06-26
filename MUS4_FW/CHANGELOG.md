@@ -5,6 +5,7 @@
 - 固件版本号从 `v1.7.22` 更新到 `v1.7.23`。
 - feat(手柄/摇杆校准): 新增统一双轴（方向 + 油门）零位与正负最大值校准模块 `JoystickCalibration`，NVS 持久化，旧方向盘校准数据自动迁移，Drift Console 新增校准向导 UI 与 `/api/joystick-cal` 端点。
 - feat(OTA 稳定性): 启动时自动检测并擦除状态为 `INVALID`/`ABORTED` 的 OTA 分区，避免上一次中断/失败的 OTA 遗留数据导致后续 OTA 稳定失败。
+- refactor(Web Console 曲线区域): 将全屏/退出全屏按钮从底部工具栏移动到曲线画布右下角，并新增 `.chartCanvasWrap` 容器使其随画布缩放始终保持在该位置。
 - 同步更新 `tests/test_firmware_feature_flags.py` 版本号断言到 v1.7.23。
 
 ## 2026-06-24 v1.7.22

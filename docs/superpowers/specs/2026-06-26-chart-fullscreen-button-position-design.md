@@ -66,12 +66,12 @@ MUS4 Web Console 的曲线区域（`#chartPanel`）目前把「全屏 / 退出�
 
 ## 文件变更
 
-仅修改一个文件：
-
 - `MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`
   - HTML 结构：调整 `#chartPanel` 内部元素顺序与按钮位置。
   - CSS：增加 / 调整定位相关样式。
   - JS：无功能变更，仅需确认 `refreshDynamicLabels` 仍能获取到按钮引用。
+- `MUS4_FW/tests/test_firmware_feature_flags.py`
+  - 更新全屏模式 CSS 断言，并新增 `.chartCanvasWrap` 结构与按钮定位断言。
 
 ## 验证
 

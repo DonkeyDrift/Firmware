@@ -123,6 +123,11 @@ bool isParkLockedWirelessCommand(const String& line)
         line.equalsIgnoreCase("CAL_ABORT") ||
         line.equalsIgnoreCase("CAL_RESET") ||
         line.equalsIgnoreCase("CAL_STATUS") ||
+        line.equalsIgnoreCase("JOYSTICK_CAL") ||
+        line.equalsIgnoreCase("JOYSTICK_SAVE") ||
+        line.equalsIgnoreCase("JOYSTICK_RETRY") ||
+        line.equalsIgnoreCase("JOYSTICK_ABORT") ||
+        line.equalsIgnoreCase("JOYSTICK_RESET") ||
         line.equalsIgnoreCase("TEST") ||
         line.equalsIgnoreCase("TEST_TUI") ||
         line.equalsIgnoreCase("BENCH") ||
@@ -142,7 +147,7 @@ bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, 
     if (isWirelessOtaOpenCommand(line)) return (webDevMode || ws.consoleAuthenticated) && car_output.park == PARK_LOCKED;
     if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || ws.consoleAuthenticated;
     // DEV ON 显式白名单：显示/日志切换、Wi-Fi STA 配置类命令。
-    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || isWifiStaConfigCommand(line)) return ws.consoleAuthenticated || webDevMode;
+    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || line.equalsIgnoreCase("JOYSTICK_STATUS") || isWifiStaConfigCommand(line)) return ws.consoleAuthenticated || webDevMode;
     // 其余命令（控制 / 诊断）严格要求认证，不读 webDevMode。
     if (!ws.consoleAuthenticated) return false;
     if (isParkLockedWirelessCommand(line)) return car_output.park == PARK_LOCKED;

@@ -253,9 +253,9 @@ def test_firmware_version_is_v1_7_22_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.22"' in build_info
-    assert "v1.7.22" in changelog
-    assert changelog.index("v1.7.22") < changelog.index("v1.7.21")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.23"' in build_info
+    assert "v1.7.23" in changelog
+    assert changelog.index("v1.7.23") < changelog.index("v1.7.22")
 
 
 def test_apply_wifi_sta_credentials_restores_ap_before_begin():

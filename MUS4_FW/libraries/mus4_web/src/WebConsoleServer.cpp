@@ -294,6 +294,7 @@ static void handleWifiWebJoystickCal()
     String response;
     StringPrint out(response);
     processWirelessConsoleLine("JOYSTICK_STATUS", out, WIRELESS_ORIGIN_WEB);
+    sendWifiWebApiHeaders();
     wifiWebServer.send(200, "text/plain", response);
 }
 
@@ -307,13 +308,16 @@ static void handleWifiWebJoystickCalSet()
     else if (action.equalsIgnoreCase("abort")) cmd = "JOYSTICK_ABORT";
     else if (action.equalsIgnoreCase("reset")) cmd = "JOYSTICK_RESET";
 
+    if (cmd.length() == 0) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "text/plain", "NACK:UNKNOWN_ACTION");
+        return;
+    }
+
     String response;
     StringPrint out(response);
-    if (cmd.length() > 0) {
-        processWirelessConsoleLine(cmd, out, WIRELESS_ORIGIN_WEB);
-    } else {
-        out.println("NACK:UNKNOWN_ACTION");
-    }
+    processWirelessConsoleLine(cmd, out, WIRELESS_ORIGIN_WEB);
+    sendWifiWebApiHeaders();
     wifiWebServer.send(200, "text/plain", response);
 }
 

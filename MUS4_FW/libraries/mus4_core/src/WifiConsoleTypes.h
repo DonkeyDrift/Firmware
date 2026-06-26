@@ -50,6 +50,18 @@ static const char* MUS4_PREF_STEER_MIN_KEY = "str_min";
 static const char* MUS4_PREF_STEER_MID_KEY = "str_mid";
 static const char* MUS4_PREF_STEER_MAX_KEY = "str_max";
 static const char* MUS4_PREF_STEER_CAL_EN_KEY = "str_cal";
+
+// --- Joystick calibration keys (unified steering + throttle) ---
+static const char* MUS4_PREF_JOYSTICK_STEER_MIN_KEY = "js_st_min";
+static const char* MUS4_PREF_JOYSTICK_STEER_MID_KEY = "js_st_mid";
+static const char* MUS4_PREF_JOYSTICK_STEER_MAX_KEY = "js_st_max";
+static const char* MUS4_PREF_JOYSTICK_STEER_EN_KEY  = "js_st_en";
+
+static const char* MUS4_PREF_JOYSTICK_THROT_MIN_KEY = "js_th_min";
+static const char* MUS4_PREF_JOYSTICK_THROT_MID_KEY = "js_th_mid";
+static const char* MUS4_PREF_JOYSTICK_THROT_MAX_KEY = "js_th_max";
+static const char* MUS4_PREF_JOYSTICK_THROT_EN_KEY  = "js_th_en";
+
 static const uint8_t WIFI_AP_SSID_MAX_LEN = 32;
 static const uint8_t WIFI_STA_SSID_MAX_LEN = 32;
 static const uint8_t WIFI_STA_PASSWORD_MAX_LEN = 63;

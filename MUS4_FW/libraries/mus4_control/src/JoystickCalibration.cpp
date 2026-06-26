@@ -21,6 +21,8 @@ void setJoystickCalibrationRuntimeState(WifiRuntimeState& ws)
 
 static inline Preferences& prefs()
 {
+    static Preferences dummy;
+    if (!g_ws || !g_ws->prefs) return dummy;
     return *g_ws->prefs;
 }
 
@@ -108,11 +110,13 @@ int mapJoystickAxis(int16_t pwm,
                     int16_t default_mid,
                     int16_t default_max)
 {
-    (void)default_mid;
-
     if (!enabled) {
-        long mapped = map(pwm, default_min, default_max, -100, 100);
-        return constrain(mapped, -100, 100);
+        if (pwm < default_mid) {
+            long mapped = map(pwm, default_min, default_mid, -100, 0);
+            return constrain(mapped, -100, 0);
+        }
+        long mapped = map(pwm, default_mid, default_max, 0, 100);
+        return constrain(mapped, 0, 100);
     }
 
     if (pwm < cal.mid_pwm) {
@@ -201,13 +205,26 @@ void loadJoystickCalibration()
 
 bool saveJoystickCalibration()
 {
-    if (!validateJoystickCalibration(joystick_cal.steering)) {
-        mus4LogLine("cal", "joystick save failed: steering calibration invalid");
-        return false;
+    if (joystick_cal.steering_enabled) {
+        if (!validateJoystickCalibration(joystick_cal.steering)) {
+            mus4LogLine("cal", "joystick save failed: steering calibration invalid");
+            return false;
+        }
+    } else {
+        joystick_cal.steering.min_pwm = RC_STEERING_MIN;
+        joystick_cal.steering.mid_pwm = RC_STEERING_MID;
+        joystick_cal.steering.max_pwm = RC_STEERING_MAX;
     }
-    if (!validateJoystickCalibration(joystick_cal.throttle)) {
-        mus4LogLine("cal", "joystick save failed: throttle calibration invalid");
-        return false;
+
+    if (joystick_cal.throttle_enabled) {
+        if (!validateJoystickCalibration(joystick_cal.throttle)) {
+            mus4LogLine("cal", "joystick save failed: throttle calibration invalid");
+            return false;
+        }
+    } else {
+        joystick_cal.throttle.min_pwm = RC_THROTTLE_MIN;
+        joystick_cal.throttle.mid_pwm = RC_THROTTLE_MID;
+        joystick_cal.throttle.max_pwm = RC_THROTTLE_MAX;
     }
 
     if (!prefs().begin(MUS4_PREF_NAMESPACE, false)) {

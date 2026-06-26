@@ -42,12 +42,6 @@ int mapJoystickAxis(int16_t pwm,
                     int16_t default_mid,
                     int16_t default_max);
 
-// Temporary compatibility alias for legacy references
-inline int mapSteeringCalibrated(int16_t pwm) {
-    return mapJoystickAxis(pwm, joystick_cal.steering, joystick_cal.steering_enabled,
-                           RC_STEERING_MIN, RC_STEERING_MID, RC_STEERING_MAX);
-}
-
 void printJoystickCalStatus(Print& out);
 bool startJoystickCalibration(Print& out);
 void updateJoystickCalibration();

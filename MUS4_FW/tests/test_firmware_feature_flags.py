@@ -17,8 +17,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "libraries" / "mus4_ui" / "src" / "LedStatus.cpp",
     PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "Mus4Log.h",
     PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "Mus4Log.cpp",
-    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "SteeringCalibration.h",
-    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "SteeringCalibration.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "JoystickCalibration.h",
+    PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "JoystickCalibration.cpp",
     PROJECT_ROOT / "libraries" / "mus4_i2c" / "src" / "Sensors.h",
     PROJECT_ROOT / "libraries" / "mus4_i2c" / "src" / "Sensors.cpp",
     PROJECT_ROOT / "libraries" / "mus4_diag" / "src" / "GamepadMode.h",
@@ -989,17 +989,20 @@ def test_sensor_helpers_remain_available_after_module_split():
 
 
 
-def test_steering_calibration_remains_available_after_module_split():
+def test_joystick_calibration_remains_available_after_module_split():
     source = firmware_source_text()
 
-    assert "struct SteeringCalibration" in source
-    assert "enum SteerCalState" in source
-    assert "void loadSteeringCalibration()" in source
-    assert "bool saveSteeringCalibration()" in source
-    assert "void resetSteeringCalibration()" in source
-    assert "int mapSteeringCalibrated(int16_t pwm)" in source
-    assert "bool startSteerCalibration(Print& out)" in source
-    assert "void updateSteerCalibration()" in source
+    assert "struct AxisCalibration" in source
+    assert "struct JoystickCalibrationData" in source
+    assert "enum class JoystickCalState" in source
+    assert "void loadJoystickCalibration()" in source
+    assert "bool saveJoystickCalibration()" in source
+    assert "void resetJoystickCalibration()" in source
+    assert "int mapJoystickAxis(" in source
+    assert "bool startJoystickCalibration(Print& out)" in source
+    assert "void updateJoystickCalibration()" in source
+    assert "MUS4_PREF_JOYSTICK_STEER_MIN_KEY" in source
+    assert "MUS4_PREF_JOYSTICK_STEER_EN_KEY" in source
     assert "MUS4_PREF_STEER_MIN_KEY" in source
     assert "MUS4_PREF_STEER_CAL_EN_KEY" in source
 

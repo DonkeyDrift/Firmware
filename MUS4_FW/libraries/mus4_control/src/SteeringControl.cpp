@@ -2,7 +2,7 @@
 
 #include "FirmwareConfig.h"
 #include "Mus4Log.h"
-#include "SteeringCalibration.h"
+#include "JoystickCalibration.h"
 
 // --- Steering Signal Processing Constants & Globals ---
 const int PWM_VALID_MIN = 800; // Increased from 500 to reject noise
@@ -79,9 +79,9 @@ int process_steering_signal(int raw_pwm) {
 
     // 3. Mapping to Control Range (-100 to 100)
     // Target steering based on filtered PWM
-    int16_t cal_mid = steer_cal_enabled ? steer_cal.mid_pwm : RC_STEERING_MID;
-    int16_t cal_min = steer_cal_enabled ? steer_cal.min_pwm : RC_STEERING_MIN;
-    int16_t cal_max = steer_cal_enabled ? steer_cal.max_pwm : RC_STEERING_MAX;
+    int16_t cal_mid = joystick_cal.steering_enabled ? joystick_cal.steering.mid_pwm : RC_STEERING_MID;
+    int16_t cal_min = joystick_cal.steering_enabled ? joystick_cal.steering.min_pwm : RC_STEERING_MIN;
+    int16_t cal_max = joystick_cal.steering_enabled ? joystick_cal.steering.max_pwm : RC_STEERING_MAX;
     float target_steering;
     if (filtered_pwm < cal_mid) {
         target_steering = map(filtered_pwm - cal_mid, cal_min - cal_mid, 0, -100, 0);

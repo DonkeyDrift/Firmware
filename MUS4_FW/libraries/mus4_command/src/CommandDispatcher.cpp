@@ -29,6 +29,61 @@ void setCommandDispatcherRuntimeStates(OtaRuntimeState& os, WifiRuntimeState& ws
 extern bool processWifiStaConfigCommand(const String& line, Print& out);
 #endif
 
+static bool handleJoystickSave(Print& out)
+{
+    if (joystick_cal_state == JoystickCalState::DONE) {
+        bool steer_ok = validateJoystickCalibration(joystick_cal.steering);
+        bool thr_ok = validateJoystickCalibration(joystick_cal.throttle);
+        if (steer_ok && thr_ok) {
+            joystick_cal.steering_enabled = true;
+            joystick_cal.throttle_enabled = true;
+            if (saveJoystickCalibration()) {
+                joystick_cal_state = JoystickCalState::IDLE;
+                out.println("ACK:JOYSTICK_SAVED");
+            } else {
+                out.println("NACK:JOYSTICK_SAVE_FAILED");
+            }
+        } else {
+            out.printf("NACK:JOYSTICK_INVALID_RANGE steer_ok=%d thr_ok=%d\n", steer_ok, thr_ok);
+        }
+    } else {
+        out.println("NACK:JOYSTICK_NOT_DONE");
+    }
+    return true;
+}
+
+static bool handleJoystickRetry(Print& out)
+{
+    if (joystick_cal_state == JoystickCalState::DONE || joystick_cal_state == JoystickCalState::MINMAX) {
+        joystick_cal_state = JoystickCalState::CENTERING;
+        joystick_cal_stage_start_ms = millis();
+        joystick_cal_temp_min[0] = INT16_MAX;
+        joystick_cal_temp_min[1] = INT16_MAX;
+        joystick_cal_temp_max[0] = INT16_MIN;
+        joystick_cal_temp_max[1] = INT16_MIN;
+        tui.log("[CAL] Retrying from center capture...");
+        out.println("ACK:JOYSTICK_RETRY");
+    } else {
+        out.println("NACK:JOYSTICK_NOT_DONE");
+    }
+    return true;
+}
+
+static bool handleJoystickAbort(Print& out)
+{
+    abortJoystickCalibration();
+    out.println("ACK:JOYSTICK_ABORTED");
+    return true;
+}
+
+static bool handleJoystickReset(Print& out)
+{
+    resetJoystickCalibration();
+    joystick_cal_state = JoystickCalState::IDLE;
+    out.println("ACK:JOYSTICK_RESET");
+    return true;
+}
+
 bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pilotSilent)
 {
 #ifdef ENABLE_WIFI_CONSOLE
@@ -60,51 +115,16 @@ bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pil
         return true;
     }
     if (line.equalsIgnoreCase("JOYSTICK_SAVE")) {
-        if (joystick_cal_state == JoystickCalState::DONE) {
-            bool steer_ok = validateJoystickCalibration(joystick_cal.steering);
-            bool thr_ok = validateJoystickCalibration(joystick_cal.throttle);
-            if (steer_ok && thr_ok) {
-                joystick_cal.steering_enabled = true;
-                joystick_cal.throttle_enabled = true;
-                if (saveJoystickCalibration()) {
-                    joystick_cal_state = JoystickCalState::IDLE;
-                    out.println("ACK:JOYSTICK_SAVED");
-                } else {
-                    out.println("NACK:JOYSTICK_SAVE_FAILED");
-                }
-            } else {
-                out.printf("NACK:JOYSTICK_INVALID_RANGE steer_ok=%d thr_ok=%d\n", steer_ok, thr_ok);
-            }
-        } else {
-            out.println("NACK:JOYSTICK_NOT_DONE");
-        }
-        return true;
+        return handleJoystickSave(out);
     }
     if (line.equalsIgnoreCase("JOYSTICK_RETRY")) {
-        if (joystick_cal_state == JoystickCalState::DONE || joystick_cal_state == JoystickCalState::MINMAX) {
-            joystick_cal_state = JoystickCalState::CENTERING;
-            joystick_cal_stage_start_ms = millis();
-            joystick_cal_temp_min[0] = INT16_MAX;
-            joystick_cal_temp_min[1] = INT16_MAX;
-            joystick_cal_temp_max[0] = INT16_MIN;
-            joystick_cal_temp_max[1] = INT16_MIN;
-            tui.log("[CAL] Retrying from center capture...");
-            out.println("ACK:JOYSTICK_RETRY");
-        } else {
-            out.println("NACK:JOYSTICK_NOT_DONE");
-        }
-        return true;
+        return handleJoystickRetry(out);
     }
     if (line.equalsIgnoreCase("JOYSTICK_ABORT")) {
-        abortJoystickCalibration();
-        out.println("ACK:JOYSTICK_ABORTED");
-        return true;
+        return handleJoystickAbort(out);
     }
     if (line.equalsIgnoreCase("JOYSTICK_RESET")) {
-        resetJoystickCalibration();
-        joystick_cal_state = JoystickCalState::IDLE;
-        out.println("ACK:JOYSTICK_RESET");
-        return true;
+        return handleJoystickReset(out);
     }
     if (line.equalsIgnoreCase("JOYSTICK_STATUS")) {
         printJoystickCalStatus(out);
@@ -119,6 +139,22 @@ bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pil
     if (line.equalsIgnoreCase("CAL_STATUS")) {
         printJoystickCalStatus(out);
         return true;
+    }
+    if (line.equalsIgnoreCase("CAL_SAVE")) {
+        out.println("ACK:DEPRECATED_USE_JOYSTICK_SAVE");
+        return handleJoystickSave(out);
+    }
+    if (line.equalsIgnoreCase("CAL_RETRY")) {
+        out.println("ACK:DEPRECATED_USE_JOYSTICK_RETRY");
+        return handleJoystickRetry(out);
+    }
+    if (line.equalsIgnoreCase("CAL_ABORT")) {
+        out.println("ACK:DEPRECATED_USE_JOYSTICK_ABORT");
+        return handleJoystickAbort(out);
+    }
+    if (line.equalsIgnoreCase("CAL_RESET")) {
+        out.println("ACK:DEPRECATED_USE_JOYSTICK_RESET");
+        return handleJoystickReset(out);
     }
 
     int t, s, seq;

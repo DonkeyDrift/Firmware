@@ -111,12 +111,8 @@ int mapJoystickAxis(int16_t pwm,
                     int16_t default_max)
 {
     if (!enabled) {
-        if (pwm < default_mid) {
-            long mapped = map(pwm, default_min, default_mid, -100, 0);
-            return constrain(mapped, -100, 0);
-        }
-        long mapped = map(pwm, default_mid, default_max, 0, 100);
-        return constrain(mapped, 0, 100);
+        int v = map(pwm, default_min, default_max, -100, 100);
+        return constrain(v, -100, 100);
     }
 
     if (pwm < cal.mid_pwm) {

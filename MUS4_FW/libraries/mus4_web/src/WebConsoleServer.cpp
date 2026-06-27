@@ -431,12 +431,40 @@ static void appendJudgeConfigJson(String& response, const JudgeConfig& config)
     response += String(config.bigTurnThreshold, 2);
     response += ",\"windowSize\":";
     response += config.windowSize;
+    response += ",\"collisionPenalty\":";
+    response += String(config.collisionPenalty, 1);
+    response += ",\"turnSmoothnessWeight\":";
+    response += String(config.turnSmoothnessWeight, 1);
+    response += ",\"rangeMatchWeight\":";
+    response += String(config.rangeMatchWeight, 1);
+    response += ",\"gyroStabilityWeight\":";
+    response += String(config.gyroStabilityWeight, 1);
+    response += ",\"bigTurnStabilityWeight\":";
+    response += String(config.bigTurnStabilityWeight, 1);
+    response += ",\"speedStabilityWeight\":";
+    response += String(config.speedStabilityWeight, 1);
+    response += ",\"throttleStabilityWeight\":";
+    response += String(config.throttleStabilityWeight, 1);
     response += ",\"defaults\":{\"collisionThreshold\":";
     response += String(WIFI_JUDGE_COLLISION_THRESHOLD_DEFAULT, 2);
     response += ",\"bigTurnThreshold\":";
     response += String(WIFI_JUDGE_BIG_TURN_THRESHOLD_DEFAULT, 2);
     response += ",\"windowSize\":";
     response += WIFI_JUDGE_WINDOW_SIZE_DEFAULT;
+    response += ",\"collisionPenalty\":";
+    response += String(WIFI_JUDGE_COLLISION_PENALTY_DEFAULT, 1);
+    response += ",\"turnSmoothnessWeight\":";
+    response += String(WIFI_JUDGE_TURN_SMOOTHNESS_WEIGHT_DEFAULT, 1);
+    response += ",\"rangeMatchWeight\":";
+    response += String(WIFI_JUDGE_RANGE_MATCH_WEIGHT_DEFAULT, 1);
+    response += ",\"gyroStabilityWeight\":";
+    response += String(WIFI_JUDGE_GYRO_STABILITY_WEIGHT_DEFAULT, 1);
+    response += ",\"bigTurnStabilityWeight\":";
+    response += String(WIFI_JUDGE_BIG_TURN_STABILITY_WEIGHT_DEFAULT, 1);
+    response += ",\"speedStabilityWeight\":";
+    response += String(WIFI_JUDGE_SPEED_STABILITY_WEIGHT_DEFAULT, 1);
+    response += ",\"throttleStabilityWeight\":";
+    response += String(WIFI_JUDGE_THROTTLE_STABILITY_WEIGHT_DEFAULT, 1);
     response += "},\"limits\":{\"collisionThresholdMin\":";
     response += String(WIFI_JUDGE_COLLISION_THRESHOLD_MIN, 2);
     response += ",\"collisionThresholdMax\":";
@@ -449,6 +477,34 @@ static void appendJudgeConfigJson(String& response, const JudgeConfig& config)
     response += WIFI_JUDGE_WINDOW_SIZE_MIN;
     response += ",\"windowSizeMax\":";
     response += WIFI_JUDGE_WINDOW_SIZE_MAX;
+    response += ",\"collisionPenaltyMin\":";
+    response += String(WIFI_JUDGE_COLLISION_PENALTY_MIN, 1);
+    response += ",\"collisionPenaltyMax\":";
+    response += String(WIFI_JUDGE_COLLISION_PENALTY_MAX, 1);
+    response += ",\"turnSmoothnessWeightMin\":";
+    response += String(WIFI_JUDGE_TURN_SMOOTHNESS_WEIGHT_MIN, 1);
+    response += ",\"turnSmoothnessWeightMax\":";
+    response += String(WIFI_JUDGE_TURN_SMOOTHNESS_WEIGHT_MAX, 1);
+    response += ",\"rangeMatchWeightMin\":";
+    response += String(WIFI_JUDGE_RANGE_MATCH_WEIGHT_MIN, 1);
+    response += ",\"rangeMatchWeightMax\":";
+    response += String(WIFI_JUDGE_RANGE_MATCH_WEIGHT_MAX, 1);
+    response += ",\"gyroStabilityWeightMin\":";
+    response += String(WIFI_JUDGE_GYRO_STABILITY_WEIGHT_MIN, 1);
+    response += ",\"gyroStabilityWeightMax\":";
+    response += String(WIFI_JUDGE_GYRO_STABILITY_WEIGHT_MAX, 1);
+    response += ",\"bigTurnStabilityWeightMin\":";
+    response += String(WIFI_JUDGE_BIG_TURN_STABILITY_WEIGHT_MIN, 1);
+    response += ",\"bigTurnStabilityWeightMax\":";
+    response += String(WIFI_JUDGE_BIG_TURN_STABILITY_WEIGHT_MAX, 1);
+    response += ",\"speedStabilityWeightMin\":";
+    response += String(WIFI_JUDGE_SPEED_STABILITY_WEIGHT_MIN, 1);
+    response += ",\"speedStabilityWeightMax\":";
+    response += String(WIFI_JUDGE_SPEED_STABILITY_WEIGHT_MAX, 1);
+    response += ",\"throttleStabilityWeightMin\":";
+    response += String(WIFI_JUDGE_THROTTLE_STABILITY_WEIGHT_MIN, 1);
+    response += ",\"throttleStabilityWeightMax\":";
+    response += String(WIFI_JUDGE_THROTTLE_STABILITY_WEIGHT_MAX, 1);
     response += "}}";
 }
 
@@ -470,7 +526,14 @@ static void handleWifiWebJudgeConfigSet()
 {
     if (!wifiWebServer.hasArg("collisionThreshold") ||
         !wifiWebServer.hasArg("bigTurnThreshold") ||
-        !wifiWebServer.hasArg("windowSize")) {
+        !wifiWebServer.hasArg("windowSize") ||
+        !wifiWebServer.hasArg("collisionPenalty") ||
+        !wifiWebServer.hasArg("turnSmoothnessWeight") ||
+        !wifiWebServer.hasArg("rangeMatchWeight") ||
+        !wifiWebServer.hasArg("gyroStabilityWeight") ||
+        !wifiWebServer.hasArg("bigTurnStabilityWeight") ||
+        !wifiWebServer.hasArg("speedStabilityWeight") ||
+        !wifiWebServer.hasArg("throttleStabilityWeight")) {
         sendWifiWebApiHeaders();
         wifiWebServer.send(400, "application/json", "{\"error\":\"missing_fields\"}");
         return;
@@ -480,6 +543,13 @@ static void handleWifiWebJudgeConfigSet()
     config.collisionThreshold = wifiWebServer.arg("collisionThreshold").toFloat();
     config.bigTurnThreshold = wifiWebServer.arg("bigTurnThreshold").toFloat();
     int windowSize = wifiWebServer.arg("windowSize").toInt();
+    config.collisionPenalty = wifiWebServer.arg("collisionPenalty").toFloat();
+    config.turnSmoothnessWeight = wifiWebServer.arg("turnSmoothnessWeight").toFloat();
+    config.rangeMatchWeight = wifiWebServer.arg("rangeMatchWeight").toFloat();
+    config.gyroStabilityWeight = wifiWebServer.arg("gyroStabilityWeight").toFloat();
+    config.bigTurnStabilityWeight = wifiWebServer.arg("bigTurnStabilityWeight").toFloat();
+    config.speedStabilityWeight = wifiWebServer.arg("speedStabilityWeight").toFloat();
+    config.throttleStabilityWeight = wifiWebServer.arg("throttleStabilityWeight").toFloat();
     if (windowSize < WIFI_JUDGE_WINDOW_SIZE_MIN || windowSize > WIFI_JUDGE_WINDOW_SIZE_MAX) {
         sendWifiWebApiHeaders();
         wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_window_size\"}");

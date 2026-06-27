@@ -250,6 +250,27 @@ void loadJudgeConfigPreference()
     config.windowSize = mus4Prefs.getUChar(
         MUS4_PREF_JUDGE_WINDOW_SIZE_KEY,
         WIFI_JUDGE_WINDOW_SIZE_DEFAULT);
+    config.collisionPenalty = mus4Prefs.getFloat(
+        MUS4_PREF_JUDGE_COLLISION_PENALTY_KEY,
+        WIFI_JUDGE_COLLISION_PENALTY_DEFAULT);
+    config.turnSmoothnessWeight = mus4Prefs.getFloat(
+        MUS4_PREF_JUDGE_TURN_SMOOTHNESS_WEIGHT_KEY,
+        WIFI_JUDGE_TURN_SMOOTHNESS_WEIGHT_DEFAULT);
+    config.rangeMatchWeight = mus4Prefs.getFloat(
+        MUS4_PREF_JUDGE_RANGE_MATCH_WEIGHT_KEY,
+        WIFI_JUDGE_RANGE_MATCH_WEIGHT_DEFAULT);
+    config.gyroStabilityWeight = mus4Prefs.getFloat(
+        MUS4_PREF_JUDGE_GYRO_STABILITY_WEIGHT_KEY,
+        WIFI_JUDGE_GYRO_STABILITY_WEIGHT_DEFAULT);
+    config.bigTurnStabilityWeight = mus4Prefs.getFloat(
+        MUS4_PREF_JUDGE_BIG_TURN_STABILITY_WEIGHT_KEY,
+        WIFI_JUDGE_BIG_TURN_STABILITY_WEIGHT_DEFAULT);
+    config.speedStabilityWeight = mus4Prefs.getFloat(
+        MUS4_PREF_JUDGE_SPEED_STABILITY_WEIGHT_KEY,
+        WIFI_JUDGE_SPEED_STABILITY_WEIGHT_DEFAULT);
+    config.throttleStabilityWeight = mus4Prefs.getFloat(
+        MUS4_PREF_JUDGE_THROTTLE_STABILITY_WEIGHT_KEY,
+        WIFI_JUDGE_THROTTLE_STABILITY_WEIGHT_DEFAULT);
     mus4Prefs.end();
     if (!isValidJudgeConfig(config)) {
         config = defaultJudgeConfig();
@@ -258,10 +279,11 @@ void loadJudgeConfigPreference()
     wifiRuntime.judgeConfig = config;
     mus4Logf(
         "wifi",
-        "judge cfg col=%.2f turn=%.2f win=%u",
+        "judge cfg col=%.2f turn=%.2f win=%u pen=%.2f",
         (double)wifiRuntime.judgeConfig.collisionThreshold,
         (double)wifiRuntime.judgeConfig.bigTurnThreshold,
-        wifiRuntime.judgeConfig.windowSize);
+        wifiRuntime.judgeConfig.windowSize,
+        (double)wifiRuntime.judgeConfig.collisionPenalty);
 }
 
 bool saveJudgeConfigPreference(const JudgeConfig& config)
@@ -277,15 +299,40 @@ bool saveJudgeConfigPreference(const JudgeConfig& config)
     size_t windowWritten = mus4Prefs.putUChar(
         MUS4_PREF_JUDGE_WINDOW_SIZE_KEY,
         config.windowSize);
+    size_t penaltyWritten = mus4Prefs.putFloat(
+        MUS4_PREF_JUDGE_COLLISION_PENALTY_KEY,
+        config.collisionPenalty);
+    size_t turnWeightWritten = mus4Prefs.putFloat(
+        MUS4_PREF_JUDGE_TURN_SMOOTHNESS_WEIGHT_KEY,
+        config.turnSmoothnessWeight);
+    size_t rangeWeightWritten = mus4Prefs.putFloat(
+        MUS4_PREF_JUDGE_RANGE_MATCH_WEIGHT_KEY,
+        config.rangeMatchWeight);
+    size_t gyroWeightWritten = mus4Prefs.putFloat(
+        MUS4_PREF_JUDGE_GYRO_STABILITY_WEIGHT_KEY,
+        config.gyroStabilityWeight);
+    size_t bigTurnWeightWritten = mus4Prefs.putFloat(
+        MUS4_PREF_JUDGE_BIG_TURN_STABILITY_WEIGHT_KEY,
+        config.bigTurnStabilityWeight);
+    size_t speedWeightWritten = mus4Prefs.putFloat(
+        MUS4_PREF_JUDGE_SPEED_STABILITY_WEIGHT_KEY,
+        config.speedStabilityWeight);
+    size_t throttleWeightWritten = mus4Prefs.putFloat(
+        MUS4_PREF_JUDGE_THROTTLE_STABILITY_WEIGHT_KEY,
+        config.throttleStabilityWeight);
     mus4Prefs.end();
-    if (collisionWritten == 0 || turnWritten == 0 || windowWritten == 0) return false;
+    if (collisionWritten == 0 || turnWritten == 0 || windowWritten == 0 ||
+        penaltyWritten == 0 || turnWeightWritten == 0 || rangeWeightWritten == 0 ||
+        gyroWeightWritten == 0 || bigTurnWeightWritten == 0 ||
+        speedWeightWritten == 0 || throttleWeightWritten == 0) return false;
     wifiRuntime.judgeConfig = config;
     mus4Logf(
         "wifi",
-        "judge cfg saved col=%.2f turn=%.2f win=%u",
+        "judge cfg saved col=%.2f turn=%.2f win=%u pen=%.2f",
         (double)wifiRuntime.judgeConfig.collisionThreshold,
         (double)wifiRuntime.judgeConfig.bigTurnThreshold,
-        wifiRuntime.judgeConfig.windowSize);
+        wifiRuntime.judgeConfig.windowSize,
+        (double)wifiRuntime.judgeConfig.collisionPenalty);
     return true;
 }
 

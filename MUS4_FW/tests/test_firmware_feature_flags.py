@@ -2835,6 +2835,9 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     runtime_state = (
         PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "RuntimeState.h"
     ).read_text(encoding="utf-8")
+    wifi_console_types = (
+        PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h"
+    ).read_text(encoding="utf-8")
 
     assert "writeF32(latest.pseudoSpeed);" in telemetry
     assert "pseudoSpeed:f32()" in assets
@@ -2852,6 +2855,20 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     assert "collisionThresholdInput" in assets
     assert "bigTurnThresholdInput" in assets
     assert "windowSizeInput" in assets
+    assert "collisionPenaltyInput" in assets
+    assert "turnSmoothnessWeightInput" in assets
+    assert "rangeMatchWeightInput" in assets
+    assert "gyroStabilityWeightInput" in assets
+    assert "bigTurnStabilityWeightInput" in assets
+    assert "speedStabilityWeightInput" in assets
+    assert "throttleStabilityWeightInput" in assets
+    assert "judgeConfig.collisionPenalty" in assets
+    assert "judgeConfig.turnSmoothnessWeight" in assets
+    assert "judgeConfig.rangeMatchWeight" in assets
+    assert "judgeConfig.gyroStabilityWeight" in assets
+    assert "judgeConfig.bigTurnStabilityWeight" in assets
+    assert "judgeConfig.speedStabilityWeight" in assets
+    assert "judgeConfig.throttleStabilityWeight" in assets
     assert "static void handleWifiWebJudge()" in server
     assert "static void handleWifiWebJudgeConfig()" in server
     assert "static void handleWifiWebJudgeConfigSet()" in server
@@ -2866,6 +2883,16 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     assert "bool saveJudgeConfigPreference(const JudgeConfig& config)" in wifi_manager
     assert "bool resetJudgeConfigPreference()" in wifi_manager
     assert "MUS4_PREF_JUDGE_COLLISION_THRESHOLD_KEY" in wifi_manager
+    assert "MUS4_PREF_JUDGE_COLLISION_PENALTY_KEY" in wifi_manager
+    assert "turnSmoothnessWeight" in wifi_console_types
+    assert "rangeMatchWeight" in wifi_console_types
+    assert "gyroStabilityWeight" in wifi_console_types
+    assert "bigTurnStabilityWeight" in wifi_console_types
+    assert "speedStabilityWeight" in wifi_console_types
+    assert "throttleStabilityWeight" in wifi_console_types
+    assert '\\"collisionPenalty\\":' in server
+    assert '\\"turnSmoothnessWeight\\":' in server
+    assert '\\"rangeMatchWeight\\":' in server
 
 
 def test_tub_schema_bumps_to_v2_with_imu_five_axes():

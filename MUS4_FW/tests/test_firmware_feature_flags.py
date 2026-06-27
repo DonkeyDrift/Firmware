@@ -2860,6 +2860,14 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     assert "越大越容易因为 pseudoSpeed 波动掉分。" in assets
     assert "已写入设备，设备重启后仍保留；后续样本立即生效" in assets
     assert "已恢复默认值并写回设备，设备重启后仍保留" in assets
+    assert "lowestDimension" in assets
+    assert "weakestTrend" in assets
+    assert "当前最低项：" in assets
+    assert "最近拖分项：" in assets
+    assert "dim1-trend" in assets
+    assert "function computeDimensionTrend(values)" in assets
+    assert "function refreshScoreBreakdown()" in assets
+    assert "SCORE_TREND_WINDOW=8" in assets
     assert "collisionThresholdInput" in assets
     assert "bigTurnThresholdInput" in assets
     assert "windowSizeInput" in assets

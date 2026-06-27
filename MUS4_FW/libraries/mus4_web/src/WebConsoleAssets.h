@@ -273,11 +273,16 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .chartWrap canvas{width:100%;height:100%}
 .controls{display:flex;gap:10px;flex-wrap:wrap}
 .dimensions{display:grid;gap:10px}
-.dimRow{display:grid;grid-template-columns:86px 1fr 44px;gap:10px;align-items:center}
+.dimRow{display:grid;grid-template-columns:86px 1fr 22px 44px;gap:10px;align-items:center}
 .dimName{font-size:12px;color:#c7d2df}
 .dimBar{height:8px;background:#223042;border-radius:999px;overflow:hidden}
 .dimFill{height:100%;width:0;background:linear-gradient(90deg,#ef4444,#f59e0b,#39d98a)}
+.dimTrend{text-align:center;font-size:13px;font-weight:700;color:#8fa1b5}
+.dimTrendUp{color:#39d98a}
+.dimTrendDown{color:#ff7b7b}
+.dimTrendFlat{color:#8fa1b5}
 .dimScore{text-align:right;font-size:13px;font-weight:700}
+.scoreExplain{font-size:12px;color:#8fa1b5;margin-top:6px}
 .collision{padding:10px 12px;border-radius:10px;background:#111820;border:1px solid #2b3441;color:#8fa1b5;font-size:13px}
 .collision.active{border-color:#ef4444;background:rgba(239,68,68,.12);color:#ffd3d3}
 .tuneGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
@@ -294,7 +299,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .field input{background:#0f1720;border:1px solid #2b3441;border-radius:10px;color:#e8edf2;padding:10px 12px;font:inherit}
 .tuneActions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
 #judgeConfigStatus{font-size:12px}
-@media (max-width:640px){body{max-width:560px}.hero,.grid,.metaGrid,.tuneGrid,.summaryGrid{grid-template-columns:1fr}.heroValue{font-size:42px}.scoreValue{font-size:32px}.dimRow{grid-template-columns:74px 1fr 40px}}
+@media (max-width:640px){body{max-width:560px}.hero,.grid,.metaGrid,.tuneGrid,.summaryGrid{grid-template-columns:1fr}.heroValue{font-size:42px}.scoreValue{font-size:32px}.dimRow{grid-template-columns:74px 1fr 20px 40px}}
 </style>
 </head>
 <body>
@@ -327,6 +332,8 @@ button:disabled{opacity:.5;cursor:not-allowed}
 <div class="label">总分</div>
 <div id="totalScore" class="scoreValue">0</div>
 <div id="scoreGrade" class="sub">--</div>
+<div id="lowestDimension" class="scoreExplain">当前最低项：--</div>
+<div id="weakestTrend" class="scoreExplain">最近拖分项：分析中</div>
 <div id="collision" class="collision" style="margin-top:12px">状态正常</div>
 </div>
 </div>
@@ -387,22 +394,51 @@ button:disabled{opacity:.5;cursor:not-allowed}
 </div>
 </div>
 <div id="dimensions" class="dimensions" style="margin-top:12px">
-<div class="dimRow"><div class="dimName">转弯平滑</div><div class="dimBar"><div id="dim1-fill" class="dimFill"></div></div><div id="dim1-score" class="dimScore">0</div></div>
-<div class="dimRow"><div class="dimName">区间匹配</div><div class="dimBar"><div id="dim2-fill" class="dimFill"></div></div><div id="dim2-score" class="dimScore">0</div></div>
-<div class="dimRow"><div class="dimName">陀螺稳定</div><div class="dimBar"><div id="dim3-fill" class="dimFill"></div></div><div id="dim3-score" class="dimScore">0</div></div>
-<div class="dimRow"><div class="dimName">大弯稳定</div><div class="dimBar"><div id="dim4-fill" class="dimFill"></div></div><div id="dim4-score" class="dimScore">0</div></div>
-<div class="dimRow"><div class="dimName">速度稳定</div><div class="dimBar"><div id="dim5-fill" class="dimFill"></div></div><div id="dim5-score" class="dimScore">0</div></div>
-<div class="dimRow"><div class="dimName">油门稳定</div><div class="dimBar"><div id="dim6-fill" class="dimFill"></div></div><div id="dim6-score" class="dimScore">0</div></div>
+<div class="dimRow"><div class="dimName">转弯平滑</div><div class="dimBar"><div id="dim1-fill" class="dimFill"></div></div><div id="dim1-trend" class="dimTrend dimTrendFlat">→</div><div id="dim1-score" class="dimScore">0</div></div>
+<div class="dimRow"><div class="dimName">区间匹配</div><div class="dimBar"><div id="dim2-fill" class="dimFill"></div></div><div id="dim2-trend" class="dimTrend dimTrendFlat">→</div><div id="dim2-score" class="dimScore">0</div></div>
+<div class="dimRow"><div class="dimName">陀螺稳定</div><div class="dimBar"><div id="dim3-fill" class="dimFill"></div></div><div id="dim3-trend" class="dimTrend dimTrendFlat">→</div><div id="dim3-score" class="dimScore">0</div></div>
+<div class="dimRow"><div class="dimName">大弯稳定</div><div class="dimBar"><div id="dim4-fill" class="dimFill"></div></div><div id="dim4-trend" class="dimTrend dimTrendFlat">→</div><div id="dim4-score" class="dimScore">0</div></div>
+<div class="dimRow"><div class="dimName">速度稳定</div><div class="dimBar"><div id="dim5-fill" class="dimFill"></div></div><div id="dim5-trend" class="dimTrend dimTrendFlat">→</div><div id="dim5-score" class="dimScore">0</div></div>
+<div class="dimRow"><div class="dimName">油门稳定</div><div class="dimBar"><div id="dim6-fill" class="dimFill"></div></div><div id="dim6-trend" class="dimTrend dimTrendFlat">→</div><div id="dim6-score" class="dimScore">0</div></div>
 </div>
 </div>
 <script>
-const statusEl=document.getElementById('status'),statusPillEl=document.getElementById('statusPill'),pseudoSpeedEl=document.getElementById('pseudoSpeed'),pseudoBarEl=document.getElementById('pseudoBar'),gyroZEl=document.getElementById('gyroZ'),throttleEl=document.getElementById('throttle'),seqEl=document.getElementById('seq'),transportEl=document.getElementById('transport'),totalScoreEl=document.getElementById('totalScore'),scoreGradeEl=document.getElementById('scoreGrade'),collisionEl=document.getElementById('collision'),startBtn=document.getElementById('startBtn'),chartCanvas=document.getElementById('gyroChart'),chartCtx=chartCanvas.getContext('2d'),collisionThresholdInput=document.getElementById('collisionThresholdInput'),bigTurnThresholdInput=document.getElementById('bigTurnThresholdInput'),windowSizeInput=document.getElementById('windowSizeInput'),collisionPenaltyInput=document.getElementById('collisionPenaltyInput'),turnSmoothnessWeightInput=document.getElementById('turnSmoothnessWeightInput'),rangeMatchWeightInput=document.getElementById('rangeMatchWeightInput'),gyroStabilityWeightInput=document.getElementById('gyroStabilityWeightInput'),bigTurnStabilityWeightInput=document.getElementById('bigTurnStabilityWeightInput'),speedStabilityWeightInput=document.getElementById('speedStabilityWeightInput'),throttleStabilityWeightInput=document.getElementById('throttleStabilityWeightInput'),judgeConfigCurrentEl=document.getElementById('judgeConfigCurrent'),judgeConfigSummaryEl=document.getElementById('judgeConfigSummary'),judgeConfigStatusEl=document.getElementById('judgeConfigStatus'),saveJudgeConfigBtn=document.getElementById('saveJudgeConfigBtn'),resetJudgeConfigBtn=document.getElementById('resetJudgeConfigBtn');
+const statusEl=document.getElementById('status'),statusPillEl=document.getElementById('statusPill'),pseudoSpeedEl=document.getElementById('pseudoSpeed'),pseudoBarEl=document.getElementById('pseudoBar'),gyroZEl=document.getElementById('gyroZ'),throttleEl=document.getElementById('throttle'),seqEl=document.getElementById('seq'),transportEl=document.getElementById('transport'),totalScoreEl=document.getElementById('totalScore'),scoreGradeEl=document.getElementById('scoreGrade'),lowestDimensionEl=document.getElementById('lowestDimension'),weakestTrendEl=document.getElementById('weakestTrend'),collisionEl=document.getElementById('collision'),startBtn=document.getElementById('startBtn'),chartCanvas=document.getElementById('gyroChart'),chartCtx=chartCanvas.getContext('2d'),collisionThresholdInput=document.getElementById('collisionThresholdInput'),bigTurnThresholdInput=document.getElementById('bigTurnThresholdInput'),windowSizeInput=document.getElementById('windowSizeInput'),collisionPenaltyInput=document.getElementById('collisionPenaltyInput'),turnSmoothnessWeightInput=document.getElementById('turnSmoothnessWeightInput'),rangeMatchWeightInput=document.getElementById('rangeMatchWeightInput'),gyroStabilityWeightInput=document.getElementById('gyroStabilityWeightInput'),bigTurnStabilityWeightInput=document.getElementById('bigTurnStabilityWeightInput'),speedStabilityWeightInput=document.getElementById('speedStabilityWeightInput'),throttleStabilityWeightInput=document.getElementById('throttleStabilityWeightInput'),judgeConfigCurrentEl=document.getElementById('judgeConfigCurrent'),judgeConfigSummaryEl=document.getElementById('judgeConfigSummary'),judgeConfigStatusEl=document.getElementById('judgeConfigStatus'),saveJudgeConfigBtn=document.getElementById('saveJudgeConfigBtn'),resetJudgeConfigBtn=document.getElementById('resetJudgeConfigBtn');
 const CHART_MAX_POINTS=120;
+const DIMENSION_NAMES=['转弯平滑','区间匹配','陀螺稳定','大弯稳定','速度稳定','油门稳定'];
+const SCORE_TREND_WINDOW=8;
+const SCORE_TREND_DELTA=2.0;
 const judgeConfig={collisionThreshold:2.8,bigTurnThreshold:1.6,windowSize:20,collisionPenalty:10,turnSmoothnessWeight:35,rangeMatchWeight:42,gyroStabilityWeight:40,bigTurnStabilityWeight:34,speedStabilityWeight:220,throttleStabilityWeight:180,defaults:{collisionThreshold:2.8,bigTurnThreshold:1.6,windowSize:20,collisionPenalty:10,turnSmoothnessWeight:35,rangeMatchWeight:42,gyroStabilityWeight:40,bigTurnStabilityWeight:34,speedStabilityWeight:220,throttleStabilityWeight:180},limits:{collisionThresholdMin:0.5,collisionThresholdMax:8,bigTurnThresholdMin:0.3,bigTurnThresholdMax:4,windowSizeMin:5,windowSizeMax:64,collisionPenaltyMin:1,collisionPenaltyMax:30,turnSmoothnessWeightMin:10,turnSmoothnessWeightMax:80,rangeMatchWeightMin:10,rangeMatchWeightMax:100,gyroStabilityWeightMin:10,gyroStabilityWeightMax:100,bigTurnStabilityWeightMin:10,bigTurnStabilityWeightMax:90,speedStabilityWeightMin:40,speedStabilityWeightMax:400,throttleStabilityWeightMin:40,throttleStabilityWeightMax:360}};
 let lastSeq=0,dataWs=null,dataWsConnected=false,dataWsReconnectDelay=1000,dataWsReconnectTimer=0,dataPolling=false;
 let chartData=[];
 let scoreState=createScoreState();
-function createScoreState(){return{running:false,samples:0,totalScore:0,penalty:0,dimensionScores:[0,0,0,0,0,0],dimensionSums:[0,0,0,0,0,0],gyroHistory:[],pseudoHistory:[],throttleHistory:[],lastGyroZ:null,collisionCooldown:0,inTurn:false}}
+function createScoreState(){
+  return{
+    running:false,
+    samples:0,
+    totalScore:0,
+    penalty:0,
+    dimensionScores:[0,0,0,0,0,0],
+    dimensionSums:[0,0,0,0,0,0],
+    dimensionTrendWindows:[[],[],[],[],[],[]],
+    dimensionTrendStates:[
+      {symbol:'→',className:'dimTrendFlat',delta:0,ready:false},
+      {symbol:'→',className:'dimTrendFlat',delta:0,ready:false},
+      {symbol:'→',className:'dimTrendFlat',delta:0,ready:false},
+      {symbol:'→',className:'dimTrendFlat',delta:0,ready:false},
+      {symbol:'→',className:'dimTrendFlat',delta:0,ready:false},
+      {symbol:'→',className:'dimTrendFlat',delta:0,ready:false}
+    ],
+    lowestDimension:'--',
+    weakestTrend:'分析中',
+    gyroHistory:[],
+    pseudoHistory:[],
+    throttleHistory:[],
+    lastGyroZ:null,
+    collisionCooldown:0,
+    inTurn:false
+  }
+}
 function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
 function setStatus(text,kind){statusEl.textContent=text;statusPillEl.className='statusPill '+(kind||'statusWaiting')}
 function setJudgeConfigStatus(text,kind){judgeConfigStatusEl.textContent=text;judgeConfigStatusEl.style.color=kind==='ok'?'#39d98a':kind==='err'?'#ff7b7b':'#8fa1b5'}
@@ -412,7 +448,49 @@ function mean(values){if(!values.length)return 0;let sum=0;for(let i=0;i<values.
 function stdDev(values){if(values.length<2)return 0;const m=mean(values);let sum=0;for(let i=0;i<values.length;i++){const d=values[i]-m;sum+=d*d}return Math.sqrt(sum/values.length)}
 function getWindowSize(){return clamp(Math.round(Number(judgeConfig.windowSize||20)),judgeConfig.limits.windowSizeMin,judgeConfig.limits.windowSizeMax)}
 function pushWindow(list,value){const size=getWindowSize();list.push(value);while(list.length>size)list.shift()}
+function pushFixedWindow(list,value,size){list.push(value);while(list.length>size)list.shift()}
 function trimScoreWindows(){const size=getWindowSize(),lists=[scoreState.gyroHistory,scoreState.pseudoHistory,scoreState.throttleHistory];for(let i=0;i<lists.length;i++)while(lists[i].length>size)lists[i].shift()}
+function computeDimensionTrend(values){
+  if(values.length<SCORE_TREND_WINDOW){
+    return{symbol:'→',className:'dimTrendFlat',delta:0,ready:false}
+  }
+  const half=Math.floor(values.length/2);
+  const older=values.slice(0,half);
+  const newer=values.slice(half);
+  if(older.length<2||newer.length<2){
+    return{symbol:'→',className:'dimTrendFlat',delta:0,ready:false}
+  }
+  const delta=mean(newer)-mean(older);
+  if(delta>SCORE_TREND_DELTA){
+    return{symbol:'↑',className:'dimTrendUp',delta:delta,ready:true}
+  }
+  if(delta<-SCORE_TREND_DELTA){
+    return{symbol:'↓',className:'dimTrendDown',delta:delta,ready:true}
+  }
+  return{symbol:'→',className:'dimTrendFlat',delta:delta,ready:true}
+}
+function refreshScoreBreakdown(){
+  let lowestIndex=0;
+  for(let i=1;i<scoreState.dimensionScores.length;i++){
+    if(scoreState.dimensionScores[i]<scoreState.dimensionScores[lowestIndex])lowestIndex=i;
+  }
+  scoreState.lowestDimension=scoreState.samples?DIMENSION_NAMES[lowestIndex]:'--';
+  if(!scoreState.running||scoreState.samples<SCORE_TREND_WINDOW){
+    scoreState.weakestTrend='分析中';
+    return;
+  }
+  let weakestIndex=-1;
+  let weakestDelta=0;
+  for(let i=0;i<scoreState.dimensionTrendStates.length;i++){
+    const trend=scoreState.dimensionTrendStates[i];
+    if(!trend.ready)continue;
+    if(weakestIndex===-1||trend.delta<weakestDelta){
+      weakestIndex=i;
+      weakestDelta=trend.delta;
+    }
+  }
+  scoreState.weakestTrend=weakestIndex===-1?'分析中':DIMENSION_NAMES[weakestIndex];
+}
 function syncJudgeConfigInputs(){collisionThresholdInput.min=judgeConfig.limits.collisionThresholdMin;collisionThresholdInput.max=judgeConfig.limits.collisionThresholdMax;bigTurnThresholdInput.min=judgeConfig.limits.bigTurnThresholdMin;bigTurnThresholdInput.max=judgeConfig.limits.bigTurnThresholdMax;windowSizeInput.min=judgeConfig.limits.windowSizeMin;windowSizeInput.max=judgeConfig.limits.windowSizeMax;collisionPenaltyInput.min=judgeConfig.limits.collisionPenaltyMin;collisionPenaltyInput.max=judgeConfig.limits.collisionPenaltyMax;turnSmoothnessWeightInput.min=judgeConfig.limits.turnSmoothnessWeightMin;turnSmoothnessWeightInput.max=judgeConfig.limits.turnSmoothnessWeightMax;rangeMatchWeightInput.min=judgeConfig.limits.rangeMatchWeightMin;rangeMatchWeightInput.max=judgeConfig.limits.rangeMatchWeightMax;gyroStabilityWeightInput.min=judgeConfig.limits.gyroStabilityWeightMin;gyroStabilityWeightInput.max=judgeConfig.limits.gyroStabilityWeightMax;bigTurnStabilityWeightInput.min=judgeConfig.limits.bigTurnStabilityWeightMin;bigTurnStabilityWeightInput.max=judgeConfig.limits.bigTurnStabilityWeightMax;speedStabilityWeightInput.min=judgeConfig.limits.speedStabilityWeightMin;speedStabilityWeightInput.max=judgeConfig.limits.speedStabilityWeightMax;throttleStabilityWeightInput.min=judgeConfig.limits.throttleStabilityWeightMin;throttleStabilityWeightInput.max=judgeConfig.limits.throttleStabilityWeightMax;collisionThresholdInput.value=Number(judgeConfig.collisionThreshold).toFixed(2);bigTurnThresholdInput.value=Number(judgeConfig.bigTurnThreshold).toFixed(2);windowSizeInput.value=String(getWindowSize());collisionPenaltyInput.value=Number(judgeConfig.collisionPenalty).toFixed(1);turnSmoothnessWeightInput.value=Number(judgeConfig.turnSmoothnessWeight).toFixed(1);rangeMatchWeightInput.value=Number(judgeConfig.rangeMatchWeight).toFixed(1);gyroStabilityWeightInput.value=Number(judgeConfig.gyroStabilityWeight).toFixed(1);bigTurnStabilityWeightInput.value=Number(judgeConfig.bigTurnStabilityWeight).toFixed(1);speedStabilityWeightInput.value=Number(judgeConfig.speedStabilityWeight).toFixed(1);throttleStabilityWeightInput.value=Number(judgeConfig.throttleStabilityWeight).toFixed(1);judgeConfigCurrentEl.textContent='基础阈值与评分参数已同步，可直接实车调参';judgeConfigSummaryEl.innerHTML='<div class=\"summaryItem\"><div class=\"k\">碰撞阈值</div><div class=\"v\">'+Number(judgeConfig.collisionThreshold).toFixed(2)+'</div></div><div class=\"summaryItem\"><div class=\"k\">大弯阈值</div><div class=\"v\">'+Number(judgeConfig.bigTurnThreshold).toFixed(2)+'</div></div><div class=\"summaryItem\"><div class=\"k\">窗口大小</div><div class=\"v\">'+String(getWindowSize())+'</div></div><div class=\"summaryItem\"><div class=\"k\">碰撞扣分</div><div class=\"v\">'+Number(judgeConfig.collisionPenalty).toFixed(1)+'</div></div>'}
 function applyJudgeConfigPayload(payload){if(!payload)return;const config=payload.config||payload;const defaults=config.defaults||payload.defaults||{};const limits=config.limits||payload.limits||{};judgeConfig.collisionThreshold=Number(config.collisionThreshold??judgeConfig.collisionThreshold);judgeConfig.bigTurnThreshold=Number(config.bigTurnThreshold??judgeConfig.bigTurnThreshold);judgeConfig.windowSize=Math.round(Number(config.windowSize??judgeConfig.windowSize));judgeConfig.collisionPenalty=Number(config.collisionPenalty??judgeConfig.collisionPenalty);judgeConfig.turnSmoothnessWeight=Number(config.turnSmoothnessWeight??judgeConfig.turnSmoothnessWeight);judgeConfig.rangeMatchWeight=Number(config.rangeMatchWeight??judgeConfig.rangeMatchWeight);judgeConfig.gyroStabilityWeight=Number(config.gyroStabilityWeight??judgeConfig.gyroStabilityWeight);judgeConfig.bigTurnStabilityWeight=Number(config.bigTurnStabilityWeight??judgeConfig.bigTurnStabilityWeight);judgeConfig.speedStabilityWeight=Number(config.speedStabilityWeight??judgeConfig.speedStabilityWeight);judgeConfig.throttleStabilityWeight=Number(config.throttleStabilityWeight??judgeConfig.throttleStabilityWeight);judgeConfig.defaults.collisionThreshold=Number(defaults.collisionThreshold??judgeConfig.defaults.collisionThreshold);judgeConfig.defaults.bigTurnThreshold=Number(defaults.bigTurnThreshold??judgeConfig.defaults.bigTurnThreshold);judgeConfig.defaults.windowSize=Math.round(Number(defaults.windowSize??judgeConfig.defaults.windowSize));judgeConfig.defaults.collisionPenalty=Number(defaults.collisionPenalty??judgeConfig.defaults.collisionPenalty);judgeConfig.defaults.turnSmoothnessWeight=Number(defaults.turnSmoothnessWeight??judgeConfig.defaults.turnSmoothnessWeight);judgeConfig.defaults.rangeMatchWeight=Number(defaults.rangeMatchWeight??judgeConfig.defaults.rangeMatchWeight);judgeConfig.defaults.gyroStabilityWeight=Number(defaults.gyroStabilityWeight??judgeConfig.defaults.gyroStabilityWeight);judgeConfig.defaults.bigTurnStabilityWeight=Number(defaults.bigTurnStabilityWeight??judgeConfig.defaults.bigTurnStabilityWeight);judgeConfig.defaults.speedStabilityWeight=Number(defaults.speedStabilityWeight??judgeConfig.defaults.speedStabilityWeight);judgeConfig.defaults.throttleStabilityWeight=Number(defaults.throttleStabilityWeight??judgeConfig.defaults.throttleStabilityWeight);judgeConfig.limits.collisionThresholdMin=Number(limits.collisionThresholdMin??judgeConfig.limits.collisionThresholdMin);judgeConfig.limits.collisionThresholdMax=Number(limits.collisionThresholdMax??judgeConfig.limits.collisionThresholdMax);judgeConfig.limits.bigTurnThresholdMin=Number(limits.bigTurnThresholdMin??judgeConfig.limits.bigTurnThresholdMin);judgeConfig.limits.bigTurnThresholdMax=Number(limits.bigTurnThresholdMax??judgeConfig.limits.bigTurnThresholdMax);judgeConfig.limits.windowSizeMin=Math.round(Number(limits.windowSizeMin??judgeConfig.limits.windowSizeMin));judgeConfig.limits.windowSizeMax=Math.round(Number(limits.windowSizeMax??judgeConfig.limits.windowSizeMax));judgeConfig.limits.collisionPenaltyMin=Number(limits.collisionPenaltyMin??judgeConfig.limits.collisionPenaltyMin);judgeConfig.limits.collisionPenaltyMax=Number(limits.collisionPenaltyMax??judgeConfig.limits.collisionPenaltyMax);judgeConfig.limits.turnSmoothnessWeightMin=Number(limits.turnSmoothnessWeightMin??judgeConfig.limits.turnSmoothnessWeightMin);judgeConfig.limits.turnSmoothnessWeightMax=Number(limits.turnSmoothnessWeightMax??judgeConfig.limits.turnSmoothnessWeightMax);judgeConfig.limits.rangeMatchWeightMin=Number(limits.rangeMatchWeightMin??judgeConfig.limits.rangeMatchWeightMin);judgeConfig.limits.rangeMatchWeightMax=Number(limits.rangeMatchWeightMax??judgeConfig.limits.rangeMatchWeightMax);judgeConfig.limits.gyroStabilityWeightMin=Number(limits.gyroStabilityWeightMin??judgeConfig.limits.gyroStabilityWeightMin);judgeConfig.limits.gyroStabilityWeightMax=Number(limits.gyroStabilityWeightMax??judgeConfig.limits.gyroStabilityWeightMax);judgeConfig.limits.bigTurnStabilityWeightMin=Number(limits.bigTurnStabilityWeightMin??judgeConfig.limits.bigTurnStabilityWeightMin);judgeConfig.limits.bigTurnStabilityWeightMax=Number(limits.bigTurnStabilityWeightMax??judgeConfig.limits.bigTurnStabilityWeightMax);judgeConfig.limits.speedStabilityWeightMin=Number(limits.speedStabilityWeightMin??judgeConfig.limits.speedStabilityWeightMin);judgeConfig.limits.speedStabilityWeightMax=Number(limits.speedStabilityWeightMax??judgeConfig.limits.speedStabilityWeightMax);judgeConfig.limits.throttleStabilityWeightMin=Number(limits.throttleStabilityWeightMin??judgeConfig.limits.throttleStabilityWeightMin);judgeConfig.limits.throttleStabilityWeightMax=Number(limits.throttleStabilityWeightMax??judgeConfig.limits.throttleStabilityWeightMax);trimScoreWindows();syncJudgeConfigInputs()}
 function readJudgeConfigForm(){return{collisionThreshold:Number(collisionThresholdInput.value),bigTurnThreshold:Number(bigTurnThresholdInput.value),windowSize:Math.round(Number(windowSizeInput.value)),collisionPenalty:Number(collisionPenaltyInput.value),turnSmoothnessWeight:Number(turnSmoothnessWeightInput.value),rangeMatchWeight:Number(rangeMatchWeightInput.value),gyroStabilityWeight:Number(gyroStabilityWeightInput.value),bigTurnStabilityWeight:Number(bigTurnStabilityWeightInput.value),speedStabilityWeight:Number(speedStabilityWeightInput.value),throttleStabilityWeight:Number(throttleStabilityWeightInput.value)}}
@@ -422,7 +500,22 @@ async function saveJudgeConfig(){const config=readJudgeConfigForm();if(!judgeCon
 async function resetJudgeConfigToDefault(){try{setJudgeConfigBusy(true);const r=await fetch('/api/judge-config/reset',{method:'POST'});const text=await r.text();let payload={};try{payload=JSON.parse(text)}catch(e){}if(!r.ok)throw new Error(payload.error||'reset_failed');applyJudgeConfigPayload(payload);setJudgeConfigStatus('已恢复默认值并写回设备，设备重启后仍保留','ok')}catch(e){setJudgeConfigStatus('恢复默认值失败: '+(e.message||'reset_failed'),'err')}finally{setJudgeConfigBusy(false)}}
 function pushChartValue(value){chartData.push(Number(value||0));if(chartData.length>CHART_MAX_POINTS)chartData.shift();drawChart()}
 function drawChart(){const w=chartCanvas.width,h=chartCanvas.height;chartCtx.clearRect(0,0,w,h);chartCtx.fillStyle='#0f1720';chartCtx.fillRect(0,0,w,h);chartCtx.strokeStyle='#223042';chartCtx.lineWidth=1;for(let i=0;i<5;i++){const y=Math.round(i*(h-1)/4)+.5;chartCtx.beginPath();chartCtx.moveTo(0,y);chartCtx.lineTo(w,y);chartCtx.stroke()}if(chartData.length<2)return;chartCtx.strokeStyle='#5cc8ff';chartCtx.lineWidth=2;chartCtx.beginPath();const maxAbs=3.5;for(let i=0;i<chartData.length;i++){const x=(i*(w-1))/Math.max(1,CHART_MAX_POINTS-1);const y=h/2-clamp(chartData[i],-maxAbs,maxAbs)*(h*0.42/maxAbs);if(i===0)chartCtx.moveTo(x,y);else chartCtx.lineTo(x,y)}chartCtx.stroke()}
-function renderScore(){const score=Math.round(clamp(scoreState.totalScore,0,100));totalScoreEl.textContent=String(score);scoreGradeEl.textContent=scoreState.running?getGrade(score):'待命';for(let i=1;i<=6;i++){const dim=Math.round(clamp(scoreState.dimensionScores[i-1]||0,0,100));document.getElementById('dim'+i+'-score').textContent=String(dim);document.getElementById('dim'+i+'-fill').style.width=dim+'%'}}
+function renderScore(){
+  const score=Math.round(clamp(scoreState.totalScore,0,100));
+  totalScoreEl.textContent=String(score);
+  scoreGradeEl.textContent=scoreState.running?getGrade(score):'待命';
+  lowestDimensionEl.textContent='当前最低项：'+scoreState.lowestDimension;
+  weakestTrendEl.textContent='最近拖分项：'+(scoreState.samples?scoreState.weakestTrend:'分析中');
+  for(let i=1;i<=6;i++){
+    const dim=Math.round(clamp(scoreState.dimensionScores[i-1]||0,0,100));
+    const trend=scoreState.dimensionTrendStates[i-1];
+    document.getElementById('dim'+i+'-score').textContent=String(dim);
+    document.getElementById('dim'+i+'-fill').style.width=dim+'%';
+    const trendEl=document.getElementById('dim'+i+'-trend');
+    trendEl.textContent=trend.symbol;
+    trendEl.className='dimTrend '+trend.className;
+  }
+}
 function showCollision(){collisionEl.classList.add('active');collisionEl.textContent='碰撞触发 (-'+Number(judgeConfig.collisionPenalty).toFixed(1)+')';clearTimeout(showCollision.timer);showCollision.timer=setTimeout(()=>{collisionEl.classList.remove('active');collisionEl.textContent='状态正常'},700)}
 function resetScore(){scoreState=createScoreState();startBtn.textContent='开始计分';collisionEl.classList.remove('active');collisionEl.textContent='状态正常';renderScore()}
 function stopRun(){scoreState.running=false;startBtn.textContent='开始计分';renderScore()}
@@ -434,7 +527,23 @@ function calcGyroStability(){if(scoreState.gyroHistory.length<8)return 75;return
 function calcBigTurnStability(gz){const absGyro=Math.abs(gz),threshold=judgeConfig.bigTurnThreshold;if(absGyro>threshold)scoreState.inTurn=true;else if(absGyro<threshold*.45)scoreState.inTurn=false;if(!scoreState.inTurn)return 80;const recent=scoreState.gyroHistory.slice(-10);if(recent.length<6)return 70;return clamp(100-stdDev(recent)*judgeConfig.bigTurnStabilityWeight,0,100)}
 function calcPseudoSpeedStability(){if(scoreState.pseudoHistory.length<8)return 75;const m=mean(scoreState.pseudoHistory);if(m<5)return 70;return clamp(100-(stdDev(scoreState.pseudoHistory)/Math.max(1,m))*judgeConfig.speedStabilityWeight,0,100)}
 function calcThrottleStability(){if(scoreState.throttleHistory.length<8)return 75;const absValues=scoreState.throttleHistory.map(v=>Math.abs(v));const m=mean(absValues);if(m<5)return 70;return clamp(100-(stdDev(absValues)/(m+1))*judgeConfig.throttleStabilityWeight,0,100)}
-function updateScore(latest){const gz=Number(latest.gz||0),pseudo=clamp(Number(latest.pseudoSpeed||0),0,100),thr=Number(latest.thr||0);pushWindow(scoreState.gyroHistory,gz);pushWindow(scoreState.pseudoHistory,pseudo);pushWindow(scoreState.throttleHistory,thr);scoreState.samples++;const current=[calcTurnSmoothness(gz),calcRangeMatch(gz,pseudo),calcGyroStability(),calcBigTurnStability(gz),calcPseudoSpeedStability(),calcThrottleStability()];for(let i=0;i<current.length;i++){scoreState.dimensionSums[i]+=current[i];scoreState.dimensionScores[i]=scoreState.dimensionSums[i]/scoreState.samples}scoreState.totalScore=clamp(mean(scoreState.dimensionScores)-scoreState.penalty,0,100);renderScore()}
+function updateScore(latest){
+  const gz=Number(latest.gz||0),pseudo=clamp(Number(latest.pseudoSpeed||0),0,100),thr=Number(latest.thr||0);
+  pushWindow(scoreState.gyroHistory,gz);
+  pushWindow(scoreState.pseudoHistory,pseudo);
+  pushWindow(scoreState.throttleHistory,thr);
+  scoreState.samples++;
+  const current=[calcTurnSmoothness(gz),calcRangeMatch(gz,pseudo),calcGyroStability(),calcBigTurnStability(gz),calcPseudoSpeedStability(),calcThrottleStability()];
+  for(let i=0;i<current.length;i++){
+    scoreState.dimensionSums[i]+=current[i];
+    scoreState.dimensionScores[i]=scoreState.dimensionSums[i]/scoreState.samples;
+    pushFixedWindow(scoreState.dimensionTrendWindows[i],current[i],SCORE_TREND_WINDOW);
+    scoreState.dimensionTrendStates[i]=computeDimensionTrend(scoreState.dimensionTrendWindows[i]);
+  }
+  scoreState.totalScore=clamp(mean(scoreState.dimensionScores)-scoreState.penalty,0,100);
+  refreshScoreBreakdown();
+  renderScore();
+}
 function renderLatest(latest,transport){if(!latest)return;lastSeq=Math.max(lastSeq,Number(latest.seq||0));const pseudo=clamp(Number(latest.pseudoSpeed||0),0,100),gz=Number(latest.gz||0),thr=Number(latest.thr||0);setStatus('online / '+transport,'statusOnline');seqEl.textContent=String(latest.seq??'--');pseudoSpeedEl.textContent=pseudo.toFixed(1);pseudoBarEl.style.width=pseudo.toFixed(1)+'%';gyroZEl.textContent=gz.toFixed(3);throttleEl.textContent=String(Math.round(thr));transportEl.textContent=transport.toUpperCase();pushChartValue(gz);detectCollision(gz);if(scoreState.running)updateScore(latest)}
 function handleDataPayload(j,transport){const arr=(j&&j.points)||[];for(let i=0;i<arr.length;i++)pushChartValue(Number(arr[i].gz||0));if(j&&j.latest){renderLatest(j.latest,transport);return}setStatus('waiting data','statusWaiting')}
 function decodeBinaryDataPayload(buffer){const v=new DataView(buffer);let o=0;const u8=()=>v.getUint8(o++),u16=()=>{const x=v.getUint16(o,true);o+=2;return x},u32=()=>{const x=v.getUint32(o,true);o+=4;return x},i16=()=>{const x=v.getInt16(o,true);o+=2;return x},f32=()=>{const x=v.getFloat32(o,true);o+=4;return x};if(u8()!==77||u8()!==52)throw new Error('bad magic');const version=u8();u8();if(version!==2)throw new Error('bad version');const dropped=u32(),seq=u32(),t=u32(),dt=u16(),thr=i16(),str=i16(),gz=f32(),gx=f32(),gy=f32(),ax=f32(),ay=f32(),az=f32(),mode=u8(),park=u8();const ch=[u16(),u16(),u16(),u16(),u16(),u16()];const latest={seq,t,dt,thr,str,gz,gx,gy,ax,ay,az,mode,park,ch1:ch[0],ch2:ch[1],ch3:ch[2],ch4:ch[3],ch5:ch[4],ch6:ch[5],rct:i16(),rcs:i16(),pt:i16(),ps:i16(),gzf:f32(),dc:f32(),de:u8(),da:u8(),vol:f32(),pseudoSpeed:f32()};const count=u8(),points=[];for(let i=0;i<count;i++)points.push({seq:u32(),t:u32(),dt:u16(),thr:i16(),str:i16(),gz:f32()});return{type:'data',dropped,latest,points}}

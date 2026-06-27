@@ -204,5 +204,7 @@ struct WebDataPoint {
     float driftCompensation;
     float gyroZFiltered;
     float pseudoSpeed;
+    int actuatorSteeringDuty;   // 舵机 PWM ledc 占空比 (300Hz/14bit)
+    int actuatorThrottleDuty;   // 电调 PWM ledc 占空比 (300Hz/14bit)
 };
 #endif

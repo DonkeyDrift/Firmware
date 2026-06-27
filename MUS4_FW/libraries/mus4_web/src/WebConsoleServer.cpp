@@ -854,6 +854,10 @@ static void appendWifiWebStateJson(String& response, WebDataPoint& point)
     response += String(point.gyroZFiltered, 3);
     response += ",\"pseudoSpeed\":";
     response += String(point.pseudoSpeed, 1);
+    response += ",\"sd\":";
+    response += point.actuatorSteeringDuty;
+    response += ",\"ed\":";
+    response += point.actuatorThrottleDuty;
     response += '}';
 }
 

@@ -293,6 +293,8 @@ void sampleWifiWebData()
     point.driftCompensation = drift_compensation;
     point.gyroZFiltered = gyro_z_filtered;
     point.pseudoSpeed = computePseudoSpeed();
+    point.actuatorSteeringDuty = actuator_steering_duty;
+    point.actuatorThrottleDuty = actuator_throttle_duty;
     wifiWebDataHead = (wifiWebDataHead + 1) % WIFI_WEB_DATA_CAPACITY;
     if (wifiWebDataCount < WIFI_WEB_DATA_CAPACITY) wifiWebDataCount++;
 }

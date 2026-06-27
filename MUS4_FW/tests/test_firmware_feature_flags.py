@@ -765,6 +765,8 @@ def test_wifi_console_types_are_split_from_sketch():
         "struct WifiScanEntry",
         "struct WebDataPoint",
         "int rcChannels[RC_CHANNEL_COUNT];",
+        "int actuatorSteeringDuty;",
+        "int actuatorThrottleDuty;",
     ]:
         assert symbol in wifi_types
 
@@ -1717,6 +1719,8 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
     assert '<span class="foldIcon">▸</span><span data-i18n="panel.rcChannels">RC Channels</span>' in source
     assert '<span class="foldIcon">▸</span><span data-i18n="panel.statusDetails">STATUS Details</span>' in source
     assert 'aria-expanded="false"><span class="foldIcon">▸</span><span data-i18n="panel.rcChannels">RC Channels</span>' in source
+    assert 'id="servoDutyValue"' in source
+    assert 'id="escDutyValue"' in source
     assert '.fold:not(.open) .foldBody{display:none}' in source
     assert diagnostics_panel in source
     assert source.index(state_panel) < source.index(chart_panel)

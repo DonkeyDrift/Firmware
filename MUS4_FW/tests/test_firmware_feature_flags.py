@@ -2294,11 +2294,11 @@ def test_wifi_console_applies_sta_after_console_is_ready():
         re.DOTALL,
     ).group("body")
     assert "setupWifiWebConsole()" in setup_body
-    assert setup_body.index("setupWifiWebConsole()") < setup_body.index("startWifiApServices(\"AP started\")")
+    assert setup_body.index("setupWifiWebConsole()") < setup_body.index("startWifiApServices(")
     assert console_services_body.index("wifiCaptiveDnsServer.start(53, \"*\", WiFi.softAPIP())") < console_services_body.index("wifiConsoleServer.begin()")
     assert console_services_body.index("wifiConsoleServer.begin()") < console_services_body.index("wifiWebServer.begin()")
     assert console_services_body.index("wifiWebServer.begin()") < console_services_body.index("wifiConsoleStarted = true")
-    assert setup_body.index("startWifiApServices(\"AP started\")") < setup_body.index("applyWifiStaCredentials()")
+    assert setup_body.index("startWifiApServices(") < setup_body.index("applyWifiStaCredentials()")
 
 
 def test_wifi_softap_uses_explicit_ipv4_gateway_configuration():
@@ -2327,7 +2327,7 @@ def test_wifi_softap_uses_explicit_ipv4_gateway_configuration():
     assert "configureWifiSoftApNetwork()" in start_services_body
     assert start_services_body.index("configureWifiSoftApNetwork()") < start_services_body.index("WiFi.softAP(")
     assert "startWifiApServices(\"AP restarted\")" in restart_body
-    assert "startWifiApServices(\"AP started\")" in setup_body
+    assert "startWifiApServices(\"AP started\"" in setup_body
 
 
 def test_sta_disconnect_restores_ap_after_grace():
@@ -2475,7 +2475,10 @@ def test_runtime_sta_disconnect_does_not_reset_soft_ap():
     assert "ws().staConnecting = false" in runtime_clear_body
     assert "ws().staApplyPending = false" in runtime_clear_body
     assert "clearWifiStaLastError()" in runtime_clear_body
-    assert "WiFi.disconnect(true, true)" in setup_body
+    # v1.7.31：WiFi.disconnect(true, true) 被替换为 WiFi.mode(WIFI_OFF)，
+    # 避免擦除 Wi-Fi 驱动层 NVS 配置导致 STA 接口状态异常。
+    assert "WiFi.mode(WIFI_OFF)" in setup_body
+    assert "WiFi.disconnect(true, true)" not in setup_body
 
 
 def test_soft_ap_disconnect_is_limited_to_explicit_ap_restart():

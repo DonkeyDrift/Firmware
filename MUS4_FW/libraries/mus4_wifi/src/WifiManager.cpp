@@ -476,37 +476,6 @@ static void prealignWifiApChannelForStaApply()
     }
 }
 
-// 开机自动连接时，扫描目标 SSID 所在信道并重启 SoftAP 对齐，
-// 避免 ESP32 单射频在 AP 信道 6 与目标路由器信道之间来回切换导致连接失败。
-// 仅在 wifiStaApplyFromAp == false 且 wifiStaTargetChannel == 0 时执行。
-static void prealignWifiApByScanForBootSta()
-{
-    if (wifiStaApplyFromAp || wifiStaTargetChannel != 0) return;
-    if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) return;
-    if (strlen(wifiStaSsid) == 0) return;
-
-    int n = WiFi.scanComplete();
-    // 如果已有进行中的扫描结果，直接消费；否则启动一次同步阻塞扫描。
-    if (n < 0) {
-        n = WiFi.scanNetworks(false, false);
-    }
-    if (n <= 0) return;
-
-    for (int i = 0; i < n; i++) {
-        if (WiFi.SSID(i) == String(wifiStaSsid)) {
-            wifiStaTargetChannel = (uint8_t)WiFi.channel(i);
-            break;
-        }
-    }
-    WiFi.scanDelete();
-
-    if (isValidWifiChannel(wifiStaTargetChannel)) {
-        mus4Logf("wifi", "STA boot: found %s on channel %u, prealigning AP",
-                 wifiStaSsid, wifiStaTargetChannel);
-        restartWifiApOnChannel(wifiStaTargetChannel);
-    }
-}
-
 void applyWifiStaCredentials()
 {
     if (!wifiStaConfigured) return;
@@ -539,13 +508,14 @@ void applyWifiStaCredentials()
     if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
         startWifiApServices("AP restored for STA apply");
     }
-    prealignWifiApByScanForBootSta();      // 开机自动连接：扫描目标信道并对齐 SoftAP
-    prealignWifiApChannelForStaApply();    // Web 端 AP 发起：使用前端传入的信道
+    // 开机自动连接时，信道对齐已在 setupWifiConsole() 中完成（AP 启动前扫描
+    // 并将 AP 置于目标信道），此处无需再扫描。Web 端 AP 发起时使用前端传入的信道。
+    prealignWifiApChannelForStaApply();
     wifiInApOnlyMode = false;
-    // 不再显式调用 disconnectWifiStaOnly()——WiFi.begin() 内部已调用
+    // 不再显式调用 disconnectWifiStaOnly()——WiFi.begin 内部已调用
     // esp_wifi_disconnect()，重复调用可能导致竞态使 STA 连接静默失败。
-    // 加短暂延时让 Wi-Fi 栈处理完 prealign 可能的 AP 重启事件。
-    delay(20);
+    // 延时确保 Wi-Fi 栈处理完 prealignWifiApChannelForStaApply 可能的 AP 重启事件。
+    delay(100);
     WiFi.setHostname(wifiMdnsHostText().c_str());
     WiFi.begin(wifiStaSsid, wifiStaPassword);
     mus4Logf("wifi", "STA connecting: ssid=\"%s\" pass_len=%d", wifiStaSsid, (int)strlen(wifiStaPassword));
@@ -817,8 +787,9 @@ void setupWifiConsole()
     // 不再与底层 WiFi mode 严格一一对应。
     wifiInApOnlyMode = false;
     clearWifiStaLastError();
-    mus4LogLine("wifi", "setup: disconnect");
-    WiFi.disconnect(true, true);
+    // 不再调用带 eraseap 的 WiFi.disconnect ——其 eraseap 参数会擦除 Wi-Fi 驱动
+    // 层 NVS 配置，但 WiFi.begin() / WiFi.softAP() 都显式传入凭据，此擦除多余
+    // 且可能引起 Wi-Fi 栈内部状态异常。
     mus4LogLine("wifi", "setup: mode OFF");
     WiFi.mode(WIFI_OFF);
     delay(100);
@@ -838,11 +809,34 @@ void setupWifiConsole()
     }
     mus4LogLine("wifi", "setup: web console");
     setupWifiWebConsole();
+
+    // 开机自动连接时，在启动 SoftAP 之前先扫描目标 SSID 所在信道。
+    // 此时 WIFI_AP_STA 已初始化但 SoftAP 尚未运行，扫描不会干扰 AP Beacon，
+    // 且扫描后到 WiFi.begin() 之间有 AP 启动时间作为充足的 STA 接口恢复延时。
+    uint8_t apChannel = WIFI_CONSOLE_CHANNEL;
+    if (wifiStaConfigured && strlen(wifiStaSsid) > 0) {
+        int n = WiFi.scanNetworks(false, false);  // 阻塞同步扫描
+        if (n > 0) {
+            for (int i = 0; i < n; i++) {
+                if (WiFi.SSID(i) == String(wifiStaSsid)) {
+                    apChannel = (uint8_t)WiFi.channel(i);
+                    mus4Logf("wifi", "STA boot: found %s on channel %u",
+                             wifiStaSsid, apChannel);
+                    break;
+                }
+            }
+            WiFi.scanDelete();
+        }
+        if (apChannel == WIFI_CONSOLE_CHANNEL) {
+            mus4LogLine("wifi", "STA boot: SSID not found in scan, using default channel");
+        }
+    }
+
     mus4LogLine("wifi", "setup: start AP services");
-    if (!startWifiApServices("AP started")) {
+    if (!startWifiApServices("AP started", apChannel)) {
         return;
     }
-    mus4Logf("wifi", "AP %s IP: %s Port: %u Web: %u", getActiveWifiApSsid().c_str(), WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT);
+    mus4Logf("wifi", "AP %s IP: %s Port: %u Web: %u ch=%u", getActiveWifiApSsid().c_str(), WiFi.softAPIP().toString().c_str(), WIFI_CONSOLE_PORT, WIFI_WEB_CONSOLE_PORT, apChannel);
     if (wifiStaConfigured) {
         mus4LogLine("wifi", "setup: apply STA credentials");
         applyWifiStaCredentials();

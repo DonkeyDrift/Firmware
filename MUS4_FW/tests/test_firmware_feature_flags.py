@@ -2852,6 +2852,14 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     assert 'fetch(\'/api/judge-config\'' in assets
     assert "function saveJudgeConfig()" in assets
     assert "function resetJudgeConfigToDefault()" in assets
+    assert "judgeConfigSummary" in assets
+    assert "基础阈值" in assets
+    assert "评分参数" in assets
+    assert "基础阈值管判定边界，评分参数管评分手感" in assets
+    assert "越小越容易触发碰撞。" in assets
+    assert "越大越容易因为 pseudoSpeed 波动掉分。" in assets
+    assert "已写入设备，设备重启后仍保留；后续样本立即生效" in assets
+    assert "已恢复默认值并写回设备，设备重启后仍保留" in assets
     assert "collisionThresholdInput" in assets
     assert "bigTurnThresholdInput" in assets
     assert "windowSizeInput" in assets

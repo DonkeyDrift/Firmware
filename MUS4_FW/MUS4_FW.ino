@@ -403,6 +403,7 @@ void setup()
       loadDevModePreference();
       loadWifiApPreference();
       loadWifiStaPreference();
+      loadJudgeConfigPreference();
       loadJoystickCalibration();
       cleanupInvalidOtaPartition();
       // v1.7.28：启动后标记当前固件为有效，取消 bootloader 的 OTA 回滚。

@@ -280,7 +280,12 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .dimScore{text-align:right;font-size:13px;font-weight:700}
 .collision{padding:10px 12px;border-radius:10px;background:#111820;border:1px solid #2b3441;color:#8fa1b5;font-size:13px}
 .collision.active{border-color:#ef4444;background:rgba(239,68,68,.12);color:#ffd3d3}
-@media (max-width:640px){body{max-width:560px}.hero,.grid,.metaGrid{grid-template-columns:1fr}.heroValue{font-size:42px}.scoreValue{font-size:32px}.dimRow{grid-template-columns:74px 1fr 40px}}
+.tuneGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.field{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#8fa1b5}
+.field input{background:#0f1720;border:1px solid #2b3441;border-radius:10px;color:#e8edf2;padding:10px 12px;font:inherit}
+.tuneActions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+#judgeConfigStatus{font-size:12px}
+@media (max-width:640px){body{max-width:560px}.hero,.grid,.metaGrid,.tuneGrid{grid-template-columns:1fr}.heroValue{font-size:42px}.scoreValue{font-size:32px}.dimRow{grid-template-columns:74px 1fr 40px}}
 </style>
 </head>
 <body>
@@ -323,6 +328,25 @@ button:disabled{opacity:.5;cursor:not-allowed}
 <div class="panel">
 <div class="panelHead">
 <div>
+<div class="label">评分阈值调参</div>
+<div class="muted">保存到设备 NVS，设备重启后仍保留</div>
+</div>
+<div id="judgeConfigCurrent" class="muted">读取设备配置中...</div>
+</div>
+<div class="tuneGrid" style="margin-top:12px">
+<label class="field"><span>碰撞阈值</span><input id="collisionThresholdInput" type="number" step="0.1"></label>
+<label class="field"><span>大弯阈值</span><input id="bigTurnThresholdInput" type="number" step="0.1"></label>
+<label class="field"><span>窗口大小</span><input id="windowSizeInput" type="number" step="1"></label>
+</div>
+<div class="tuneActions">
+<button id="saveJudgeConfigBtn" onclick="saveJudgeConfig()">保存阈值</button>
+<button id="resetJudgeConfigBtn" class="alt" onclick="resetJudgeConfigToDefault()">恢复默认值</button>
+<div id="judgeConfigStatus" class="muted">保存后仅影响后续样本，不回溯重算。</div>
+</div>
+</div>
+<div class="panel">
+<div class="panelHead">
+<div>
 <div class="label">评分维度</div>
 <div class="muted">监控优先，但保留实时总分与 6 维条</div>
 </div>
@@ -341,30 +365,42 @@ button:disabled{opacity:.5;cursor:not-allowed}
 </div>
 </div>
 <script>
-const statusEl=document.getElementById('status'),statusPillEl=document.getElementById('statusPill'),pseudoSpeedEl=document.getElementById('pseudoSpeed'),pseudoBarEl=document.getElementById('pseudoBar'),gyroZEl=document.getElementById('gyroZ'),throttleEl=document.getElementById('throttle'),seqEl=document.getElementById('seq'),transportEl=document.getElementById('transport'),totalScoreEl=document.getElementById('totalScore'),scoreGradeEl=document.getElementById('scoreGrade'),collisionEl=document.getElementById('collision'),startBtn=document.getElementById('startBtn'),chartCanvas=document.getElementById('gyroChart'),chartCtx=chartCanvas.getContext('2d');
-const CHART_MAX_POINTS=120,WINDOW_SIZE=20,COLLISION_THRESHOLD=2.8,BIG_TURN_THRESHOLD=1.6,COLLISION_PENALTY=10;
+const statusEl=document.getElementById('status'),statusPillEl=document.getElementById('statusPill'),pseudoSpeedEl=document.getElementById('pseudoSpeed'),pseudoBarEl=document.getElementById('pseudoBar'),gyroZEl=document.getElementById('gyroZ'),throttleEl=document.getElementById('throttle'),seqEl=document.getElementById('seq'),transportEl=document.getElementById('transport'),totalScoreEl=document.getElementById('totalScore'),scoreGradeEl=document.getElementById('scoreGrade'),collisionEl=document.getElementById('collision'),startBtn=document.getElementById('startBtn'),chartCanvas=document.getElementById('gyroChart'),chartCtx=chartCanvas.getContext('2d'),collisionThresholdInput=document.getElementById('collisionThresholdInput'),bigTurnThresholdInput=document.getElementById('bigTurnThresholdInput'),windowSizeInput=document.getElementById('windowSizeInput'),judgeConfigCurrentEl=document.getElementById('judgeConfigCurrent'),judgeConfigStatusEl=document.getElementById('judgeConfigStatus'),saveJudgeConfigBtn=document.getElementById('saveJudgeConfigBtn'),resetJudgeConfigBtn=document.getElementById('resetJudgeConfigBtn');
+const CHART_MAX_POINTS=120,COLLISION_PENALTY=10;
+const judgeConfig={collisionThreshold:2.8,bigTurnThreshold:1.6,windowSize:20,defaults:{collisionThreshold:2.8,bigTurnThreshold:1.6,windowSize:20},limits:{collisionThresholdMin:0.5,collisionThresholdMax:8,bigTurnThresholdMin:0.3,bigTurnThresholdMax:4,windowSizeMin:5,windowSizeMax:64}};
 let lastSeq=0,dataWs=null,dataWsConnected=false,dataWsReconnectDelay=1000,dataWsReconnectTimer=0,dataPolling=false;
 let chartData=[];
 let scoreState=createScoreState();
 function createScoreState(){return{running:false,samples:0,totalScore:0,penalty:0,dimensionScores:[0,0,0,0,0,0],dimensionSums:[0,0,0,0,0,0],gyroHistory:[],pseudoHistory:[],throttleHistory:[],lastGyroZ:null,collisionCooldown:0,inTurn:false}}
 function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
 function setStatus(text,kind){statusEl.textContent=text;statusPillEl.className='statusPill '+(kind||'statusWaiting')}
+function setJudgeConfigStatus(text,kind){judgeConfigStatusEl.textContent=text;judgeConfigStatusEl.style.color=kind==='ok'?'#39d98a':kind==='err'?'#ff7b7b':'#8fa1b5'}
+function setJudgeConfigBusy(busy){saveJudgeConfigBtn.disabled=busy;resetJudgeConfigBtn.disabled=busy}
 function getGrade(score){if(score>=95)return'S 级 - 完美';if(score>=90)return'A 级 - 优秀';if(score>=80)return'B 级 - 良好';if(score>=70)return'C 级 - 一般';if(score>=60)return'D 级 - 及格';return'E 级 - 需练习'}
 function mean(values){if(!values.length)return 0;let sum=0;for(let i=0;i<values.length;i++)sum+=values[i];return sum/values.length}
 function stdDev(values){if(values.length<2)return 0;const m=mean(values);let sum=0;for(let i=0;i<values.length;i++){const d=values[i]-m;sum+=d*d}return Math.sqrt(sum/values.length)}
-function pushWindow(list,value){list.push(value);if(list.length>WINDOW_SIZE)list.shift()}
+function getWindowSize(){return clamp(Math.round(Number(judgeConfig.windowSize||20)),judgeConfig.limits.windowSizeMin,judgeConfig.limits.windowSizeMax)}
+function pushWindow(list,value){const size=getWindowSize();list.push(value);while(list.length>size)list.shift()}
+function trimScoreWindows(){const size=getWindowSize(),lists=[scoreState.gyroHistory,scoreState.pseudoHistory,scoreState.throttleHistory];for(let i=0;i<lists.length;i++)while(lists[i].length>size)lists[i].shift()}
+function syncJudgeConfigInputs(){collisionThresholdInput.min=judgeConfig.limits.collisionThresholdMin;collisionThresholdInput.max=judgeConfig.limits.collisionThresholdMax;bigTurnThresholdInput.min=judgeConfig.limits.bigTurnThresholdMin;bigTurnThresholdInput.max=judgeConfig.limits.bigTurnThresholdMax;windowSizeInput.min=judgeConfig.limits.windowSizeMin;windowSizeInput.max=judgeConfig.limits.windowSizeMax;collisionThresholdInput.value=Number(judgeConfig.collisionThreshold).toFixed(2);bigTurnThresholdInput.value=Number(judgeConfig.bigTurnThreshold).toFixed(2);windowSizeInput.value=String(getWindowSize());judgeConfigCurrentEl.textContent='碰撞 '+Number(judgeConfig.collisionThreshold).toFixed(2)+' / 大弯 '+Number(judgeConfig.bigTurnThreshold).toFixed(2)+' / 窗口 '+String(getWindowSize())}
+function applyJudgeConfigPayload(payload){if(!payload)return;const config=payload.config||payload;const defaults=config.defaults||payload.defaults||{};const limits=config.limits||payload.limits||{};judgeConfig.collisionThreshold=Number(config.collisionThreshold??judgeConfig.collisionThreshold);judgeConfig.bigTurnThreshold=Number(config.bigTurnThreshold??judgeConfig.bigTurnThreshold);judgeConfig.windowSize=Math.round(Number(config.windowSize??judgeConfig.windowSize));judgeConfig.defaults.collisionThreshold=Number(defaults.collisionThreshold??judgeConfig.defaults.collisionThreshold);judgeConfig.defaults.bigTurnThreshold=Number(defaults.bigTurnThreshold??judgeConfig.defaults.bigTurnThreshold);judgeConfig.defaults.windowSize=Math.round(Number(defaults.windowSize??judgeConfig.defaults.windowSize));judgeConfig.limits.collisionThresholdMin=Number(limits.collisionThresholdMin??judgeConfig.limits.collisionThresholdMin);judgeConfig.limits.collisionThresholdMax=Number(limits.collisionThresholdMax??judgeConfig.limits.collisionThresholdMax);judgeConfig.limits.bigTurnThresholdMin=Number(limits.bigTurnThresholdMin??judgeConfig.limits.bigTurnThresholdMin);judgeConfig.limits.bigTurnThresholdMax=Number(limits.bigTurnThresholdMax??judgeConfig.limits.bigTurnThresholdMax);judgeConfig.limits.windowSizeMin=Math.round(Number(limits.windowSizeMin??judgeConfig.limits.windowSizeMin));judgeConfig.limits.windowSizeMax=Math.round(Number(limits.windowSizeMax??judgeConfig.limits.windowSizeMax));trimScoreWindows();syncJudgeConfigInputs()}
+function readJudgeConfigForm(){return{collisionThreshold:Number(collisionThresholdInput.value),bigTurnThreshold:Number(bigTurnThresholdInput.value),windowSize:Math.round(Number(windowSizeInput.value))}}
+function judgeConfigFormValid(config){return Number.isFinite(config.collisionThreshold)&&Number.isFinite(config.bigTurnThreshold)&&Number.isFinite(config.windowSize)&&config.collisionThreshold>=judgeConfig.limits.collisionThresholdMin&&config.collisionThreshold<=judgeConfig.limits.collisionThresholdMax&&config.bigTurnThreshold>=judgeConfig.limits.bigTurnThresholdMin&&config.bigTurnThreshold<=judgeConfig.limits.bigTurnThresholdMax&&config.windowSize>=judgeConfig.limits.windowSizeMin&&config.windowSize<=judgeConfig.limits.windowSizeMax}
+async function loadJudgeConfig(){try{const r=await fetch('/api/judge-config',{cache:'no-store'});if(!r.ok)throw new Error('load_failed');applyJudgeConfigPayload(await r.json());setJudgeConfigStatus('已同步设备配置','ok')}catch(e){syncJudgeConfigInputs();setJudgeConfigStatus('读取配置失败，先使用页面默认值','err')}}
+async function saveJudgeConfig(){const config=readJudgeConfigForm();if(!judgeConfigFormValid(config)){setJudgeConfigStatus('输入值超出允许范围','err');return}const body=new URLSearchParams({collisionThreshold:config.collisionThreshold.toFixed(2),bigTurnThreshold:config.bigTurnThreshold.toFixed(2),windowSize:String(config.windowSize)});try{setJudgeConfigBusy(true);const r=await fetch('/api/judge-config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:body.toString()});const text=await r.text();let payload={};try{payload=JSON.parse(text)}catch(e){}if(!r.ok)throw new Error(payload.error||'save_failed');applyJudgeConfigPayload(payload);setJudgeConfigStatus('已保存到设备，后续样本立即生效','ok')}catch(e){setJudgeConfigStatus('保存失败: '+(e.message||'save_failed'),'err')}finally{setJudgeConfigBusy(false)}}
+async function resetJudgeConfigToDefault(){try{setJudgeConfigBusy(true);const r=await fetch('/api/judge-config/reset',{method:'POST'});const text=await r.text();let payload={};try{payload=JSON.parse(text)}catch(e){}if(!r.ok)throw new Error(payload.error||'reset_failed');applyJudgeConfigPayload(payload);setJudgeConfigStatus('已恢复默认值并写回设备','ok')}catch(e){setJudgeConfigStatus('恢复默认值失败: '+(e.message||'reset_failed'),'err')}finally{setJudgeConfigBusy(false)}}
 function pushChartValue(value){chartData.push(Number(value||0));if(chartData.length>CHART_MAX_POINTS)chartData.shift();drawChart()}
 function drawChart(){const w=chartCanvas.width,h=chartCanvas.height;chartCtx.clearRect(0,0,w,h);chartCtx.fillStyle='#0f1720';chartCtx.fillRect(0,0,w,h);chartCtx.strokeStyle='#223042';chartCtx.lineWidth=1;for(let i=0;i<5;i++){const y=Math.round(i*(h-1)/4)+.5;chartCtx.beginPath();chartCtx.moveTo(0,y);chartCtx.lineTo(w,y);chartCtx.stroke()}if(chartData.length<2)return;chartCtx.strokeStyle='#5cc8ff';chartCtx.lineWidth=2;chartCtx.beginPath();const maxAbs=3.5;for(let i=0;i<chartData.length;i++){const x=(i*(w-1))/Math.max(1,CHART_MAX_POINTS-1);const y=h/2-clamp(chartData[i],-maxAbs,maxAbs)*(h*0.42/maxAbs);if(i===0)chartCtx.moveTo(x,y);else chartCtx.lineTo(x,y)}chartCtx.stroke()}
 function renderScore(){const score=Math.round(clamp(scoreState.totalScore,0,100));totalScoreEl.textContent=String(score);scoreGradeEl.textContent=scoreState.running?getGrade(score):'待命';for(let i=1;i<=6;i++){const dim=Math.round(clamp(scoreState.dimensionScores[i-1]||0,0,100));document.getElementById('dim'+i+'-score').textContent=String(dim);document.getElementById('dim'+i+'-fill').style.width=dim+'%'}}
 function showCollision(){collisionEl.classList.add('active');collisionEl.textContent='碰撞触发 (-10)';clearTimeout(showCollision.timer);showCollision.timer=setTimeout(()=>{collisionEl.classList.remove('active');collisionEl.textContent='状态正常'},700)}
 function resetScore(){scoreState=createScoreState();startBtn.textContent='开始计分';collisionEl.classList.remove('active');collisionEl.textContent='状态正常';renderScore()}
 function stopRun(){scoreState.running=false;startBtn.textContent='开始计分';renderScore()}
-function startRun(){if(scoreState.running){stopRun();return}const carryLastGyro=scoreState.lastGyroZ;scoreState=createScoreState();scoreState.running=true;scoreState.lastGyroZ=carryLastGyro;startBtn.textContent='结束计分';renderScore()}
-function detectCollision(gz){if(scoreState.lastGyroZ===null){scoreState.lastGyroZ=gz;return}if(scoreState.collisionCooldown>0){scoreState.collisionCooldown--;scoreState.lastGyroZ=gz;return}const delta=Math.abs(gz-scoreState.lastGyroZ);if(delta>COLLISION_THRESHOLD){scoreState.collisionCooldown=12;showCollision();if(scoreState.running)scoreState.penalty+=COLLISION_PENALTY}scoreState.lastGyroZ=gz}
+function startRun(){if(scoreState.running){stopRun();return}const carryLastGyro=scoreState.lastGyroZ;scoreState=createScoreState();scoreState.running=true;scoreState.lastGyroZ=carryLastGyro;trimScoreWindows();startBtn.textContent='结束计分';renderScore()}
+function detectCollision(gz){if(scoreState.lastGyroZ===null){scoreState.lastGyroZ=gz;return}if(scoreState.collisionCooldown>0){scoreState.collisionCooldown--;scoreState.lastGyroZ=gz;return}const delta=Math.abs(gz-scoreState.lastGyroZ);if(delta>judgeConfig.collisionThreshold){scoreState.collisionCooldown=12;showCollision();if(scoreState.running)scoreState.penalty+=COLLISION_PENALTY}scoreState.lastGyroZ=gz}
 function calcTurnSmoothness(gz){if(scoreState.gyroHistory.length<5)return 80;let total=0;for(let i=1;i<scoreState.gyroHistory.length;i++)total+=Math.abs(scoreState.gyroHistory[i]-scoreState.gyroHistory[i-1]);const avgChange=total/(scoreState.gyroHistory.length-1);if(Math.abs(gz)<0.18)return 100;return clamp(100-avgChange*35,0,100)}
 function calcRangeMatch(gz,pseudo){const absGyro=Math.abs(gz),absPseudo=Math.abs(pseudo);if(absPseudo<5)return 70;const idealGyro=0.25+(absPseudo/100)*2.5;const diff=Math.abs(absGyro-idealGyro);return clamp(100-(diff/Math.max(.45,idealGyro))*42,0,100)}
 function calcGyroStability(){if(scoreState.gyroHistory.length<8)return 75;return clamp(100-stdDev(scoreState.gyroHistory)*40,0,100)}
-function calcBigTurnStability(gz){const absGyro=Math.abs(gz);if(absGyro>BIG_TURN_THRESHOLD)scoreState.inTurn=true;else if(absGyro<BIG_TURN_THRESHOLD*.45)scoreState.inTurn=false;if(!scoreState.inTurn)return 80;const recent=scoreState.gyroHistory.slice(-10);if(recent.length<6)return 70;return clamp(100-stdDev(recent)*34,0,100)}
+function calcBigTurnStability(gz){const absGyro=Math.abs(gz),threshold=judgeConfig.bigTurnThreshold;if(absGyro>threshold)scoreState.inTurn=true;else if(absGyro<threshold*.45)scoreState.inTurn=false;if(!scoreState.inTurn)return 80;const recent=scoreState.gyroHistory.slice(-10);if(recent.length<6)return 70;return clamp(100-stdDev(recent)*34,0,100)}
 function calcPseudoSpeedStability(){if(scoreState.pseudoHistory.length<8)return 75;const m=mean(scoreState.pseudoHistory);if(m<5)return 70;return clamp(100-(stdDev(scoreState.pseudoHistory)/Math.max(1,m))*220,0,100)}
 function calcThrottleStability(){if(scoreState.throttleHistory.length<8)return 75;const absValues=scoreState.throttleHistory.map(v=>Math.abs(v));const m=mean(absValues);if(m<5)return 70;return clamp(100-(stdDev(absValues)/(m+1))*180,0,100)}
 function updateScore(latest){const gz=Number(latest.gz||0),pseudo=clamp(Number(latest.pseudoSpeed||0),0,100),thr=Number(latest.thr||0);pushWindow(scoreState.gyroHistory,gz);pushWindow(scoreState.pseudoHistory,pseudo);pushWindow(scoreState.throttleHistory,thr);scoreState.samples++;const current=[calcTurnSmoothness(gz),calcRangeMatch(gz,pseudo),calcGyroStability(),calcBigTurnStability(gz),calcPseudoSpeedStability(),calcThrottleStability()];for(let i=0;i<current.length;i++){scoreState.dimensionSums[i]+=current[i];scoreState.dimensionScores[i]=scoreState.dimensionSums[i]/scoreState.samples}scoreState.totalScore=clamp(mean(scoreState.dimensionScores)-scoreState.penalty,0,100);renderScore()}
@@ -375,7 +411,7 @@ function dataWsUrl(){return(location.protocol==='https:'?'wss:':'ws:')+'//'+loca
 function scheduleDataWsReconnect(){if(dataWsReconnectTimer)return;dataWsReconnectTimer=setTimeout(()=>{dataWsReconnectTimer=0;connectJudgeSocket();dataWsReconnectDelay=Math.min(8000,dataWsReconnectDelay*2)},dataWsReconnectDelay)}
 function connectJudgeSocket(){try{if(dataWs&&dataWs.readyState!==WebSocket.CLOSED)return;if(dataWs){dataWs.onclose=null;dataWs.onerror=null;try{dataWs.close()}catch(e){}}const ws=new WebSocket(dataWsUrl());dataWs=ws;ws.binaryType='arraybuffer';ws.onopen=()=>{if(dataWs!==ws){ws.close();return}dataWsConnected=true;dataWsReconnectDelay=1000;setStatus('online / ws','statusOnline');ws.send('since:'+lastSeq)};ws.onmessage=e=>{if(dataWs!==ws)return;try{if(e.data instanceof ArrayBuffer){handleDataPayload(decodeBinaryDataPayload(e.data),'ws');return}if(e.data instanceof Blob){e.data.arrayBuffer().then(b=>{if(dataWs===ws)handleDataPayload(decodeBinaryDataPayload(b),'ws')}).catch(()=>setStatus('offline','statusOffline'));return}if(typeof e.data==='string'){const j=JSON.parse(e.data);if(j&&j.type==='data')handleDataPayload(j,'ws')}}catch(err){setStatus('offline','statusOffline')}};ws.onclose=()=>{if(dataWs!==ws)return;dataWsConnected=false;dataWs=null;setStatus('offline','statusOffline');scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollJudgeData,500)};ws.onerror=()=>{if(dataWs!==ws)return;dataWsConnected=false;try{ws.close()}catch(e){}}}catch(e){dataWsConnected=false;dataWs=null;setStatus('offline','statusOffline');scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollJudgeData,500)}}
 async function pollJudgeData(){if(dataWsConnected)return;if(dataPolling)return;dataPolling=true;let delay=160;try{const r=await fetch('/api/data?since='+lastSeq,{cache:'no-store'});const j=await r.json();handleDataPayload(j,'poll');delay=(j&&j.points&&j.points.length)?80:140}catch(e){setStatus('offline','statusOffline');delay=220}finally{dataPolling=false;if(!dataWsConnected)setTimeout(pollJudgeData,delay)}}
-drawChart();renderScore();connectJudgeSocket();setTimeout(()=>{if(!dataWsConnected)pollJudgeData()},1200);
+syncJudgeConfigInputs();drawChart();renderScore();loadJudgeConfig();connectJudgeSocket();setTimeout(()=>{if(!dataWsConnected)pollJudgeData()},1200);
 </script>
 </body>
 </html>

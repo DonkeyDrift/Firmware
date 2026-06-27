@@ -62,6 +62,19 @@ static const char* MUS4_PREF_JOYSTICK_THROT_MIN_KEY = "js_th_min";
 static const char* MUS4_PREF_JOYSTICK_THROT_MID_KEY = "js_th_mid";
 static const char* MUS4_PREF_JOYSTICK_THROT_MAX_KEY = "js_th_max";
 static const char* MUS4_PREF_JOYSTICK_THROT_EN_KEY  = "js_th_en";
+static const char* MUS4_PREF_JUDGE_COLLISION_THRESHOLD_KEY = "jd_col_th";
+static const char* MUS4_PREF_JUDGE_BIG_TURN_THRESHOLD_KEY = "jd_turn_th";
+static const char* MUS4_PREF_JUDGE_WINDOW_SIZE_KEY = "jd_win_sz";
+
+static const float WIFI_JUDGE_COLLISION_THRESHOLD_DEFAULT = 2.8f;
+static const float WIFI_JUDGE_COLLISION_THRESHOLD_MIN = 0.5f;
+static const float WIFI_JUDGE_COLLISION_THRESHOLD_MAX = 8.0f;
+static const float WIFI_JUDGE_BIG_TURN_THRESHOLD_DEFAULT = 1.6f;
+static const float WIFI_JUDGE_BIG_TURN_THRESHOLD_MIN = 0.3f;
+static const float WIFI_JUDGE_BIG_TURN_THRESHOLD_MAX = 4.0f;
+static const uint8_t WIFI_JUDGE_WINDOW_SIZE_DEFAULT = 20;
+static const uint8_t WIFI_JUDGE_WINDOW_SIZE_MIN = 5;
+static const uint8_t WIFI_JUDGE_WINDOW_SIZE_MAX = 64;
 
 static const uint8_t WIFI_AP_SSID_MAX_LEN = 32;
 static const uint8_t WIFI_STA_SSID_MAX_LEN = 32;
@@ -74,6 +87,34 @@ static const unsigned long WIFI_WEB_DATA_INTERVAL_MS = 16;
 
 struct WebLogEntry { uint32_t seq; unsigned long t; char source[8]; char line[160]; };
 struct WifiScanEntry { char ssid[WIFI_STA_SSID_MAX_LEN + 1]; int32_t rssi; int32_t channel; bool secure; };
+struct JudgeConfig {
+    float collisionThreshold;
+    float bigTurnThreshold;
+    uint8_t windowSize;
+};
+
+static inline JudgeConfig defaultJudgeConfig()
+{
+    JudgeConfig config = {
+        WIFI_JUDGE_COLLISION_THRESHOLD_DEFAULT,
+        WIFI_JUDGE_BIG_TURN_THRESHOLD_DEFAULT,
+        WIFI_JUDGE_WINDOW_SIZE_DEFAULT
+    };
+    return config;
+}
+
+static inline bool isValidJudgeConfig(const JudgeConfig& config)
+{
+    return !isnan(config.collisionThreshold) &&
+        !isnan(config.bigTurnThreshold) &&
+        config.collisionThreshold >= WIFI_JUDGE_COLLISION_THRESHOLD_MIN &&
+        config.collisionThreshold <= WIFI_JUDGE_COLLISION_THRESHOLD_MAX &&
+        config.bigTurnThreshold >= WIFI_JUDGE_BIG_TURN_THRESHOLD_MIN &&
+        config.bigTurnThreshold <= WIFI_JUDGE_BIG_TURN_THRESHOLD_MAX &&
+        config.windowSize >= WIFI_JUDGE_WINDOW_SIZE_MIN &&
+        config.windowSize <= WIFI_JUDGE_WINDOW_SIZE_MAX;
+}
+
 struct WebDataPoint {
     uint32_t seq;
     unsigned long t;

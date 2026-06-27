@@ -423,6 +423,106 @@ static void handleWifiWebSta()
     wifiWebServer.send(200, "application/json", wifiStaJson());
 }
 
+static void appendJudgeConfigJson(String& response, const JudgeConfig& config)
+{
+    response += "{\"collisionThreshold\":";
+    response += String(config.collisionThreshold, 2);
+    response += ",\"bigTurnThreshold\":";
+    response += String(config.bigTurnThreshold, 2);
+    response += ",\"windowSize\":";
+    response += config.windowSize;
+    response += ",\"defaults\":{\"collisionThreshold\":";
+    response += String(WIFI_JUDGE_COLLISION_THRESHOLD_DEFAULT, 2);
+    response += ",\"bigTurnThreshold\":";
+    response += String(WIFI_JUDGE_BIG_TURN_THRESHOLD_DEFAULT, 2);
+    response += ",\"windowSize\":";
+    response += WIFI_JUDGE_WINDOW_SIZE_DEFAULT;
+    response += "},\"limits\":{\"collisionThresholdMin\":";
+    response += String(WIFI_JUDGE_COLLISION_THRESHOLD_MIN, 2);
+    response += ",\"collisionThresholdMax\":";
+    response += String(WIFI_JUDGE_COLLISION_THRESHOLD_MAX, 2);
+    response += ",\"bigTurnThresholdMin\":";
+    response += String(WIFI_JUDGE_BIG_TURN_THRESHOLD_MIN, 2);
+    response += ",\"bigTurnThresholdMax\":";
+    response += String(WIFI_JUDGE_BIG_TURN_THRESHOLD_MAX, 2);
+    response += ",\"windowSizeMin\":";
+    response += WIFI_JUDGE_WINDOW_SIZE_MIN;
+    response += ",\"windowSizeMax\":";
+    response += WIFI_JUDGE_WINDOW_SIZE_MAX;
+    response += "}}";
+}
+
+static String wifiJudgeConfigJson()
+{
+    String response;
+    response.reserve(256);
+    appendJudgeConfigJson(response, ws.judgeConfig);
+    return response;
+}
+
+static void handleWifiWebJudgeConfig()
+{
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", wifiJudgeConfigJson());
+}
+
+static void handleWifiWebJudgeConfigSet()
+{
+    if (!wifiWebServer.hasArg("collisionThreshold") ||
+        !wifiWebServer.hasArg("bigTurnThreshold") ||
+        !wifiWebServer.hasArg("windowSize")) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"missing_fields\"}");
+        return;
+    }
+
+    JudgeConfig config = ws.judgeConfig;
+    config.collisionThreshold = wifiWebServer.arg("collisionThreshold").toFloat();
+    config.bigTurnThreshold = wifiWebServer.arg("bigTurnThreshold").toFloat();
+    int windowSize = wifiWebServer.arg("windowSize").toInt();
+    if (windowSize < WIFI_JUDGE_WINDOW_SIZE_MIN || windowSize > WIFI_JUDGE_WINDOW_SIZE_MAX) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_window_size\"}");
+        return;
+    }
+    config.windowSize = (uint8_t)windowSize;
+    if (!isValidJudgeConfig(config)) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
+        return;
+    }
+    if (!saveJudgeConfigPreference(config)) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(500, "application/json", "{\"saved\":false}");
+        return;
+    }
+
+    String response;
+    response.reserve(280);
+    response += "{\"saved\":true,\"config\":";
+    appendJudgeConfigJson(response, ws.judgeConfig);
+    response += "}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
+static void handleWifiWebJudgeConfigReset()
+{
+    if (!resetJudgeConfigPreference()) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(500, "application/json", "{\"reset\":false}");
+        return;
+    }
+
+    String response;
+    response.reserve(280);
+    response += "{\"reset\":true,\"config\":";
+    appendJudgeConfigJson(response, ws.judgeConfig);
+    response += "}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
 static void handleWifiWebStaPassword()
 {
     if (!ws.consoleAuthenticated && !ws.devModeEnabled) {
@@ -887,6 +987,9 @@ void setupWebConsoleServer()
     wifiWebServer.on("/api/wifi-sta/password", HTTP_GET, handleWifiWebStaPassword);
     wifiWebServer.on("/api/wifi-sta/scan", HTTP_GET, handleWifiWebStaScan);
     wifiWebServer.on("/api/wifi-sta/clear", HTTP_POST, handleWifiWebStaClear);
+    wifiWebServer.on("/api/judge-config", HTTP_GET, handleWifiWebJudgeConfig);
+    wifiWebServer.on("/api/judge-config", HTTP_POST, handleWifiWebJudgeConfigSet);
+    wifiWebServer.on("/api/judge-config/reset", HTTP_POST, handleWifiWebJudgeConfigReset);
     wifiWebServer.on("/api/log", HTTP_GET, handleWifiWebLog);
     wifiWebServer.on("/api/data", HTTP_GET, handleWifiWebData);
     wifiWebServer.on("/update", HTTP_GET, handleWifiWebUpdateGet);

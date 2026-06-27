@@ -6,9 +6,13 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include "WifiConsoleTypes.h"
 
 void loadDevModePreference();
 bool saveDevModePreference(bool enabled);
+void loadJudgeConfigPreference();
+bool saveJudgeConfigPreference(const JudgeConfig& config);
+bool resetJudgeConfigPreference();
 
 void startWifiMdnsIfNeeded();
 void stopWifiMdnsIfNeeded();

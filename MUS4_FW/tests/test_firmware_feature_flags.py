@@ -2829,6 +2829,12 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     server = (
         PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
     ).read_text(encoding="utf-8")
+    wifi_manager = (
+        PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp"
+    ).read_text(encoding="utf-8")
+    runtime_state = (
+        PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "RuntimeState.h"
+    ).read_text(encoding="utf-8")
 
     assert "writeF32(latest.pseudoSpeed);" in telemetry
     assert "pseudoSpeed:f32()" in assets
@@ -2840,9 +2846,26 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     assert "function resetScore()" in assets
     assert "function updateScore(latest)" in assets
     assert "dim1-fill" in assets
+    assert 'fetch(\'/api/judge-config\'' in assets
+    assert "function saveJudgeConfig()" in assets
+    assert "function resetJudgeConfigToDefault()" in assets
+    assert "collisionThresholdInput" in assets
+    assert "bigTurnThresholdInput" in assets
+    assert "windowSizeInput" in assets
     assert "static void handleWifiWebJudge()" in server
+    assert "static void handleWifiWebJudgeConfig()" in server
+    assert "static void handleWifiWebJudgeConfigSet()" in server
+    assert "static void handleWifiWebJudgeConfigReset()" in server
     assert 'wifiWebServer.on("/judge", HTTP_GET, handleWifiWebJudge);' in server
     assert 'wifiWebServer.send_P(200, "text/html", WIFI_WEB_JUDGE_HTML);' in server
+    assert 'wifiWebServer.on("/api/judge-config", HTTP_GET, handleWifiWebJudgeConfig);' in server
+    assert 'wifiWebServer.on("/api/judge-config", HTTP_POST, handleWifiWebJudgeConfigSet);' in server
+    assert 'wifiWebServer.on("/api/judge-config/reset", HTTP_POST, handleWifiWebJudgeConfigReset);' in server
+    assert "JudgeConfig judgeConfig" in runtime_state
+    assert "void loadJudgeConfigPreference()" in wifi_manager
+    assert "bool saveJudgeConfigPreference(const JudgeConfig& config)" in wifi_manager
+    assert "bool resetJudgeConfigPreference()" in wifi_manager
+    assert "MUS4_PREF_JUDGE_COLLISION_THRESHOLD_KEY" in wifi_manager
 
 
 def test_tub_schema_bumps_to_v2_with_imu_five_axes():

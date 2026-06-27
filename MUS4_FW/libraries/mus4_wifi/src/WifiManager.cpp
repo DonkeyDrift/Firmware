@@ -233,6 +233,67 @@ bool saveDevModePreference(bool enabled)
     return true;
 }
 
+void loadJudgeConfigPreference()
+{
+    JudgeConfig config = defaultJudgeConfig();
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) {
+        wifiRuntime.judgeConfig = config;
+        mus4LogLine("wifi", "judge config load failed");
+        return;
+    }
+    config.collisionThreshold = mus4Prefs.getFloat(
+        MUS4_PREF_JUDGE_COLLISION_THRESHOLD_KEY,
+        WIFI_JUDGE_COLLISION_THRESHOLD_DEFAULT);
+    config.bigTurnThreshold = mus4Prefs.getFloat(
+        MUS4_PREF_JUDGE_BIG_TURN_THRESHOLD_KEY,
+        WIFI_JUDGE_BIG_TURN_THRESHOLD_DEFAULT);
+    config.windowSize = mus4Prefs.getUChar(
+        MUS4_PREF_JUDGE_WINDOW_SIZE_KEY,
+        WIFI_JUDGE_WINDOW_SIZE_DEFAULT);
+    mus4Prefs.end();
+    if (!isValidJudgeConfig(config)) {
+        config = defaultJudgeConfig();
+        mus4LogLine("wifi", "judge config invalid, using defaults");
+    }
+    wifiRuntime.judgeConfig = config;
+    mus4Logf(
+        "wifi",
+        "judge cfg col=%.2f turn=%.2f win=%u",
+        (double)wifiRuntime.judgeConfig.collisionThreshold,
+        (double)wifiRuntime.judgeConfig.bigTurnThreshold,
+        wifiRuntime.judgeConfig.windowSize);
+}
+
+bool saveJudgeConfigPreference(const JudgeConfig& config)
+{
+    if (!isValidJudgeConfig(config)) return false;
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
+    size_t collisionWritten = mus4Prefs.putFloat(
+        MUS4_PREF_JUDGE_COLLISION_THRESHOLD_KEY,
+        config.collisionThreshold);
+    size_t turnWritten = mus4Prefs.putFloat(
+        MUS4_PREF_JUDGE_BIG_TURN_THRESHOLD_KEY,
+        config.bigTurnThreshold);
+    size_t windowWritten = mus4Prefs.putUChar(
+        MUS4_PREF_JUDGE_WINDOW_SIZE_KEY,
+        config.windowSize);
+    mus4Prefs.end();
+    if (collisionWritten == 0 || turnWritten == 0 || windowWritten == 0) return false;
+    wifiRuntime.judgeConfig = config;
+    mus4Logf(
+        "wifi",
+        "judge cfg saved col=%.2f turn=%.2f win=%u",
+        (double)wifiRuntime.judgeConfig.collisionThreshold,
+        (double)wifiRuntime.judgeConfig.bigTurnThreshold,
+        wifiRuntime.judgeConfig.windowSize);
+    return true;
+}
+
+bool resetJudgeConfigPreference()
+{
+    return saveJudgeConfigPreference(defaultJudgeConfig());
+}
+
 void startWifiMdnsIfNeeded()
 {
 #ifdef DISABLE_WIFI_NAME_DISCOVERY

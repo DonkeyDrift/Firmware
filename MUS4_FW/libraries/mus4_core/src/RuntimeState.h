@@ -44,6 +44,13 @@ struct WifiRuntimeState {
     // Dev mode
     bool devModeEnabled = false;
 
+    // Judge tuning
+    JudgeConfig judgeConfig = {
+        WIFI_JUDGE_COLLISION_THRESHOLD_DEFAULT,
+        WIFI_JUDGE_BIG_TURN_THRESHOLD_DEFAULT,
+        WIFI_JUDGE_WINDOW_SIZE_DEFAULT
+    };
+
     // Timing
     unsigned long staConnectStartMs = 0;
     unsigned long staApplyDeadlineMs = 0;

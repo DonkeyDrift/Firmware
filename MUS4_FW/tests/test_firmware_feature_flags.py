@@ -2862,12 +2862,17 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     assert "已恢复默认值并写回设备，设备重启后仍保留" in assets
     assert "lowestDimension" in assets
     assert "weakestTrend" in assets
+    assert "weakestTrendReason" in assets
     assert "当前最低项：" in assets
     assert "最近拖分项：" in assets
+    assert "拖分原因：" in assets
     assert "dim1-trend" in assets
     assert "function computeDimensionTrend(values)" in assets
     assert "function refreshScoreBreakdown()" in assets
+    assert "function getWeakestTrendReason(name)" in assets
     assert "SCORE_TREND_WINDOW=8" in assets
+    assert "速度稳定敏感度" in assets
+    assert "大弯阈值" in assets
     assert "collisionThresholdInput" in assets
     assert "bigTurnThresholdInput" in assets
     assert "windowSizeInput" in assets

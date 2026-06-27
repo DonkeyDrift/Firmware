@@ -43,6 +43,7 @@
 #include <ArduinoOTA.h>
 #include <Update.h>
 #include <Preferences.h>
+#include <esp_ota_ops.h>
 #include "BuildInfo.h"
 #include "SharedTypes.h"
 #include "RcPwmCapture.h"
@@ -231,6 +232,32 @@ uint8_t g_i2cScanCount = 0;
 
 
 #ifdef ENABLE_WIFI_CONSOLE
+static float wifiPseudoSpeedFiltered = 0.0f;
+
+static float computePseudoSpeed()
+{
+    if (!mpu6050Data.valid) {
+        wifiPseudoSpeedFiltered = 0.0f;
+        return 0.0f;
+    }
+
+    const float gyroDeadzone = 0.15f;
+    const float gyroRef = 2.5f;
+    const float gyroWeight = 0.6f;
+    const float throttleWeight = 0.4f;
+    const float riseAlpha = 0.12f;
+    const float fallAlpha = 0.05f;
+
+    float gyroMag = fabsf(mpu6050Data.gyroZ);
+    if (gyroMag < gyroDeadzone) gyroMag = 0.0f;
+    float gyroScore = min(gyroMag / gyroRef, 1.0f);
+    float throttleScore = min(fabsf((float)car_output.throttle) / 100.0f, 1.0f);
+    float pseudoRaw = gyroScore * gyroWeight + throttleScore * throttleWeight;
+    float alpha = pseudoRaw > wifiPseudoSpeedFiltered ? riseAlpha : fallAlpha;
+    wifiPseudoSpeedFiltered += (pseudoRaw - wifiPseudoSpeedFiltered) * alpha;
+    return constrain(wifiPseudoSpeedFiltered * 100.0f, 0.0f, 100.0f);
+}
+
 void sampleWifiWebData()
 {
     unsigned long now = millis();
@@ -265,6 +292,7 @@ void sampleWifiWebData()
     point.driftActive = drift_assist_active;
     point.driftCompensation = drift_compensation;
     point.gyroZFiltered = gyro_z_filtered;
+    point.pseudoSpeed = computePseudoSpeed();
     wifiWebDataHead = (wifiWebDataHead + 1) % WIFI_WEB_DATA_CAPACITY;
     if (wifiWebDataCount < WIFI_WEB_DATA_CAPACITY) wifiWebDataCount++;
 }
@@ -274,6 +302,9 @@ static void setupWifiOtaCallbacks()
     ArduinoOTA.setHostname(WIFI_OTA_HOSTNAME);
     ArduinoOTA.setPassword(WIFI_OTA_PASSWORD);
     ArduinoOTA.setPort(WIFI_OTA_PORT);
+    // v1.7.27：ArduinoOTA 默认 read timeout 仅 1000ms，Flash 写入期间 TCP 窗口
+    // 为 0 时容易触发 OTA_RECEIVE_ERROR。设置为 30s，与 HTTP OTA 保持一致。
+    ArduinoOTA.setTimeout(30000);
     ArduinoOTA.onStart([]() {
         wifiOtaInProgress = true;
         wifiOtaParkGuardActive = true;
@@ -374,6 +405,14 @@ void setup()
       loadWifiStaPreference();
       loadJoystickCalibration();
       cleanupInvalidOtaPartition();
+      // v1.7.28：启动后标记当前固件为有效，取消 bootloader 的 OTA 回滚。
+      // 否则第一次 OTA 成功后新分区长期处于 PENDING_VERIFY，下次 reset
+      // 可能被 bootloader 回滚到旧固件，表现为 Reset 后仍无法 OTA。
+      if (esp_ota_mark_app_valid_cancel_rollback() != ESP_OK) {
+        mus4LogLine("ota", "warn: mark app valid failed");
+      } else {
+        mus4LogLine("ota", "app valid: rollback cancelled");
+      }
       setupWifiConsole();
       keepDevModeOtaWindowActive(otaRuntime, wifiRuntime);
     #endif

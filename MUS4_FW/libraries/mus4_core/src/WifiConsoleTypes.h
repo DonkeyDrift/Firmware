@@ -99,5 +99,6 @@ struct WebDataPoint {
     bool driftActive;
     float driftCompensation;
     float gyroZFiltered;
+    float pseudoSpeed;
 };
 #endif

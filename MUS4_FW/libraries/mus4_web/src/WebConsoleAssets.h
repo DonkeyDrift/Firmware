@@ -16,7 +16,7 @@ body{font-family:system-ui,sans-serif;margin:12px;background:#101318;color:#e8ed
 </style>
 </head>
 <body>
-<div class="headerRow"><h1 data-i18n="app.title">Drifter Console</h1><span class="version" id="versionLabel">--</span><a href="/update" target="_blank" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch" id="devModeToggle" style="gap:4px"><span class="toggleLabel devHint">DEV <b id="devModeSwitchText">OFF</b></span><input type="checkbox" id="devModeCheck" onchange="toggleDevModeFromSwitch()"><span class="slider"></span></label></div>
+<div class="headerRow"><h1 data-i18n="app.title">Drifter Console</h1><span class="version" id="versionLabel">--</span><a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch" id="devModeToggle" style="gap:4px"><span class="toggleLabel devHint">DEV <b id="devModeSwitchText">OFF</b></span><input type="checkbox" id="devModeCheck" onchange="toggleDevModeFromSwitch()"><span class="slider"></span></label></div>
 <div class="grid">
 <section class="panel wide">
 <div class="stateGrid">
@@ -171,7 +171,7 @@ async function refreshStatus(){try{const r=await fetch('/api/status');const t=aw
 async function pollLog(){try{const r=await fetch('/api/log?since='+lastLogSeq);const j=await r.json();for(const e of j.entries){lastLogSeq=Math.max(lastLogSeq,e.seq);appendLogLine('['+e.t+']['+e.src+'] '+e.line,e.src)}}catch(e){line('log error: '+e)}}
 function updateState(p){const modes={0:['RC',t('mode.manual')],1:['ASSIST',t('mode.assist')],2:['AUTO',t('mode.auto')]},m=modes[p.mode]||['MODE '+p.mode,t('mode.unknown')];modeCard.className='stateCard mode'+p.mode;modeValue.textContent=m[0];modeSub.textContent=m[1];parkCard.className='stateCard '+(p.park?'parkLocked':'parkUnlocked');parkValue.textContent=p.park?'LOCKED':'UNLOCKED';parkSub.textContent=p.park?t('park.guarded'):t('park.enabled');const de=!!p.de,da=!!p.da,dc=Number(p.dc||0),gzf=Number(p.gzf||0);driftCard.className='stateCard '+(!de?'driftOff':da?'driftActive':'driftArmed');driftValue.textContent=!de?'OFF':da?'ACTIVE':'ARMED';driftSub.textContent='comp='+dc.toFixed(1)+' gzf='+gzf.toFixed(2);driftNeedle.style.left=Math.max(0,Math.min(100,(Math.max(-70,Math.min(70,dc))+70)*100/140))+'%';[p.ch1,p.ch2,p.ch3,p.ch4,p.ch5,p.ch6].forEach((v,i)=>chValues[i].textContent=v??'----');const v=Number(p.vol);if(!isNaN(v)&&v>=5){voltageValue.textContent=v.toFixed(1)+'V';const pct=Math.max(0,Math.min(100,Math.round((v-10.5)/(12.6-10.5)*100)));voltageSub.textContent=pct+'%';voltageCard.className='stateCard '+(pct>30?'mode0':pct>15?'driftArmed':'driftOff')}else{voltageValue.textContent=t('voltage.disconnected');voltageSub.textContent=t('battery');voltageCard.className='stateCard driftOff'}const parkLocked=!!p.park;if(parkLocked){if(parkLockedAt===0)parkLockedAt=performance.now()}else{parkLockedAt=0;if(screenSaverActive)exitScreenSaver()}const now=performance.now();const ch1Val=Number(p.ch1);if(!isNaN(ch1Val)){ch1Samples.push({t:now,v:ch1Val});while(ch1Samples.length>0&&now-ch1Samples[0].t>60000)ch1Samples.shift();if(ch1Samples.length>=2){let minCh1=Infinity,maxCh1=-Infinity;for(const s of ch1Samples){if(s.v<minCh1)minCh1=s.v;if(s.v>maxCh1)maxCh1=s.v}const range=maxCh1-minCh1;console.log('saver: active='+screenSaverActive+' park='+parkLocked+' ch1='+ch1Val+' range='+range.toFixed(1)+' n='+ch1Samples.length);if(!screenSaverActive&&parkLockedAt>0&&now-parkLockedAt>=60000&&range<10){enterScreenSaver()}else if(screenSaverActive&&range>=10){exitScreenSaver()}}else if(screenSaverActive&&ch1Samples.length===1){const last=ch1Samples[0].v;if(Math.abs(ch1Val-last)>=10){console.log('saver: instant exit ch1='+ch1Val+' last='+last);exitScreenSaver()}}}}
 function handleDataPayload(j,transport,elapsed){const arr=j.points||[];let latest=j.latest||null;let added=0;for(const p of arr){p.req=transport==='ws'?0:elapsed;lastDataSeq=Math.max(lastDataSeq,p.seq||0);if(!chartPaused&&!screenSaverActive){addPoint(p);added++}}if(latest){lastDataSeq=Math.max(lastDataSeq,latest.seq||0);updateState(latest);tp(latest)}const p=latest||latestPoint();dataTransport=transport;if(p){thrMeta.textContent=p.thr;strMeta.textContent=p.str;gzMeta.textContent=Number(p.gz||0).toFixed(3)}if(added>0)draw()}
-function decodeBinaryDataPayload(buffer){const v=new DataView(buffer);let o=0;const u8=()=>v.getUint8(o++),u16=()=>{const x=v.getUint16(o,true);o+=2;return x},u32=()=>{const x=v.getUint32(o,true);o+=4;return x},i16=()=>{const x=v.getInt16(o,true);o+=2;return x},f32=()=>{const x=v.getFloat32(o,true);o+=4;return x};if(u8()!==77||u8()!==52)throw new Error('bad magic');const version=u8();u8();if(version!==2)throw new Error('bad version');const dropped=u32(),seq=u32(),t=u32(),dt=u16(),thr=i16(),str=i16(),gz=f32(),gx=f32(),gy=f32(),ax=f32(),ay=f32(),az=f32(),mode=u8(),park=u8();const ch=[u16(),u16(),u16(),u16(),u16(),u16()];const latest={seq,t,dt,thr,str,gz,gx,gy,ax,ay,az,mode,park,ch1:ch[0],ch2:ch[1],ch3:ch[2],ch4:ch[3],ch5:ch[4],ch6:ch[5],rct:i16(),rcs:i16(),pt:i16(),ps:i16(),gzf:f32(),dc:f32(),de:u8(),da:u8(),vol:f32()};const count=u8(),points=[];for(let i=0;i<count;i++)points.push({seq:u32(),t:u32(),dt:u16(),thr:i16(),str:i16(),gz:f32()});return{type:'data',dropped,latest,points}}
+function decodeBinaryDataPayload(buffer){const v=new DataView(buffer);let o=0;const u8=()=>v.getUint8(o++),u16=()=>{const x=v.getUint16(o,true);o+=2;return x},u32=()=>{const x=v.getUint32(o,true);o+=4;return x},i16=()=>{const x=v.getInt16(o,true);o+=2;return x},f32=()=>{const x=v.getFloat32(o,true);o+=4;return x};if(u8()!==77||u8()!==52)throw new Error('bad magic');const version=u8();u8();if(version!==2)throw new Error('bad version');const dropped=u32(),seq=u32(),t=u32(),dt=u16(),thr=i16(),str=i16(),gz=f32(),gx=f32(),gy=f32(),ax=f32(),ay=f32(),az=f32(),mode=u8(),park=u8();const ch=[u16(),u16(),u16(),u16(),u16(),u16()];const latest={seq,t,dt,thr,str,gz,gx,gy,ax,ay,az,mode,park,ch1:ch[0],ch2:ch[1],ch3:ch[2],ch4:ch[3],ch5:ch[4],ch6:ch[5],rct:i16(),rcs:i16(),pt:i16(),ps:i16(),gzf:f32(),dc:f32(),de:u8(),da:u8(),vol:f32(),pseudoSpeed:f32()};const count=u8(),points=[];for(let i=0;i<count;i++)points.push({seq:u32(),t:u32(),dt:u16(),thr:i16(),str:i16(),gz:f32()});return{type:'data',dropped,latest,points}}
 function dataWsUrl(){return (location.protocol==='https:'?'wss:':'ws:')+'//'+location.hostname+':81/'}
 function scheduleDataWsReconnect(){if(dataWsReconnectTimer)return;dataWsReconnectTimer=setTimeout(()=>{dataWsReconnectTimer=0;connectDataSocket();dataWsReconnectDelay=Math.min(8000,dataWsReconnectDelay*2)},dataWsReconnectDelay)}
 function connectDataSocket(){try{if(dataWs&&dataWs.readyState!==WebSocket.CLOSED)return;if(dataWs){dataWs.onclose=null;dataWs.onerror=null;try{dataWs.close()}catch(e){}}const ws=new WebSocket(dataWsUrl());dataWs=ws;ws.binaryType='arraybuffer';ws.onopen=()=>{if(dataWs!==ws){ws.close();return}dataWsConnected=true;dataWsReconnectDelay=1000;dataTransport='ws';ws.send('since:'+lastDataSeq)};ws.onmessage=e=>{if(dataWs!==ws)return;try{if(typeof e.data==='string'){const j=JSON.parse(e.data);if(j&&j.type==='log'&&j.line!==undefined){lastLogSeq=Math.max(lastLogSeq,j.seq||0);appendLogLine('['+j.t+']['+j.src+'] '+j.line,j.src);return}return}if(e.data instanceof ArrayBuffer){handleDataPayload(decodeBinaryDataPayload(e.data),'ws',0);return}if(e.data instanceof Blob){e.data.arrayBuffer().then(b=>{if(dataWs===ws)handleDataPayload(decodeBinaryDataPayload(b),'ws',0)}).catch(err=>line('ws parse error: '+err));return}}catch(err){line('ws parse error: '+err)}};ws.onclose=()=>{if(dataWs!==ws)return;dataWsConnected=false;dataWs=null;scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,2000)};ws.onerror=()=>{if(dataWs!==ws)return;dataWsConnected=false;try{ws.close()}catch(e){}}}catch(e){dataWsConnected=false;dataWs=null;line('ws error: '+e);scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollData,2000)}}
@@ -228,6 +228,154 @@ function drawSeries(key,color,min,max,divisor=1){const w=cw,h=ch,plotX=36,plotW=
 function draw(){const w=cw,h=ch;ensureGrid();ctx.clearRect(36,0,w-52,h);ctx.drawImage(gridCanvas,36*dpr,0,(w-52)*dpr,h*dpr,36,0,w-52,h);ctx.fillStyle='#8fa1b5';ctx.font='bold 11px sans-serif';ctx.textAlign='right';ctx.textBaseline='middle';const yLabels=[1,0.75,0.5,0.25,0,-0.25,-0.5,-0.75,-1];for(let i=0;i<9;i++){ctx.fillText(String(yLabels[i]),32,Math.round(20+i*(h-40)/8))}ctx.save();ctx.beginPath();ctx.rect(36,0,w-52,h);ctx.clip();ctx.lineWidth=2;drawSeries('thr','#39d98a',-1,1,100);drawSeries('str','#5cc8ff',-1,1,100);drawSeries('gz','#ff6b6b',-1,1,5);if(screenSaverActive){ctx.fillStyle='#5cc8ff';ctx.font='20px sans-serif';ctx.textAlign='center';ctx.fillText('Drifting for Fun~',w/2,h/2)}ctx.restore()}
 function renderLoop(now){requestAnimationFrame(renderLoop);let dt=Math.min(100,now-lastFrameTime);lastFrameTime=now;if(document.hidden||chartPaused)return;if(screenSaverActive){const stepX=(cw-52)/255;scrollOffset+=dt/18*stepX;scrollOffset=Math.min(scrollOffset,stepX*1.5);while(scrollOffset>=stepX){addPoint({seq:0,t:saverTime,dt:16,thr:90*Math.sin(saverTime/400),str:90*Math.sin(saverTime/550+1),gz:5*Math.sin(saverTime/300+2)});saverTime+=16;scrollOffset-=stepX}if(now-lastDrawTime>=16){lastDrawTime=now;draw()}}}
 initCanvasDpr();applyLanguage(uiLang);refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,5000);setInterval(refreshWifiSta,5000);setInterval(pollLog,1000);connectDataSocket();setTimeout(()=>{if(!dataWsConnected)pollData()},1200);updateTubMeta();draw();requestAnimationFrame(renderLoop);refreshJoystickCalStatus();
+</script>
+</body>
+</html>
+)rawliteral";
+
+static const char WIFI_WEB_JUDGE_HTML[] PROGMEM = R"rawliteral(
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drift Judge</title>
+<style>
+h1{font-size:24px;margin:0 0 6px}
+body{font-family:system-ui,sans-serif;margin:16px auto;max-width:760px;background:#101318;color:#e8edf2;padding:0 12px}
+a{color:#8bdcff;text-decoration:none}
+button{background:#5cc8ff;color:#061019;border:1px solid #5cc8ff;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
+button.alt{background:#171c24;color:#e8edf2;border-color:#2b3441}
+button:disabled{opacity:.5;cursor:not-allowed}
+.muted{color:#8fa1b5}
+.panel{background:#171c24;border:1px solid #2b3441;border-radius:12px;padding:14px;margin:12px 0}
+.panelHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.card{background:#111820;border:1px solid #2b3441;border-radius:10px;padding:12px}
+.label{font-size:12px;color:#8fa1b5;text-transform:uppercase;letter-spacing:.06em}
+.value{font-size:28px;font-weight:800;margin-top:6px}
+.sub{font-size:13px;color:#8fa1b5;margin-top:6px}
+.hero{display:grid;grid-template-columns:1.2fr .8fr;gap:12px}
+.heroCard{background:linear-gradient(145deg,#111820,#151f2a);border:1px solid #2b3441;border-radius:14px;padding:14px}
+.heroValue{font-size:56px;font-weight:900;line-height:1}
+.scoreValue{font-size:38px;font-weight:900;line-height:1}
+.bar{height:12px;background:#243041;border-radius:999px;overflow:hidden;margin-top:12px}
+.fill{height:100%;width:0;background:linear-gradient(90deg,#39d98a,#5cc8ff,#8b5cf6)}
+.metaGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.mini{font-size:12px;color:#8fa1b5}
+.statusPill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;background:#111820;border:1px solid #2b3441;font-size:12px;font-weight:700}
+.statusDot{width:9px;height:9px;border-radius:50%;background:#64748b}
+.statusOnline .statusDot{background:#39d98a}
+.statusWaiting .statusDot{background:#f59e0b}
+.statusOffline .statusDot{background:#ef4444}
+.chartWrap{height:140px;background:#0f1720;border:1px solid #223042;border-radius:12px;padding:10px}
+.chartWrap canvas{width:100%;height:100%}
+.controls{display:flex;gap:10px;flex-wrap:wrap}
+.dimensions{display:grid;gap:10px}
+.dimRow{display:grid;grid-template-columns:86px 1fr 44px;gap:10px;align-items:center}
+.dimName{font-size:12px;color:#c7d2df}
+.dimBar{height:8px;background:#223042;border-radius:999px;overflow:hidden}
+.dimFill{height:100%;width:0;background:linear-gradient(90deg,#ef4444,#f59e0b,#39d98a)}
+.dimScore{text-align:right;font-size:13px;font-weight:700}
+.collision{padding:10px 12px;border-radius:10px;background:#111820;border:1px solid #2b3441;color:#8fa1b5;font-size:13px}
+.collision.active{border-color:#ef4444;background:rgba(239,68,68,.12);color:#ffd3d3}
+@media (max-width:640px){body{max-width:560px}.hero,.grid,.metaGrid{grid-template-columns:1fr}.heroValue{font-size:42px}.scoreValue{font-size:32px}.dimRow{grid-template-columns:74px 1fr 40px}}
+</style>
+</head>
+<body>
+<div class="panel">
+<div class="panelHead">
+<div>
+<h1>Drift Judge</h1>
+<div class="muted">WebSocket first / pseudoSpeed monitor-first scoring</div>
+</div>
+<div class="row">
+<div id="statusPill" class="statusPill statusWaiting"><span class="statusDot"></span><span id="status">connecting...</span></div>
+<div class="muted">seq <b id="seq">--</b></div>
+<div class="muted"><a href="/">返回 Drifter Console</a></div>
+</div>
+</div>
+</div>
+<div class="hero">
+<div class="heroCard">
+<div class="label">pseudoSpeed</div>
+<div id="pseudoSpeed" class="heroValue">--</div>
+<div class="sub">代理速度 / 动态强度</div>
+<div class="bar"><div id="pseudoBar" class="fill"></div></div>
+<div class="metaGrid" style="margin-top:12px">
+<div class="card"><div class="label">gyroZ</div><div id="gyroZ" class="value">--</div></div>
+<div class="card"><div class="label">throttle</div><div id="throttle" class="value">--</div></div>
+<div class="card"><div class="label">transport</div><div id="transport" class="value">--</div></div>
+</div>
+</div>
+<div class="heroCard">
+<div class="label">总分</div>
+<div id="totalScore" class="scoreValue">0</div>
+<div id="scoreGrade" class="sub">--</div>
+<div id="collision" class="collision" style="margin-top:12px">状态正常</div>
+</div>
+</div>
+<div class="panel">
+<div class="label">gyroZ 曲线</div>
+<div class="chartWrap"><canvas id="gyroChart" width="700" height="140"></canvas></div>
+</div>
+<div class="panel">
+<div class="panelHead">
+<div>
+<div class="label">评分维度</div>
+<div class="muted">监控优先，但保留实时总分与 6 维条</div>
+</div>
+<div class="controls">
+<button id="startBtn" onclick="startRun()">开始计分</button>
+<button class="alt" onclick="resetScore()">重置</button>
+</div>
+</div>
+<div id="dimensions" class="dimensions" style="margin-top:12px">
+<div class="dimRow"><div class="dimName">转弯平滑</div><div class="dimBar"><div id="dim1-fill" class="dimFill"></div></div><div id="dim1-score" class="dimScore">0</div></div>
+<div class="dimRow"><div class="dimName">区间匹配</div><div class="dimBar"><div id="dim2-fill" class="dimFill"></div></div><div id="dim2-score" class="dimScore">0</div></div>
+<div class="dimRow"><div class="dimName">陀螺稳定</div><div class="dimBar"><div id="dim3-fill" class="dimFill"></div></div><div id="dim3-score" class="dimScore">0</div></div>
+<div class="dimRow"><div class="dimName">大弯稳定</div><div class="dimBar"><div id="dim4-fill" class="dimFill"></div></div><div id="dim4-score" class="dimScore">0</div></div>
+<div class="dimRow"><div class="dimName">速度稳定</div><div class="dimBar"><div id="dim5-fill" class="dimFill"></div></div><div id="dim5-score" class="dimScore">0</div></div>
+<div class="dimRow"><div class="dimName">油门稳定</div><div class="dimBar"><div id="dim6-fill" class="dimFill"></div></div><div id="dim6-score" class="dimScore">0</div></div>
+</div>
+</div>
+<script>
+const statusEl=document.getElementById('status'),statusPillEl=document.getElementById('statusPill'),pseudoSpeedEl=document.getElementById('pseudoSpeed'),pseudoBarEl=document.getElementById('pseudoBar'),gyroZEl=document.getElementById('gyroZ'),throttleEl=document.getElementById('throttle'),seqEl=document.getElementById('seq'),transportEl=document.getElementById('transport'),totalScoreEl=document.getElementById('totalScore'),scoreGradeEl=document.getElementById('scoreGrade'),collisionEl=document.getElementById('collision'),startBtn=document.getElementById('startBtn'),chartCanvas=document.getElementById('gyroChart'),chartCtx=chartCanvas.getContext('2d');
+const CHART_MAX_POINTS=120,WINDOW_SIZE=20,COLLISION_THRESHOLD=2.8,BIG_TURN_THRESHOLD=1.6,COLLISION_PENALTY=10;
+let lastSeq=0,dataWs=null,dataWsConnected=false,dataWsReconnectDelay=1000,dataWsReconnectTimer=0,dataPolling=false;
+let chartData=[];
+let scoreState=createScoreState();
+function createScoreState(){return{running:false,samples:0,totalScore:0,penalty:0,dimensionScores:[0,0,0,0,0,0],dimensionSums:[0,0,0,0,0,0],gyroHistory:[],pseudoHistory:[],throttleHistory:[],lastGyroZ:null,collisionCooldown:0,inTurn:false}}
+function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
+function setStatus(text,kind){statusEl.textContent=text;statusPillEl.className='statusPill '+(kind||'statusWaiting')}
+function getGrade(score){if(score>=95)return'S 级 - 完美';if(score>=90)return'A 级 - 优秀';if(score>=80)return'B 级 - 良好';if(score>=70)return'C 级 - 一般';if(score>=60)return'D 级 - 及格';return'E 级 - 需练习'}
+function mean(values){if(!values.length)return 0;let sum=0;for(let i=0;i<values.length;i++)sum+=values[i];return sum/values.length}
+function stdDev(values){if(values.length<2)return 0;const m=mean(values);let sum=0;for(let i=0;i<values.length;i++){const d=values[i]-m;sum+=d*d}return Math.sqrt(sum/values.length)}
+function pushWindow(list,value){list.push(value);if(list.length>WINDOW_SIZE)list.shift()}
+function pushChartValue(value){chartData.push(Number(value||0));if(chartData.length>CHART_MAX_POINTS)chartData.shift();drawChart()}
+function drawChart(){const w=chartCanvas.width,h=chartCanvas.height;chartCtx.clearRect(0,0,w,h);chartCtx.fillStyle='#0f1720';chartCtx.fillRect(0,0,w,h);chartCtx.strokeStyle='#223042';chartCtx.lineWidth=1;for(let i=0;i<5;i++){const y=Math.round(i*(h-1)/4)+.5;chartCtx.beginPath();chartCtx.moveTo(0,y);chartCtx.lineTo(w,y);chartCtx.stroke()}if(chartData.length<2)return;chartCtx.strokeStyle='#5cc8ff';chartCtx.lineWidth=2;chartCtx.beginPath();const maxAbs=3.5;for(let i=0;i<chartData.length;i++){const x=(i*(w-1))/Math.max(1,CHART_MAX_POINTS-1);const y=h/2-clamp(chartData[i],-maxAbs,maxAbs)*(h*0.42/maxAbs);if(i===0)chartCtx.moveTo(x,y);else chartCtx.lineTo(x,y)}chartCtx.stroke()}
+function renderScore(){const score=Math.round(clamp(scoreState.totalScore,0,100));totalScoreEl.textContent=String(score);scoreGradeEl.textContent=scoreState.running?getGrade(score):'待命';for(let i=1;i<=6;i++){const dim=Math.round(clamp(scoreState.dimensionScores[i-1]||0,0,100));document.getElementById('dim'+i+'-score').textContent=String(dim);document.getElementById('dim'+i+'-fill').style.width=dim+'%'}}
+function showCollision(){collisionEl.classList.add('active');collisionEl.textContent='碰撞触发 (-10)';clearTimeout(showCollision.timer);showCollision.timer=setTimeout(()=>{collisionEl.classList.remove('active');collisionEl.textContent='状态正常'},700)}
+function resetScore(){scoreState=createScoreState();startBtn.textContent='开始计分';collisionEl.classList.remove('active');collisionEl.textContent='状态正常';renderScore()}
+function stopRun(){scoreState.running=false;startBtn.textContent='开始计分';renderScore()}
+function startRun(){if(scoreState.running){stopRun();return}const carryLastGyro=scoreState.lastGyroZ;scoreState=createScoreState();scoreState.running=true;scoreState.lastGyroZ=carryLastGyro;startBtn.textContent='结束计分';renderScore()}
+function detectCollision(gz){if(scoreState.lastGyroZ===null){scoreState.lastGyroZ=gz;return}if(scoreState.collisionCooldown>0){scoreState.collisionCooldown--;scoreState.lastGyroZ=gz;return}const delta=Math.abs(gz-scoreState.lastGyroZ);if(delta>COLLISION_THRESHOLD){scoreState.collisionCooldown=12;showCollision();if(scoreState.running)scoreState.penalty+=COLLISION_PENALTY}scoreState.lastGyroZ=gz}
+function calcTurnSmoothness(gz){if(scoreState.gyroHistory.length<5)return 80;let total=0;for(let i=1;i<scoreState.gyroHistory.length;i++)total+=Math.abs(scoreState.gyroHistory[i]-scoreState.gyroHistory[i-1]);const avgChange=total/(scoreState.gyroHistory.length-1);if(Math.abs(gz)<0.18)return 100;return clamp(100-avgChange*35,0,100)}
+function calcRangeMatch(gz,pseudo){const absGyro=Math.abs(gz),absPseudo=Math.abs(pseudo);if(absPseudo<5)return 70;const idealGyro=0.25+(absPseudo/100)*2.5;const diff=Math.abs(absGyro-idealGyro);return clamp(100-(diff/Math.max(.45,idealGyro))*42,0,100)}
+function calcGyroStability(){if(scoreState.gyroHistory.length<8)return 75;return clamp(100-stdDev(scoreState.gyroHistory)*40,0,100)}
+function calcBigTurnStability(gz){const absGyro=Math.abs(gz);if(absGyro>BIG_TURN_THRESHOLD)scoreState.inTurn=true;else if(absGyro<BIG_TURN_THRESHOLD*.45)scoreState.inTurn=false;if(!scoreState.inTurn)return 80;const recent=scoreState.gyroHistory.slice(-10);if(recent.length<6)return 70;return clamp(100-stdDev(recent)*34,0,100)}
+function calcPseudoSpeedStability(){if(scoreState.pseudoHistory.length<8)return 75;const m=mean(scoreState.pseudoHistory);if(m<5)return 70;return clamp(100-(stdDev(scoreState.pseudoHistory)/Math.max(1,m))*220,0,100)}
+function calcThrottleStability(){if(scoreState.throttleHistory.length<8)return 75;const absValues=scoreState.throttleHistory.map(v=>Math.abs(v));const m=mean(absValues);if(m<5)return 70;return clamp(100-(stdDev(absValues)/(m+1))*180,0,100)}
+function updateScore(latest){const gz=Number(latest.gz||0),pseudo=clamp(Number(latest.pseudoSpeed||0),0,100),thr=Number(latest.thr||0);pushWindow(scoreState.gyroHistory,gz);pushWindow(scoreState.pseudoHistory,pseudo);pushWindow(scoreState.throttleHistory,thr);scoreState.samples++;const current=[calcTurnSmoothness(gz),calcRangeMatch(gz,pseudo),calcGyroStability(),calcBigTurnStability(gz),calcPseudoSpeedStability(),calcThrottleStability()];for(let i=0;i<current.length;i++){scoreState.dimensionSums[i]+=current[i];scoreState.dimensionScores[i]=scoreState.dimensionSums[i]/scoreState.samples}scoreState.totalScore=clamp(mean(scoreState.dimensionScores)-scoreState.penalty,0,100);renderScore()}
+function renderLatest(latest,transport){if(!latest)return;lastSeq=Math.max(lastSeq,Number(latest.seq||0));const pseudo=clamp(Number(latest.pseudoSpeed||0),0,100),gz=Number(latest.gz||0),thr=Number(latest.thr||0);setStatus('online / '+transport,'statusOnline');seqEl.textContent=String(latest.seq??'--');pseudoSpeedEl.textContent=pseudo.toFixed(1);pseudoBarEl.style.width=pseudo.toFixed(1)+'%';gyroZEl.textContent=gz.toFixed(3);throttleEl.textContent=String(Math.round(thr));transportEl.textContent=transport.toUpperCase();pushChartValue(gz);detectCollision(gz);if(scoreState.running)updateScore(latest)}
+function handleDataPayload(j,transport){const arr=(j&&j.points)||[];for(let i=0;i<arr.length;i++)pushChartValue(Number(arr[i].gz||0));if(j&&j.latest){renderLatest(j.latest,transport);return}setStatus('waiting data','statusWaiting')}
+function decodeBinaryDataPayload(buffer){const v=new DataView(buffer);let o=0;const u8=()=>v.getUint8(o++),u16=()=>{const x=v.getUint16(o,true);o+=2;return x},u32=()=>{const x=v.getUint32(o,true);o+=4;return x},i16=()=>{const x=v.getInt16(o,true);o+=2;return x},f32=()=>{const x=v.getFloat32(o,true);o+=4;return x};if(u8()!==77||u8()!==52)throw new Error('bad magic');const version=u8();u8();if(version!==2)throw new Error('bad version');const dropped=u32(),seq=u32(),t=u32(),dt=u16(),thr=i16(),str=i16(),gz=f32(),gx=f32(),gy=f32(),ax=f32(),ay=f32(),az=f32(),mode=u8(),park=u8();const ch=[u16(),u16(),u16(),u16(),u16(),u16()];const latest={seq,t,dt,thr,str,gz,gx,gy,ax,ay,az,mode,park,ch1:ch[0],ch2:ch[1],ch3:ch[2],ch4:ch[3],ch5:ch[4],ch6:ch[5],rct:i16(),rcs:i16(),pt:i16(),ps:i16(),gzf:f32(),dc:f32(),de:u8(),da:u8(),vol:f32(),pseudoSpeed:f32()};const count=u8(),points=[];for(let i=0;i<count;i++)points.push({seq:u32(),t:u32(),dt:u16(),thr:i16(),str:i16(),gz:f32()});return{type:'data',dropped,latest,points}}
+function dataWsUrl(){return(location.protocol==='https:'?'wss:':'ws:')+'//'+location.hostname+':81/'}
+function scheduleDataWsReconnect(){if(dataWsReconnectTimer)return;dataWsReconnectTimer=setTimeout(()=>{dataWsReconnectTimer=0;connectJudgeSocket();dataWsReconnectDelay=Math.min(8000,dataWsReconnectDelay*2)},dataWsReconnectDelay)}
+function connectJudgeSocket(){try{if(dataWs&&dataWs.readyState!==WebSocket.CLOSED)return;if(dataWs){dataWs.onclose=null;dataWs.onerror=null;try{dataWs.close()}catch(e){}}const ws=new WebSocket(dataWsUrl());dataWs=ws;ws.binaryType='arraybuffer';ws.onopen=()=>{if(dataWs!==ws){ws.close();return}dataWsConnected=true;dataWsReconnectDelay=1000;setStatus('online / ws','statusOnline');ws.send('since:'+lastSeq)};ws.onmessage=e=>{if(dataWs!==ws)return;try{if(e.data instanceof ArrayBuffer){handleDataPayload(decodeBinaryDataPayload(e.data),'ws');return}if(e.data instanceof Blob){e.data.arrayBuffer().then(b=>{if(dataWs===ws)handleDataPayload(decodeBinaryDataPayload(b),'ws')}).catch(()=>setStatus('offline','statusOffline'));return}if(typeof e.data==='string'){const j=JSON.parse(e.data);if(j&&j.type==='data')handleDataPayload(j,'ws')}}catch(err){setStatus('offline','statusOffline')}};ws.onclose=()=>{if(dataWs!==ws)return;dataWsConnected=false;dataWs=null;setStatus('offline','statusOffline');scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollJudgeData,500)};ws.onerror=()=>{if(dataWs!==ws)return;dataWsConnected=false;try{ws.close()}catch(e){}}}catch(e){dataWsConnected=false;dataWs=null;setStatus('offline','statusOffline');scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollJudgeData,500)}}
+async function pollJudgeData(){if(dataWsConnected)return;if(dataPolling)return;dataPolling=true;let delay=160;try{const r=await fetch('/api/data?since='+lastSeq,{cache:'no-store'});const j=await r.json();handleDataPayload(j,'poll');delay=(j&&j.points&&j.points.length)?80:140}catch(e){setStatus('offline','statusOffline');delay=220}finally{dataPolling=false;if(!dataWsConnected)setTimeout(pollJudgeData,delay)}}
+drawChart();renderScore();connectJudgeSocket();setTimeout(()=>{if(!dataWsConnected)pollJudgeData()},1200);
 </script>
 </body>
 </html>

@@ -209,6 +209,7 @@ static void pushWifiWebSocketData()
     writeU8(latest.driftEnabled ? 1 : 0);
     writeU8(latest.driftActive ? 1 : 0);
     writeF32(latest.voltage);
+    writeF32(latest.pseudoSpeed);
     uint8_t* pointCountSlot = cursor++;
     for (uint32_t seq = firstSeq; seq < firstSeq + available; seq++) {
         uint16_t index = wifiWebDataIndexForSeq(seq);

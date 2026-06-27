@@ -269,7 +269,7 @@ def test_firmware_version_is_v1_7_22_and_changelog_is_current():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.26"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.29"' in build_info
     assert "v1.7.23" in changelog
     assert changelog.index("v1.7.23") < changelog.index("v1.7.22")
 
@@ -1609,6 +1609,8 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
 
     assert "static const char WIFI_WEB_UPDATE_HTML[] PROGMEM" in assets_source
+    assert "static const char WIFI_WEB_JUDGE_HTML[] PROGMEM" in assets_source
+    assert "WebSocket first / pseudoSpeed monitor-first scoring" in assets_source
     assert "MUS4 HTTP OTA" in assets_source
     assert "static const char WIFI_WEB_UPDATE_HTML[] PROGMEM" not in sketch_source
     assert source.index('<section class="panel" id="chartPanel">') < source.index('<section class="panel" id="serialPanel">')
@@ -1654,7 +1656,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'继续曲线'" not in source
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
-    assert '<a href="/update" target="_blank" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
+    assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
     assert '<button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" title="清空"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
@@ -2742,6 +2744,35 @@ def test_http_api_data_latest_exposes_imu_five_axes():
     assert body.index('\\"az\\":') < body.index('\\"de\\":')
 
 
+def test_web_data_point_and_http_latest_expose_pseudo_speed():
+    """
+    刀 4：为漂移裁判系统提供统一的速度代理量。
+    WebDataPoint 必须包含 pseudoSpeed，sampleWifiWebData 必须写入它，
+    /api/data latest 也必须把该字段透出给后续 Judge 页面消费。
+    """
+    wifi_console_types = (
+        PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h"
+    ).read_text(encoding="utf-8")
+    sketch = MUS4_SKETCH.read_text(encoding="utf-8")
+    server = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "float pseudoSpeed;" in wifi_console_types
+    assert "static float computePseudoSpeed()" in sketch
+    assert "point.pseudoSpeed = computePseudoSpeed();" in sketch
+
+    state_body = re.search(
+        r"appendWifiWebStateJson\(String& response, WebDataPoint& point\)\s*\{(?P<body>.*?)\n\}",
+        server,
+        re.DOTALL,
+    )
+    assert state_body, "找不到 appendWifiWebStateJson 函数体"
+    body = state_body.group("body")
+    assert '\\"pseudoSpeed\\":' in body
+    assert 'String(point.pseudoSpeed, 1)' in body
+
+
 def test_websocket_binary_frame_schema_v2_carries_imu_five_axes():
     """
     刀 3 (v1.7.11)：WS 二进制遥测帧升级到 schema v2，latest 区在 gyroZ 之后追加
@@ -2786,6 +2817,32 @@ def test_websocket_binary_frame_schema_v2_carries_imu_five_axes():
     # 解码后必须注入 latest 对象供 tp(latest) 录制
     for key in (",gx,", ",gy,", ",ax,", ",ay,", ",az,"):
         assert key in assets, f"前端 latest 对象缺少键 {key}"
+
+
+def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
+    telemetry = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.cpp"
+    ).read_text(encoding="utf-8")
+    assets = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
+    ).read_text(encoding="utf-8")
+    server = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "writeF32(latest.pseudoSpeed);" in telemetry
+    assert "pseudoSpeed:f32()" in assets
+    assert "function connectJudgeSocket()" in assets
+    assert "new WebSocket(dataWsUrl())" in assets
+    assert "function pollJudgeData()" in assets
+    assert 'fetch(\'/api/data?since=\'+lastSeq' in assets
+    assert "startBtn.textContent='结束计分'" in assets
+    assert "function resetScore()" in assets
+    assert "function updateScore(latest)" in assets
+    assert "dim1-fill" in assets
+    assert "static void handleWifiWebJudge()" in server
+    assert 'wifiWebServer.on("/judge", HTTP_GET, handleWifiWebJudge);' in server
+    assert 'wifiWebServer.send_P(200, "text/html", WIFI_WEB_JUDGE_HTML);' in server
 
 
 def test_tub_schema_bumps_to_v2_with_imu_five_axes():
@@ -2845,3 +2902,115 @@ def test_ota_closes_websocket_during_upload():
     assert "os.closeWsPending = true;" in server_cpp, "HTTP OTA 上传开始时应设置 closeWsPending"
     assert "otaRuntime.closeWsPending" in telemetry_cpp, "WebTelemetry 应消费 closeWsPending 标志"
     assert "wifiWebSocket.closeAll(" in telemetry_cpp, "WebTelemetry 应在主循环中广播关闭所有 WS 客户端"
+
+
+def test_http_ota_sets_longer_client_timeout():
+    """v1.7.27：HTTP OTA 上传开始时把同步 WebServer 客户端 read timeout 从默认
+    5000ms 提高到 30000ms，避免 Flash 写入导致 TCP 零窗口期间触发 read timeout。"""
+    server_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+    upload_body = re.search(
+        r"static void handleWifiWebUpdateUpload\(\)\s*\{(?P<body>.*?)\n\}",
+        server_cpp,
+        re.DOTALL,
+    ).group("body")
+
+    assert "upload.status == UPLOAD_FILE_START" in upload_body
+    assert "wifiWebServer.client().setTimeout(30000)" in upload_body
+    # timeout 设置必须在上传实际开始（Update.begin）之前生效
+    assert upload_body.index("setTimeout(30000)") < upload_body.index("Update.begin")
+
+
+def test_arduino_ota_sets_longer_timeout():
+    """v1.7.27：ArduinoOTA 默认 read timeout 仅 1000ms，OTA 期间 Flash 写入容易
+    触发 OTA_RECEIVE_ERROR。setupWifiOtaCallbacks 中应设置为 30000ms。"""
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    setup_body = re.search(
+        r"static void setupWifiOtaCallbacks\(\)\s*\{(?P<body>.*?)\n\}",
+        sketch_source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "ArduinoOTA.setTimeout(30000)" in setup_body
+
+
+def test_ota_mark_app_valid_cancel_rollback_on_boot():
+    """v1.7.28：启动后必须调用 esp_ota_mark_app_valid_cancel_rollback()，
+    否则新固件分区长期处于 PENDING_VERIFY，下次 reset 可能被 bootloader
+    回滚到旧固件，导致 OTA 反复失败。"""
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    setup_body = re.search(
+        r"void setup\(\)\s*\{(?P<body>.*?)\n\}",
+        sketch_source,
+        re.DOTALL,
+    ).group("body")
+
+    assert "#include <esp_ota_ops.h>" in sketch_source
+    assert "esp_ota_mark_app_valid_cancel_rollback()" in setup_body
+    assert "cleanupInvalidOtaPartition()" in setup_body
+    assert setup_body.index("cleanupInvalidOtaPartition()") < setup_body.index(
+        "esp_ota_mark_app_valid_cancel_rollback()"
+    )
+
+
+def test_http_ota_resets_state_after_failed_upload():
+    """v1.7.28：HTTP OTA 上传失败后必须完整清理 otaRuntime 状态并 abort Update
+    对象，否则 Update 可能卡在 running 状态，后续 Update.begin() 报
+    already running；otaRuntime 标志也会长期占用。"""
+    server_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+    post_body = re.search(
+        r"static void handleWifiWebUpdatePost\(\)\s*\{(?P<body>.*?)\n\}",
+        server_cpp,
+        re.DOTALL,
+    ).group("body")
+    upload_body = re.search(
+        r"static void handleWifiWebUpdateUpload\(\)\s*\{(?P<body>.*?)\n\}",
+        server_cpp,
+        re.DOTALL,
+    ).group("body")
+
+    assert "resetOtaAfterFailedUpload()" in post_body
+    # 错误路径：先清理状态，再发送 500 响应
+    assert post_body.index("resetOtaAfterFailedUpload()") < post_body.index(
+        "wifiWebServer.send(500"
+    )
+    # Update.abort() 用于释放 Updater 内部 buffer
+    assert "Update.abort()" in server_cpp
+    assert "Update.isRunning()" in upload_body
+    # 关键状态必须被重置
+    assert "os.inProgress = false" in server_cpp
+    assert "os.parkGuardActive = false" in server_cpp
+    assert "os.closeWsPending = false" in server_cpp
+
+
+def test_ota_blocks_non_update_handlers_with_503():
+    """v1.7.29：Web Console 打开后浏览器轮询会占用 TCP/WebServer 资源，
+    HTTP OTA 上传期间应通过 middleware 对非 /update 请求返回 503，
+    让浏览器立即释放连接，避免 OTA 被挤占。"""
+    server_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+    setup_body = re.search(
+        r"void setupWebConsoleServer\(\)\s*\{(?P<body>.*?)\n\}",
+        server_cpp,
+        re.DOTALL,
+    ).group("body")
+
+    assert "addMiddleware" in setup_body
+    assert "otaRuntime.inProgress" in setup_body
+    assert 'server.uri() != "/update"' in setup_body
+    assert "503" in setup_body
+
+
+def test_ota_button_opens_in_same_tab():
+    """v1.7.29：OTA 按钮原本 target=\"_blank\"，导致主页面在后台持续轮询，
+    与 OTA 上传竞争资源。应改为当前标签页打开 /update。"""
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'href="/update"' in assets
+    assert 'target="_blank" class="otaLink"' not in assets

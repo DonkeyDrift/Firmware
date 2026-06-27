@@ -160,6 +160,12 @@ static void handleWifiWebRoot()
     wifiWebServer.send_P(200, "text/html", WIFI_WEB_CONSOLE_HTML);
 }
 
+static void handleWifiWebJudge()
+{
+    wifiWebServer.sendHeader("Cache-Control", "no-store");
+    wifiWebServer.send_P(200, "text/html", WIFI_WEB_JUDGE_HTML);
+}
+
 static void handleWifiWebCaptivePortal()
 {
     redirectWifiWebCaptivePortalToRoot();
@@ -676,6 +682,8 @@ static void appendWifiWebStateJson(String& response, WebDataPoint& point)
     response += String(point.driftCompensation, 2);
     response += ",\"gzf\":";
     response += String(point.gyroZFiltered, 3);
+    response += ",\"pseudoSpeed\":";
+    response += String(point.pseudoSpeed, 1);
     response += '}';
 }
 
@@ -726,12 +734,38 @@ static bool isWifiWebUpdateAuthOk()
     return false;
 }
 
+static void resetOtaAfterFailedUpload()
+{
+    // 确保 Update 对象不会卡在 running 状态，否则后续 Update.begin() 会报
+    // "already running" 而彻底拒绝新的 OTA 请求。
+    if (Update.isRunning()) {
+        Update.abort();
+    }
+    os.inProgress = false;
+    os.parkGuardActive = false;
+    os.closeWsPending = false;
+    os.lastProgressPct = 0;
+    if (ws.devModeEnabled) {
+        // DEV 模式下保持窗口 open，方便继续调试；重设 TTL 避免立即超时。
+        os.windowOpen = true;
+        os.deadlineMs = millis() + WIFI_OTA_WINDOW_MS;
+    } else {
+        os.windowOpen = false;
+        os.deadlineMs = 0;
+    }
+}
+
 static void handleWifiWebUpdateUpload()
 {
     HTTPUpload& upload = wifiWebServer.upload();
     if (upload.status == UPLOAD_FILE_START) {
         wifiWebUpdateErrorMsg = "";
         wifiWebUpdateReceived = 0;
+        // 防御：如果上次更新异常退出导致 Update 对象仍处 running 状态，
+        // 先 abort 再 begin，避免 "already running" 导致新上传无法开始。
+        if (Update.isRunning()) {
+            Update.abort();
+        }
         if (!isWifiWebUpdateAuthOk()) {
             wifiWebUpdateErrorMsg = "NACK:AUTH_REQUIRED";
             mus4LogLine("ota", "http update rejected: auth required");
@@ -748,6 +782,11 @@ static void handleWifiWebUpdateUpload()
         os.windowOpen = true;
         os.closeWsPending = true;
         os.lastProgressPct = 0;
+        // v1.7.27：同步 WebServer 默认 read timeout 仅 5000ms，OTA 期间 Flash
+        // erase/write 可能让 TCP 接收窗口长时间为 0，触发 read timeout 导致
+        // "http update aborted"。上传开始时把客户端 timeout 提高到 30s，给
+        // Flash 写入和 TCP 流控恢复留出足够余量。
+        wifiWebServer.client().setTimeout(30000);
         if (!Update.begin(upload.totalSize > 0 ? upload.totalSize : UPDATE_SIZE_UNKNOWN)) {
             wifiWebUpdateErrorMsg = "NACK:BEGIN_FAILED:" + String(Update.errorString());
             mus4Logf("ota", "http update begin failed: %s", Update.errorString());
@@ -783,9 +822,9 @@ static void handleWifiWebUpdateUpload()
             mus4LogLine("ota", "http update success");
         }
     } else if (upload.status == UPLOAD_FILE_ABORTED) {
-        Update.end();
+        // abort 路径由 handleWifiWebUpdatePost 统一清理 OTA 状态；
+        // 这里只标记错误并打日志，避免状态重置分散在两处。
         wifiWebUpdateErrorMsg = "NACK:ABORTED";
-        os.inProgress = false;
         mus4LogLine("ota", "http update aborted");
     }
 }
@@ -795,6 +834,11 @@ static void handleWifiWebUpdatePost()
     unsigned long startedMs = millis();
     sendWifiWebApiHeaders();
     if (wifiWebUpdateErrorMsg.length() > 0) {
+        // v1.7.27：上传失败后必须完整清理 OTA 状态，否则 os.inProgress /
+        // parkGuardActive / windowOpen 会长期卡住，导致后续 OTA（包括
+        // Reset 前的多次尝试）行为异常；Update 对象若仍处 running 状态，
+        // 下一次 Update.begin() 会直接失败。
+        resetOtaAfterFailedUpload();
         wifiWebServer.send(500, "text/plain", wifiWebUpdateErrorMsg + "\n");
         recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
         return;
@@ -807,7 +851,19 @@ static void handleWifiWebUpdatePost()
 
 void setupWebConsoleServer()
 {
+    // v1.7.28：OTA 上传期间，浏览器轮询 /api/status、/api/log、/api/data 等会
+    // 占用同步 WebServer 的单客户端处理能力和 LWIP TCP socket。通过 middleware
+    // 在 inProgress 期间对非 /update 请求快速返回 503，让浏览器立即释放连接，
+    // 避免 OTA 大文件传输被并发 HTTP 请求挤占资源导致连接被 reset。
+    wifiWebServer.addMiddleware([](WebServer &server, Middleware::Callback next) -> bool {
+        if (otaRuntime.inProgress && server.uri() != "/update") {
+            server.send(503, "text/plain", "OTA in progress\n");
+            return false;
+        }
+        return next();
+    });
     wifiWebServer.on("/", HTTP_GET, handleWifiWebRoot);
+    wifiWebServer.on("/judge", HTTP_GET, handleWifiWebJudge);
     wifiWebServer.on("/connecttest.txt", HTTP_GET, handleWifiWebWindowsConnectTest);
     wifiWebServer.on("/ncsi.txt", HTTP_GET, handleWifiWebWindowsNcsi);
     wifiWebServer.on("/redirect", HTTP_GET, handleWifiWebCaptivePortalRedirectPage);
@@ -853,10 +909,17 @@ void updateWebConsoleServer()
         if (dt > wifiWebUpdateMaxDtMs) wifiWebUpdateMaxDtMs = dt;
     }
     lastWifiWebUpdateMs = now;
+    // OTA 上传期间主循环会被同步 WebServer 的 /update handler 长时间占用，
+    // 继续采样遥测数据没有意义，还会增加堆分配和主循环开销；跳过采样，
+    // 把 CPU 时间片尽量留给 handleClient 处理 TCP ACK 与 Flash 写入间隙。
     unsigned long stageStart = millis();
-    sampleWifiWebData();
-    uint32_t stageDt = (uint32_t)(millis() - stageStart);
-    if (stageDt > wifiWebSampleMaxDtMs) wifiWebSampleMaxDtMs = stageDt;
+    uint32_t stageDt = 0;
+    if (!otaRuntime.inProgress) {
+        stageStart = millis();
+        sampleWifiWebData();
+        stageDt = (uint32_t)(millis() - stageStart);
+        if (stageDt > wifiWebSampleMaxDtMs) wifiWebSampleMaxDtMs = stageDt;
+    }
     stageStart = millis();
     wifiWebServer.handleClient();
     stageDt = (uint32_t)(millis() - stageStart);

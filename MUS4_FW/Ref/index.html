@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>漂移裁判系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0a0e17;
+            color: #e0e6ed;
+            min-height: 100vh;
+            padding: 12px;
+        }
+
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00d4ff, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header .status {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+
+        .header .status.connected {
+            color: #10b981;
+        }
+
+        .header .status.disconnected {
+            color: #ef4444;
+        }
+
+        .score-section {
+            background: linear-gradient(145deg, #111827, #1f2937);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            border: 1px solid #374151;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .total-score {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        .score-circle {
+            position: relative;
+            width: 160px;
+            height: 160px;
+            margin: 0 auto;
+        }
+
+        .score-circle svg {
+            transform: rotate(-90deg);
+            width: 100%;
+            height: 100%;
+        }
+
+        .score-circle .bg {
+            fill: none;
+            stroke: #1f2937;
+            stroke-width: 10;
+        }
+
+        .score-circle .progress {
+            fill: none;
+            stroke: url(#scoreGradient);
+            stroke-width: 10;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.3s ease;
+        }
+
+        .score-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .score-value .number {
+            font-size: 42px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #00d4ff, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .score-value .label {
+            font-size: 11px;
+            color: #6b7280;
+            margin-top: -4px;
+        }
+
+        .score-grade {
+            text-align: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: #00d4ff;
+            margin-top: 8px;
+        }
+
+        .real-time-data {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .data-item {
+            background: #0f172a;
+            border-radius: 10px;
+            padding: 10px 8px;
+            text-align: center;
+            border: 1px solid #1e293b;
+        }
+
+        .data-item .value {
+            font-size: 16px;
+            font-weight: 700;
+            color: #00d4ff;
+        }
+
+        .data-item .label {
+            font-size: 10px;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+
+        .dimension-scores {
+            margin-bottom: 16px;
+        }
+
+        .dimension-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #1f2937;
+        }
+
+        .dimension-item:last-child {
+            border-bottom: none;
+        }
+
+        .dimension-name {
+            flex: 0 0 72px;
+            font-size: 12px;
+            color: #9ca3af;
+        }
+
+        .dimension-bar {
+            flex: 1;
+            height: 6px;
+            background: #1f2937;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 0 10px;
+        }
+
+        .dimension-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        .dimension-score {
+            flex: 0 0 36px;
+            text-align: right;
+            font-size: 13px;
+            font-weight: 600;
+            color: #e0e6ed;
+        }
+
+        .collision-indicator {
+            background: #1f2937;
+            border-radius: 10px;
+            padding: 10px;
+            text-align: center;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .collision-indicator.active {
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.15);
+            animation: shake 0.3s ease;
+        }
+
+        .collision-indicator .text {
+            font-size: 13px;
+            color: #6b7280;
+        }
+
+        .collision-indicator.active .text {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-4px); }
+            75% { transform: translateX(4px); }
+        }
+
+        .controls-section {
+            background: linear-gradient(145deg, #111827, #1f2937);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid #374151;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e0e6ed;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .section-title .toggle-btn {
+            font-size: 11px;
+            color: #6b7280;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+
+        .section-title .toggle-btn:hover {
+            color: #00d4ff;
+        }
+
+        .weight-sliders {
+            display: none;
+        }
+
+        .weight-sliders.show {
+            display: block;
+        }
+
+        .slider-item {
+            margin-bottom: 12px;
+        }
+
+        .slider-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-bottom: 6px;
+        }
+
+        .slider-header .name {
+            color: #9ca3af;
+        }
+
+        .slider-header .weight {
+            color: #00d4ff;
+            font-weight: 600;
+        }
+
+        .slider-item input[type="range"] {
+            width: 100%;
+            height: 4px;
+            -webkit-appearance: none;
+            background: #1f2937;
+            border-radius: 2px;
+            outline: none;
+        }
+
+        .slider-item input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, #00d4ff, #7c3aed);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00d4ff, #7c3aed);
+            color: white;
+        }
+
+        .btn-primary:active {
+            transform: scale(0.97);
+        }
+
+        .btn-secondary {
+            background: #1f2937;
+            color: #e0e6ed;
+            border: 1px solid #374151;
+        }
+
+        .btn-secondary:active {
+            transform: scale(0.97);
+        }
+
+        .connection-section {
+            background: linear-gradient(145deg, #111827, #1f2937);
+            border-radius: 16px;
+            padding: 16px;
+            border: 1px solid #374151;
+            margin-bottom: 16px;
+        }
+
+        .connection-input {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .connection-input input {
+            flex: 1;
+            padding: 10px 12px;
+            background: #0f172a;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            color: #e0e6ed;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .connection-input input:focus {
+            border-color: #00d4ff;
+        }
+
+        .connection-input button {
+            padding: 10px 16px;
+            background: linear-gradient(135deg, #00d4ff, #7c3aed);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .history-section {
+            background: linear-gradient(145deg, #111827, #1f2937);
+            border-radius: 16px;
+            padding: 16px;
+            border: 1px solid #374151;
+        }
+
+        .history-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #1f2937;
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+        }
+
+        .history-item .time {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .history-item .score {
+            font-size: 16px;
+            font-weight: 700;
+            color: #00d4ff;
+        }
+
+        .history-item .grade {
+            font-size: 11px;
+            color: #6b7280;
+            background: #1f2937;
+            padding: 3px 8px;
+            border-radius: 6px;
+        }
+
+        .gyro-chart {
+            width: 100%;
+            height: 80px;
+            margin-bottom: 12px;
+        }
+
+        .gyro-chart canvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>漂移裁判系统</h1>
+            <div class="status disconnected" id="status">未连接</div>
+        </div>
+
+        <div class="connection-section">
+            <div class="section-title">连接设置</div>
+            <div class="connection-input">
+                <input type="text" id="sseUrl" value="http://192.168.4.1/sse" placeholder="SSE 地址">
+                <button onclick="toggleConnection()" id="connectBtn">连接</button>
+            </div>
+        </div>
+
+        <div class="score-section">
+            <div class="total-score">
+                <div class="score-circle">
+                    <svg viewBox="0 0 120 120">
+                        <defs>
+                            <linearGradient id="scoreGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#00d4ff"/>
+                                <stop offset="100%" style="stop-color:#7c3aed"/>
+                            </linearGradient>
+                        </defs>
+                        <circle class="bg" cx="60" cy="60" r="52"/>
+                        <circle class="progress" cx="60" cy="60" r="52" 
+                                stroke-dasharray="326.73" 
+                                stroke-dashoffset="326.73"
+                                id="scoreProgress"/>
+                    </svg>
+                    <div class="score-value">
+                        <div class="number" id="totalScore">0</div>
+                        <div class="label">总分</div>
+                    </div>
+                </div>
+                <div class="score-grade" id="scoreGrade">--</div>
+            </div>
+
+            <div class="gyro-chart">
+                <canvas id="gyroChart"></canvas>
+            </div>
+
+            <div class="real-time-data">
+                <div class="data-item">
+                    <div class="value" id="gyroZ">0</div>
+                    <div class="label">陀螺仪 Z</div>
+                </div>
+                <div class="data-item">
+                    <div class="value" id="speed">0</div>
+                    <div class="label">速度</div>
+                </div>
+                <div class="data-item">
+                    <div class="value" id="throttle">0</div>
+                    <div class="label">油门</div>
+                </div>
+            </div>
+
+            <div class="collision-indicator" id="collisionIndicator">
+                <div class="text">状态正常</div>
+            </div>
+        </div>
+
+        <div class="score-section">
+            <div class="section-title">评分维度</div>
+            <div class="dimension-scores">
+                <div class="dimension-item">
+                    <div class="dimension-name">转弯平滑</div>
+                    <div class="dimension-bar"><div class="dimension-fill" id="dim1-fill" style="width: 0%"></div></div>
+                    <div class="dimension-score" id="dim1-score">0</div>
+                </div>
+                <div class="dimension-item">
+                    <div class="dimension-name">区间匹配</div>
+                    <div class="dimension-bar"><div class="dimension-fill" id="dim2-fill" style="width: 0%"></div></div>
+                    <div class="dimension-score" id="dim2-score">0</div>
+                </div>
+                <div class="dimension-item">
+                    <div class="dimension-name">陀螺稳定</div>
+                    <div class="dimension-bar"><div class="dimension-fill" id="dim3-fill" style="width: 0%"></div></div>
+                    <div class="dimension-score" id="dim3-score">0</div>
+                </div>
+                <div class="dimension-item">
+                    <div class="dimension-name">大弯稳定</div>
+                    <div class="dimension-bar"><div class="dimension-fill" id="dim4-fill" style="width: 0%"></div></div>
+                    <div class="dimension-score" id="dim4-score">0</div>
+                </div>
+                <div class="dimension-item">
+                    <div class="dimension-name">速度稳定</div>
+                    <div class="dimension-bar"><div class="dimension-fill" id="dim5-fill" style="width: 0%"></div></div>
+                    <div class="dimension-score" id="dim5-score">0</div>
+                </div>
+                <div class="dimension-item">
+                    <div class="dimension-name">油门稳定</div>
+                    <div class="dimension-bar"><div class="dimension-fill" id="dim6-fill" style="width: 0%"></div></div>
+                    <div class="dimension-score" id="dim6-score">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls-section">
+            <div class="section-title">
+                <span>权重调节</span>
+                <button class="toggle-btn" onclick="toggleWeights()" id="toggleWeightsBtn">展开</button>
+            </div>
+            <div class="weight-sliders" id="weightSliders">
+                <div class="slider-item">
+                    <div class="slider-header">
+                        <span class="name">转弯平滑</span>
+                        <span class="weight" id="w1-val">1.0</span>
+                    </div>
+                    <input type="range" min="0" max="2" step="0.1" value="1" id="w1" oninput="updateWeight(1)">
+                </div>
+                <div class="slider-item">
+                    <div class="slider-header">
+                        <span class="name">区间匹配</span>
+                        <span class="weight" id="w2-val">1.0</span>
+                    </div>
+                    <input type="range" min="0" max="2" step="0.1" value="1" id="w2" oninput="updateWeight(2)">
+                </div>
+                <div class="slider-item">
+                    <div class="slider-header">
+                        <span class="name">陀螺稳定</span>
+                        <span class="weight" id="w3-val">1.0</span>
+                    </div>
+                    <input type="range" min="0" max="2" step="0.1" value="1" id="w3" oninput="updateWeight(3)">
+                </div>
+                <div class="slider-item">
+                    <div class="slider-header">
+                        <span class="name">大弯稳定</span>
+                        <span class="weight" id="w4-val">1.0</span>
+                    </div>
+                    <input type="range" min="0" max="2" step="0.1" value="1" id="w4" oninput="updateWeight(4)">
+                </div>
+                <div class="slider-item">
+                    <div class="slider-header">
+                        <span class="name">速度稳定</span>
+                        <span class="weight" id="w5-val">1.0</span>
+                    </div>
+                    <input type="range" min="0" max="2" step="0.1" value="1" id="w5" oninput="updateWeight(5)">
+                </div>
+                <div class="slider-item">
+                    <div class="slider-header">
+                        <span class="name">油门稳定</span>
+                        <span class="weight" id="w6-val">1.0</span>
+                    </div>
+                    <input type="range" min="0" max="2" step="0.1" value="1" id="w6" oninput="updateWeight(6)">
+                </div>
+            </div>
+        </div>
+
+        <div class="action-buttons">
+            <button class="btn btn-primary" onclick="startRun()" id="startBtn">开始计分</button>
+            <button class="btn btn-secondary" onclick="resetScore()">重置</button>
+        </div>
+
+        <div class="history-section">
+            <div class="section-title">历史记录</div>
+            <div class="history-list" id="historyList">
+                <div style="text-align: center; color: #6b7280; font-size: 12px; padding: 20px 0;">
+                    暂无记录
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,5 +1,32 @@
 # CHANGELOG.md
 
+## 2026-06-26 v1.7.29
+
+- 固件版本号从 `v1.7.28` 更新到 `v1.7.29`。
+- fix(OTA 与 Web Console 并发): 打开 Web Console 主页面后，浏览器轮询 `/api/status`、`/api/log`、`/api/data` 及 WebSocket 重连会占用同步 WebServer 单客户端处理能力和 LWIP TCP 资源，导致后续 OTA 大文件上传中途被 reset（实测并发 60 次轮询后 OTA 在 56% 失败，`curl (56) Connection was reset`）。
+  - `WebConsoleServer.cpp::setupWebConsoleServer` 增加 middleware：HTTP OTA 上传期间（`otaRuntime.inProgress == true`）对除 `/update` 外的所有请求快速返回 `503 OTA in progress`，强制浏览器立即关闭 keep-alive 连接、释放 TCP socket。
+  - `WebConsoleServer.cpp::updateWebConsoleServer` 在 OTA 期间跳过 `sampleWifiWebData()`，减少主循环开销和堆分配，把 CPU 尽量留给 `handleClient()` 驱动 TCP。
+  - `WebConsoleAssets.h` 中 OTA 按钮去掉 `target="_blank"`，避免主页面在后台持续轮询；`/update` 页面上传成功后自动返回 `/`。
+- 同步更新 `tests/test_firmware_feature_flags.py`：版本号断言，并新增 OTA 期间 middleware 503 拦截与 OTA 按钮不弹窗断言。
+
+## 2026-06-26 v1.7.28
+
+- 固件版本号从 `v1.7.27` 更新到 `v1.7.28`。
+- fix(OTA 可重复性): 第一次 OTA 成功后，后续 OTA（包括按 Reset 后）无法再次上传。
+  - `MUS4_FW.ino::setup` 在 `cleanupInvalidOtaPartition()` 之后调用 `esp_ota_mark_app_valid_cancel_rollback()`，把当前启动分区标记为 VALID，取消 bootloader 的 OTA 回滚计时器。避免新固件长期处于 `PENDING_VERIFY` 状态，导致下一次 reset 被回滚到旧固件。
+  - `WebConsoleServer.cpp` 新增 `resetOtaAfterFailedUpload()`：HTTP OTA 上传任何阶段失败（begin/write/end/aborted）后，统一调用 `Update.abort()` 释放 Updater 内部 buffer，并把 `os.inProgress` / `parkGuardActive` / `closeWsPending` / `windowOpen` 等状态重置干净；DEV 模式下保留 OTA 窗口并刷新 TTL，非 DEV 模式下关闭窗口。防止失败一次后 Update 对象卡住或 OTA 状态长期占用，导致后续 OTA 请求无法开始。
+  - 上传开始时先防御性 `Update.abort()`，避免异常残留导致 `Update.begin()` 报 "already running"。
+- 同步更新 `tests/test_firmware_feature_flags.py`：版本号断言，并新增 OTA 失败后状态重置与 bootloader 回滚取消断言。
+
+## 2026-06-26 v1.7.27
+
+- 固件版本号从 `v1.7.26` 更新到 `v1.7.27`。
+- fix(OTA 稳定性): HTTP OTA 与 ArduinoOTA 上传期间，Flash erase/write 会让主循环暂时无法读取 TCP 数据，导致同步 WebServer / ArduinoOTA 的 read timeout 被触发，上传中途断连。
+  - `WebConsoleServer.cpp::handleWifiWebUpdateUpload` 在 `UPLOAD_FILE_START` 时将 `wifiWebServer.client().setTimeout(30000)`，把默认 5s 的读超时延长到 30s。
+  - `MUS4_FW.ino::setupWifiOtaCallbacks` 增加 `ArduinoOTA.setTimeout(30000)`，把 ArduinoOTA 默认 1s 的 read timeout 延长到 30s。
+  - 给 Flash 写入和 TCP 零窗口恢复留出足够余量，避免 "http update aborted" / ArduinoOTA `OTA_RECEIVE_ERROR`。
+- 同步更新 `tests/test_firmware_feature_flags.py`：版本号断言，并新增 HTTP OTA 与 ArduinoOTA timeout 设置断言。
+
 ## 2026-06-26 v1.7.26
 
 - 固件版本号从 `v1.7.25` 更新到 `v1.7.26`。

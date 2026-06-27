@@ -12,6 +12,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 新增其它硬件平台的固件时，应作为根目录下并列的同级子目录引入，目录命名采用 `<硬件型号>_FW/` 形式（全大写硬件代号 + `_FW` 后缀），与现存 `MUS4_FW/` 保持一致；各自维护自己的 `README.md`、`CLAUDE.md`、`.gitignore`、构建脚本与测试，不要把代码上提到仓库根。
 
+根目录还包含以下不遵循 `<硬件型号>_FW/` 命名规范的辅助性/实验性子系统，各自独立维护：
+- `multi_agent_framework/` — 独立 Python 多智能体协作框架（IPC 消息队列、ESP-IDF 示例固件、Linux 脚本、WebSocket 控制面板），不属于 ESP32 固件主链路。
+- `provisioning_system/` — 独立 Wi-Fi 配网系统（ESP32 AP Web Server + Linux agent + Playwright 测试资源），通过 UART 把 Wi-Fi 凭据从 ESP32 传递到 Linux 主机上的 `nmcli`。
+
 ## 工作流：必须先进入子项目
 
 仓库根没有 sketch、没有构建脚本、也没有 Python 测试。**任何"构建/烧录/测试/运行 Python 工具"的操作都必须先 `cd` 到对应子项目根**，然后遵循该子项目自己的 `CLAUDE.md`：
@@ -27,9 +31,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 跨子项目的通用规则（语言、TDD、Conventional Commits）由用户全局 `~/.claude/CLAUDE.md` 提供，本文件不再重复。
 
+## 自动化行为
+
+MUS4 子项目的 `.claude/settings.local.json` 配置了 `PostToolUse` 钩子：当通过 PowerShell 执行 `arduino-cli-wsl.ps1` 编译成功后，自动追加 HTTP OTA 上传到预配置目标设备。设置环境变量 `$env:MUS4_HOOK_DRY_RUN=1` 可仅打印 would-do 消息而不实际执行上传。
+
 ## 仓库根级约定
 
-- **`.gitignore` 分层**：根 `.gitignore` 只覆盖 OS / 编辑器层面的全局垃圾（IDE 元数据、`.DS_Store` 之类）。构建产物、密钥模板、本地工具缓存等子项目相关忽略项**必须**写入子项目自己的 `.gitignore`，不要上提。在根目录看到未跟踪文件时，先确认它属于哪个子项目，再决定移动到该子项目内或扩充对应 `.gitignore`，不要在根 `.gitignore` 里继续堆叠子项目级条目。
+- **`.gitignore` 分层**：根 `.gitignore` 只覆盖 OS / 编辑器层面的全局垃圾（IDE 元数据、`.DS_Store` 之类）。构建产物、密钥模板、本地工具缓存等子项目相关忽略项**必须**写入子项目自己的 `.gitignore`，不要上提。两个 `.gitignore` 是互补关系（非继承关系）：判断未跟踪文件归属时，若路径在子项目下先查子项目 `.gitignore`，仅出现在根目录时才查根 `.gitignore`。在根目录看到未跟踪文件时，先确认它属于哪个子项目，再决定移动到该子项目内或扩充对应 `.gitignore`，不要在根 `.gitignore` 里继续堆叠子项目级条目。
 - **不要在根目录添加源代码或可执行脚本**。若工具脚本只服务于某一子项目，归入 `<子项目>/tools/` 或 `<子项目>/` 根。
 - **历史提交可见**：当前 git 主分支为 `main`，最近一次根级重构把固件从仓库根下沉到了 `MUS4_FW/`（具体提交见 `git log -- MUS4_FW/`）；引用旧路径的文档或脚本若仍存在，应在所属子项目内修正而不是在根目录新增 shim。
 

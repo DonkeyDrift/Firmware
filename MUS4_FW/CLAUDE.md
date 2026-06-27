@@ -178,6 +178,10 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 - `LOG_WEB` / `LOG_SERIAL`：切换 MUS4 日志输出目标。
 - `ANSI` / `NOANSI`：切换 TUI ANSI 转义序列显示。
 
+### Claude Code 自动化行为
+
+`.claude/settings.local.json` 中配置了 `PostToolUse` 钩子：当通过 PowerShell 执行 `arduino-cli-wsl.ps1` 仅编译成功（有 `-Compile` 或 `-c` 但无 `-Upload`/`-u`）后，自动追加 HTTP OTA 上传到预配置目标（当前 `192.168.3.157`）。若需临时禁用此行为，设置 `$env:MUS4_HOOK_DRY_RUN=1` 仅打印 would-do 而不实际执行。修改此钩子时使用 `update-config` skill。
+
 ## Configuration
 
 - `config.yaml`：`arduino-cli.py` 的主配置，包含 `arduino_cli`、`fqbn`、`port`、`baudrate`、`sketch_path`、`build_path`、串口自动检测与日志配置；当前 `sketch_path` 为 `MUS4_FW.ino`。
@@ -235,7 +239,10 @@ Python 测试集中在 `tests/`：
 - `libraries/mus4_rc/src/`：RC 输入子系统。
   - `RcPwmCapture`：CH1-CH6 PWM 捕获、滤波、超时检测；中断处理保留 `IRAM_ATTR`。
 - `libraries/mus4_control/src/`：控制融合层。
-  - `ControlMixer`：驾驶模式切换、RC/Pilot 混控、Drift Assist 转向补偿。
+  - `ControlMixer`：驾驶模式切换、RC/Pilot 混控。
+  - `SteeringControl`：转向 PID 平滑与故障安全模式。
+  - `SteeringCalibration`：转向通道交互式标定（Preferences 持久化）。
+  - `DriftAssist`：漂移辅助条件判断、IMU 角速度叠加与转向补偿。
 - `libraries/mus4_safety/src/`：安全关键执行层。
   - `SafetyState`：Park 状态机、紧急制动 FSM、OTA 窗口下的输出抑制。
   - `ActuatorOutput`：PWM 映射（300Hz/14bit, 1000-2000µs）、限幅、`ledcWriteChannel` 调用。
@@ -261,6 +268,7 @@ Python 测试集中在 `tests/`：
   - `WebConsoleAssets.h`：内嵌的 `Drifter Console` 前端 HTML/CSS/JS。
   - `WebTelemetry`：端口 81 WebSocket 遥测推送。
   - `WebLogBuffer`：Web 串口日志环形缓冲。
+  - **Judge 漂移裁判系统**（`/judge` 页面）：基于 WebSocket 的实时漂移质量评分，6 个评分维度（碰撞、大弯、流畅度等）。设备侧通过 NVS 持久化评分参数（碰撞阈值/惩罚、大弯阈值、窗口大小、6 维敏感度权重），`/api/judge-config` 读写配置。调参区按"基础阈值"/"评分参数"分组，实时评分构成反馈包含短窗口趋势标记（↑/↓/→）、当前最低项与最近拖分原因说明。相关类型定义在 `WifiConsoleTypes.h`，运行时状态在 `RuntimeState.h`。
 - `libraries/mus4_wifi/src/`：Wi-Fi 生命周期与 OTA。
   - `WifiManager`：AP/STA 互斥切换状态机（见下文 Wi-Fi Console 段）。
   - `WifiStaConfig`：STA 凭据持久化（Preferences）。
@@ -286,7 +294,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 ### 版本与发布记录
 
-当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前两者应为 `v1.7.22`。README 中部分硬件与路径描述可能滞后，硬件细节以 `MUS4_FW.ino` 与 `docs/Hardware/pin_definitions.md` 为准。
+当前固件版本定义在 `BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION`；发布或稳定版本更新时，同步递增该值并维护 `CHANGELOG.md`。每次版本更新后，确认 `BuildInfo.h` 中的版本号与 `CHANGELOG.md` 最新条目一致；当前 `BuildInfo.h` 为 `v1.7.29`，`CHANGELOG.md` 最新条目为 `v1.7.30`。README 中部分硬件与路径描述可能滞后，硬件细节以 `MUS4_FW.ino` 与 `docs/Hardware/pin_definitions.md` 为准。
 
 ### 控制模式
 
@@ -345,6 +353,8 @@ README 中部分历史描述可能滞后；以 `MUS4_FW.ino`、`docs/Hardware/pi
 
 `MUS4_FW.ino` 当前定义了 `ENABLE_WIFI_CONSOLE`，并在该路径下启用 `ENABLE_WIFI_WEBSOCKET_TELEMETRY`。启用后 ESP32 默认以 **AP-only** 启动：默认 AP SSID 为 `MUS4-DEBUG`（可通过 Web Console 持久化修改），TCP 控制台端口为 `2323`，Web Console/Donkey Console 端口为 `80`，WebSocket 遥测端口为 `81`，ArduinoOTA 默认主机名为 `mus4-ota`、端口 `3232`。
 
+WebSocket 遥测支持最多 `WIFI_WEB_SOCKET_MAX_CLIENTS`（默认 2）个并发客户端，通过 `binaryAll()`/`textAll()` 广播同一份序列化 payload 而非逐客户端打包；超过上限的新连接被拒绝。OTA 传输期间通过 `closeAll()` 一次性清场，结束后自动恢复。
+
 v1.7.18 起 AP/STA 改为**互斥切换**（不再长期共存）：
 - 设备启动时若已有 STA 配置，会临时切到 `WIFI_AP_STA` 发起连接；STA 进入 `WL_CONNECTED` 后等待 `WIFI_STA_GRACE_UP_MS=1000ms`，再由 `stopWifiApForStaOnly()` 关闭 AP、切到 `WIFI_STA`（STA-only）。
 - STA 在 STA-only 状态下断开后，`updateWifiSta()` 武装 `WIFI_STA_GRACE_DOWN_MS=1000ms`；grace 内若链路恢复则取消重启，否则由 `restoreApAfterStaLost(true)` 切回 `WIFI_AP` 并 `startWifiApServices()`，**不再自动重新发起 STA 连接**，用户需在 AP 页面手动重连或重新保存。
@@ -356,7 +366,14 @@ v1.7.18 起 AP/STA 改为**互斥切换**（不再长期共存）：
 
 AP 模式下作为调试和配网入口；STA-only 模式下 AP 不可见，用户需通过 STA IP 或 mDNS `<AP名称小写>.local` 访问 Web Console。固件会按当前 AP 名称生成小写 mDNS 主机名并发布 Web Console（例如 `http://mus4-debug.local/`），但 Web UI 网络面板不再提供 `.local` 入口；`.local` 不可用时以页面显示的 STA IP 为准。
 
-Web UI 的 HTML/CSS/JS 目前内嵌在 `libraries/mus4_web/src/WebConsoleAssets.h` 中，由 `mus4_web/src/WebConsoleServer.*` 提供服务，页面品牌已显示为 `Drifter Console`。修改标题、顶部 DEV/OTA 区、Network 面板、Diagnostics 面板、状态卡片、串口日志、Tub JSON 或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
+Web UI 的 HTML/CSS/JS 目前内嵌在 `libraries/mus4_web/src/WebConsoleAssets.h` 中，由 `mus4_web/src/WebConsoleServer.*` 提供服务，页面品牌已显示为 `Drifter Console`。修改标题、顶部 DEV/OTA 区、Network 面板、Diagnostics 面板、状态卡片、串口日志、Tub JSON、Judge 页面或图表行为时，优先用 `tests/test_firmware_feature_flags.py` 增加源码断言，再做最小实现。
+
+**HTTP OTA 稳定性机制**（v1.7.27–v1.7.29）：
+- 上传开始时 `WebConsoleServer` 将同步 WebServer client timeout 临时延长至 30s（默认 5s），`ArduinoOTA.setTimeout(30000)` 同理，为 Flash erase/write 和 TCP 零窗口恢复留出余量。
+- OTA 传输期间（`otaRuntime.inProgress`），middleware 对 `/update` 以外的请求快速返回 `503 OTA in progress`，强制浏览器释放 keep-alive 连接和 TCP socket；同时跳过 `sampleWifiWebData()` 减少主循环开销。
+- 上传任何阶段失败（begin/write/end/aborted）后，统一调用 `Update.abort()` 释放 Updater 内部 buffer，并重置 `os.inProgress`、`parkGuardActive`、`closeWsPending`、`windowOpen` 等状态；DEV 模式下保留 OTA 窗口并刷新 TTL，非 DEV 模式关闭窗口。防止失败一次后 Update 对象卡住导致后续 OTA 无法开始。
+- `setup()` 中调用 `esp_ota_mark_app_valid_cancel_rollback()` 取消 bootloader 的 OTA 回滚计时器，避免新固件长期处于 `PENDING_VERIFY` 导致下次 reset 被回滚到旧固件。
+- `UPLOAD_FILE_WRITE` 分支中加入 `yield()`，让出 CPU 给 Wi-Fi/AsyncTCP/idle task，降低长时间连续写 Flash 触发 Task WDT 的概率。
 
 ### BLE Gamepad Mode
 

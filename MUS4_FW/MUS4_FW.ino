@@ -669,6 +669,10 @@ void loop()
 
     updateActuatorOutput();
 
+    if (mus4LogTarget == MUS4_LOG_TARGET_SERIAL) {
+        tui.setActuatorDuty(actuator_steering_duty, actuator_throttle_duty);
+    }
+
     buzzer.update();
 
     scanLEDToggle();

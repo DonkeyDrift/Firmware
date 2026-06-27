@@ -9,6 +9,7 @@ public:
     void render();
     void setRC(int ch1, int ch2, int ch3, int ch4, int ch5, int ch6);
     void setOutput(int throttle, int steering, int mode, bool park);
+    void setActuatorDuty(int servoDuty, int escDuty);
     void setSensors(const SensorData& data);
     
     // Configuration
@@ -35,6 +36,8 @@ private:
     // Current State
     struct State {
         int ch1, ch2, ch3, ch4, ch5, ch6;
+        int servoDuty;     // 舵机 PWM ledc 占空比 (300Hz/14bit)
+        int escDuty;       // 电调 PWM ledc 占空比 (300Hz/14bit)
         ControlData output;
         SensorData sensors;
         int throttleWave[WAVE_WIDTH];

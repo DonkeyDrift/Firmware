@@ -11,6 +11,8 @@ const int MOTOR_MID_V = 7372;    // 1500µs @ 300Hz
 const int MOTOR_RANGE_V = 2458; // ±500µs range
 extern const int SERVO_MID_V = 7372;    // 1500µs @ 300Hz
 extern const int SERVO_RANGE_V = 2458; // ±500µs range
+int actuator_steering_duty = 7372;     // last written steering ledc duty
+int actuator_throttle_duty = 7372;     // last written throttle ledc duty
 
 void setupActuatorOutput()
 {
@@ -25,6 +27,9 @@ void updateActuatorOutput()
 
     pwm_steering = min(max(pwm_steering, PWM_MIN_V), PWM_MAX_V);
     pwm_throttle = min(max(pwm_throttle, PWM_MIN_V), PWM_MAX_V);
+
+    actuator_steering_duty = pwm_steering;
+    actuator_throttle_duty = pwm_throttle;
 
     ledcWriteChannel(CH_STEERING, pwm_steering);
     ledcWriteChannel(CH_THROTTLE, pwm_throttle);

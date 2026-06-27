@@ -65,6 +65,11 @@ void TUI::setRC(int ch1, int ch2, int ch3, int ch4, int ch5, int ch6) {
     _state.ch6 = ch6;
 }
 
+void TUI::setActuatorDuty(int servoDuty, int escDuty) {
+    _state.servoDuty = servoDuty;
+    _state.escDuty = escDuty;
+}
+
 void TUI::setOutput(int throttle, int steering, int mode, bool park) {
     _state.output.throttle = throttle;
     _state.output.steering = steering;
@@ -228,13 +233,20 @@ void TUI::drawRC() {
                    _state.ch3 != _lastState.ch3 ||
                    _state.ch4 != _lastState.ch4 ||
                    _state.ch5 != _lastState.ch5 ||
-                   _state.ch6 != _lastState.ch6;
-                   
+                   _state.ch6 != _lastState.ch6 ||
+                   _state.servoDuty != _lastState.servoDuty ||
+                   _state.escDuty != _lastState.escDuty;
+
     if (!changed) return;
-    
+
     cursorTo(ROW_RC, 1);
     _out.printf("RC: [CH1:%4d] [CH2:%4d] [CH3:%4d] [CH4:%4d] [CH5:%4d] [CH6:%4d]",
         _state.ch1, _state.ch2, _state.ch3, _state.ch4, _state.ch5, _state.ch6);
+
+    // 显示舵机/电调的实际 PWM 占空比输出 (300Hz/14bit ledc 值)
+    if (_ansiEnabled) _out.print(ANSI_MAGENTA);
+    _out.printf("  OUT S:%5d T:%5d", _state.servoDuty, _state.escDuty);
+    if (_ansiEnabled) _out.print(ANSI_RESET "\033[K");
 }
 
 void TUI::drawOutput() {

@@ -2,7 +2,14 @@
 
 #include "FirmwareConfig.h"
 #include "Mus4Log.h"
-#include "JoystickCalibration.h"
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 注意：process_steering_signal() 当前不在生产控制链路中被调用。
+// 实际转向映射由 ControlMixer::updateControlOutput() 调用
+// JoystickCalibration::mapJoystickAxis() 完成。
+// 本文件的信号验证、PID 与安全模式逻辑保留作为备选处理路径，
+// 但校准相关逻辑不应在此处重复实现。
+// ═══════════════════════════════════════════════════════════════════════════
 
 // --- Steering Signal Processing Constants & Globals ---
 const int PWM_VALID_MIN = 800; // Increased from 500 to reject noise
@@ -78,15 +85,14 @@ int process_steering_signal(int raw_pwm) {
     int filtered_pwm = sum / MA_WINDOW_SIZE;
 
     // 3. Mapping to Control Range (-100 to 100)
-    // Target steering based on filtered PWM
-    int16_t cal_mid = joystick_cal.steering_enabled ? joystick_cal.steering.mid_pwm : RC_STEERING_MID;
-    int16_t cal_min = joystick_cal.steering_enabled ? joystick_cal.steering.min_pwm : RC_STEERING_MIN;
-    int16_t cal_max = joystick_cal.steering_enabled ? joystick_cal.steering.max_pwm : RC_STEERING_MAX;
+    // 使用编译期默认值做三段式映射（与 mapJoystickAxis 非校准路径一致）。
+    // 生产链路中校准映射由 ControlMixer 层调用 mapJoystickAxis() 统一完成，
+    // 此处不重复引入 joystick_cal 依赖。
     float target_steering;
-    if (filtered_pwm < cal_mid) {
-        target_steering = map(filtered_pwm - cal_mid, cal_min - cal_mid, 0, -100, 0);
+    if (filtered_pwm < RC_STEERING_MID) {
+        target_steering = map(filtered_pwm, RC_STEERING_MIN, RC_STEERING_MID, -100, 0);
     } else {
-        target_steering = map(filtered_pwm - cal_mid, 0, cal_max - cal_mid, 0, 100);
+        target_steering = map(filtered_pwm, RC_STEERING_MID, RC_STEERING_MAX, 0, 100);
     }
 
     // 4. PID Calculation

@@ -83,8 +83,11 @@ static void resetCenteringWindow()
 
 static void captureCenterAndAdvance()
 {
-    joystick_cal.steering.mid_pwm = (int16_t)pwm_filtered[CH_STEERING];
-    joystick_cal.throttle.mid_pwm = (int16_t)pwm_filtered[CH_THROTTLE];
+    // 使用窗口内样本的中位数作为中点，而非瞬时单帧快照。
+    // 与超时回退路径（同样使用 computeWindowMedian）保持一致，
+    // 防止稳定判定恰好通过后某一帧的偶发噪声污染 mid_pwm。
+    joystick_cal.steering.mid_pwm = computeWindowMedian(center_samples[CH_STEERING], center_sample_count[CH_STEERING]);
+    joystick_cal.throttle.mid_pwm = computeWindowMedian(center_samples[CH_THROTTLE], center_sample_count[CH_THROTTLE]);
 
     char buf[96];
     snprintf(buf, sizeof(buf), "[CAL] Center captured: steer=%d throt=%d",
@@ -111,8 +114,15 @@ int mapJoystickAxis(int16_t pwm,
                     int16_t default_max)
 {
     if (!enabled) {
-        int v = map(pwm, default_min, default_max, -100, 100);
-        return constrain(v, -100, 100);
+        // 非校准路径同样使用三段式映射，将 default_mid 作为物理中点。
+        // 之前仅用 map(pwm, default_min, default_max, -100, 100) 会将中点
+        // 隐式定在 (min+max)/2，与 default_mid 不一致时产生中心偏移。
+        if (pwm < default_mid) {
+            long mapped = map(pwm, default_min, default_mid, -100, 0);
+            return constrain(mapped, -100, 0);
+        }
+        long mapped = map(pwm, default_mid, default_max, 0, 100);
+        return constrain(mapped, 0, 100);
     }
 
     if (pwm < cal.mid_pwm) {

@@ -12,8 +12,12 @@ import unittest
 def map_joystick_axis(pwm, cal, enabled, default_min, default_mid, default_max):
     """Python mirror of mapJoystickAxis()."""
     if not enabled:
-        v = int((pwm - default_min) * 200 / (default_max - default_min)) - 100
-        return max(-100, min(100, v))
+        # 非校准路径同样使用三段式映射，以 default_mid 作为物理中点
+        if pwm < default_mid:
+            v = int((pwm - default_min) * 100 / (default_mid - default_min)) - 100
+            return max(-100, min(0, v))
+        v = int((pwm - default_mid) * 100 / (default_max - default_mid))
+        return max(0, min(100, v))
 
     if pwm < cal["mid_pwm"]:
         v = int((pwm - cal["min_pwm"]) * 100 / (cal["mid_pwm"] - cal["min_pwm"])) - 100

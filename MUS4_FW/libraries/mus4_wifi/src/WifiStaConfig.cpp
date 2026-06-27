@@ -116,6 +116,7 @@ bool saveWifiStaPasswordPreference(const String& password)
     size_t passwordWritten = ws().prefs->putString(WIFI_STA_CONFIG_PREF_PASSWORD_KEY, ws().staPassword);
     ws().prefs->end();
     if (enabledWritten == 0 || (ws().staPasswordSet && passwordWritten == 0)) return false;
+    ws().staConfigured = true;
     return true;
 }
 

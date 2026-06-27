@@ -476,6 +476,37 @@ static void prealignWifiApChannelForStaApply()
     }
 }
 
+// 开机自动连接时，扫描目标 SSID 所在信道并重启 SoftAP 对齐，
+// 避免 ESP32 单射频在 AP 信道 6 与目标路由器信道之间来回切换导致连接失败。
+// 仅在 wifiStaApplyFromAp == false 且 wifiStaTargetChannel == 0 时执行。
+static void prealignWifiApByScanForBootSta()
+{
+    if (wifiStaApplyFromAp || wifiStaTargetChannel != 0) return;
+    if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) return;
+    if (strlen(wifiStaSsid) == 0) return;
+
+    int n = WiFi.scanComplete();
+    // 如果已有进行中的扫描结果，直接消费；否则启动一次同步阻塞扫描。
+    if (n < 0) {
+        n = WiFi.scanNetworks(false, false);
+    }
+    if (n <= 0) return;
+
+    for (int i = 0; i < n; i++) {
+        if (WiFi.SSID(i) == String(wifiStaSsid)) {
+            wifiStaTargetChannel = (uint8_t)WiFi.channel(i);
+            break;
+        }
+    }
+    WiFi.scanDelete();
+
+    if (isValidWifiChannel(wifiStaTargetChannel)) {
+        mus4Logf("wifi", "STA boot: found %s on channel %u, prealigning AP",
+                 wifiStaSsid, wifiStaTargetChannel);
+        restartWifiApOnChannel(wifiStaTargetChannel);
+    }
+}
+
 void applyWifiStaCredentials()
 {
     if (!wifiStaConfigured) return;
@@ -508,12 +539,16 @@ void applyWifiStaCredentials()
     if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
         startWifiApServices("AP restored for STA apply");
     }
-    prealignWifiApChannelForStaApply();
+    prealignWifiApByScanForBootSta();      // 开机自动连接：扫描目标信道并对齐 SoftAP
+    prealignWifiApChannelForStaApply();    // Web 端 AP 发起：使用前端传入的信道
     wifiInApOnlyMode = false;
-    disconnectWifiStaOnly();
+    // 不再显式调用 disconnectWifiStaOnly()——WiFi.begin() 内部已调用
+    // esp_wifi_disconnect()，重复调用可能导致竞态使 STA 连接静默失败。
+    // 加短暂延时让 Wi-Fi 栈处理完 prealign 可能的 AP 重启事件。
+    delay(20);
     WiFi.setHostname(wifiMdnsHostText().c_str());
     WiFi.begin(wifiStaSsid, wifiStaPassword);
-    mus4Logf("wifi", "STA connecting: %s", wifiStaSsid);
+    mus4Logf("wifi", "STA connecting: ssid=\"%s\" pass_len=%d", wifiStaSsid, (int)strlen(wifiStaPassword));
 }
 
 void scheduleWifiApRestart()

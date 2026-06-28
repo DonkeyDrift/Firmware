@@ -134,7 +134,7 @@ void printWirelessStatus(Print& out)
         wifiWebDataMaxDtMs,
         wifiWebCommandMaxDtMs,
         getActiveWifiApSsid().c_str(),
-        WiFi.softAPIP().toString().c_str(),
+        wifiApIpText().c_str(),
         WiFi.softAPgetStationNum(),
         wifiRuntime.staConfigured ? 1 : 0,
         wifiRuntime.staConnected ? 1 : 0,
@@ -173,27 +173,21 @@ static void handleWifiWebCaptivePortal()
 
 static void handleWifiWebCaptivePortalRedirectPage()
 {
-    String host = wifiWebServer.hostHeader();
-    if (host.length() == 0 || host.indexOf(WiFi.softAPIP().toString()) >= 0) {
-        host = WiFi.softAPIP().toString();
-    }
-    String url = String("http://") + host + "/";
-    String response = String("<!doctype html><html><head><meta charset=\"utf-8\">") +
-        "<meta http-equiv=\"refresh\" content=\"0;url=" + url + "\">" +
-        "<script>location.replace('" + url + "');</script></head>" +
-        "<body><a href=\"" + url + "\">打开 Drifter Console</a></body></html>";
+    // 直接返回根页面，不做跳转，避免触发 Windows 强制门户弹窗。
     wifiWebServer.sendHeader("Cache-Control", "no-store");
-    wifiWebServer.send(200, "text/html", response);
+    wifiWebServer.send_P(200, "text/html", WIFI_WEB_CONSOLE_HTML);
 }
 
 static void handleWifiWebWindowsConnectTest()
 {
-    handleWifiWebCaptivePortal();
+    wifiWebServer.sendHeader("Cache-Control", "no-store");
+    wifiWebServer.send(200, "text/plain", "Microsoft Connect Test");
 }
 
 static void handleWifiWebWindowsNcsi()
 {
-    handleWifiWebCaptivePortal();
+    wifiWebServer.sendHeader("Cache-Control", "no-store");
+    wifiWebServer.send(200, "text/plain", "Microsoft NCSI");
 }
 
 static void handleWifiWebCaptivePortalNotFound()
@@ -336,7 +330,7 @@ static String wifiApJson()
     response += "{\"ssid\":";
     appendJsonString(response, ws.apSsid);
     response += ",\"ip\":";
-    appendJsonString(response, WiFi.softAPIP().toString().c_str());
+    appendJsonString(response, wifiApIpText().c_str());
     response += ",\"clients\":";
     response += WiFi.softAPgetStationNum();
     response += "}";
@@ -393,7 +387,7 @@ static String wifiStaJson()
     response += ",\"password_len\":";
     response += ws.staPasswordSet ? strlen(ws.staPassword) : 0;
     response += ",\"ap_ip\":";
-    appendJsonString(response, WiFi.softAPIP().toString().c_str());
+    appendJsonString(response, wifiApIpText().c_str());
     response += ",\"sta_ip\":";
     appendJsonString(response, wifiStaIpText().c_str());
     response += ",\"mdns_host\":";

@@ -59,6 +59,12 @@ String wifiStaIpText()
     return ws().staConnected ? WiFi.localIP().toString() : String("0.0.0.0");
 }
 
+String wifiApIpText()
+{
+    if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) return String("Disabled");
+    return WiFi.softAPIP().toString();
+}
+
 void clearWifiStaLastError()
 {
     ws().staLastError[0] = 0;
@@ -188,7 +194,7 @@ void printWifiStaStatus(Print& out)
         ws().staConnecting ? 1 : 0,
         ws().staSsid,
         ws().staPasswordSet ? 1 : 0,
-        WiFi.softAPIP().toString().c_str(),
+        wifiApIpText().c_str(),
         wifiStaIpText().c_str(),
         ws().staLastError,
         ws().staLastErrorMessage);

@@ -11,6 +11,7 @@ void setWifiRuntimeState(WifiRuntimeState& ws);
 bool copyWifiStaSsid(const String& ssid);
 bool copyWifiStaPassword(const String& password);
 String wifiStaIpText();
+String wifiApIpText();
 void clearWifiStaLastError();
 void setWifiStaLastError(const char* code, const char* message, bool timedOut);
 void scheduleWifiStaApply();

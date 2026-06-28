@@ -740,7 +740,7 @@ def test_wifi_console_types_are_split_from_sketch():
 
     for symbol in [
         "const char* WIFI_CONSOLE_AP_DEFAULT_SSID = \"MUS4-ESP\";",
-        "const char* WIFI_CONSOLE_AP_PASSWORD = \"mus4-debug\";",
+        "const char* WIFI_CONSOLE_AP_PASSWORD = \"\";",
         "const uint16_t WIFI_CONSOLE_PORT = 2323;",
         "const uint16_t WIFI_WEB_CONSOLE_PORT = 80;",
         "const uint32_t WIFI_WEB_TELEMETRY_MIN_FREE_HEAP = 60000;",
@@ -2544,8 +2544,8 @@ def test_web_console_handles_common_captive_portal_probes_locally():
     assert "static void handleWifiWebCaptivePortalNotFound()" in source
     assert "handleWifiWebWindowsConnectTest" in source
     assert "handleWifiWebWindowsNcsi" in source
-    assert "Microsoft Connect Test" not in source
-    assert "Microsoft NCSI" not in source
+    assert "Microsoft Connect Test" in source
+    assert "Microsoft NCSI" in source
     assert "String url = String(\"http://\") + WiFi.softAPIP().toString() + \"/\"" in source
     assert "wifiWebServer.sendHeader(\"Location\", url)" in source
     assert "wifiWebServer.send(302, \"text/plain\", \"\")" in source
@@ -2566,11 +2566,10 @@ def test_web_console_handles_common_captive_portal_probes_locally():
         source,
         re.DOTALL,
     ).group("body")
-    assert "location.replace" in redirect_body
-    assert "http-equiv=\\\"refresh\\\"" in redirect_body
-    assert "打开 Drifter Console" in redirect_body
-    assert "打开 DonkeyDrift Console" not in redirect_body
-    assert "WiFi.softAPIP().toString()" in redirect_body
+    assert "location.replace" not in redirect_body
+    assert "http-equiv=\\\"refresh\\\"" not in redirect_body
+    assert "WIFI_WEB_CONSOLE_HTML" in redirect_body
+    assert "send_P" in redirect_body
 
     not_found_body = re.search(
         r"static void handleWifiWebCaptivePortalNotFound\(\)\s*\{(?P<body>.*?)\n\}",

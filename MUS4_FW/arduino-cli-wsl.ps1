@@ -99,8 +99,8 @@ param(
     [Parameter(HelpMessage="HTTP OTA target host or IP (default: read from .mus4_ota_target)")]
     [string]$HttpOtaHost,
 
-    [Parameter(HelpMessage="HTTP OTA Web Console password (default: mus4-debug)")]
-    [string]$HttpOtaPassword = "mus4-debug",
+    [Parameter(HelpMessage="HTTP OTA Web Console password (default: empty)")]
+    [string]$HttpOtaPassword = "",
 
     [Parameter(HelpMessage="Arduino Sketch file path (default: auto-detect)")]
     [Alias("i")]
@@ -586,7 +586,7 @@ function Invoke-HttpOtaUpload {
     param(
         [Parameter(Mandatory=$true)][string]$BinPath,
         [Parameter(Mandatory=$true)][string]$TargetHost,
-        [Parameter(Mandatory=$false)][string]$Password = "mus4-debug"
+        [Parameter(Mandatory=$false)][string]$Password = ""
     )
     if (-not (Test-Path $BinPath)) {
         Write-Error "Binary file not found: $BinPath"

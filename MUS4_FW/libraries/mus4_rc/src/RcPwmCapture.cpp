@@ -24,6 +24,7 @@ volatile unsigned long last_valid_time[RC_CHANNEL_COUNT] = {0};
 static void IRAM_ATTR acceptRcPulse(int channel, uint32_t width, unsigned long now)
 {
     static uint16_t candidate_pwm[RC_CHANNEL_COUNT] = {0};
+    static bool candidate_pending[RC_CHANNEL_COUNT] = {false};
     static uint16_t large_change_count[RC_CHANNEL_COUNT] = {0};
     static uint16_t last_large_pwm[RC_CHANNEL_COUNT] = {0};
 
@@ -33,16 +34,26 @@ static void IRAM_ATTR acceptRcPulse(int channel, uint32_t width, unsigned long n
     uint16_t prev = pwm_value[channel];
     int diff = abs((int)pulse - (int)prev);
 
-    if (diff <= 120) {
+    // 小幅变化（≤60µs）：即时接受，覆盖正常抖动和微调，零延迟。
+    // 阈值 60µs ≈ 6% 转向行程，在灵敏度和噪声抑制之间取得平衡。
+    if (diff <= 60) {
         pwm_value[channel] = pulse;
         last_valid_time[channel] = now;
+        candidate_pending[channel] = false;
     } else if (diff <= 200) {
-        if (abs((int)pulse - (int)candidate_pwm[channel]) < 80) {
+        // 中幅变化（61–200µs）：需要 1 帧确认，防止单帧噪声尖峰穿透。
+        // candidate_pending 标志确保只有连续两帧一致的候选值才会被接受，
+        // 同时消除陈旧 candidate_pwm 残留导致的误匹配。
+        if (candidate_pending[channel] && abs((int)pulse - (int)candidate_pwm[channel]) < 80) {
             pwm_value[channel] = pulse;
             last_valid_time[channel] = now;
+            candidate_pending[channel] = false;
+        } else {
+            candidate_pwm[channel] = pulse;
+            candidate_pending[channel] = true;
         }
-        candidate_pwm[channel] = pulse;
     } else {
+        // 大幅变化（>200µs）：保持原有 2 帧确认机制不变。
         if (abs((int)pulse - (int)last_large_pwm[channel]) < 100) {
             large_change_count[channel]++;
             if (large_change_count[channel] >= 2) {
@@ -54,6 +65,7 @@ static void IRAM_ATTR acceptRcPulse(int channel, uint32_t width, unsigned long n
             large_change_count[channel] = 0;
         }
         last_large_pwm[channel] = pulse;
+        candidate_pending[channel] = false;
     }
 }
 

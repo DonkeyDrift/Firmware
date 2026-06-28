@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-06-28 v1.7.31
+
+- 固件版本号从 `v1.7.30` 更新到 `v1.7.31`。
+- feat(actuator): 舵机/电调中点运行时可配置 + 延迟生效 + Web UI Set 按钮
+  - `servo_mid_v`/`motor_mid_v` 从编译期常量改为 NVS 持久化变量（默认 7372 = 1500µs）
+  - 新增 `SERVO_MID`/`MOTOR_MID` 命令：无参查询当前中点，带参设置并持久化到 NVS
+  - 延迟生效机制：Set 新中点后等待转轮/油门归零才同步到 PWM 映射，避免突变
+  - Web UI (Drifter Console) RC Channels 面板新增 Mid S/Mid T 显示和 Set 按钮
+  - WebSocket 二进制帧新增 sm/mm 字段，JSON API 同步新增
+  - 新增 docs/Inspect/joystick-calibration-analysis.md（7 张 mermaid 图）
+  - 同步更新 wireless_console_policy.py、test_wireless_console_policy.py、test_firmware_feature_flags.py
+
 ## 2026-06-28 v1.7.30
 
 - 固件版本号从 `v1.7.29` 更新到 `v1.7.30`。

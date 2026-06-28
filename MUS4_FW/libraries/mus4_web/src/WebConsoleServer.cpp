@@ -37,6 +37,8 @@ extern uint8_t& wifiStaTargetChannel;
 // Control / sensor globals defined in MUS4_FW.ino (to be migrated later)
 extern ControlData car_output;
 extern SerialBuf wifiConsoleBuf;
+extern int servo_mid_v;
+extern int motor_mid_v;
 
 // Web telemetry globals defined in MUS4_FW.ino (to be migrated to WebTelemetry)
 extern WebDataPoint wifiWebData[WIFI_WEB_DATA_CAPACITY];
@@ -852,6 +854,10 @@ static void appendWifiWebStateJson(String& response, WebDataPoint& point)
     response += point.actuatorSteeringDuty;
     response += ",\"ed\":";
     response += point.actuatorThrottleDuty;
+    response += ",\"sm\":";
+    response += servo_mid_v;
+    response += ",\"mm\":";
+    response += motor_mid_v;
     response += '}';
 }
 

@@ -13,6 +13,8 @@
 // External shared web data buffer (defined in MUS4_FW.ino)
 extern WebDataPoint wifiWebData[];
 extern uint16_t wifiWebDataHead;
+extern int servo_mid_v;
+extern int motor_mid_v;
 extern uint16_t wifiWebDataCount;
 extern uint32_t wifiWebDataSeq;
 
@@ -212,6 +214,8 @@ static void pushWifiWebSocketData()
     writeF32(latest.pseudoSpeed);
     writeU16((uint16_t)latest.actuatorSteeringDuty);
     writeU16((uint16_t)latest.actuatorThrottleDuty);
+    writeU16((uint16_t)servo_mid_v);
+    writeU16((uint16_t)motor_mid_v);
     uint8_t* pointCountSlot = cursor++;
     for (uint32_t seq = firstSeq; seq < firstSeq + available; seq++) {
         uint16_t index = wifiWebDataIndexForSeq(seq);

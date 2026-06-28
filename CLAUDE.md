@@ -12,13 +12,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 新增其它硬件平台的固件时，应作为根目录下并列的同级子目录引入，目录命名采用 `<硬件型号>_FW/` 形式（全大写硬件代号 + `_FW` 后缀），与现存 `MUS4_FW/` 保持一致；各自维护自己的 `README.md`、`CLAUDE.md`、`.gitignore`、构建脚本与测试，不要把代码上提到仓库根。
 
-根目录还包含以下不遵循 `<硬件型号>_FW/` 命名规范的辅助性/实验性子系统，各自独立维护：
-- `multi_agent_framework/` — 独立 Python 多智能体协作框架（IPC 消息队列、ESP-IDF 示例固件、Linux 脚本、WebSocket 控制面板），不属于 ESP32 固件主链路。
-- `provisioning_system/` — 独立 Wi-Fi 配网系统（ESP32 AP Web Server + Linux agent + Playwright 测试资源），通过 UART 把 Wi-Fi 凭据从 ESP32 传递到 Linux 主机上的 `nmcli`。
+MUS4 子项目内还包含两个不遵循 `<硬件型号>_FW/` 命名规范的辅助性/实验性子系统，各自独立维护：
+- `MUS4_FW/multi_agent_framework/` — 独立 Python 多智能体协作框架（IPC 消息队列、ESP-IDF 示例固件、Linux 脚本、WebSocket 控制面板），不属于 ESP32 固件主链路。
+- `MUS4_FW/provisioning_system/` — 独立 Wi-Fi 配网系统（ESP32 AP Web Server + Linux agent + Playwright 测试资源），通过 UART 把 Wi-Fi 凭据从 ESP32 传递到 Linux 主机上的 `nmcli`。
 
 ## 工作流：必须先进入子项目
 
-仓库根没有 sketch、没有构建脚本、也没有 Python 测试。**任何"构建/烧录/测试/运行 Python 工具"的操作都必须先 `cd` 到对应子项目根**，然后遵循该子项目自己的 `CLAUDE.md`：
+仓库根没有 sketch、没有构建脚本、也没有 Python 测试。**任何"构建/烧录/测试/运行 Python 工具"的操作都必须先 `cd` 到对应子项目根**，然后遵循该子项目自己的 `CLAUDE.md`。
+
+常用操作速查（均需先 `cd MUS4_FW`）：
+
+```powershell
+# 仅编译验证（修改固件后首选）
+.\arduino-cli-wsl.ps1 -Compile -Sketch MUS4_FW.ino
+
+# 编译 + HTTP OTA 上传到调试设备
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.52 -Sketch MUS4_FW.ino
+
+# 运行全部 Python 测试
+pytest tests/
+
+# 运行单个测试文件/用例
+pytest tests/test_firmware_feature_flags.py
+pytest tests/test_wireless_console_policy.py -k "test_requires_authentication"
+```
 
 - MUS4 固件相关任务 → `cd MUS4_FW` 后阅读并遵循 [`MUS4_FW/CLAUDE.md`](MUS4_FW/CLAUDE.md)。该文件覆盖了：
   - WSL 加速构建脚本 `arduino-cli-wsl.ps1` 与 Windows 端 `arduino-cli.py` 的常用命令矩阵；
@@ -43,6 +60,7 @@ MUS4 子项目的 `.claude/settings.local.json` 配置了 `PostToolUse` 钩子�
 
 ## 文档入口
 
+- [`AGENTS.md`](AGENTS.md) — 仓库根级面向通用 AI 编码代理的指南，与本文档互补。
 - [`README.md`](README.md) — 仓库根 README，只说明当前在驻子项目清单。
 - [`MUS4_FW/README.md`](MUS4_FW/README.md) / [`MUS4_FW/README.zh-CN.md`](MUS4_FW/README.zh-CN.md) — MUS4 子项目对外介绍。
 - [`MUS4_FW/CLAUDE.md`](MUS4_FW/CLAUDE.md) — MUS4 子项目的权威工作指南；进入该子项目工作前优先读它。

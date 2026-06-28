@@ -407,6 +407,8 @@ void setup()
       loadWifiStaPreference();
       loadJudgeConfigPreference();
       loadJoystickCalibration();
+      loadServoOutputConfig();
+      loadMotorOutputConfig();
       cleanupInvalidOtaPartition();
       // v1.7.28：启动后标记当前固件为有效，取消 bootloader 的 OTA 回滚。
       // 否则第一次 OTA 成功后新分区长期处于 PENDING_VERIFY，下次 reset

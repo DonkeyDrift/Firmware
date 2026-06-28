@@ -39,6 +39,16 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertTrue(POLICY.is_wireless_command_allowed("JOYSTICK_STATUS", authenticated=True, park_locked=False))
         self.assertTrue(POLICY.is_wireless_command_allowed("JOYSTICK_STATUS", authenticated=True, park_locked=True))
 
+    def test_servo_mid_requires_authentication_not_park(self):
+        self.assertFalse(POLICY.is_wireless_command_allowed("SERVO_MID", authenticated=False, park_locked=False))
+        self.assertTrue(POLICY.is_wireless_command_allowed("SERVO_MID", authenticated=True, park_locked=False))
+        self.assertTrue(POLICY.is_wireless_command_allowed("SERVO_MID", authenticated=True, park_locked=True))
+
+    def test_motor_mid_requires_authentication_not_park(self):
+        self.assertFalse(POLICY.is_wireless_command_allowed("MOTOR_MID", authenticated=False, park_locked=False))
+        self.assertTrue(POLICY.is_wireless_command_allowed("MOTOR_MID", authenticated=True, park_locked=False))
+        self.assertTrue(POLICY.is_wireless_command_allowed("MOTOR_MID", authenticated=True, park_locked=True))
+
     def test_joystick_cal_rejects_unauthenticated(self):
         self.assertFalse(POLICY.is_wireless_command_allowed("JOYSTICK_CAL", authenticated=False, park_locked=True))
 
@@ -238,8 +248,8 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertTrue(POLICY.is_web_command_allowed("DISABLE_OTA", authenticated=False, park_locked=False, dev_mode=True))
 
     def test_web_dev_mode_does_not_bypass_authentication_for_control_or_diagnostic(self):
-        # DEV ON 仅放权 OTA / Web 配置 / 显示与日志切换 / WIFI_STA_*；
-        # 控制命令、Park 锁定诊断命令仍要求认证。详见
+        # DEV ON 仅放权 OTA / Web 配置 / 显示与日志切换 / WIFI_STA_* / 校准命令；
+        # 控制命令、非校准诊断命令（TEST/BENCH/REGRESS 等）仍要求认证。详见
         # docs/Plan/DEV模式影响面与运行逻辑映射.md §3 与
         # docs/Plan/DEV模式安全边界收敛RFC.md。
         self.assertFalse(POLICY.is_web_command_allowed("10:20", authenticated=False, park_locked=False, dev_mode=True))
@@ -248,10 +258,33 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertFalse(POLICY.is_web_command_allowed("TEST", authenticated=False, park_locked=True, dev_mode=True))
         self.assertFalse(POLICY.is_web_command_allowed("BENCH", authenticated=False, park_locked=True, dev_mode=True))
         self.assertFalse(POLICY.is_web_command_allowed("REGRESS", authenticated=False, park_locked=True, dev_mode=True))
-        self.assertFalse(POLICY.is_web_command_allowed("STEER_CAL", authenticated=False, park_locked=True, dev_mode=True))
         # 认证后仍按原有规则：控制命令允许、诊断命令需 Park 锁定。
         self.assertTrue(POLICY.is_web_command_allowed("10:20", authenticated=True, park_locked=False, dev_mode=True))
         self.assertTrue(POLICY.is_web_command_allowed("TEST", authenticated=True, park_locked=True, dev_mode=True))
+
+    def test_web_dev_mode_allows_calibration_without_auth_but_keeps_park_guard(self):
+        # DEV ON + 未认证 + Park 未锁 → 拒绝（安全底线）
+        self.assertFalse(POLICY.is_web_command_allowed("JOYSTICK_CAL", authenticated=False, park_locked=False, dev_mode=True))
+        self.assertFalse(POLICY.is_web_command_allowed("STEER_CAL", authenticated=False, park_locked=False, dev_mode=True))
+        self.assertFalse(POLICY.is_web_command_allowed("CAL_SAVE", authenticated=False, park_locked=False, dev_mode=True))
+        # DEV ON + 未认证 + Park 已锁 → 允许（核心需求）
+        self.assertTrue(POLICY.is_web_command_allowed("JOYSTICK_CAL", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("STEER_CAL", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("CAL_SAVE", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("CAL_RETRY", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("CAL_ABORT", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("CAL_RESET", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("CAL_STATUS", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("JOYSTICK_SAVE", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("JOYSTICK_RETRY", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("JOYSTICK_ABORT", authenticated=False, park_locked=True, dev_mode=True))
+        self.assertTrue(POLICY.is_web_command_allowed("JOYSTICK_RESET", authenticated=False, park_locked=True, dev_mode=True))
+        # DEV OFF + 未认证 → 拒绝（回归保护）
+        self.assertFalse(POLICY.is_web_command_allowed("JOYSTICK_CAL", authenticated=False, park_locked=True, dev_mode=False))
+        self.assertFalse(POLICY.is_web_command_allowed("STEER_CAL", authenticated=False, park_locked=True, dev_mode=False))
+        # TCP 来源 DEV ON 不生效
+        self.assertFalse(POLICY.is_wireless_command_allowed("JOYSTICK_CAL", authenticated=False, park_locked=True, dev_mode=True, origin="tcp"))
+        self.assertFalse(POLICY.is_wireless_command_allowed("STEER_CAL", authenticated=False, park_locked=True, dev_mode=True, origin="tcp"))
 
     def test_wifi_sta_status_is_public(self):
         self.assertTrue(POLICY.is_wireless_command_allowed("WIFI_STA_STATUS", authenticated=False, park_locked=False))

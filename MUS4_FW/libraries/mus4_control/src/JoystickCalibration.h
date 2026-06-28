@@ -35,6 +35,12 @@ void loadJoystickCalibration();
 bool saveJoystickCalibration();
 void resetJoystickCalibration();
 
+// 加载/保存舵机/电调中点 duty（servo_mid_v / motor_mid_v），独立于摇杆校准数据存储。
+void loadServoOutputConfig();
+bool saveServoMid(int16_t duty);
+void loadMotorOutputConfig();
+bool saveMotorMid(int16_t duty);
+
 int mapJoystickAxis(int16_t pwm,
                     const AxisCalibration& cal,
                     bool enabled,

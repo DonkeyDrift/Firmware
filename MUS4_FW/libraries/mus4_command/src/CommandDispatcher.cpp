@@ -11,6 +11,8 @@
 extern TUI tui;
 extern ControlData pilot_data;
 extern int lastSeq;
+extern int servo_mid_v;
+extern int motor_mid_v;
 
 extern bool processLine(const String& line, int* throttle, int* steering, int* seq);
 #ifdef ENABLE_WIFI_CONSOLE
@@ -108,6 +110,32 @@ bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pil
         mus4LogTarget = MUS4_LOG_TARGET_SERIAL;
         mus4LogLine("log", "target=serial");
         out.println("ACK:LOG_SERIAL");
+        return true;
+    }
+    if (line.equalsIgnoreCase("SERVO_MID")) {
+        out.printf("ACK:SERVO_MID %d\n", servo_mid_v);
+        return true;
+    }
+    if (line.startsWith("SERVO_MID ")) {
+        int duty = line.substring(strlen("SERVO_MID ")).toInt();
+        if (saveServoMid((int16_t)duty)) {
+            out.printf("ACK:SERVO_MID %d\n", servo_mid_v);
+        } else {
+            out.println("NACK:SERVO_MID_RANGE [4915, 9830]");
+        }
+        return true;
+    }
+    if (line.equalsIgnoreCase("MOTOR_MID")) {
+        out.printf("ACK:MOTOR_MID %d\n", motor_mid_v);
+        return true;
+    }
+    if (line.startsWith("MOTOR_MID ")) {
+        int duty = line.substring(strlen("MOTOR_MID ")).toInt();
+        if (saveMotorMid((int16_t)duty)) {
+            out.printf("ACK:MOTOR_MID %d\n", motor_mid_v);
+        } else {
+            out.println("NACK:MOTOR_MID_RANGE [4915, 9830]");
+        }
         return true;
     }
     if (line.equalsIgnoreCase("JOYSTICK_CAL")) {

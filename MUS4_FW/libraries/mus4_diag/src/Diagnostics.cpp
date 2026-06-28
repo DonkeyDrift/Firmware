@@ -5,7 +5,7 @@
 
 extern TUI tui;
 
-extern const int SERVO_MID_V;
+extern int servo_mid_v;
 extern const int SERVO_RANGE_V;
 
 extern SensorData ina219Data;
@@ -59,8 +59,8 @@ bool runBenchmarks()
 
 bool runRegression()
 {
-    int v = map(-100, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
-    int v2 = map(100, -100, 100, SERVO_MID_V - SERVO_RANGE_V, SERVO_MID_V + SERVO_RANGE_V);
+    int v = map(-100, -100, 100, servo_mid_v - SERVO_RANGE_V, servo_mid_v + SERVO_RANGE_V);
+    int v2 = map(100, -100, 100, servo_mid_v - SERVO_RANGE_V, servo_mid_v + SERVO_RANGE_V);
     bool ok = (v <= v2);
     mus4Logf("regress", "REGRESS: ok=%d", ok ? 1 : 0);
     return ok;

@@ -1154,8 +1154,10 @@ def test_actuator_output_is_split_from_sketch():
     assert "void updateActuatorOutput()" in actuator_source
     assert "ledcAttachChannel(STEERING_PIN" in actuator_source
     assert "ledcWriteChannel(CH_STEERING" in actuator_source
-    assert "extern const int SERVO_MID_V = 7372" in actuator_source
+    assert "int servo_mid_v = 7372" in actuator_source
+    assert "int motor_mid_v = 7372" in actuator_source
     assert "extern const int SERVO_RANGE_V = 2458" in actuator_source
+    assert "extern const int MOTOR_RANGE_V = 2458" in actuator_source
 
 
 def test_wifi_ota_status_helpers_are_split_from_sketch():

@@ -11,6 +11,8 @@
 extern TUI tui;
 extern ControlData car_output;
 extern uint16_t pwm_filtered[];
+extern int servo_mid_v;
+extern int motor_mid_v;
 
 static WifiRuntimeState* g_ws = nullptr;
 
@@ -426,4 +428,93 @@ void abortJoystickCalibration()
 {
     joystick_cal_state = JoystickCalState::IDLE;
     mus4LogLine("cal", "joystick calibration aborted");
+}
+
+void loadServoOutputConfig()
+{
+    // 默认为 7372（对应 1500µs @ 300Hz/14bit），与编译期常量历史值一致。
+    servo_mid_v = 7372;
+
+    if (!prefs().begin(MUS4_PREF_NAMESPACE, true)) {
+        mus4LogLine("cal", "servo_mid load: prefs open failed, using default 7372");
+        return;
+    }
+
+    if (prefs().isKey(MUS4_PREF_SERVO_MID_KEY)) {
+        int16_t stored = prefs().getShort(MUS4_PREF_SERVO_MID_KEY, 7372);
+        // 有效性校验：duty 必须在 1000–2000µs 对应范围内（4915–9830 @ 300Hz/14bit）
+        if (stored >= 4915 && stored <= 9830) {
+            servo_mid_v = stored;
+        } else {
+            mus4Logf("cal", "servo_mid load: stored value %d out of range, using default 7372", stored);
+        }
+    }
+
+    prefs().end();
+    mus4Logf("cal", "servo_mid loaded: %d", servo_mid_v);
+}
+
+bool saveServoMid(int16_t duty)
+{
+    // 有效性校验：duty 必须在有效 PWM 范围内
+    if (duty < 4915 || duty > 9830) {
+        mus4Logf("cal", "servo_mid save rejected: %d out of range [4915, 9830]", duty);
+        return false;
+    }
+
+    servo_mid_v = duty;
+
+    if (!prefs().begin(MUS4_PREF_NAMESPACE, false)) {
+        mus4LogLine("cal", "servo_mid save: prefs open failed");
+        return false;
+    }
+
+    prefs().putShort(MUS4_PREF_SERVO_MID_KEY, duty);
+    prefs().end();
+
+    mus4Logf("cal", "servo_mid saved: %d", duty);
+    return true;
+}
+
+void loadMotorOutputConfig()
+{
+    motor_mid_v = 7372;
+
+    if (!prefs().begin(MUS4_PREF_NAMESPACE, true)) {
+        mus4LogLine("cal", "motor_mid load: prefs open failed, using default 7372");
+        return;
+    }
+
+    if (prefs().isKey(MUS4_PREF_MOTOR_MID_KEY)) {
+        int16_t stored = prefs().getShort(MUS4_PREF_MOTOR_MID_KEY, 7372);
+        if (stored >= 4915 && stored <= 9830) {
+            motor_mid_v = stored;
+        } else {
+            mus4Logf("cal", "motor_mid load: stored value %d out of range, using default 7372", stored);
+        }
+    }
+
+    prefs().end();
+    mus4Logf("cal", "motor_mid loaded: %d", motor_mid_v);
+}
+
+bool saveMotorMid(int16_t duty)
+{
+    if (duty < 4915 || duty > 9830) {
+        mus4Logf("cal", "motor_mid save rejected: %d out of range [4915, 9830]", duty);
+        return false;
+    }
+
+    motor_mid_v = duty;
+
+    if (!prefs().begin(MUS4_PREF_NAMESPACE, false)) {
+        mus4LogLine("cal", "motor_mid save: prefs open failed");
+        return false;
+    }
+
+    prefs().putShort(MUS4_PREF_MOTOR_MID_KEY, duty);
+    prefs().end();
+
+    mus4Logf("cal", "motor_mid saved: %d", duty);
+    return true;
 }

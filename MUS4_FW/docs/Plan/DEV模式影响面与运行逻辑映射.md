@@ -108,6 +108,23 @@ DEV 还放权了以下 Web 配置端点，统一模式 `if (!ws.consoleAuthentic
   - `WifiOta.cpp:145`（`OTA_STATUS`）
 - 便于 `wireless_console_policy.py` 与自动化脚本判定当前 DEV 状态。
 
+### 2.8 校准命令免认证（Park 锁定仍必需）
+
+- 位置：`WirelessConsole.cpp:165-166`
+- 关键代码：
+  ```cpp
+  // DEV ON 允许校准命令免认证（但仍需 Park 锁定）。
+  if (webDevMode && isCalibrationCommand(line)) return car_output.park == PARK_LOCKED;
+  ```
+- 命中命令（`isCalibrationCommand`，WirelessConsole.cpp:138-151）：
+  `STEER_CAL` / `CAL_SAVE` / `CAL_RETRY` / `CAL_ABORT` / `CAL_RESET` / `CAL_STATUS`
+  / `JOYSTICK_CAL` / `JOYSTICK_SAVE` / `JOYSTICK_RETRY` / `JOYSTICK_ABORT` / `JOYSTICK_RESET`
+- 影响：DEV ON + Web 来源时，上述命令**免认证**，但 **Park 锁定要求不变**——未锁 Park 时
+  返回 `NACK:PARK_REQUIRED`（而非 `NACK:UNAUTHORIZED`，见 NACK 分流逻辑
+  `WirelessConsole.cpp:189-191`）。
+- 不受影响的命令：`TEST` / `BENCH` / `STRESS` / `REGRESS` / `FILTER_TEST` / `TEST_TUI`
+  仍严格要求认证（不属于 `isCalibrationCommand`）。
+
 ## 3. `DEV ON` **不会**放权的东西
 
 `webDevMode` 这条放行只出现在 §2 列出的位置；以下入口与功能在源码中**不读 `devModeEnabled`**
@@ -116,7 +133,8 @@ DEV 还放权了以下 Web 配置端点，统一模式 `if (!ws.consoleAuthentic
 | 功能 | 不被放权的原因 / 源码位置 |
 | --- | --- |
 | **控制输出命令**（`Throttle:Steering` / `10:20` 等） | v1.7.7 收敛后 `WirelessConsole.cpp` 把控制命令分支放在 `if (!ws.consoleAuthenticated) return false;` 之后；DEV ON + 未认证 → `NACK:UNAUTHORIZED`。见 §3.1。 |
-| **诊断 / 维护命令**（`TEST` / `BENCH` / `REGRESS` / `STRESS` / `FILTER_TEST` / `TEST_TUI` / `STEER_CAL*` / `CAL_*`） | 同上；DEV ON 不放权，即使 Park 锁定也要求认证。见 §3.1。 |
+| **诊断 / 维护命令**（`TEST` / `BENCH` / `REGRESS` / `STRESS` / `FILTER_TEST` / `TEST_TUI`） | 同上；DEV ON 不放权，即使 Park 锁定也要求认证。见 §3.1。 |
+| **校准命令**（`STEER_CAL` / `CAL_*` / `JOYSTICK_CAL` / `JOYSTICK_*`，不含 `JOYSTICK_STATUS`） | v1.7.30 起 DEV ON + Web 来源**免认证**（§2.8），但 Park 锁定要求不变。TCP / Serial 来源 DEV 不生效。 |
 | **TCP Console（端口 2323）任何命令** | `WirelessConsole.cpp` —— `webDevMode` 要求 `origin == WIRELESS_ORIGIN_WEB`；TCP 来源 `webDevMode` 始终为 `false`。 |
 | **Serial / Serial1 物理串口的 OTA 命令** | 本地路径走 `processLocalOtaMaintenanceCommand`（`WifiOta.cpp:80-96`）与 `openLocalWifiOtaWindow`（`WifiOta.cpp:63-78`），不读 `devModeEnabled`；本地 OTA 仍要求 `ENABLE_OTA:<密码>` 形式。 |
 | **`ENABLE_OTA` 的 Park 锁定要求** | `WirelessConsole.cpp` `isWirelessOtaOpenCommand` 分支末尾 `&& car_output.park == PARK_LOCKED`、`WifiOta.cpp:48-52` 二次确认；DEV 不放宽。 |
@@ -147,6 +165,8 @@ bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, 
     // DEV ON 显式白名单：显示/日志切换、Wi-Fi STA 配置类命令。
     if (line.equalsIgnoreCase("ANSI") || ...
         || isWifiStaConfigCommand(line))   return ws.consoleAuthenticated || webDevMode;    // §2.5 §2.6
+    // DEV ON 允许校准命令免认证（但仍需 Park 锁定）。                                // §2.8 (v1.7.30)
+    if (webDevMode && isCalibrationCommand(line)) return car_output.park == PARK_LOCKED;
     // 其余命令（控制 / 诊断）严格要求认证，不读 webDevMode。
     if (!ws.consoleAuthenticated) return false;
     if (isParkLockedWirelessCommand(line)) return car_output.park == PARK_LOCKED;
@@ -154,20 +174,23 @@ bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, 
 }
 ```
 
-`processWirelessConsoleLine` 的 NACK 错误码同步收敛：未认证用户（即使 DEV ON）一律返回
-`NACK:UNAUTHORIZED`，不再返回 `NACK:PARK_REQUIRED` 暗示"锁 Park 就能用"。
+`processWirelessConsoleLine` 的 NACK 错误码同步收敛：未认证用户（即使 DEV ON）对非校准命令一律返回
+`NACK:UNAUTHORIZED`；校准命令在 DEV ON + Park 未锁时返回 `NACK:PARK_REQUIRED`（v1.7.30）。
 
 ### 收敛后效果
 
 - **控制命令** `10:20` / `Throttle:Steering` → DEV ON + 未认证 → `NACK:UNAUTHORIZED`。
-- **诊断命令** `TEST` / `BENCH` / `REGRESS` / `STRESS` / `FILTER_TEST` / `STEER_CAL*` → DEV ON + 未认证 → `NACK:UNAUTHORIZED`（无论 Park 状态）。
+- **非校准诊断命令** `TEST` / `BENCH` / `REGRESS` / `STRESS` / `FILTER_TEST` → DEV ON + 未认证 → `NACK:UNAUTHORIZED`（无论 Park 状态）。
+- **校准命令** `STEER_CAL*` / `CAL_*` / `JOYSTICK_CAL*` / `JOYSTICK_*`（不含 `JOYSTICK_STATUS`）→ DEV ON + Park 已锁 → 放行；Park 未锁 → `NACK:PARK_REQUIRED`（v1.7.30）。
 - **显示/日志切换 + WIFI_STA_*** → 保持 DEV ON 可放权（设计稿一致）。
 - **OTA 三命令 + `/api/wifi-*` + `/update`** → 保持 DEV ON 可放权（核心便利不变）。
 
 ### 测试保护
 
 `tests/test_wireless_console_policy.py::test_web_dev_mode_does_not_bypass_authentication_for_control_or_diagnostic`
-锁定新行为，覆盖 `10:20`、`TEST`、`BENCH`、`REGRESS`、`STEER_CAL` 等命令在 DEV ON + 未认证下应被拒绝。
+锁定控制命令与非校准诊断命令（`10:20`、`TEST`、`BENCH`、`REGRESS`）在 DEV ON + 未认证下应被拒绝。
+`tests/test_wireless_console_policy.py::test_web_dev_mode_allows_calibration_without_auth_but_keeps_park_guard`
+锁定校准命令（`STEER_CAL` / `JOYSTICK_CAL` 等）在 DEV ON 下免认证但保留 Park 锁定的行为（v1.7.30）。
 
 ## 4. AP 广播 SSID 派生（已退役 v1.7.22）
 
@@ -226,7 +249,7 @@ loop()
 
 1. **Park 锁定未放权**：开 OTA 仍要求 `car_output.park == PARK_LOCKED`，开窗后 Park Guard 强制油门=0。
 2. **TCP 入口未放权**：TCP Console、Serial、Serial1 都不读 `devModeEnabled`。
-3. **控制 / 诊断命令未放权**（v1.7.7）：DEV ON 严格只放权 OTA + Web 配置 + 显示/日志切换 + WIFI_STA_*。
+3. **控制 / 诊断命令未放权**（v1.7.7）；**校准命令有条件放权**（v1.7.30）：DEV ON 严格只放权 OTA + Web 配置 + 显示/日志切换 + WIFI_STA_*；校准命令（STEER_CAL / JOYSTICK_CAL 等）免认证但仍需 Park 锁定。
 4. **Serial1 通信不受窗口影响**（v1.7.8）：DEV ON 时 windowOpen 长期为 true 不再阻塞 ESP32 ↔ 上位机的 Serial1 遥测；仅在 OTA 真正传输期间暂停。
 5. **NVS 持久化**：开关状态跨重启保留——升级流程稳定，但同时意味着**忘记关 DEV 的设备永远暴露 `/update` 无密上传**。生产入库前应统一 `DISABLE_OTA` 并把 DEV 关掉。
 

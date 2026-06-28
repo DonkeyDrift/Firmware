@@ -57,7 +57,7 @@ pip install pyyaml pyserial pytest
 .\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP或主机名> -Sketch MUS4_FW.ino
 
 # 当前调试目标可按 .mus4_ota_target 首行；显式传入可避免被旧目标覆盖
-.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.157 -Sketch MUS4_FW.ino
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.52 -Sketch MUS4_FW.ino
 
 # 使用已有 build_wsl 产物通过 HTTP OTA 上传；未传主机时读取 .mus4_ota_target 首行
 .\arduino-cli-wsl.ps1 -Upload -HttpOta -Sketch MUS4_FW.ino
@@ -180,7 +180,7 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 
 ### Claude Code 自动化行为
 
-`.claude/settings.local.json` 中配置了 `PostToolUse` 钩子：当通过 PowerShell 执行 `arduino-cli-wsl.ps1` 仅编译成功（有 `-Compile` 或 `-c` 但无 `-Upload`/`-u`）后，自动追加 HTTP OTA 上传到预配置目标（当前 `192.168.3.157`）。若需临时禁用此行为，设置 `$env:MUS4_HOOK_DRY_RUN=1` 仅打印 would-do 而不实际执行。修改此钩子时使用 `update-config` skill。
+`.claude/settings.local.json` 中配置了 `PostToolUse` 钩子：当通过 PowerShell 执行 `arduino-cli-wsl.ps1` 仅编译成功（有 `-Compile` 或 `-c` 但无 `-Upload`/`-u`）后，自动追加 HTTP OTA 上传到预配置目标（当前 `192.168.3.52`）。若需临时禁用此行为，设置 `$env:MUS4_HOOK_DRY_RUN=1` 仅打印 would-do 而不实际执行。修改此钩子时使用 `update-config` skill。
 
 ## Configuration
 

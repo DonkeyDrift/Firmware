@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 仓库定位
 
-`C:\Dev\DDC\Firmware` 是 **DonkeyDrift 项目的固件仓库根**，本身不放任何固件代码，只承担"多固件子项目容器"的角色。具体的源码、构建脚本、文档与测试全部下沉到子项目目录中，每个子项目自包含、独立构建。
+本仓库是 **DonkeyDrift 项目的固件仓库根**（Windows 路径 `C:\Dev\DDC\Firmware`，Linux/WSL 路径 `/home/dkc/projects/Firmware`），本身不放任何固件代码，只承担"多固件子项目容器"的角色。具体的源码、构建脚本、文档与测试全部下沉到子项目目录中，每个子项目自包含、独立构建。
 
 当前在驻子项目：
 
@@ -50,7 +50,19 @@ pytest tests/test_wireless_console_policy.py -k "test_requires_authentication"
 
 ## 自动化行为
 
-MUS4 子项目的 `.claude/settings.local.json` 配置了 `PostToolUse` 钩子：当通过 PowerShell 执行 `arduino-cli-wsl.ps1` 编译成功后，自动追加 HTTP OTA 上传到预配置目标设备。设置环境变量 `$env:MUS4_HOOK_DRY_RUN=1` 可仅打印 would-do 消息而不实际执行上传。
+MUS4 子项目的 `.claude/settings.local.json` 配置了 `PostToolUse` 钩子：当通过 PowerShell 执行 `arduino-cli-wsl.ps1` 编译成功后，自动追加 HTTP OTA 上传到预配置目标设备（当前目标 `192.168.3.52`）。设置环境变量 `$env:MUS4_HOOK_DRY_RUN=1` 可仅打印 would-do 消息而不实际执行上传。
+
+在 Linux/WSL 环境下，PowerShell 通过 `pwsh` 调用；`.ps1` 脚本的执行方式为 `pwsh .\arduino-cli-wsl.ps1 ...`。Windows 端则为 `powershell .\arduino-cli-wsl.ps1 ...`。
+
+## `.claude/` 目录结构
+
+仓库根和子项目均可包含 `.claude/` 目录，存放 Claude Code 的本地配置：
+
+- `.claude/settings.local.json` — 项目级权限 allowlist 与 hooks（当前仅在 `MUS4_FW/` 中存在，含 PostToolUse OTA 自动上传钩子）
+- `.claude/worktrees/` — `EnterWorktree` 创建的隔离 git worktree 目录
+- `.claude/scheduled_tasks.json` — `CronCreate` 持久化定时任务
+- `.claude/memory/` — 持久化记忆文件（`/memory` 命令产出）
+- 内存/记忆/计划等会话级数据由 harness 自动管理，无需手动维护
 
 ## 仓库根级约定
 

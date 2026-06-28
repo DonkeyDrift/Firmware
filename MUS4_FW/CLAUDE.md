@@ -129,6 +129,7 @@ pytest tests/test_wireless_console_policy.py
 pytest tests/test_firmware_feature_flags.py
 pytest tests/test_train_tub_driver.py
 pytest tests/test_mus4_pilot_infer.py
+pytest tests/test_joystick_calibration.py
 
 # 运行单个测试用例
 pytest tests/test_arduino_cli.py -k "test_prefers_explicit_port_when_available"
@@ -136,6 +137,7 @@ pytest tests/test_wireless_console_policy.py -k "test_requires_authentication_an
 pytest tests/test_firmware_feature_flags.py -k "test_websocket_curve_data_feature_is_enabled"
 pytest tests/test_train_tub_driver.py -k "test_build_windows_excludes_leakage_columns_by_default"
 pytest tests/test_mus4_pilot_infer.py -k "test_live_mode_requires_explicit_risk_ack"
+pytest tests/test_joystick_calibration.py -k "test_map_calibrated"
 
 # 配网代理测试
 python provisioning_system/tests/test_agent.py -v
@@ -215,6 +217,7 @@ Python 测试集中在 `tests/`：
 - `tests/test_firmware_feature_flags.py` 用源码断言保护关键编译开关、Web Console/Donkey Console UI、状态卡片布局、曲线实现形态和前端安全门控。
 - `tests/test_train_tub_driver.py` 覆盖 Tub JSON 读取、数据质量报告、特征防泄漏和窗口数据集构造。
 - `tests/test_mus4_pilot_infer.py` 覆盖模型推理控制器的标准化校验、安全门控、串口命令和 ACK 解析。
+- `tests/test_joystick_calibration.py` 覆盖摇杆标定的三段式 PWM 映射逻辑（含校准/非校准路径），与 `JoystickCalibration.cpp` 保持同步。
 - `tests/test_transform_mus4_tub_to_donkey.py` 覆盖 MUS4 Tub JSON 转 DonkeyCar 数据格式的转换逻辑。
 
 ### 固件应用层

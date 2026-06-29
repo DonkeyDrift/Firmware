@@ -11,7 +11,7 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 - 构建与烧录工具：`arduino-cli.py` 与 `arduino-cli-wsl.ps1` 负责编译、上传、串口检测、OTA 上传和 WSL 加速构建。
 - Python 工具与测试：无线权限策略镜像、Tub JSON 训练工具、Pilot 推理工具及 pytest 测试。
 
-第三方 Arduino 依赖包括 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050、WebServer、ArduinoOTA、AsyncTCP、ESPAsyncWebServer，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。根目录 `libraries/` 同时承担两种角色：一是存放上述第三方库的本地副本（`arduino-cli.py` 与 WSL 脚本检测到该目录存在时优先使用）；二是承载项目自有模块 `libraries/mus4_core`、`mus4_rc`、`mus4_control`、`mus4_safety`、`mus4_ui`、`mus4_command`、`mus4_diag`、`mus4_i2c`、`mus4_log`、`mus4_web`、`mus4_wifi`（共 11 个），这些是 v1.7.4 起持续模块化拆分后的固件主链路代码，不是外部依赖。
+第三方 Arduino 依赖包括 FastLED、Wire、Adafruit_INA219、Adafruit_MPU6050、WebServer、ArduinoOTA、AsyncTCP、ESPAsyncWebServer，以及 BLE Gamepad 相关库（仅在 Wi-Fi Console 未启用的编译路径中生效）。根目录 `libraries/` 同时承担两种角色：一是存放上述第三方库的本地副本（`arduino-cli.py` 与 WSL 脚本检测到该目录存在时优先使用）；二是承载项目自有模块 `libraries/mus4_core`、`mus4_rc`、`mus4_control`、`mus4_safety`、`mus4_ui`、`mus4_command`、`mus4_diag`、`mus4_i2c`、`mus4_log`、`mus4_web`、`mus4_wifi`、`mus4_auth`（共 12 个），这些是 v1.7.4 起持续模块化拆分后的固件主链路代码，不是外部依赖。
 
 ## Commands
 
@@ -232,19 +232,21 @@ Python 测试集中在 `tests/`：
 
 ### 核心模块
 
-所有项目自有 C/C++ 模块都在 `libraries/mus4_*/src/` 下，按职责分库（共 11 个，下列文件名以 `.h/.cpp` 成对存在）：
+所有项目自有 C/C++ 模块都在 `libraries/mus4_*/src/` 下，按职责分库（共 12 个，下列文件名以 `.h/.cpp` 成对存在）：
 
-- `libraries/mus4_core/src/`：跨模块共享类型与构建信息。
+- `libraries/mus4_core/src/`：跨模块共享类型与构建信息。**`FirmwareConfig.h` 是所有编译开关（`ENABLE_WIFI_CONSOLE`、`ENABLE_AUTH_SERVICE` 等）与引脚定义的权威来源**，各模块均通过 `#include "FirmwareConfig.h"` 引用。
+  - `RuntimeState.h`：`WifiRuntimeState` 聚合结构体（替代散落的 `extern` 全局变量），由主 sketch 持有并按引用传入 Wi-Fi/STA/OTA 模块。
   - `SharedTypes.h`：`SensorData`、`ControlData` 等跨模块共享的数据结构与状态枚举。
   - `BuildInfo.h`：固件名称、版本（`MUS4_FIRMWARE_VERSION`）和构建时间宏。
   - `WifiConsoleTypes.h`：无线 Console 共享类型。
   - `WirelessSecrets.example.h`：Wi-Fi STA 凭据模板。
 - `libraries/mus4_rc/src/`：RC 输入子系统。
-  - `RcPwmCapture`：CH1-CH6 PWM 捕获、滤波、超时检测；中断处理保留 `IRAM_ATTR`。
+  - `RcPwmCapture`：CH1-CH6 PWM 捕获、超时检测；中断处理保留 `IRAM_ATTR`。
+  - `RcFilter`：RC 信号数字滤波（中值、EMA），减少尖峰与抖动。
 - `libraries/mus4_control/src/`：控制融合层。
   - `ControlMixer`：驾驶模式切换、RC/Pilot 混控。
   - `SteeringControl`：转向 PID 平滑与故障安全模式。
-  - `SteeringCalibration`：转向通道交互式标定（Preferences 持久化）。
+  - `JoystickCalibration`：转向通道交互式标定（Preferences 持久化），三段式 PWM 映射（校准/非校准路径）。
   - `DriftAssist`：漂移辅助条件判断、IMU 角速度叠加与转向补偿。
 - `libraries/mus4_safety/src/`：安全关键执行层。
   - `SafetyState`：Park 状态机、紧急制动 FSM、OTA 窗口下的输出抑制。
@@ -266,6 +268,9 @@ Python 测试集中在 `tests/`：
 - `libraries/mus4_ui/src/`：人机接口旁路。
   - `TUI`：ANSI 终端仪表盘渲染，支持降级模式和增量刷新。
   - `Buzzer`：蜂鸣器状态机，硬件支持时使用。
+  - `LedStatus`：WS2812B LED 模式与紧急停车指示（FastLED 驱动）。
+- `libraries/mus4_auth/src/`：身份识别服务（v1.7.31+，`ENABLE_AUTH_SERVICE` 编译开关控制）。
+  - `AuthService`：基于 ESP32 eFuse 芯片 ID 的身份识别，通过串口提供 `CMD:READ_HW_ID`/`CMD:READ_UID`/`CMD:WRITE_UID`/`CMD:CLEAR_UID` 文本命令帧，UID 持久化于 NVS。错误码 01-05（未知命令/无效参数/NVS 写入失败/NVS 读取失败/等待超时）。
 - `libraries/mus4_web/src/`：Web Console 与遥测前端。
   - `WebConsoleServer`：端口 80 Web Console / Donkey Console 服务。
   - `WebConsoleAssets.h`：内嵌的 `Drifter Console` 前端 HTML/CSS/JS。
@@ -414,6 +419,40 @@ Web UI 的 HTML/CSS/JS 目前内嵌在 `libraries/mus4_web/src/WebConsoleAssets.
 - `docs/Plan/`：方案、设计方案、实施路线和历史实施方案目录；新增方案类内容应写入此目录，使用清晰的中文文件名，使用前需对照当前代码验证。其中 `docs/Plan/MUS4_FW模块化拆分方案.md`（3.0 修订稿）记录了 v1.7.4 把 `MUS4_FW.ino` 拆到 `libraries/mus4_*` 的模块边界与切片完成情况，是理解当前模块布局来源的最佳入口。`docs/Plan/DEV模式影响面与运行逻辑映射.md` 是 DEV 开关在 v1.7.6 实现下的事实映射（放权清单、执行链路、与设计稿的已知偏差），修改 DEV / OTA / 无线权限相关代码前应先读。
 - `README.md`：项目介绍与快速开始，部分构建命令、硬件引脚和文档路径可能滞后；引用前必须对照 `MUS4_FW.ino`、`docs/Hardware/pin_definitions.md`、`docs/Arch/architecture.md` 和本文件验证。
 - `AGENTS.md`：其他代理工具的历史指南，包含旧版本号、MiniClaw 专属身份指令和外部工具流程；Claude Code 操作本仓库时不要继承其中的代理身份或工具专属规则，优先遵循本文件、源码和当前项目文档。
+
+## C++ 编码规范
+
+### 命名约定
+
+| 类型 | 风格 | 示例 |
+|------|------|------|
+| 常量 / 宏 | `ALL_CAPS` | `PWM_MIN_V`, `CH1_PIN` |
+| 类名 | `PascalCase` | `TUI`, `SensorData` |
+| 类方法 | `camelCase` | `setRefreshRate()`, `forceRedraw()` |
+| 自由函数 | `snake_case` | `process_steering_signal()` |
+| 局部变量 | `camelCase` | `pwmValue`, `lastUpdate` |
+| 结构体成员 | `snake_case` | `car_output.throttle` |
+| 私有成员 | 下划线前缀 | `_out`, `_lastUpdate` |
+| 枚举值 | 嵌套 `PascalCase` | `EmergencyStopState`, `EST_IDLE` |
+
+### 文件组织
+
+- 头文件使用 `#pragma once`，后缀 `.h`，实现文件后缀 `.cpp`。
+- 包含顺序：Arduino 核心库 → 第三方库 → 项目头文件（`FirmwareConfig.h` 通常在最前）。
+- 所有引脚定义、编译开关、时序常量集中放在 `libraries/mus4_core/src/FirmwareConfig.h`，各模块通过 `#include "FirmwareConfig.h"` 引用。
+- 新增业务模块以本地 Arduino 库形式放在 `libraries/mus4_<domain>/`，并必须提供同名聚合头 `mus4_<domain>.h`。
+- 跨库共享类型通过 `mus4_core.h` 或 `SharedTypes.h` 获取，避免循环依赖。
+
+### 注释语言
+
+- **硬件相关注释**（引脚、PCB 版本、接线）使用**中文**。
+- **代码逻辑与公共 API** 使用**英文**。
+
+### 中断与安全
+
+- 中断服务函数必须标注 `IRAM_ATTR`。
+- 中断与主循环共享的变量使用 `volatile`。
+- `noInterrupts()` / `interrupts()` 用于保护 PWM 快照读取。
 
 ## Git Conventions
 

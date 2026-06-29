@@ -858,6 +858,10 @@ static void appendWifiWebStateJson(String& response, WebDataPoint& point)
     response += servo_mid_v;
     response += ",\"mm\":";
     response += motor_mid_v;
+    response += ",\"tl\":";
+    response += joystick_cal.throttle_min_duty;
+    response += ",\"tu\":";
+    response += joystick_cal.throttle_max_duty;
     response += '}';
 }
 

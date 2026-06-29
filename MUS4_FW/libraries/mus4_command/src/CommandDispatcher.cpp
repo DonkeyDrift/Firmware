@@ -146,6 +146,32 @@ bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pil
         }
         return true;
     }
+    if (line.equalsIgnoreCase("THROTTLE_MIN")) {
+        out.printf("ACK:THROTTLE_MIN %d\n", joystick_cal.throttle_min_duty);
+        return true;
+    }
+    if (line.startsWith("THROTTLE_MIN ")) {
+        int val = line.substring(strlen("THROTTLE_MIN ")).toInt();
+        if (saveThrottleMinDuty((int16_t)val)) {
+            out.printf("ACK:THROTTLE_MIN %d\n", joystick_cal.throttle_min_duty);
+        } else {
+            out.printf("NACK:THROTTLE_RANGE [4915, %d]\n", motor_mid_v);
+        }
+        return true;
+    }
+    if (line.equalsIgnoreCase("THROTTLE_MAX")) {
+        out.printf("ACK:THROTTLE_MAX %d\n", joystick_cal.throttle_max_duty);
+        return true;
+    }
+    if (line.startsWith("THROTTLE_MAX ")) {
+        int val = line.substring(strlen("THROTTLE_MAX ")).toInt();
+        if (saveThrottleMaxDuty((int16_t)val)) {
+            out.printf("ACK:THROTTLE_MAX %d\n", joystick_cal.throttle_max_duty);
+        } else {
+            out.printf("NACK:THROTTLE_RANGE [%d, 9830]\n", motor_mid_v);
+        }
+        return true;
+    }
     if (line.equalsIgnoreCase("JOYSTICK_CAL")) {
         startJoystickCalibration(out);
         return true;

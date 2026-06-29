@@ -1,5 +1,6 @@
 #include "ActuatorOutput.h"
 #include "SharedTypes.h"
+#include "JoystickCalibration.h"
 
 extern ControlData car_output;
 
@@ -46,7 +47,7 @@ void updateActuatorOutput()
     int pwm_throttle = map(car_output.throttle, -100, 100, active_motor_mid - MOTOR_RANGE_V, active_motor_mid + MOTOR_RANGE_V);
 
     pwm_steering = min(max(pwm_steering, PWM_MIN_V), PWM_MAX_V);
-    pwm_throttle = min(max(pwm_throttle, PWM_MIN_V), PWM_MAX_V);
+    pwm_throttle = min(max(pwm_throttle, (int)joystick_cal.throttle_min_duty), (int)joystick_cal.throttle_max_duty);
 
     actuator_steering_duty = pwm_steering;
     actuator_throttle_duty = pwm_throttle;

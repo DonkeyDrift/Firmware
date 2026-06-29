@@ -203,6 +203,9 @@ void loadJoystickCalibration()
 
     prefs().end();
 
+    // 油门输出限幅独立于校准 enable 标志，始终加载
+    loadThrottleOutputLimits();
+
     mus4Logf("cal",
              "joystick load: steer_en=%d steer={%d,%d,%d} throt_en=%d throt={%d,%d,%d}",
              joystick_cal.steering_enabled ? 1 : 0,
@@ -271,6 +274,8 @@ void resetJoystickCalibration()
     joystick_cal.throttle.max_pwm = RC_THROTTLE_MAX;
     joystick_cal.steering_enabled = false;
     joystick_cal.throttle_enabled = false;
+    joystick_cal.throttle_min_duty = 4915;
+    joystick_cal.throttle_max_duty = 9830;
 
     if (prefs().begin(MUS4_PREF_NAMESPACE, false)) {
         prefs().remove(MUS4_PREF_JOYSTICK_STEER_MIN_KEY);
@@ -281,6 +286,8 @@ void resetJoystickCalibration()
         prefs().remove(MUS4_PREF_JOYSTICK_THROT_MID_KEY);
         prefs().remove(MUS4_PREF_JOYSTICK_THROT_MAX_KEY);
         prefs().remove(MUS4_PREF_JOYSTICK_THROT_EN_KEY);
+        prefs().remove(MUS4_PREF_THROTTLE_OUT_MIN_KEY);
+        prefs().remove(MUS4_PREF_THROTTLE_OUT_MAX_KEY);
         prefs().end();
     }
 
@@ -516,5 +523,84 @@ bool saveMotorMid(int16_t duty)
     prefs().end();
 
     mus4Logf("cal", "motor_mid saved: %d", duty);
+    return true;
+}
+
+void loadThrottleOutputLimits()
+{
+    // 默认值：PWM duty 全范围（1000-2000us @ 300Hz/14bit -> 4915-9830）
+    joystick_cal.throttle_min_duty = 4915;
+    joystick_cal.throttle_max_duty = 9830;
+
+    if (!prefs().begin(MUS4_PREF_NAMESPACE, true)) {
+        mus4LogLine("cal", "throttle limits load: prefs open failed");
+        return;
+    }
+
+    if (prefs().isKey(MUS4_PREF_THROTTLE_OUT_MIN_KEY)) {
+        int16_t stored = prefs().getShort(MUS4_PREF_THROTTLE_OUT_MIN_KEY, 4915);
+        if (stored >= 4915 && stored <= motor_mid_v) {
+            joystick_cal.throttle_min_duty = stored;
+        } else {
+            mus4Logf("cal", "throttle_min_duty load: stored %d out of range [4915, %d], using default 4915", stored, motor_mid_v);
+        }
+    }
+
+    if (prefs().isKey(MUS4_PREF_THROTTLE_OUT_MAX_KEY)) {
+        int16_t stored = prefs().getShort(MUS4_PREF_THROTTLE_OUT_MAX_KEY, 9830);
+        if (stored >= motor_mid_v && stored <= 9830) {
+            joystick_cal.throttle_max_duty = stored;
+        } else {
+            mus4Logf("cal", "throttle_max_duty load: stored %d out of range [%d, 9830], using default 9830", stored, motor_mid_v);
+        }
+    }
+
+    prefs().end();
+
+    mus4Logf("cal", "throttle limits loaded: min=%d max=%d mid=%d",
+             joystick_cal.throttle_min_duty, joystick_cal.throttle_max_duty, motor_mid_v);
+}
+
+bool saveThrottleMinDuty(int16_t duty)
+{
+    // Min T 不能超过 Mid T（motor_mid_v）
+    if (duty < 4915 || duty > motor_mid_v) {
+        mus4Logf("cal", "throttle_min_duty save rejected: %d out of range [4915, %d]", duty, motor_mid_v);
+        return false;
+    }
+
+    joystick_cal.throttle_min_duty = duty;
+
+    if (!prefs().begin(MUS4_PREF_NAMESPACE, false)) {
+        mus4LogLine("cal", "throttle_min_duty save: prefs open failed");
+        return false;
+    }
+
+    prefs().putShort(MUS4_PREF_THROTTLE_OUT_MIN_KEY, duty);
+    prefs().end();
+
+    mus4Logf("cal", "throttle_min_duty saved: %d", duty);
+    return true;
+}
+
+bool saveThrottleMaxDuty(int16_t duty)
+{
+    // Max T 不能低于 Mid T（motor_mid_v）
+    if (duty < motor_mid_v || duty > 9830) {
+        mus4Logf("cal", "throttle_max_duty save rejected: %d out of range [%d, 9830]", duty, motor_mid_v);
+        return false;
+    }
+
+    joystick_cal.throttle_max_duty = duty;
+
+    if (!prefs().begin(MUS4_PREF_NAMESPACE, false)) {
+        mus4LogLine("cal", "throttle_max_duty save: prefs open failed");
+        return false;
+    }
+
+    prefs().putShort(MUS4_PREF_THROTTLE_OUT_MAX_KEY, duty);
+    prefs().end();
+
+    mus4Logf("cal", "throttle_max_duty saved: %d", duty);
     return true;
 }

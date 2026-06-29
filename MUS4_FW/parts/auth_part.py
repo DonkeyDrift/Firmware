@@ -175,9 +175,9 @@ class AuthPart:
                 raw = self._ser.readline()
                 if raw:
                     text = raw.decode("utf-8", errors="ignore").strip()
-                    if text.startswith("OK:") or text.startswith("ERR:"):
+                    if text.startswith("OK:"):
                         return text
-                    # 非预期的回复格式，视为通信错误，继续重试
+                    # ERR 或非预期格式，视为通信失败，继续重试
                 # 超时（raw 为空），继续重试
 
         return None

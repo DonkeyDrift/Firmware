@@ -6,6 +6,7 @@
 #endif
 // #define ENABLE_DIAGNOSTIC_COMMANDS
 // #define ENABLE_BOOT_STEERING_SELF_TEST
+#define ENABLE_AUTH_SERVICE  // 启用基于 eFuse 芯片 ID 的身份识别服务（CMD:READ_HW_ID 等）
 
 #ifndef ENABLE_WIFI_CONSOLE
 #define ENABLE_GAMEPAD_MODE

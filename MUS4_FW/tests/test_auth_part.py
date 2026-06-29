@@ -23,24 +23,45 @@ MODULE_PATH = PROJECT_ROOT / "parts" / "auth_part.py"
 # 测试时动态加载 auth_part 模块
 SPEC = importlib.util.spec_from_file_location("auth_part", MODULE_PATH)
 AUTH = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(AUTH)
 
 
 # ---------------------------------------------------------------------------
-# 辅助函数：创建模拟串口对象，可预设 readline 返回序列
+# 辅助函数
 # ---------------------------------------------------------------------------
-def _make_mock_serial(readline_sequence, write_side_effect=None):
+def _b(seq):
+    """将字符串列表编码为 bytes 列表，空字符串对应 b""（模拟超时）。"""
+    return [s.encode("utf-8") if s else b"" for s in seq]
+
+
+def _set_readline(mock_ser, responses):
+    """设置 mock 串口的 readline 返回序列（自动编码为 bytes）。"""
+    mock_ser.readline.side_effect = _b(responses)
+    mock_ser.reset_mock()
+
+
+def _make_mock_serial(readline_sequence):
     """构建模拟 serial.Serial 实例。
 
     readline_sequence: list[str] — 每次调用 readline() 依次返回的值。
-    write_side_effect: callable | None — 可选，用于验证写入内容。
+        空字符串 "" 表示超时（readline 返回 b""）。
+        非空字符串自动编码为 bytes。
     """
     mock = MagicMock()
-    mock.readline.side_effect = readline_sequence
-    if write_side_effect:
-        mock.write.side_effect = write_side_effect
+    mock.readline.side_effect = _b(readline_sequence)
     mock.in_waiting = 0
     mock.is_open = True
     return mock
+
+
+def _write_bytes_calls(mock_ser):
+    """提取 mock 串口 write() 调用的 bytes 参数列表。"""
+    return [c.args[0] for c in mock_ser.write.call_args_list]
+
+
+def _write_str_calls(mock_ser):
+    """提取 mock 串口 write() 调用的解码后字符串列表。"""
+    return [c.args[0].decode("utf-8", errors="ignore") for c in mock_ser.write.call_args_list]
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +71,7 @@ class TestAuthPartCommands(unittest.TestCase):
     """覆盖四条 Auth 命令的正常流和错误码解析。"""
 
     def setUp(self):
-        """每个测试用例前重置 mock。"""
+        """每个测试用例前重置状态。"""
         self.mock_ser = None
         self.part = None
 
@@ -76,15 +97,14 @@ class TestAuthPartCommands(unittest.TestCase):
     def test_read_hw_id_nack_then_ok_on_retry(self):
         """READ_HW_ID 首次超时空行、第二次返回 OK。"""
         self._create_part_with_mock([
-            "",                      # 超时（readline 返回空字符串）
+            "",                      # 超时 -> 重试
             "OK:abcdef123456\n",     # 重试成功
             "OK:\n",                 # READ_UID
         ])
         token = self.part.run()
         self.assertEqual(token["device_hw_id"], "abcdef123456")
-        # 验证写入次数：第 1 次 + 第 2 次（共 2 次 CMD:READ_HW_ID）
-        write_calls = [c[0][0] for c in self.mock_ser.write.call_args_list]
-        hw_id_calls = [c for c in write_calls if b"READ_HW_ID" in c]
+        # 验证发送了两次 CMD:READ_HW_ID
+        hw_id_calls = [c for c in _write_bytes_calls(self.mock_ser) if b"READ_HW_ID" in c]
         self.assertEqual(len(hw_id_calls), 2)
 
     # ---- READ_UID ----
@@ -112,30 +132,20 @@ class TestAuthPartCommands(unittest.TestCase):
     # ---- WRITE_UID ----
 
     def test_write_uid_success(self):
-        """WRITE_UID 成功应返回 True，且更新 token 的 user_id。"""
+        """WRITE_UID 成功应返回 True，并更新 token 的 user_id。"""
         self._create_part_with_mock([
             "OK:a1b2c3d4e5f6\n",
             "OK:\n",
         ])
-        # 为 write_uid 准备新的 readline 序列
-        self.mock_ser.readline.side_effect = [
-            "",                      # CMD:WRITE_UID 的 readline（等 ARG 回复？不，看协议）
-        ]
-        # 修正：WRITE_UID 协议是两行发送（CMD + ARG），然后读取一行 OK
-        # 需要用不同的 mock 设置方式
-        # 这里直接验证方法签名和行为
-        self.mock_ser.reset_mock()
-        self.mock_ser.readline.side_effect = ["OK:written\n"]
-        self.mock_ser.in_waiting = 0
-        self.mock_ser.is_open = True
+        _set_readline(self.mock_ser, ["OK:written\n"])
 
         result = self.part.write_uid("550e8400-e29b-41d4-a716-446655440000")
         self.assertTrue(result)
 
         # 验证发送了 CMD:WRITE_UID 和 ARG:<uuid>
-        write_calls = [c[0][0].decode("utf-8", errors="ignore") for c in self.mock_ser.write.call_args_list]
-        self.assertIn("CMD:WRITE_UID\n", write_calls)
-        self.assertIn("ARG:550e8400-e29b-41d4-a716-446655440000\n", write_calls)
+        writes = _write_str_calls(self.mock_ser)
+        self.assertIn("CMD:WRITE_UID\n", writes)
+        self.assertIn("ARG:550e8400-e29b-41d4-a716-446655440000\n", writes)
 
     def test_write_uid_nvs_write_fail(self):
         """WRITE_UID 返回 ERR:03 时 write_uid 应返回 False。"""
@@ -143,16 +153,12 @@ class TestAuthPartCommands(unittest.TestCase):
             "OK:a1b2c3d4e5f6\n",
             "OK:\n",
         ])
-        self.mock_ser.reset_mock()
-        self.mock_ser.readline.side_effect = ["ERR:03:NVS write fail\n"] * 3
-        self.mock_ser.in_waiting = 0
-        self.mock_ser.is_open = True
+        _set_readline(self.mock_ser, ["ERR:03:NVS write fail\n"] * 3)
 
         result = self.part.write_uid("550e8400-e29b-41d4-a716-446655440000")
         self.assertFalse(result)
         # 应重试 3 次
-        write_calls = [c[0][0] for c in self.mock_ser.write.call_args_list]
-        cmd_count = sum(1 for c in write_calls if b"WRITE_UID" in c)
+        cmd_count = sum(1 for c in _write_bytes_calls(self.mock_ser) if b"WRITE_UID" in c)
         self.assertEqual(cmd_count, 3)
 
     # ---- CLEAR_UID ----
@@ -163,33 +169,29 @@ class TestAuthPartCommands(unittest.TestCase):
             "OK:a1b2c3d4e5f6\n",
             "OK:550e8400-e29b-41d4-a716-446655440000\n",
         ])
-        self.mock_ser.reset_mock()
-        self.mock_ser.readline.side_effect = ["OK:cleared\n"]
-        self.mock_ser.in_waiting = 0
-        self.mock_ser.is_open = True
+        _set_readline(self.mock_ser, ["OK:cleared\n"])
 
         result = self.part.clear_uid()
         self.assertTrue(result)
 
-        # 验证发送了 CMD:CLEAR_UID
-        write_calls = [c[0][0].decode("utf-8", errors="ignore") for c in self.mock_ser.write.call_args_list]
-        self.assertIn("CMD:CLEAR_UID\n", write_calls)
+        writes = _write_str_calls(self.mock_ser)
+        self.assertIn("CMD:CLEAR_UID\n", writes)
 
     # ---- 未知命令 ----
 
-    def test_unknown_command_returns_err(self):
-        """发送未知命令时 ESP32 返回 ERR:01，_send_cmd 应返回 None。"""
+    def test_unknown_command_returns_err_then_retries_exhausted(self):
+        """ERR 回复触发重试，3 次全部 ERR 后 _send_cmd 返回 None。"""
         self._create_part_with_mock([
             "OK:a1b2c3d4e5f6\n",
             "OK:\n",
         ])
-        self.mock_ser.reset_mock()
-        self.mock_ser.readline.side_effect = ["ERR:01:unknown command\n"] * 3
-        self.mock_ser.in_waiting = 0
-        self.mock_ser.is_open = True
+        _set_readline(self.mock_ser, ["ERR:01:unknown command\n"] * 3)
 
-        result = self.part._send_cmd("CMD:FOO\n")
-        self.assertIsNone(result)
+        response = self.part._send_cmd("CMD:FOO\n")
+        self.assertIsNone(response)
+        # 验证尝试了 3 次
+        cmd_count = sum(1 for c in _write_bytes_calls(self.mock_ser) if b"CMD:FOO" in c)
+        self.assertEqual(cmd_count, 3)
 
     # ---- 超时重试 ----
 
@@ -199,16 +201,12 @@ class TestAuthPartCommands(unittest.TestCase):
             "OK:a1b2c3d4e5f6\n",
             "OK:\n",
         ])
-        self.mock_ser.reset_mock()
-        self.mock_ser.readline.side_effect = [""] * 3
-        self.mock_ser.in_waiting = 0
-        self.mock_ser.is_open = True
+        _set_readline(self.mock_ser, ["", "", ""])  # 3 次超时
 
         result = self.part._send_cmd("CMD:READ_HW_ID\n")
         self.assertIsNone(result)
         # 验证尝试了 3 次
-        write_calls = [c[0][0] for c in self.mock_ser.write.call_args_list]
-        self.assertEqual(len(write_calls), 3)
+        self.assertEqual(len(_write_bytes_calls(self.mock_ser)), 3)
 
     def test_timeout_succeeds_on_second_retry(self):
         """首次超时、第二次返回 OK，_send_cmd 应成功。"""
@@ -216,18 +214,16 @@ class TestAuthPartCommands(unittest.TestCase):
             "OK:a1b2c3d4e5f6\n",
             "OK:\n",
         ])
-        self.mock_ser.reset_mock()
-        self.mock_ser.readline.side_effect = ["", "OK:data\n"]
-        self.mock_ser.in_waiting = 0
-        self.mock_ser.is_open = True
+        _set_readline(self.mock_ser, ["", "OK:data\n"])
 
         result = self.part._send_cmd("CMD:READ_UID\n")
         self.assertEqual(result, "OK:data")
-        # 验证尝试了 2 次
-        write_calls = [c[0][0] for c in self.mock_ser.write.call_args_list]
-        self.assertEqual(len(write_calls), 2)
+        self.assertEqual(len(_write_bytes_calls(self.mock_ser)), 2)
 
 
+# ---------------------------------------------------------------------------
+# 生命周期与错误处理
+# ---------------------------------------------------------------------------
 class TestAuthPartLifecycle(unittest.TestCase):
     """覆盖 AuthPart 生命周期和错误处理。"""
 
@@ -257,10 +253,12 @@ class TestAuthPartLifecycle(unittest.TestCase):
         with patch("serial.Serial", side_effect=OSError("No such device")):
             part = AUTH.AuthPart(port="/dev/fake")
             part.setup()
-            # 不应抛异常
-            part.shutdown()
+            part.shutdown()  # 不应抛异常
 
 
+# ---------------------------------------------------------------------------
+# Token 格式
+# ---------------------------------------------------------------------------
 class TestAuthPartTokenFormat(unittest.TestCase):
     """验证 token 输出格式符合规范。"""
 
@@ -300,11 +298,17 @@ class TestAuthPartTokenFormat(unittest.TestCase):
             self.assertFalse(token["bound"])
 
 
+# ---------------------------------------------------------------------------
+# 线程安全
+# ---------------------------------------------------------------------------
 class TestAuthPartThreadSafety(unittest.TestCase):
     """验证 threading.Lock 保护串口操作。"""
 
     def test_concurrent_write_uid_serialized(self):
-        """并发调用 write_uid 应串行执行，不出现数据竞争。"""
+        """并发调用 write_uid 应串行执行，不出现数据竞争。
+
+        使用可追踪的包装锁验证：任意时刻只有一个线程在临界区内。
+        """
         mock_ser = _make_mock_serial([
             "OK:a1b2c3d4e5f6\n",
             "OK:\n",
@@ -313,24 +317,43 @@ class TestAuthPartThreadSafety(unittest.TestCase):
             part = AUTH.AuthPart(port="/dev/fake")
             part.setup()
 
-        # 模拟慢速响应
-        call_order = []
-        original_write = mock_ser.write
+        _set_readline(mock_ser, ["OK:written\n"] * 10)
 
-        def tracking_write(data):
-            call_order.append(data)
-            return original_write(data)
+        # 用一个可追踪的锁替换原始锁
+        class TrackedLock:
+            """包装 threading.Lock，记录进入/退出事件。"""
+            def __init__(self):
+                self._lock = threading.Lock()
+                self.events = []
 
-        mock_ser.write.side_effect = tracking_write
-        mock_ser.readline.side_effect = ["OK:written\n"] * 10
-        mock_ser.reset_mock()
+            def acquire(self, *args, **kwargs):
+                self.events.append(("enter", threading.get_ident()))
+                return self._lock.acquire(*args, **kwargs)
+
+            def release(self, *args, **kwargs):
+                self.events.append(("exit", threading.get_ident()))
+                return self._lock.release(*args, **kwargs)
+
+            def __enter__(self):
+                self.acquire()
+                return self
+
+            def __exit__(self, *args):
+                self.release()
+
+        tracked = TrackedLock()
+        part._lock = tracked
 
         results = []
+        errors = []
 
         def do_write(uid_suffix):
-            results.append(
-                part.write_uid(f"550e8400-e29b-41d4-a716-4466554400{uid_suffix:02d}")
-            )
+            try:
+                results.append(
+                    part.write_uid(f"550e8400-e29b-41d4-a716-4466554400{uid_suffix:02d}")
+                )
+            except Exception as exc:
+                errors.append(exc)
 
         threads = [
             threading.Thread(target=do_write, args=(i,))
@@ -341,12 +364,26 @@ class TestAuthPartThreadSafety(unittest.TestCase):
         for t in threads:
             t.join()
 
-        # 全部应成功
+        # 无异常
+        self.assertEqual(len(errors), 0)
+        # 全部成功
         self.assertTrue(all(results))
-        # 每个 write_uid 发送 2 次写入（CMD + ARG），5 个线程 = 10 次写入
-        self.assertEqual(len(call_order), 10)
+
+        # 验证串行化：enter/exit 严格交替，不存在嵌套
+        in_critical = 0
+        for event, tid in tracked.events:
+            if event == "enter":
+                self.assertEqual(in_critical, 0,
+                                 f"线程 {tid} 在另一个线程持有锁时进入临界区")
+                in_critical = 1
+            else:  # exit
+                in_critical = 0
+        self.assertEqual(in_critical, 0, "锁未正确释放")
 
 
+# ---------------------------------------------------------------------------
+# 默认配置
+# ---------------------------------------------------------------------------
 class TestAuthPartDefaultConfig(unittest.TestCase):
     """验证默认配置值。"""
 

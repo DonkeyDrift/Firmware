@@ -88,6 +88,14 @@ static bool handleJoystickReset(Print& out)
 
 bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pilotSilent)
 {
+#ifdef ENABLE_AUTH_SERVICE
+    // Auth 命令（CMD:READ_HW_ID / READ_UID / WRITE_UID / CLEAR_UID）
+    // 优先于所有其他命令处理，避免被下面的调度逻辑误消费
+    if (processAuthCommand(line, out)) {
+        return true;
+    }
+#endif
+
 #ifdef ENABLE_WIFI_CONSOLE
     if (g_otaState && g_wifiState && processLocalOtaMaintenanceCommand(line, out, sb, *g_otaState, *g_wifiState)) {
         return true;

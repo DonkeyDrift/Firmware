@@ -137,6 +137,7 @@ unsigned long rcTTL = 100;
 unsigned long outputTTL = 100;
 SerialBuf serial0Buf = {{0},0,0,0,false};
 SerialBuf serial1Buf = {{0},0,0,0,false};
+SerialBuf serial2Buf = {{0},0,0,0,false};
 #ifdef ENABLE_WIFI_CONSOLE
 #include "RuntimeState.h"
 #include "WebLogBuffer.h"
@@ -366,6 +367,73 @@ int Pilot_steering = 0; // Steering value from the host computer
 
 // RC calibration defaults moved to top of file (must precede function definitions for Arduino preprocessor compatibility)
 
+// Serial2 双向联通验证：独立 ping-pong 协议处理。
+// 不走 dispatchCommandLine，避免 PING/PONG 被当作控制命令解析。
+static void handleSerial2()
+{
+    static char line[64];
+    static uint8_t idx = 0;
+#ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
+    static unsigned long lastSerial2ByteMs = 0;
+#endif
+    while (Serial2.available())
+    {
+        char c = Serial2.read();
+#ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
+        lastSerial2ByteMs = millis();
+        // 逐字节实时输出到 Serial0（可打印字符直接显示，不可打印用 \xNN 转义）
+        if (c >= 32 && c <= 126)
+            Serial.print(c);
+        else
+            Serial.printf("\\x%02X", (unsigned char)c);
+#endif
+        if (c == '\r') continue;
+        if (c == '\n')
+        {
+            line[idx] = '\0';
+#ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
+            Serial.println();
+#endif
+            if (strncmp(line, "PING,", 5) == 0)
+            {
+                int seq = atoi(line + 5);
+                Serial2.printf("PONG,%d,%lu\n", seq, millis());
+            }
+            else
+            {
+                Serial2.printf("ECHO,%s\n", line);
+            }
+            idx = 0;
+        }
+        else if (idx < sizeof(line) - 1)
+        {
+            line[idx++] = c;
+        }
+#ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
+        // buffer 满时强制换行
+        if (idx >= sizeof(line) - 1) {
+            Serial.println();
+            idx = 0;
+        }
+#endif
+    }
+#ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
+    // 超时刷新：超过 200ms 无新数据则换行
+    if (idx > 0 && (millis() - lastSerial2ByteMs > 200)) {
+        Serial.println();
+        idx = 0;
+    }
+#endif
+    // 每秒心跳
+    static unsigned long lastBeat = 0;
+    unsigned long now = millis();
+    if (now - lastBeat >= 1000)
+    {
+        Serial2.printf("BEAT,%lu\n", now);
+        lastBeat = now;
+    }
+}
+
 void setup()
 {
     // Bind the shared Preferences instance into the runtime state before any
@@ -380,11 +448,11 @@ void setup()
     setCommandDispatcherRuntimeStates(otaRuntime, wifiRuntime);
 
     pinMode(UART_SEL, OUTPUT);
-    // digitalWrite(UART_SEL, HIGH);
-    digitalWrite(UART_SEL, LOW);                                // Low to enable TTL <=> CPU: RX_2_PIN = 19, TX_2_PIN = 18
-
+    digitalWrite(UART_SEL, HIGH); // Set HIGH to enable TTL <=> CPU: RX_2_PIN = 19, TX_2_PIN = 18      
+                           
     Serial.begin(BAUD_RATE_0);                                  // TypeC
     Serial1.begin(BAUD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // TTL <=> CPU: RX_1_PIN = 16, TX_1_PIN = 17
+    Serial2.begin(BAUD_RATE_1, SERIAL_8N1, RX_2_PIN, TX_2_PIN); // TTL <=> CPU: RX_2_PIN = 19, TX_2_PIN = 18
     mus4Logf("boot", "firmware=%s version=%s build=\"%s %s\"",
         MUS4_FIRMWARE_NAME,
         MUS4_FIRMWARE_VERSION,
@@ -463,6 +531,7 @@ void loop()
 
     readSerialBuf(Serial, serial0Buf);
     readSerialBuf(Serial1, serial1Buf);
+    handleSerial2();
     #ifdef ENABLE_WIFI_CONSOLE
       updateWifiConsole();
       updateWifiWebConsole();

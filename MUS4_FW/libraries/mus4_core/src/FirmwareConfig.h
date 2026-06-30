@@ -5,6 +5,7 @@
 #define ENABLE_WIFI_WEBSOCKET_TELEMETRY
 #endif
 // #define ENABLE_DIAGNOSTIC_COMMANDS
+// #define ENABLE_SERIAL2_ECHO_TO_SERIAL0  // 调试：Serial2 收到的所有数据透传到 Serial0（hex dump 格式）
 // #define ENABLE_BOOT_STEERING_SELF_TEST
 #define ENABLE_AUTH_SERVICE  // 启用基于 eFuse 芯片 ID 的身份识别服务（CMD:READ_HW_ID 等）
 

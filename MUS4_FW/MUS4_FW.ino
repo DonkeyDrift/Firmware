@@ -75,6 +75,9 @@
 #include "DriftAssist.h"
 #include "SteeringControl.h"
 #include "Diagnostics.h"
+#ifdef ENABLE_AUTH_SERVICE
+#include "AuthService.h"
+#endif
 #include "SerialBufferTypes.h"
 
 #include "Buzzer.h"
@@ -371,7 +374,7 @@ int Pilot_steering = 0; // Steering value from the host computer
 // 不走 dispatchCommandLine，避免 PING/PONG 被当作控制命令解析。
 static void handleSerial2()
 {
-    static char line[64];
+    static char line[128];
     static uint8_t idx = 0;
 #ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
     static unsigned long lastSerial2ByteMs = 0;
@@ -396,11 +399,25 @@ static void handleSerial2()
 #endif
             if (strncmp(line, "PING,", 5) == 0)
             {
+                // 第1级：PING → PONG（ping-pong 双向联通协议）
                 int seq = atoi(line + 5);
                 Serial2.printf("PONG,%d,%lu\n", seq, millis());
             }
+#ifdef ENABLE_AUTH_SERVICE
+            else if (strncmp(line, "CMD:", 4) == 0 || strncmp(line, "ARG:", 4) == 0)
+            {
+                // 第2级：Auth 身份识别命令 → processAuthCommand
+                String cmdLine(line);
+                if (!processAuthCommand(cmdLine, Serial2))
+                {
+                    // Auth 未消费时回退 ECHO（防御性，正常不会进入此分支）
+                    Serial2.printf("ECHO,%s\n", line);
+                }
+            }
+#endif
             else
             {
+                // 第3级：其他任意文本 → ECHO 回显
                 Serial2.printf("ECHO,%s\n", line);
             }
             idx = 0;
@@ -409,8 +426,13 @@ static void handleSerial2()
         {
             line[idx++] = c;
         }
+        else
+        {
+            // 行超长：丢弃超长数据，无条件重置缓冲区
+            idx = 0;
+        }
 #ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
-        // buffer 满时强制换行
+        // buffer 满时强制换行（debug echo 开启时同步刷新 Serial0）
         if (idx >= sizeof(line) - 1) {
             Serial.println();
             idx = 0;

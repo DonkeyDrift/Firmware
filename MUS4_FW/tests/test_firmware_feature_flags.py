@@ -3183,3 +3183,13 @@ def test_auth_library_properties_exists():
     )
     assert "mus4_auth" in props
     assert "architectures=esp32" in props
+
+
+def test_handle_serial2_includes_auth_service():
+    """MUS4_FW.ino 的 handleSerial2() 应在 ENABLE_AUTH_SERVICE 下调用 processAuthCommand。"""
+    ino = (PROJECT_ROOT / "MUS4_FW.ino").read_text(encoding="utf-8")
+    assert "processAuthCommand" in ino
+    # 验证三路路由结构存在（PING → Auth → ECHO）
+    assert 'strncmp(line, "CMD:", 4)' in ino
+    assert 'strncmp(line, "ARG:", 4)' in ino
+    assert 'strncmp(line, "PING,", 5)' in ino

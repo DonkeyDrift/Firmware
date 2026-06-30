@@ -381,10 +381,10 @@ void setup()
 
     pinMode(UART_SEL, OUTPUT);
     // digitalWrite(UART_SEL, HIGH);
-    digitalWrite(UART_SEL, LOW);
+    digitalWrite(UART_SEL, LOW);                                // Low to enable TTL <=> CPU: RX_2_PIN = 19, TX_2_PIN = 18
 
     Serial.begin(BAUD_RATE_0);                                  // TypeC
-    Serial1.begin(BAUD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // RS232: rx = 16, tx = 17
+    Serial1.begin(BAUD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // TTL <=> CPU: RX_1_PIN = 16, TX_1_PIN = 17
     mus4Logf("boot", "firmware=%s version=%s build=\"%s %s\"",
         MUS4_FIRMWARE_NAME,
         MUS4_FIRMWARE_VERSION,

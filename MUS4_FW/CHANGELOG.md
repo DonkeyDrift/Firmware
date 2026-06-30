@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-06-30 v1.7.33
+
+- 固件版本号从 `v1.7.31` 更新到 `v1.7.33`。
+- feat(Serial2): 新增 Serial2 (GPIO18/19) ping-pong 双向联通协议
+  - `setup()` 中初始化 Serial2（115200 8N1，GPIO19 RX / GPIO18 TX）
+  - 新增独立 `handleSerial2()` 函数：PING→PONG 响应、任意文本 ECHO 回显、每秒 BEAT 心跳
+  - `FirmwareConfig.h` 新增调试开关注释 `ENABLE_SERIAL2_ECHO_TO_SERIAL0`（默认关闭）
+  - Serial2 独立于 `dispatchCommandLine`，PING 不会被误解析为车辆控制命令
+  - 新增 `docs/guide/esp32-serial-topology.md` 串口拓扑参考文档
+
 ## 2026-06-28 v1.7.31
 
 - 固件版本号从 `v1.7.30` 更新到 `v1.7.31`。

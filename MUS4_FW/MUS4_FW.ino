@@ -397,7 +397,32 @@ static void handleSerial2()
 #ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
             Serial.println();
 #endif
-            if (strncmp(line, "PING,", 5) == 0)
+            if (strncmp(line, "STATUS|", 7) == 0)
+            {
+                // 上位机配网响应：STATUS|CONNECTING
+                extern String hostWifiStatus;
+                hostWifiStatus = String(line + 7);
+                appendWebLog("serial2", String("HOST-WIFI: ") + line);
+            }
+            else if (strncmp(line, "OK|", 3) == 0)
+            {
+                // 上位机配网响应：OK|<ip>
+                extern String hostWifiStatus;
+                extern String hostWifiIp;
+                hostWifiStatus = "connected";
+                hostWifiIp = String(line + 3);
+                appendWebLog("serial2", String("HOST-WIFI: connected ip=") + hostWifiIp);
+            }
+            else if (strncmp(line, "FAIL|", 5) == 0)
+            {
+                // 上位机配网响应：FAIL|<reason>
+                extern String hostWifiStatus;
+                extern String hostWifiError;
+                hostWifiStatus = "failed";
+                hostWifiError = String(line + 5);
+                appendWebLog("serial2", String("HOST-WIFI: failed reason=") + hostWifiError);
+            }
+            else if (strncmp(line, "PING,", 5) == 0)
             {
                 // 第1级：PING → PONG（ping-pong 双向联通协议）
                 int seq = atoi(line + 5);
@@ -474,6 +499,8 @@ void setup()
                            
     Serial.begin(BAUD_RATE_0);                                  // TypeC
     Serial1.begin(BAUD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // TTL <=> CPU: RX_1_PIN = 16, TX_1_PIN = 17
+    Serial1.setTxBufferSize(1024);  // v1.7.33：增大 TX 缓冲区，避免 100Hz IMU + 60Hz 遥测并发写入时
+                                    // 默认 256B 环形缓冲区溢出导致帧拼接和字符丢失。
     Serial2.begin(BAUD_RATE_1, SERIAL_8N1, RX_2_PIN, TX_2_PIN); // TTL <=> CPU: RX_2_PIN = 19, TX_2_PIN = 18
     mus4Logf("boot", "firmware=%s version=%s build=\"%s %s\"",
         MUS4_FIRMWARE_NAME,
@@ -684,33 +711,47 @@ void loop()
         lastUICycleDuration = 0;
     }
 
-    if (millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
+    // ── Serial1 上行帧拼装与发送 ──────────────────────────────────────
+    // v1.7.33：将所有 Serial1 上行数据（T<S>, M:P, $IMU）拼入单一栈缓冲，
+    // 一次 write() 发出，彻底消除多次 print/write 调用导致的 TX 环形缓冲区
+    // 指针竞争与帧拼接（字符丢失、\n 被吞并）。
+    //
+    // 发送策略：
+    //   - 遥测  T<t>S<s>\n    60Hz（仅 MANUAL 模式）
+    //   - 模式  M<m>:P<p>\n   1Hz 心跳 / 状态变化即时
+    //   - IMU   $IMU,...\n    100Hz（所有模式，MPU 在线且非 OTA）
+    //
+    // 缓冲区 512 字节足够容纳三类帧的任意组合（最坏 ~200 字节）。
     {
-        // 仅 MANUAL 模式下推送 T<t>S<s> 与 M<m>:P<p>。
-        // 在 ASSIST/AUTO 下 host 已在主动下发 <thr>:<str>，再回显会污染上位机日志，
-        // 也会被 Pilot 当成噪声丢弃，因此抑制；$IMU 仍在所有模式持续发送。
-        if (car_output.mode == CAR_MODE_MANUAL)
+        char s1Buf[512];
+        int  s1Len = 0;
+
+        // --- 遥测帧 T<t>S<s> (60Hz, MANUAL only) ---
+        if (car_output.mode == CAR_MODE_MANUAL &&
+            millis() - lastRCDataUpdate >= RC_DATA_UPDATE_INTERVAL)
         {
             if (shouldEmitSerial1Telemetry(otaRuntime)) {
-                String telem = String("T") + car_output.throttle + "S" + car_output.steering + "\n";
-                Serial1.print(telem); // RC => Type-C
+                int n = snprintf(s1Buf + s1Len, sizeof(s1Buf) - s1Len,
+                                 "T%dS%d\n", car_output.throttle, car_output.steering);
+                if (n > 0 && n < (int)(sizeof(s1Buf) - s1Len)) s1Len += n;
 #ifdef ENABLE_WIFI_CONSOLE
-                // Serial1 上行 60Hz 给上位机；Web 日志只需 10Hz，避免和曲线二进制
-                // 帧（~60Hz）一起把 AsyncWebSocket 8 槽队列顶爆。
                 if (millis() - lastTelemWebLogMs >= TELEM_WEB_LOG_INTERVAL_MS) {
+                    String telem = String("T") + car_output.throttle + "S" + car_output.steering + "\n";
                     appendWebLog("serial1", telem);
                     lastTelemWebLogMs = millis();
                 }
 #endif
 
-                // M<m>:P<p>：模式或 Park 状态变化时立即发，否则 1Hz 心跳。
+                // --- M<m>:P<p> 模式帧 (1Hz 心跳 / 变化即时) ---
                 bool modeChanged = (car_output.mode != lastEmittedMode);
                 bool parkChanged = ((int)car_output.park != lastEmittedPark);
                 bool heartbeatDue = (millis() - lastModeParkEmitMs) >= MODE_PARK_HEARTBEAT_MS;
                 if (modeChanged || parkChanged || heartbeatDue) {
-                    String mp = String("M") + car_output.mode + ":P" + ((int)car_output.park) + "\n";
-                    Serial1.print(mp);
+                    int n2 = snprintf(s1Buf + s1Len, sizeof(s1Buf) - s1Len,
+                                      "M%d:P%d\n", car_output.mode, (int)car_output.park);
+                    if (n2 > 0 && n2 < (int)(sizeof(s1Buf) - s1Len)) s1Len += n2;
 #ifdef ENABLE_WIFI_CONSOLE
+                    String mp = String("M") + car_output.mode + ":P" + ((int)car_output.park) + "\n";
                     appendWebLog("serial1", mp);
 #endif
                     lastEmittedMode = car_output.mode;
@@ -718,34 +759,28 @@ void loop()
                     lastModeParkEmitMs = millis();
                 }
             }
+            lastRCDataUpdate = millis();
         }
-        lastRCDataUpdate = millis();
-    }
 
-    // $IMU 上行：~100Hz，所有模式都发，仅在 MPU 在线且 OTA 未传输时推送。
-    // 上位机 `donkeycar/parts/actuator.py::ArdImu` 按 `$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz`
-    // 解析，seq 16-bit 自然回绕仅用于丢帧检测，无校验。
-    // v1.7.15：用 snprintf 写到固定栈缓冲再 Serial1.write 一次发出，消除 100Hz 下
-    // 由 `String +` 拼装造成的 ~900 次/秒 堆 alloc/free——之前观察到几十秒后
-    // 堆碎片化引发 `Failed to fetch` 与 ws disconnect 风暴并最终 OOM 重启。
-    // 注意：不要把 $IMU 镜像进 appendWebLog("serial1", ...) —— 100Hz 文本通过 WebSocket
-    // 推到浏览器会顶爆 AsyncWebSocket 发送队列，引起 ws disconnect 与曲线卡顿；
-    // IMU 数据走 WebSocket 二进制 schema v2 的 latest 区已经覆盖 Web Console 需求。
-    if (millis() - lastImuEmitMs >= IMU_TELEMETRY_INTERVAL_MS) {
-        if (mpu6050Data.valid && shouldEmitSerial1Telemetry(otaRuntime)) {
-            static uint16_t imuSeq = 0;
-            char imuBuf[96];
-            int imuLen = snprintf(imuBuf, sizeof(imuBuf),
-                "$IMU,%u,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n",
-                (unsigned)imuSeq, (unsigned long)millis(),
-                mpu6050Data.accelX, mpu6050Data.accelY, mpu6050Data.accelZ,
-                mpu6050Data.gyroX, mpu6050Data.gyroY, mpu6050Data.gyroZ);
-            if (imuLen > 0 && imuLen < (int)sizeof(imuBuf)) {
-                Serial1.write((const uint8_t*)imuBuf, (size_t)imuLen);
+        // --- $IMU 帧 (100Hz, 所有模式) ---
+        if (millis() - lastImuEmitMs >= IMU_TELEMETRY_INTERVAL_MS) {
+            if (mpu6050Data.valid && shouldEmitSerial1Telemetry(otaRuntime)) {
+                static uint16_t imuSeq = 0;
+                int n = snprintf(s1Buf + s1Len, sizeof(s1Buf) - s1Len,
+                    "$IMU,%u,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n",
+                    (unsigned)imuSeq, (unsigned long)millis(),
+                    mpu6050Data.accelX, mpu6050Data.accelY, mpu6050Data.accelZ,
+                    mpu6050Data.gyroX, mpu6050Data.gyroY, mpu6050Data.gyroZ);
+                if (n > 0 && n < (int)(sizeof(s1Buf) - s1Len)) s1Len += n;
+                imuSeq++;
             }
-            imuSeq++; // uint16_t 自然回绕
+            lastImuEmitMs = millis();
         }
-        lastImuEmitMs = millis();
+
+        // ── 一次性发出 ──
+        if (s1Len > 0) {
+            Serial1.write((const uint8_t*)s1Buf, (size_t)s1Len);
+        }
     }
 
 #ifdef DEBUG // Print the values for debugging

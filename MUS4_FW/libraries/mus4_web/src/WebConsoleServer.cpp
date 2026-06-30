@@ -82,6 +82,12 @@ static uint32_t wifiWebLogMaxDtMs = 0;
 static uint32_t wifiWebDataMaxDtMs = 0;
 static uint32_t wifiWebCommandMaxDtMs = 0;
 
+// 上位机配网状态（通过 Serial2 接收来自 Linux 上位机的响应）
+String hostWifiStatus = "IDLE";
+String hostWifiSsid = "";
+String hostWifiIp = "";
+String hostWifiError = "";
+
 void printWirelessStatus(Print& out)
 {
     out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s mdns_host=\"%s\" mdns_url=%s mdns_started=%d web_log_dropped=%lu\n",
@@ -245,14 +251,26 @@ static void handleWifiWebCommand()
     String response;
     StringPrint out(response);
     if (target.equalsIgnoreCase("serial") || target.equalsIgnoreCase("serial1")) {
-        appendWebLog("web", String("> [") + target + " disabled] " + redactWirelessConsoleLine(line));
-        // String::toUpperCase() 在 ESP32 Arduino core 3.x 返回 void（in-place 修改），
-        // 不能直接出现在 "NACK:" + target.toUpperCase() 这样的拼接表达式里。
-        String targetUpper = target;
-        targetUpper.toUpperCase();
-        String nack = String("NACK:") + targetUpper + "_DISABLED";
-        out.println(nack);
-        appendWebLog("web", nack);
+        // v1.7.29：启用串口转发，支持上位机配网（WIFI|ssid|password 协议）。
+        // 将 Web 命令原样转发到 Serial2（ESP32→Linux 上位机），并等待响应。
+        appendWebLog("web", String("> [serial2] ") + redactWirelessConsoleLine(line));
+        String cmdLine = line + "\n";
+        Serial2.print(cmdLine);
+        // 如果是配网命令，更新状态并提取 SSID
+        if (line.startsWith("WIFI|")) {
+            int firstPipe = line.indexOf('|');
+            int secondPipe = line.indexOf('|', firstPipe + 1);
+            if (firstPipe > 0 && secondPipe > firstPipe) {
+                hostWifiSsid = line.substring(firstPipe + 1, secondPipe);
+            }
+            hostWifiStatus = "connecting";
+            hostWifiIp = "";
+            hostWifiError = "";
+            appendWebLog("serial2", String("HOST-WIFI: provisioning started ssid=") + hostWifiSsid);
+        }
+        String ack = String("ACK:SERIAL2_SENT");
+        out.println(ack);
+        appendWebLog("serial2", ack);
     } else {
         appendWebLog("web", String("> ") + redactWirelessConsoleLine(line));
         processWirelessConsoleLine(line, out, WIRELESS_ORIGIN_WEB);
@@ -758,6 +776,25 @@ static void handleWifiWebStaClear()
     wifiWebServer.send(200, "application/json", "{\"cleared\":true}");
 }
 
+// 上位机配网状态查询（通过 Serial2 发送 WIFI|ssid|password 给 Linux 上位机后，
+// Linux 上位机会回复 STATUS|CONNECTING / OK|<ip> / FAIL|<reason>）。
+static void handleWifiWebHostWifiStatus()
+{
+    sendWifiWebApiHeaders();
+    String json;
+    json.reserve(160);
+    json += "{\"status\":";
+    appendJsonString(json, hostWifiStatus.c_str());
+    json += ",\"ssid\":";
+    appendJsonString(json, hostWifiSsid.c_str());
+    json += ",\"ip\":";
+    appendJsonString(json, hostWifiIp.c_str());
+    json += ",\"error\":";
+    appendJsonString(json, hostWifiError.c_str());
+    json += "}";
+    wifiWebServer.send(200, "application/json", json);
+}
+
 static void handleWifiWebLog()
 {
     unsigned long startedMs = millis();
@@ -1065,6 +1102,7 @@ void setupWebConsoleServer()
     wifiWebServer.on("/api/wifi-sta/password", HTTP_GET, handleWifiWebStaPassword);
     wifiWebServer.on("/api/wifi-sta/scan", HTTP_GET, handleWifiWebStaScan);
     wifiWebServer.on("/api/wifi-sta/clear", HTTP_POST, handleWifiWebStaClear);
+    wifiWebServer.on("/api/host-wifi-status", HTTP_GET, handleWifiWebHostWifiStatus);
     wifiWebServer.on("/api/judge-config", HTTP_GET, handleWifiWebJudgeConfig);
     wifiWebServer.on("/api/judge-config", HTTP_POST, handleWifiWebJudgeConfigSet);
     wifiWebServer.on("/api/judge-config/reset", HTTP_POST, handleWifiWebJudgeConfigReset);
@@ -1100,6 +1138,29 @@ void updateWebConsoleServer()
         sampleWifiWebData();
         stageDt = (uint32_t)(millis() - stageStart);
         if (stageDt > wifiWebSampleMaxDtMs) wifiWebSampleMaxDtMs = stageDt;
+    }
+    // 读取上位机配网响应（仅在配网激活期间读取，避免干扰遥测 $IMU/M:P 帧）
+    if (hostWifiStatus != "IDLE" && hostWifiStatus != "connected" && hostWifiStatus != "failed") {
+        while (Serial2.available() > 0) {
+            String line = Serial2.readStringUntil('\n');
+            line.trim();
+            if (line.length() == 0) continue;
+            // 仅处理配网协议帧，跳过遥测帧（$IMU / M:P / T...S...）
+            if (line.startsWith("STATUS|")) {
+                hostWifiStatus = line.substring(7);
+                appendWebLog("serial2", String("HOST-WIFI: ") + line);
+            } else if (line.startsWith("OK|")) {
+                hostWifiStatus = "connected";
+                hostWifiIp = line.substring(3);
+                appendWebLog("serial2", String("HOST-WIFI: connected ip=") + hostWifiIp);
+            } else if (line.startsWith("FAIL|")) {
+                hostWifiStatus = "failed";
+                hostWifiError = line.substring(5);
+                appendWebLog("serial2", String("HOST-WIFI: failed reason=") + hostWifiError);
+            }
+            // 不处理其他帧（$IMU / M:P / T...S... 留给主循环）
+            // 注意：已从缓冲区消费，但这些帧在配网期间偶尔丢失是可接受的
+        }
     }
     stageStart = millis();
     wifiWebServer.handleClient();

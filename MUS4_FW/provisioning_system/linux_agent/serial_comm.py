@@ -7,7 +7,9 @@ except ImportError:
 
 class SerialComm:
     """处理ESP32与Linux间的串口通信"""
-    def __init__(self, port='/dev/ttyS4', baudrate=115200, timeout=1):
+    # Serial2 (ESP32 GPIO19/18) 物理对接到 Linux /dev/ttyS6（抓包实测确认）。
+    # /dev/ttyS4 对接的是 Serial1 遥测通道，不可用。
+    def __init__(self, port='/dev/ttyS6', baudrate=115200, timeout=1):
         self.logger = logging.getLogger("SerialComm")
         if serial is None:
             self.logger.warning("未安装pyserial，正在运行于Mock模式")

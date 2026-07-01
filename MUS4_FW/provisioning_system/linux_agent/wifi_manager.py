@@ -21,26 +21,38 @@ class WifiManager:
         return res.returncode == 0
 
     def connect(self, ssid, password):
-        """连接目标WiFi。使用参数列表调用 nmcli，避免 shell 注入。"""
+        """连接目标WiFi。采用两步式 profile 创建，规避 nmcli 1.54 的 key-mgmt 推断缺陷。"""
         self.logger.info(f"正在连接WiFi: {ssid}")
 
-        # 1. 删除可能存在的旧配置
+        # 1. 删除可能存在的旧 profile：残留 profile 的 key-mgmt/psk 字段可能损坏，
+        #    复用会导致 "key-mgmt: 缺少属性" 或 "需要密钥，但未提供"。
         subprocess.run(
             ["nmcli", "connection", "delete", ssid],
             capture_output=True, text=True)
 
-        # 2. 尝试连接新网络（--wait 是 nmcli 全局选项，必须放在子命令 device 之前，
-        #    否则 nmcli 会把它当作 connect 的额外参数拒绝）
+        # 2. 显式创建 profile：nmcli 1.54 的 `device wifi connect <ssid> password <pwd>`
+        #    不会自动推断 key-mgmt（实测报 key-mgmt 缺失），必须用 connection add 显式
+        #    指定 wifi-sec.key-mgmt wpa-psk。参数列表形式避免 shell 注入。
         res = subprocess.run(
-            ["nmcli", "--wait", "30", "device", "wifi", "connect", ssid,
-             "password", password, "ifname", self.interface],
+            ["nmcli", "connection", "add", "type", "wifi",
+             "ifname", self.interface, "con-name", ssid, "ssid", ssid,
+             "wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", password],
+            capture_output=True, text=True)
+
+        if res.returncode != 0:
+            self.logger.error(f"创建连接配置失败: {res.stderr}")
+            return False, "创建连接配置失败"
+
+        # 3. 激活连接（--wait 是 nmcli 全局选项，必须放在子命令 connection 之前）
+        res = subprocess.run(
+            ["nmcli", "--wait", "30", "connection", "up", ssid],
             capture_output=True, text=True)
 
         if res.returncode != 0:
             self.logger.error(f"WiFi连接失败: {res.stderr}")
             return False, "连接失败或超时"
 
-        # 3. 轮询等待 DHCP 分配 IP（nmcli 返回成功时 IP 可能尚未就绪）
+        # 4. 轮询等待 DHCP 分配 IP（nmcli 返回成功时 IP 可能尚未就绪）
         return self._wait_for_ip_address()
 
     def _get_ip_address(self):

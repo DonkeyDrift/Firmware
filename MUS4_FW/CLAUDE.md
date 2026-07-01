@@ -228,7 +228,8 @@ Python 测试集中在 `tests/`：
 3. 控制逻辑按模式融合 RC 与 Pilot 数据，更新 `car_output`，Drift Assist 可在条件满足时叠加转向补偿——实现位于 `libraries/mus4_control/src/ControlMixer.*`。
 4. Park/紧急制动状态机可覆盖油门输出并控制 LED 闪烁；OTA 窗口或 OTA 传输期间会暂停 Serial1 遥测——实现位于 `libraries/mus4_safety/src/SafetyState.*`。
 5. 输出层通过 ESP32 `ledc` 产生 PWM，驱动转向舵机与油门电调，并通过 Serial1 上行 `T<t>S<s>` / `M<m>:P<p>` / `$IMU,...`（详见下文"串口协议"）——PWM 映射、限幅、`ledcWriteChannel` 调用位于 `libraries/mus4_safety/src/ActuatorOutput.*`。
-6. TUI、I2C 传感器、Web 数据曲线/日志缓冲、WebSocket 遥测和 BLE Gamepad 作为旁路功能读取状态并输出显示或手柄轴数据——TUI/Buzzer 位于 `libraries/mus4_ui/src/`。
+6. Serial2 双向通道（`handleSerial2()`）独立于 Serial1 遥测上行链路，负责 ESP32 ↔ Linux 上位机的 ping-pong 联通验证、身份识别命令处理与上位机配网协议转发——行缓冲与超时逻辑内聚在 `handleSerial2()` 中，`processAuthCommand()` 从 `mus4_auth` 模块引入。
+7. TUI、I2C 传感器、Web 数据曲线/日志缓冲、WebSocket 遥测和 BLE Gamepad 作为旁路功能读取状态并输出显示或手柄轴数据——TUI/Buzzer 位于 `libraries/mus4_ui/src/`。
 
 ### 核心模块
 
@@ -270,9 +271,9 @@ Python 测试集中在 `tests/`：
   - `Buzzer`：蜂鸣器状态机，硬件支持时使用。
   - `LedStatus`：WS2812B LED 模式与紧急停车指示（FastLED 驱动）。
 - `libraries/mus4_auth/src/`：身份识别服务（v1.7.31+，`ENABLE_AUTH_SERVICE` 编译开关控制）。
-  - `AuthService`：基于 ESP32 eFuse 芯片 ID 的身份识别，通过串口提供 `CMD:READ_HW_ID`/`CMD:READ_UID`/`CMD:WRITE_UID`/`CMD:CLEAR_UID` 文本命令帧，UID 持久化于 NVS。错误码 01-05（未知命令/无效参数/NVS 写入失败/NVS 读取失败/等待超时）。
+  - `AuthService`：基于 ESP32 eFuse 芯片 ID 的身份识别。v1.7.33 起迁移至 **Serial2** 通路（不再占用 Serial1），通过 `processAuthCommand()` 在 `handleSerial2()` 中处理 `CMD:READ_HW_ID`/`CMD:READ_UID`/`CMD:WRITE_UID`/`CMD:CLEAR_UID` 文本命令帧，UID 持久化于 NVS。错误码 01-05（未知命令/无效参数/NVS 写入失败/NVS 读取失败/等待超时）。
 - `libraries/mus4_web/src/`：Web Console 与遥测前端。
-  - `WebConsoleServer`：端口 80 Web Console / Donkey Console 服务。
+  - `WebConsoleServer`：端口 80 Web Console / Donkey Console 服务。v1.7.33+ 集成**上位机配网协议转发**：Web 配网页面提交的 Wi-Fi 凭据通过 Serial2 转发到 Linux 上位机（`WIFI|<ssid>|<password>\n`），并异步接收 `HOST-WIFI:` 响应更新配网 UI 状态。
   - `WebConsoleAssets.h`：内嵌的 `Drifter Console` 前端 HTML/CSS/JS。
   - `WebTelemetry`：端口 81 WebSocket 遥测推送。
   - `WebLogBuffer`：Web 串口日志环形缓冲。
@@ -296,7 +297,7 @@ Web Console 的 Tub JSON 记录用于离线行为克隆训练。`tools/train_tub
 
 - `examples/`：I2C、传感器、智能配网等独立示例 sketch。
 - `multi_agent_framework/`：独立 Python 多智能体框架代码，不属于 ESP32 固件主链路。
-- `provisioning_system/`：ESP32 Wi-Fi provisioning 与 Linux agent 相关工具，独立于 MUS4 主固件构建流程；ESP32 AP/Web Server 通过 UART 把 Wi-Fi 凭据发给 Linux agent，agent 使用 NetworkManager/nmcli 连接目标网络并回传结果。
+- `provisioning_system/`：ESP32 Wi-Fi provisioning 与 Linux agent 相关工具，独立于 MUS4 主固件构建流程；ESP32 AP/Web Server 通过 UART 把 Wi-Fi 凭据发给 Linux agent，agent 使用 NetworkManager/nmcli 连接目标网络并回传结果。v1.7.33+ MUS4 主固件通过 Serial2 直接与 Linux 上位机集成配网协议，无需独立的 provisioning ESP32。
 
 ## Firmware Behavior Reference
 
@@ -332,6 +333,13 @@ Serial1 上行（ESP32 → 上位机 DonkeyCar `actuator.py::Arduino` / `ArdImu`
 - OTA 真正传输期间（`otaRuntime.inProgress`）三类上行帧全部暂停，由 `shouldEmitSerial1Telemetry(otaRuntime)` 闸门控制；OTA 结束自动恢复。Park Guard 仍由 `forceWifiOtaParkLocked()` 托底。
 - 桌面侧仿真 / 回放 / 单元测试可调用 `wireless_console_policy.format_serial1_manual_frame` / `format_serial1_mode_park_frame` / `format_imu_telemetry_line` 拼出与固件一致的字节流。
 
+Serial2 双向（ESP32 ↔ Linux 上位机，`handleSerial2()` 独立处理循环，v1.7.33+）：
+- **Ping-pong 联通验证**：上位机发 `PING,<seq>\n` → ESP32 回 `PONG,<seq>,<millis>\n`；超时未收到完整行时自动发 `BEAT,<millis>\n` 心跳。
+- **ECHO 透传**：未匹配任何协议关键字的行原样回传 `ECHO,<line>\n`。
+- **身份识别命令**（`ENABLE_AUTH_SERVICE` 编译开关控制）：`CMD:READ_HW_ID` / `CMD:READ_UID` / `CMD:WRITE_UID` / `CMD:CLEAR_UID` 文本命令帧通过 `processAuthCommand()` 在 Serial2 上处理，UID 持久化于 NVS。错误码 01-05（未知命令/无效参数/NVS 写入失败/NVS 读取失败/等待超时）。
+- **上位机配网协议**（v1.7.33+）：Web Console 将用户提交的 Wi-Fi 凭据通过 Serial2 转发给 Linux 上位机。ESP32 发送 `WIFI|<ssid>|<password>\n`，上位机响应 `HOST-WIFI: connected ip=<addr>` 或 `HOST-WIFI: failed reason=<msg>`，结果记录到 Web 日志并反馈到配网 UI。`handleSerial2()` 中识别 `HOST-WIFI:` 前缀行并更新 `hostWifiIp` / `hostWifiError` 运行时状态。
+- Serial2 波特率与 Serial1 同为 `BAUD_RATE_1`（由 `FirmwareConfig.h` 定义），帧格式 `SERIAL_8N1`。调试时可启用 `ENABLE_SERIAL2_ECHO_TO_SERIAL0` 将 Serial2 流量 hex dump 到 USB Serial。
+
 ### 当前 v2.4.2 / v2.3 引脚
 
 | 功能 | GPIO | 说明 |
@@ -350,6 +358,8 @@ Serial1 上行（ESP32 → 上位机 DonkeyCar `actuator.py::Arduino` / `ArdImu`
 | UART_SEL | 12 | UART 路由选择 |
 | Serial1 RX | 16 | RS232/Pilot 输入 |
 | Serial1 TX | 17 | RS232/Pilot 输出 |
+| Serial2 RX | 19 | TTL ↔ Linux 上位机（配网协议 + 身份识别 + ping-pong） |
+| Serial2 TX | 18 | TTL ↔ Linux 上位机 |
 | I2C SDA | 21 | INA219 / MPU6050 |
 | I2C SCL | 22 | INA219 / MPU6050 |
 

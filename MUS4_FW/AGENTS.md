@@ -3,9 +3,9 @@
 
 # MUS4（LP-MU-S4）项目编码指南
 
-MUS4 是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件。当前主 Sketch 为根目录 `MUS4_FW.ino`，固件版本 `v1.7.6`（定义于 `libraries/mus4_core/src/BuildInfo.h`），目标硬件为 MUS4-v2.4.2 PCB（兼容 v2.3）。固件负责 RC 接收机 PWM 输入采集、Pilot 上位机串口控制、多模式驾驶控制融合、Park/紧急制动状态机、I2C 传感器采集、TUI 状态显示，以及可选的 Wi-Fi 控制台、OTA 更新和 BLE 游戏手柄输出。
+MUS4 是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件。当前主 Sketch 为根目录 `MUS4_FW.ino`，固件版本定义于 `libraries/mus4_core/src/BuildInfo.h` 的 `MUS4_FIRMWARE_VERSION` 宏（当前为 `v1.7.33`），目标硬件为 MUS4-v2.4.2 PCB（兼容 v2.3）。固件负责 RC 接收机 PWM 输入采集、Pilot 上位机串口控制、多模式驾驶控制融合、Park/紧急制动状态机、I2C 传感器采集、TUI 状态显示，以及可选的 Wi-Fi 控制台、OTA 更新和 BLE 游戏手柄输出。
 
-> **重要结构变更**：自 2026-06 起，原根目录下成对的 `.h/.cpp` 业务模块已按功能域抽取为本地 Arduino 库，位于 `libraries/mus4_*/src/`。主 Sketch 仅保留全局变量装配、`setup()` / `loop()` 与 Wi-Fi 运行时状态别名。任何新增业务模块都应优先考虑以 `libraries/mus4_<domain>/` 本地库形式存在，而不是放回根目录。
+> **重要结构变更**：自 2026-06 起，原根目录下成对的 `.h/.cpp` 业务模块已按功能域抽取为本地 Arduino 库，位于 `libraries/mus4_*/src/`。主 Sketch 仅保留全局变量装配、`setup()` / `loop()` 与 Wi-Fi 运行时状态别名。v1.7.33 起新增 Serial2 双向通道（RX=19, TX=18）独立处理 Linux 上位机 ping-pong/身份识别/配网协议。任何新增业务模块都应优先考虑以 `libraries/mus4_<domain>/` 本地库形式存在，而不是放回根目录。
 
 ---
 
@@ -31,7 +31,7 @@ MUS4 是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制�
 
 | 文件 | 用途 | 备注 |
 |------|------|------|
-| `libraries/mus4_core/src/BuildInfo.h` | 固件版本宏 | `v1.7.6`，构建日期/时间由编译器 `__DATE__` / `__TIME__` 注入 |
+| `libraries/mus4_core/src/BuildInfo.h` | 固件版本宏 | `MUS4_FIRMWARE_VERSION`（当前 `v1.7.33`），构建日期/时间由编译器 `__DATE__` / `__TIME__` 注入 |
 | `libraries/mus4_core/src/FirmwareConfig.h` | 编译期功能开关、引脚定义、时序/滤波/日志目标 | 所有 `.h/.cpp` 均优先包含此文件 |
 | `config.yaml` | `arduino-cli.py` 主配置 | FQBN、端口、波特率、串口自动检测关键字、复位策略、日志级别 |
 | `sketch.yaml` | Arduino CLI 项目级默认配置 | FQBN 与端口 |
@@ -52,7 +52,7 @@ MUS4 是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制�
 ├── libraries/                     # 本地 Arduino 库（构建时优先使用）
 │   ├── mus4_core/                 # 核心类型与配置
 │   │   └── src/
-│   │       ├── BuildInfo.h        # 固件版本与构建时间宏（v1.7.6）
+│   │       ├── BuildInfo.h        # 固件版本与构建时间宏（当前 v1.7.33）
 │   │       ├── FirmwareConfig.h   # 编译期功能开关、引脚定义、时序/滤波/日志目标
 │   │       ├── SharedTypes.h      # SensorData / ControlData
 │   │       ├── RuntimeState.h     # WifiRuntimeState / OtaRuntimeState
@@ -102,6 +102,10 @@ MUS4 是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制�
 │   │       ├── SerialLineReader.h/.cpp  # Serial/Serial1 行缓冲读取
 │   │       ├── WirelessConsole.h/.cpp   # 无线命令权限与命令分类
 │   │       └── mus4_command.h
+│   ├── mus4_auth/                 # 身份识别（Serial2 通路）
+│   │   └── src/
+│   │       ├── AuthService.h/.cpp       # eFuse 芯片 ID 身份识别（CMD:READ_HW_ID/UID/WRITE_UID/CLEAR_UID）
+│   │       └── mus4_auth.h
 │   ├── mus4_wifi/                 # Wi-Fi 运行时、STA、OTA、身份
 │   │   └── src/
 │   │       ├── WifiManager.h/.cpp  # Wi-Fi runtime 状态机（AP/STA/mDNS/DNS/TCP Console）
@@ -182,91 +186,28 @@ MUS4 是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制�
 
 ## 2. 构建与上传命令
 
-### 2.1 Python 依赖
+> **完整命令矩阵、参数说明、HTTP OTA 稳定性机制、WSL 排障指引见 [`CLAUDE.md`](CLAUDE.md) §Commands。** 以下仅列最常用入口。
+
+### Python 依赖
 
 ```bash
 pip install pyyaml pyserial pytest
 ```
 
-### 2.2 WSL 加速构建（推荐）
-
-**WSL 编译是首选方式**，相比 Windows 原生编译速度提升 3-5 倍。当前 `wslbuild.yaml` 配置：发行版 `DKC`，工作目录 `/home/dkc/arduino-build/MUS4_FW`，`io_mode: native`。
+### 常用命令速查
 
 ```powershell
-# 一键：编译 + 上传（默认）
-.\arduino-cli-wsl.ps1
-
-# 仅编译（默认：同步到 WSL 原生文件系统后编译）
+# WSL 仅编译（修改固件后首选验证）
 .\arduino-cli-wsl.ps1 -Compile -Sketch MUS4_FW.ino
-.\arduino-cli-wsl.ps1 -c -Sketch MUS4_FW.ino
 
-# 清理 WSL 构建目录后重新编译
-.\arduino-cli-wsl.ps1 -Compile -Clean -Sketch MUS4_FW.ino
-
-# 检查依赖与分区占用
-.\arduino-cli-wsl.ps1 -Compile -CheckPartition -Sketch MUS4_FW.ino
-
-# 编译后通过 HTTP OTA 上传（优先方式，使用 Web Console /update 端点）
-# 优先读取项目根目录 .mus4_ota_target 第一行作为目标地址
+# WSL 编译 + HTTP OTA 上传
 .\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP> -Sketch MUS4_FW.ino
 
-# 使用已有 build_wsl 产物通过 HTTP OTA 上传
-.\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost <设备IP> -Sketch MUS4_FW.ino
-
-# 若 .mus4_ota_target 已存在，可省略 -HttpOtaHost
-.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -Sketch MUS4_FW.ino
-
-# 仅当明确要求串口上传/监控时
-.\arduino-cli-wsl.ps1 -Upload -Sketch MUS4_FW.ino
-.\arduino-cli-wsl.ps1 -Upload -Serial -Sketch MUS4_FW.ino
-.\arduino-cli-wsl.ps1 -s
-
-# 回退：旧 ArduinoOTA 方式（端口 3232）
-.\arduino-cli-wsl.ps1 -Compile -Upload -Ota -OtaHost <设备IP> -Sketch MUS4_FW.ino
-```
-
-### 2.3 原生构建（Windows/Linux/macOS）
-
-```bash
-# 仅编译
+# 原生编译
 python arduino-cli.py -c --sketch MUS4_FW.ino
-
-# 仅上传（按 config.yaml 自动检测串口）
-python arduino-cli.py -u --sketch MUS4_FW.ino
-
-# 指定串口上传
-python arduino-cli.py -u --sketch MUS4_FW.ino --port COM9
-
-# 编译 + 上传
-python arduino-cli.py -cu --sketch MUS4_FW.ino
-
-# 编译 + 上传 + 串口监控
-python arduino-cli.py -cus --sketch MUS4_FW.ino
-
-# 使用预编译固件上传
-python arduino-cli.py -u -i build/MUS4_FW.ino.bin --sketch MUS4_FW.ino
-
-# OTA 上传（ArduinoOTA，旧方式）
-python arduino-cli.py --ota -i build_wsl/MUS4_FW.ino.bin --ota-host mus4-ota
-
-# HTTP OTA 上传（新方式，使用 curl.exe）
-curl.exe -X POST http://<设备IP>/update -F "firmware=@build_wsl/MUS4_FW.ino.bin" --progress-bar
-
-# 列出检测到的串口
-python arduino-cli.py --list-ports
-
-# 逐行日志（适合 CI）
-python arduino-cli.py -cu --no-progress --sketch MUS4_FW.ino
 ```
 
-### 2.4 关键配置参数
-
-- **默认 FQBN**: `esp32:esp32:esp32:PartitionScheme=min_spiffs`（`config.yaml` / `sketch.yaml` / `wslbuild.yaml`）
-- **默认波特率**: `115200`
-- **默认 Sketch**: `MUS4_FW.ino`
-- **构建输出目录**: `build/`（原生）或 `build_wsl/`（WSL）
-- **本地库目录**: `libraries/`（存在时构建脚本会自动追加 `--libraries`）
-- **日志文件**: `ArduinoCLI.log`
+关键配置：默认 FQBN `esp32:esp32:esp32:PartitionScheme=min_spiffs`，波特率 `115200`，构建输出 `build/`（原生）或 `build_wsl/`（WSL），本地库目录 `libraries/`。
 
 ---
 
@@ -324,154 +265,31 @@ python provisioning_system/tests/test_agent.py -v
 
 ## 4. 运行时架构
 
-### 4.1 主循环时序
+> **主循环时序、数据流、模块职责、中断约束详见 [`CLAUDE.md`](CLAUDE.md) §High-Level Architecture。** 以下仅列关键数据流要点。
 
-`loop()` 采用非阻塞架构，通过 `millis()` 时间间隔控制各任务频率（具体值来自 `libraries/mus4_core/src/FirmwareConfig.h`）：
-
-| 任务 | 间隔 | 频率 |
-|------|------|------|
-| 传感器读取（INA219 / MPU6050） | 2 ms | ~500 Hz |
-| RC 数据更新与 Serial1 遥测 | 16 ms | ~60 Hz |
-| RC 滑动窗口中值滤波 | 2 ms | ~500 Hz |
-| TUI 渲染 | 基准 2 ms，动态 100–500 ms | 自适应降级 |
-| 波形图刷新 | 250 ms | 4 Hz |
-| 性能评估与降级检测 | 1000 ms | 1 Hz |
-| 主循环 delay | 2 ms | ~500 Hz 基线 |
-
-### 4.2 核心数据流
-
-1. **输入层**: RC 接收机 CH1–CH6 通过 `attachInterrupt` 触发中断，记录 `micros()` 脉宽；USB `Serial`、RS232 `Serial1`、TCP Console、Web Console 接收控制指令。
-2. **滤波层**: 6 通道滑动窗口中值滤波（窗口大小 `PWM_FILTER_SIZE = 5`），主通道（转向/油门）附加平滑处理，辅助通道（Park/Mode/Drift/Drift Scale）附加稳定防抖。
-3. **控制融合**: 按驾驶模式混合 RC 与 Pilot 数据：
-   - **手动 (0)**: 转向/油门均来自 RC
-   - **半自动 (1)**: 转向来自 Pilot，油门来自 RC
-   - **全自动 (2)**: 转向/油门均来自 Pilot
-4. **安全层**: Park 状态机（长按 CH3 锁定/解锁）、紧急制动状态机（`EST_IDLE → READY → BRAKING → DONE`）、Drift Assist 条件判断、转向信号故障安全模式、OTA 期间的强制 Park 保护。
-5. **输出层**: `ledcAttachChannel` / `ledcWriteChannel` 生成 PWM（300 Hz / 14 bit）驱动舵机（GPIO 23）与电调（GPIO 25），Serial1 上行 `T<t>S<s>` / `M<m>:P<p>` / `$IMU,...`（详见 §6.3），WS2812B LED 显示模式颜色。
-
-### 4.3 中断约束
-
-- 中断服务函数必须标注 `IRAM_ATTR`。
-- 中断与主循环共享的变量必须使用 `volatile`。
-- `noInterrupts()` / `interrupts()` 用于保护 PWM 快照读取。
+核心数据流：RC PWM 中断捕获 → 中值滤波 → 控制融合（手动/半自动/全自动）→ Park/紧急制动安全层 → `ledc` PWM 输出（300Hz/14bit）。Serial1 上行 `T<t>S<s>` / `M<m>:P<p>` / `$IMU,...`，Serial2 处理 Linux 上位机 ping-pong/身份识别/配网协议。OTA 传输期间 Serial1 遥测暂停、WebSocket 清场。
 
 ---
 
 ## 5. 代码风格规范
 
-### 5.1 命名约定
+> **完整命名约定、文件组织、注释语言、中断与安全编码规范见 [`CLAUDE.md`](CLAUDE.md) §C++ 编码规范。**
 
-| 类型 | 风格 | 示例 |
-|------|------|------|
-| 常量 / 宏 | `ALL_CAPS` | `PWM_MIN_V`, `CH1_PIN`, `CLEAR_SCREEN` |
-| 类名 | `PascalCase` | `TUI`, `SensorData`, `Buzzer` |
-| 类方法 | `camelCase` | `setRefreshRate()`, `forceRedraw()` |
-| 自由函数 | `snake_case` | `process_steering_signal()`, `read_ina219()` |
-| 局部变量 | `camelCase` | `pwmValue`, `lastUpdate` |
-| 结构体成员 | `snake_case` | `car_output.throttle`, `pilot_data.steering` |
-| 私有成员 | 下划线前缀 | `_out`, `_lastUpdate`, `_state` |
-| 枚举值 | 嵌套 `PascalCase` | `EmergencyStopState`, `EST_IDLE` |
-
-### 5.2 文件组织
-
-- 头文件使用 `#pragma once`。
-- 头文件后缀 `.h`，实现文件后缀 `.cpp`，Arduino 入口 `.ino`。
-- 包含顺序：Arduino 核心库 → 第三方库 → 项目头文件（`FirmwareConfig.h` 通常在最前）。
-- 所有引脚定义、编译开关、时序常量集中放在 `libraries/mus4_core/src/FirmwareConfig.h`，主 Sketch 和各模块均通过 `#include "FirmwareConfig.h"` 引用。
-- 业务模块优先以本地 Arduino 库形式放在 `libraries/mus4_<domain>/`，并提供同名聚合头 `mus4_<domain>.h`。
-- 库内部头文件应避免循环依赖；跨库共享类型应通过 `mus4_core.h` 或 `SharedTypes.h` 获取。
-
-### 5.3 注释语言
-
-- **硬件相关注释**（引脚、PCB 版本、接线）使用**中文**。
-- **代码逻辑与公共 API** 使用**英文**。
-
----
+核心要点：头文件 `#pragma once`；常量 `ALL_CAPS`；类名 `PascalCase`；类方法 `camelCase`；自由函数 `snake_case`；私有成员下划线前缀；引脚/编译开关集中在 `FirmwareConfig.h`；新增模块以 `libraries/mus4_<domain>/` 本地库形式存在；硬件注释用中文，代码逻辑用英文。
 
 ## 6. 串口协议
 
-### 6.1 输入格式
-
-```text
-Throttle:Steering\n
-Throttle:Steering:Seq\n
-Throttle:Steering*XX\n      # XX = 两位十六进制校验和
-```
-
-示例：`10:20\n` 表示油门 10，转向 20。范围限制为 `-100 ~ 100`。
-
-### 6.2 响应格式
-
-- 成功：`ACK` 或 `ACK:Seq`
-- 失败：`NACK` 或 `NACK:Seq`
-
-### 6.3 Serial1 上行（v1.7.13+，对齐上位机 DonkeyCar `ArdImu` / `Arduino` part）
-
-```text
-T<t>S<s>\n                                # MANUAL 模式，~60Hz，无冒号
-M<m>:P<p>\n                               # MANUAL 模式，状态变化时立即发 + 1Hz 心跳
-$IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n        # 所有模式，~100Hz，m/s² + rad/s
-```
-
-仅在 OTA 真正传输期间暂停三类上行帧；ASSIST/AUTO 模式抑制 `T..S..` 与 `M:P`，`$IMU` 不受模式影响。
-
----
+> **下行/上行格式、校验和、ACK/NACK、Serial1 上行帧（T..S../M:P/$IMU）、Serial2 ping-pong/配网/身份识别协议详见 [`CLAUDE.md`](CLAUDE.md) §串口协议。**
 
 ## 7. 安全与关键注意事项
 
-### 7.1 物理安全（最高优先级）
+> **物理安全、无线权限分层、防御性编程详见 [`CLAUDE.md`](CLAUDE.md) §Safety-Critical Editing Notes 与 §Wi-Fi Console、Web Console 与 OTA。**
 
-- **该固件直接控制舵机与电调，属于安全关键代码。**
-- 修改输出映射、Park、紧急制动、模式融合或无线控制入口时，必须保留 PWM 限幅和失效安全路径。
-- 输出前必须使用 `min(max(value, MIN), MAX)` 或 `constrain()` 限制范围。
-- 禁止提交可能导致电机失控的代码。
-
-### 7.2 无线安全
-
-- 无线命令分层权限（`wireless_console_policy.py` 与 `WirelessConsole.cpp` 必须保持同步）：
-  - **公开**: `PING`, `STATUS`, `AUTH`, `WIFI_STA_STATUS`
-  - **需认证**: `ANSI`, `NOANSI`, `FILTER_DEBUG`, `LOG_WEB`, `LOG_SERIAL`, Wi-Fi STA 配置
-  - **需认证 + Park 锁定**: `TEST`, `TEST_TUI`, `BENCH`, `STRESS`, `REGRESS`, `FILTER_TEST`, `STEER_CAL`, `CAL_SAVE`, `CAL_RETRY`, `CAL_ABORT`, `CAL_RESET`, `CAL_STATUS`
-  - **需认证 + Park 锁定（或 Web 开发模式）**: `ENABLE_OTA`
-  - **需认证（或 Web 开发模式）**: `OTA_STATUS`, `DISABLE_OTA`
-- 修改认证/权限逻辑时，**必须同步更新** `wireless_console_policy.py` 与 `tests/test_wireless_console_policy.py`。
-- `WirelessSecrets.h` 与 `.mus4_ota_target` 包含真实凭据或目标地址，**不应纳入版本控制**（已由 `.gitignore` 排除）。
-- 开发模式（DEV）持久化到 NVS，开启后 Web Console 可免 AUTH，但仍保留 Park Locked 安全限制；实际 OTA 传输期间固件会默认 Park Locked。
-
-### 7.3 防御性编程
-
-- 假设所有串口/Web/TCP 输入均不可信；控制命令必须经过认证、权限检查和范围校验后才能影响输出。
-- 传感器数据使用 `valid` 标志位；读取前检查。
-- 状态机用于关键操作（紧急停车、Park 控制、OTA 窗口）。
-- 任何新增控制命令或配置项都应在 `wireless_console_policy.py` 中建立对应权限测试。
-
----
+核心要点：该固件直接控制舵机与电调——修改输出/安全/模式融合时必须保留 PWM 限幅与失效安全；所有串口/Web/TCP 输入视为不可信边界；无线命令权限分层（公开/需认证/需认证+Park锁定）在 `wireless_console_policy.py` 与 `WirelessConsole.cpp` 中必须同步。
 
 ## 8. 配置与部署
 
-### 8.1 编译开关（`libraries/mus4_core/src/FirmwareConfig.h`）
-
-- `ENABLE_WIFI_CONSOLE`：已启用，开启 Wi-Fi AP/TCP/Web Console 全套功能。
-- `ENABLE_WIFI_WEBSOCKET_TELEMETRY`：在 `ENABLE_WIFI_CONSOLE` 启用时定义，开启 WebSocket 二进制遥测。
-- `ENABLE_GAMEPAD_MODE`：仅在 `ENABLE_WIFI_CONSOLE` 未定义时自动启用，避免 Wi-Fi 与 BLE 共存冲突。
-- `ENABLE_DIAGNOSTIC_COMMANDS`：默认注释关闭，开启后增加 `TEST`/`BENCH`/`STRESS`/`REGRESS`/`FILTER_TEST` 等诊断实现。
-- `ENABLE_BOOT_STEERING_SELF_TEST`：默认注释关闭。
-- `ENABLE_WIFI_NETBIOS_DISCOVERY` / `ENABLE_WIFI_LLMNR_DISCOVERY`：在 `ENABLE_WIFI_CONSOLE` 启用时定义，用于 STA 网络发现。
-
-### 8.2 本地 Arduino 库优先编译
-
-`config.yaml` 与 `wslbuild.yaml` 均声明 `libraries_path: libraries`。构建脚本会在调用 `arduino-cli` 时追加 `--libraries libraries`，使 `mus4_*` 本地库优先于全局库目录中的同名库被解析。新增本地库后无需额外安装，只需保证库目录下存在 `src/` 与正确的头文件引用路径。
-
-### 8.3 配网系统部署（独立子项目）
-
-`provisioning_system/` 是独立于主固件构建流程的配网系统：
-
-1. 烧录 `provisioning_system/esp32/esp32_wifi_provisioning` 到 ESP32。
-2. 在 Linux 主机（LattePanda MU）部署 `linux_agent/agent.py` 为 systemd 服务。
-3. 用户连接 ESP32 AP (`MUS4-AP`)，通过网页提交 SSID/密码。
-4. ESP32 通过 UART 将凭据发给 Linux agent，agent 使用 `nmcli` 连接目标网络并回传结果。
-
-详见 `provisioning_system/docs/deployment_and_testing.md`。
+> **编译开关、库优先级、配网系统部署详见 [`CLAUDE.md`](CLAUDE.md) §Configuration 与 §Firmware Behavior Reference。**
 
 ---
 
@@ -520,7 +338,7 @@ $IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n        # 所有模式，~100Hz，m/s² + rad/
 
 ## 11. 自动构建策略
 
-- 完成 `MUS4_FW.ino`、各 `libraries/mus4_*/src/*.h/.cpp`、配置等固件源代码修改后，**自动调用** `mus4-wsl-build` Skill 进行 **WSL 编译并上传**。
+- 完成固件源代码修改后，**自动调用** `mus4-fw-ota` Skill 进行 **WSL 编译并上传**。
 - **必须首先使用 WSL 编译**（`.\arduino-cli-wsl.ps1 -Compile -Sketch MUS4_FW.ino`），只有 WSL 不可用时才回退到原生编译。
 - OTA 目标优先读取项目根目录 `.mus4_ota_target` 第一行。
 - **默认参数**：`-c -u -HttpOta -HttpOtaHost <目标地址>`（HTTP `/update` 端点，无 1KB/ACK 瓶颈）。

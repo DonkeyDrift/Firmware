@@ -120,7 +120,7 @@ python tests/test_agent.py -v
 - **语言**：C++17 with Arduino framework
 - **目标平台**：ESP32（MUS4-v2.4.2 / v2.3 PCB）
 - **主 Sketch**：`MUS4_FW/MUS4_FW.ino`
-- **自有模块**：`MUS4_FW/libraries/mus4_*/src/` 下的本地 Arduino 库，包括 `mus4_core`、`mus4_rc`、`mus4_control`、`mus4_safety`、`mus4_command`、`mus4_diag`、`mus4_i2c`、`mus4_log`、`mus4_ui`、`mus4_web`、`mus4_wifi`。
+- **自有模块**：`MUS4_FW/libraries/mus4_*/src/` 下的本地 Arduino 库，包括 `mus4_core`、`mus4_rc`、`mus4_control`、`mus4_safety`、`mus4_command`、`mus4_diag`、`mus4_i2c`、`mus4_log`、`mus4_ui`、`mus4_web`、`mus4_wifi`、`mus4_auth`（共 12 个）。v1.7.33 起新增 Serial2 双向通道独立处理 Linux 上位机通信。
 - **第三方 Arduino 依赖**：FastLED、Adafruit INA219、Adafruit MPU6050、AsyncTCP、ESPAsyncWebServer、BleGamepad 等，本地副本位于 `MUS4_FW/libraries/`。
 - **Python 工具与测试**：`pyyaml`、`pyserial`、`pytest`。
 

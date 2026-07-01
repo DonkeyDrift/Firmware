@@ -11,19 +11,31 @@ from agent import ProvisioningAgent
 
 
 class TestWifiManager(unittest.TestCase):
+    # connect() 现采用两步式 profile 创建：
+    #   1. nmcli connection delete <ssid>          （清理残留 profile）
+    #   2. nmcli connection add type wifi ...       （显式指定 wifi-sec.key-mgmt wpa-psk）
+    #   3. nmcli --wait 30 connection up <ssid>     （激活）
+    #   4. ip -4 addr show <iface>                  （轮询 DHCP）
+    # 原因：nmcli 1.54 的 `device wifi connect <ssid> password <pwd>` 不会自动推断
+    # key-mgmt，报 "802-11-wireless-security.key-mgmt: 缺少属性"；改用 connection add
+    # 显式指定 key-mgmt 可绕过该缺陷。
+
+    def _ok(self, stdout=""):
+        m = MagicMock()
+        m.returncode = 0
+        m.stdout = stdout
+        m.stderr = ""
+        return m
+
     @patch('wifi_manager.subprocess.run')
     def test_wifi_connect_success(self, mock_run):
-        # 模拟 nmcli delete / nmcli connect 成功 / ip addr 首次即有 inet
-        mock_delete = MagicMock()
-        mock_delete.returncode = 0
-        mock_nmcli = MagicMock()
-        mock_nmcli.returncode = 0
-
-        mock_ip = MagicMock()
-        mock_ip.returncode = 0
-        mock_ip.stdout = "inet 192.168.1.100/24 brd 192.168.1.255 scope global dynamic wlan0"
-
-        mock_run.side_effect = [mock_delete, mock_nmcli, mock_ip]
+        # delete / add / up 成功 / ip addr 首次即有 inet
+        mock_run.side_effect = [
+            self._ok(),
+            self._ok(),
+            self._ok(),
+            self._ok("inet 192.168.1.100/24 brd 192.168.1.255 scope global dynamic wlan0"),
+        ]
 
         wm = WifiManager('wlan0')
         success, result = wm.connect('newhome_iot', 'wxl922922')
@@ -32,15 +44,13 @@ class TestWifiManager(unittest.TestCase):
         self.assertEqual(result, '192.168.1.100')
 
     @patch('wifi_manager.subprocess.run')
-    def test_wifi_connect_failure(self, mock_run):
-        # 模拟 nmcli connect 失败 (如密码错误)
-        mock_delete = MagicMock()
-        mock_delete.returncode = 0
-        mock_nmcli = MagicMock()
-        mock_nmcli.returncode = 1
-        mock_nmcli.stderr = "Error: Connection activation failed."
+    def test_wifi_connect_up_failure(self, mock_run):
+        # delete / add 成功，但 connection up 失败（如密码错误、信号差）
+        mock_up = MagicMock()
+        mock_up.returncode = 1
+        mock_up.stderr = "Error: Connection activation failed."
 
-        mock_run.side_effect = [mock_delete, mock_nmcli]
+        mock_run.side_effect = [self._ok(), self._ok(), mock_up]
 
         wm = WifiManager('wlan0')
         success, result = wm.connect('wrong_ssid', 'wrong_pass')
@@ -49,23 +59,29 @@ class TestWifiManager(unittest.TestCase):
         self.assertEqual(result, '连接失败或超时')
 
     @patch('wifi_manager.subprocess.run')
+    def test_wifi_connect_add_failure(self, mock_run):
+        # connection add 失败（如 nmcli 拒绝创建 profile）应单独回报
+        mock_add = MagicMock()
+        mock_add.returncode = 1
+        mock_add.stderr = "Error: invalid ssid"
+
+        mock_run.side_effect = [self._ok(), mock_add]
+
+        wm = WifiManager('wlan0')
+        success, result = wm.connect('bad', 'pass')
+
+        self.assertFalse(success)
+        self.assertEqual(result, '创建连接配置失败')
+
+    @patch('wifi_manager.subprocess.run')
     @patch('wifi_manager.time.sleep')
     def test_ip_polling_waits_for_dhcp(self, _mock_sleep, mock_run):
-        # nmcli connect 成功，但首次 ip addr 无 inet，第二次才有
-        mock_delete = MagicMock()
-        mock_delete.returncode = 0
-        mock_nmcli = MagicMock()
-        mock_nmcli.returncode = 0
-
-        mock_ip_empty = MagicMock()
-        mock_ip_empty.returncode = 0
-        mock_ip_empty.stdout = ""  # 尚未分配 IP
-
-        mock_ip_ok = MagicMock()
-        mock_ip_ok.returncode = 0
-        mock_ip_ok.stdout = "inet 10.0.0.5/24 brd 10.0.0.255 scope global dynamic wlan0"
-
-        mock_run.side_effect = [mock_delete, mock_nmcli, mock_ip_empty, mock_ip_ok]
+        # up 成功，但首次 ip addr 无 inet，第二次才有
+        mock_run.side_effect = [
+            self._ok(), self._ok(), self._ok(),
+            self._ok(""),  # 尚未分配 IP
+            self._ok("inet 10.0.0.5/24 brd 10.0.0.255 scope global dynamic wlan0"),
+        ]
 
         wm = WifiManager('wlan0')
         success, result = wm.connect('ssid', 'pass')
@@ -73,25 +89,19 @@ class TestWifiManager(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(result, '10.0.0.5')
         # ip addr 至少被查询 2 次（轮询生效）
-        self.assertGreaterEqual(mock_run.call_count, 4)
+        self.assertGreaterEqual(mock_run.call_count, 5)
 
     @patch('wifi_manager.time.time')
     @patch('wifi_manager.subprocess.run')
     @patch('wifi_manager.time.sleep')
     def test_ip_polling_timeout(self, _mock_sleep, mock_run, mock_time):
-        # nmcli 成功，但 ip addr 始终无 inet → 轮询超时返回失败
-        mock_delete = MagicMock()
-        mock_delete.returncode = 0
-        mock_nmcli = MagicMock()
-        mock_nmcli.returncode = 0
-
-        mock_ip_empty = MagicMock()
-        mock_ip_empty.returncode = 0
-        mock_ip_empty.stdout = ""
-
+        # up 成功，但 ip addr 始终无 inet → 轮询超时返回失败
         # time.time(): deadline=t0+1；循环1 t=0<1 查ip；循环2 t=0<1 查ip；循环3 t=2>1 退出
         mock_time.side_effect = [0, 0, 0, 2]
-        mock_run.side_effect = [mock_delete, mock_nmcli, mock_ip_empty, mock_ip_empty]
+        mock_run.side_effect = [
+            self._ok(), self._ok(), self._ok(),
+            self._ok(""), self._ok(""),
+        ]
 
         wm = WifiManager('wlan0')
         wm.ip_wait_timeout = 1
@@ -102,58 +112,67 @@ class TestWifiManager(unittest.TestCase):
         self.assertEqual(result, '无法获取IP地址')
 
     @patch('wifi_manager.subprocess.run')
-    def test_connect_uses_arg_list_not_shell(self, mock_run):
-        # 验证 nmcli 调用使用参数列表而非 shell=True，避免注入
-        mock_delete = MagicMock()
-        mock_delete.returncode = 0
-        mock_nmcli = MagicMock()
-        mock_nmcli.returncode = 0
-        mock_ip = MagicMock()
-        mock_ip.returncode = 0
-        mock_ip.stdout = "inet 192.168.1.1/24 brd 192.168.1.255 scope global wlan0"
+    def test_connect_add_specifies_wpa_psk_key_mgmt(self, mock_run):
+        # 核心断言：connection add 必须显式指定 wifi-sec.key-mgmt wpa-psk，
+        # 否则 nmcli 1.54 不推断 key-mgmt 导致 "缺少属性" 错误
+        mock_run.side_effect = [
+            self._ok(), self._ok(), self._ok(),
+            self._ok("inet 192.168.1.1/24 brd 192.168.1.255 scope global wlan0"),
+        ]
 
-        mock_run.side_effect = [mock_delete, mock_nmcli, mock_ip]
+        wm = WifiManager('wlan0')
+        wm.connect("HUAWEI-DKC", "dkc@2026")
+
+        add_calls = [c for c in mock_run.call_args_list
+                     if c.args and isinstance(c.args[0], list)
+                     and 'nmcli' in c.args[0] and 'add' in c.args[0]]
+        self.assertTrue(add_calls, "应存在 nmcli connection add 调用")
+        cmd = add_calls[0].args[0]
+        self.assertIn("wifi-sec.key-mgmt", cmd, "必须显式指定 wifi-sec.key-mgmt")
+        idx = cmd.index("wifi-sec.key-mgmt")
+        self.assertEqual(cmd[idx + 1], "wpa-psk", "key-mgmt 应为 wpa-psk")
+        # 密码通过 wifi-sec.psk 传入
+        self.assertIn("wifi-sec.psk", cmd)
+        psk_idx = cmd.index("wifi-sec.psk")
+        self.assertEqual(cmd[psk_idx + 1], "dkc@2026")
+
+    @patch('wifi_manager.subprocess.run')
+    def test_connect_uses_arg_list_not_shell(self, mock_run):
+        # 验证所有 nmcli 调用均使用参数列表而非 shell=True，避免注入
+        mock_run.side_effect = [
+            self._ok(), self._ok(), self._ok(),
+            self._ok("inet 192.168.1.1/24 brd 192.168.1.255 scope global wlan0"),
+        ]
 
         wm = WifiManager('wlan0')
         wm.connect("my'ssid", "pa' ss")
 
-        # 找到 nmcli device wifi connect 那次调用
-        connect_calls = [c for c in mock_run.call_args_list
-                         if c.args and isinstance(c.args[0], list)
-                         and 'wifi' in c.args[0] and 'connect' in c.args[0]]
-        self.assertTrue(connect_calls, "应通过参数列表调用 nmcli")
-        for c in connect_calls:
-            self.assertIsInstance(c.args[0], list)
-            self.assertNotIn('shell', c.kwargs)  # 不显式 shell=True
+        for c in mock_run.call_args_list:
+            if c.args and isinstance(c.args[0], list) and 'nmcli' in c.args[0]:
+                self.assertIsInstance(c.args[0], list)
+                self.assertNotIn('shell', c.kwargs)  # 不显式 shell=True
 
     @patch('wifi_manager.subprocess.run')
-    def test_nmcli_wait_is_global_option(self, mock_run):
-        # --wait 是 nmcli 全局选项，必须放在子命令 device 之前；
-        # 放在末尾会被 nmcli 当作 connect 的额外参数拒绝（实测报错：
-        # "无效的额外参数 --wait"）。
-        mock_delete = MagicMock()
-        mock_delete.returncode = 0
-        mock_nmcli = MagicMock()
-        mock_nmcli.returncode = 0
-        mock_ip = MagicMock()
-        mock_ip.returncode = 0
-        mock_ip.stdout = "inet 192.168.1.1/24 brd 192.168.1.255 scope global wlan0"
-
-        mock_run.side_effect = [mock_delete, mock_nmcli, mock_ip]
+    def test_nmcli_wait_is_global_option_on_connection_up(self, mock_run):
+        # --wait 是 nmcli 全局选项，必须放在子命令 connection 之前；
+        # 放在末尾会被 nmcli 当作额外参数拒绝。
+        mock_run.side_effect = [
+            self._ok(), self._ok(), self._ok(),
+            self._ok("inet 192.168.1.1/24 brd 192.168.1.255 scope global wlan0"),
+        ]
 
         wm = WifiManager('wlan0')
         wm.connect("ssid", "pass")
 
-        connect_calls = [c for c in mock_run.call_args_list
-                         if c.args and isinstance(c.args[0], list)
-                         and 'nmcli' in c.args[0] and 'device' in c.args[0]
-                         and 'connect' in c.args[0]]
-        self.assertTrue(connect_calls, "应存在 nmcli device wifi connect 调用")
-        cmd = connect_calls[0].args[0]
-        # nmcli 调用形如 ["nmcli", "--wait", "30", "device", "wifi", "connect", ...]
+        up_calls = [c for c in mock_run.call_args_list
+                    if c.args and isinstance(c.args[0], list)
+                    and 'nmcli' in c.args[0] and 'connection' in c.args[0] and 'up' in c.args[0]]
+        self.assertTrue(up_calls, "应存在 nmcli connection up 调用")
+        cmd = up_calls[0].args[0]
+        # 形如 ["nmcli", "--wait", "30", "connection", "up", <ssid>]
         self.assertEqual(cmd[1], "--wait", "--wait 必须紧跟 nmcli 作为全局选项")
         self.assertEqual(cmd[2], "30")
-        self.assertEqual(cmd[3], "device", "device 子命令应在 --wait 之后")
+        self.assertEqual(cmd[3], "connection", "connection 子命令应在 --wait 之后")
 
 
 class TestProvisioningAgentE2E(unittest.TestCase):

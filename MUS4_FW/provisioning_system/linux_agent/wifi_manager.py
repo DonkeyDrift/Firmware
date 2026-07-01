@@ -29,10 +29,11 @@ class WifiManager:
             ["nmcli", "connection", "delete", ssid],
             capture_output=True, text=True)
 
-        # 2. 尝试连接新网络（--wait 30 显式控制 nmcli 自身等待时长）
+        # 2. 尝试连接新网络（--wait 是 nmcli 全局选项，必须放在子命令 device 之前，
+        #    否则 nmcli 会把它当作 connect 的额外参数拒绝）
         res = subprocess.run(
-            ["nmcli", "device", "wifi", "connect", ssid,
-             "password", password, "ifname", self.interface, "--wait", "30"],
+            ["nmcli", "--wait", "30", "device", "wifi", "connect", ssid,
+             "password", password, "ifname", self.interface],
             capture_output=True, text=True)
 
         if res.returncode != 0:

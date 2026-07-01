@@ -126,6 +126,35 @@ class TestWifiManager(unittest.TestCase):
             self.assertIsInstance(c.args[0], list)
             self.assertNotIn('shell', c.kwargs)  # 不显式 shell=True
 
+    @patch('wifi_manager.subprocess.run')
+    def test_nmcli_wait_is_global_option(self, mock_run):
+        # --wait 是 nmcli 全局选项，必须放在子命令 device 之前；
+        # 放在末尾会被 nmcli 当作 connect 的额外参数拒绝（实测报错：
+        # "无效的额外参数 --wait"）。
+        mock_delete = MagicMock()
+        mock_delete.returncode = 0
+        mock_nmcli = MagicMock()
+        mock_nmcli.returncode = 0
+        mock_ip = MagicMock()
+        mock_ip.returncode = 0
+        mock_ip.stdout = "inet 192.168.1.1/24 brd 192.168.1.255 scope global wlan0"
+
+        mock_run.side_effect = [mock_delete, mock_nmcli, mock_ip]
+
+        wm = WifiManager('wlan0')
+        wm.connect("ssid", "pass")
+
+        connect_calls = [c for c in mock_run.call_args_list
+                         if c.args and isinstance(c.args[0], list)
+                         and 'nmcli' in c.args[0] and 'device' in c.args[0]
+                         and 'connect' in c.args[0]]
+        self.assertTrue(connect_calls, "应存在 nmcli device wifi connect 调用")
+        cmd = connect_calls[0].args[0]
+        # nmcli 调用形如 ["nmcli", "--wait", "30", "device", "wifi", "connect", ...]
+        self.assertEqual(cmd[1], "--wait", "--wait 必须紧跟 nmcli 作为全局选项")
+        self.assertEqual(cmd[2], "30")
+        self.assertEqual(cmd[3], "device", "device 子命令应在 --wait 之后")
+
 
 class TestProvisioningAgentE2E(unittest.TestCase):
     @patch('agent.WifiManager')

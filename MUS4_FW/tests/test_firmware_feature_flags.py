@@ -3193,3 +3193,25 @@ def test_handle_serial2_includes_auth_service():
     assert 'strncmp(line, "CMD:", 4)' in ino
     assert 'strncmp(line, "ARG:", 4)' in ino
     assert 'strncmp(line, "PING,", 5)' in ino
+
+
+def test_handle_serial2_parses_host_wifi_responses():
+    """handleSerial2() 应解析上位机配网响应 STATUS|/OK|/FAIL| 三路。"""
+    ino = (PROJECT_ROOT / "MUS4_FW.ino").read_text(encoding="utf-8")
+    assert 'strncmp(line, "STATUS|", 7)' in ino
+    assert 'strncmp(line, "OK|", 3)' in ino
+    assert 'strncmp(line, "FAIL|", 5)' in ino
+
+
+def test_update_web_console_server_does_not_read_serial2():
+    """updateWebConsoleServer() 不应直接读 Serial2。
+
+    配网响应（STATUS|/OK|/FAIL|）解析由 MUS4_FW.ino 的 handleSerial2() 统一负责，
+    Web 侧再读一遍会造成双消费者竞争 + readStringUntil 阻塞。
+    """
+    cpp = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+    m = re.search(r"void updateWebConsoleServer\(\)\s*\{(.*?)^\}", cpp, re.DOTALL | re.MULTILINE)
+    assert m, "未找到 updateWebConsoleServer 函数体"
+    body = m.group(1)
+    assert "Serial2.readStringUntil" not in body, "updateWebConsoleServer 不应用 readStringUntil 读 Serial2"
+    assert "Serial2.available" not in body, "updateWebConsoleServer 不应直接读 Serial2.available（由 handleSerial2 统一消费）"

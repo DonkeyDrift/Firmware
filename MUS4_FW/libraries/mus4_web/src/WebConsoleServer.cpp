@@ -1139,29 +1139,10 @@ void updateWebConsoleServer()
         stageDt = (uint32_t)(millis() - stageStart);
         if (stageDt > wifiWebSampleMaxDtMs) wifiWebSampleMaxDtMs = stageDt;
     }
-    // 读取上位机配网响应（仅在配网激活期间读取，避免干扰遥测 $IMU/M:P 帧）
-    if (hostWifiStatus != "IDLE" && hostWifiStatus != "connected" && hostWifiStatus != "failed") {
-        while (Serial2.available() > 0) {
-            String line = Serial2.readStringUntil('\n');
-            line.trim();
-            if (line.length() == 0) continue;
-            // 仅处理配网协议帧，跳过遥测帧（$IMU / M:P / T...S...）
-            if (line.startsWith("STATUS|")) {
-                hostWifiStatus = line.substring(7);
-                appendWebLog("serial2", String("HOST-WIFI: ") + line);
-            } else if (line.startsWith("OK|")) {
-                hostWifiStatus = "connected";
-                hostWifiIp = line.substring(3);
-                appendWebLog("serial2", String("HOST-WIFI: connected ip=") + hostWifiIp);
-            } else if (line.startsWith("FAIL|")) {
-                hostWifiStatus = "failed";
-                hostWifiError = line.substring(5);
-                appendWebLog("serial2", String("HOST-WIFI: failed reason=") + hostWifiError);
-            }
-            // 不处理其他帧（$IMU / M:P / T...S... 留给主循环）
-            // 注意：已从缓冲区消费，但这些帧在配网期间偶尔丢失是可接受的
-        }
-    }
+    // 配网响应（STATUS|/OK|/FAIL|）由 MUS4_FW.ino 的 handleSerial2() 统一解析并
+    // 更新 hostWifiStatus/hostWifiIp/hostWifiError。此处不再直接读 Serial2，
+    // 避免与 handleSerial2() 的逐字节状态机形成双消费者竞争，也避免
+    // readStringUntil 在半行数据上阻塞拖慢 Web 主循环。
     stageStart = millis();
     wifiWebServer.handleClient();
     stageDt = (uint32_t)(millis() - stageStart);

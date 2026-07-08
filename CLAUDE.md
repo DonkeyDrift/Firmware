@@ -26,8 +26,8 @@ MUS4 子项目内还包含两个不遵循 `<硬件型号>_FW/` 命名规范的�
 # 仅编译验证（修改固件后首选）
 .\arduino-cli-wsl.ps1 -Compile -Sketch MUS4_FW.ino
 
-# 编译 + HTTP OTA 上传到调试设备
-.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.52 -Sketch MUS4_FW.ino
+# 编译 + HTTP OTA 上传到调试设备（未传 -HttpOtaHost 时读取 .mus4_ota_target 首行，避免硬编码漂移）
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -Sketch MUS4_FW.ino
 
 # 运行全部 Python 测试
 pytest tests/

@@ -2,6 +2,7 @@
 
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 
+#include "JoystickCalibration.h"
 #include "JsonUtil.h"
 #include "Mus4Log.h"
 #include "RuntimeState.h"
@@ -216,6 +217,8 @@ static void pushWifiWebSocketData()
     writeU16((uint16_t)latest.actuatorThrottleDuty);
     writeU16((uint16_t)servo_mid_v);
     writeU16((uint16_t)motor_mid_v);
+    writeI16(joystick_cal.throttle_min_duty);
+    writeI16(joystick_cal.throttle_max_duty);
     uint8_t* pointCountSlot = cursor++;
     for (uint32_t seq = firstSeq; seq < firstSeq + available; seq++) {
         uint16_t index = wifiWebDataIndexForSeq(seq);

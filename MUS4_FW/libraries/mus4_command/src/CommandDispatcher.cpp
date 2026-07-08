@@ -88,6 +88,14 @@ static bool handleJoystickReset(Print& out)
 
 bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pilotSilent)
 {
+#ifdef ENABLE_AUTH_SERVICE
+    // Auth 命令（CMD:READ_HW_ID / READ_UID / WRITE_UID / CLEAR_UID）
+    // 优先于所有其他命令处理，避免被下面的调度逻辑误消费
+    if (processAuthCommand(line, out)) {
+        return true;
+    }
+#endif
+
 #ifdef ENABLE_WIFI_CONSOLE
     if (g_otaState && g_wifiState && processLocalOtaMaintenanceCommand(line, out, sb, *g_otaState, *g_wifiState)) {
         return true;
@@ -135,6 +143,32 @@ bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pil
             out.printf("ACK:MOTOR_MID %d\n", motor_mid_v);
         } else {
             out.println("NACK:MOTOR_MID_RANGE [4915, 9830]");
+        }
+        return true;
+    }
+    if (line.equalsIgnoreCase("THROTTLE_MIN")) {
+        out.printf("ACK:THROTTLE_MIN %d\n", joystick_cal.throttle_min_duty);
+        return true;
+    }
+    if (line.startsWith("THROTTLE_MIN ")) {
+        int val = line.substring(strlen("THROTTLE_MIN ")).toInt();
+        if (saveThrottleMinDuty((int16_t)val)) {
+            out.printf("ACK:THROTTLE_MIN %d\n", joystick_cal.throttle_min_duty);
+        } else {
+            out.printf("NACK:THROTTLE_RANGE [4915, %d]\n", motor_mid_v);
+        }
+        return true;
+    }
+    if (line.equalsIgnoreCase("THROTTLE_MAX")) {
+        out.printf("ACK:THROTTLE_MAX %d\n", joystick_cal.throttle_max_duty);
+        return true;
+    }
+    if (line.startsWith("THROTTLE_MAX ")) {
+        int val = line.substring(strlen("THROTTLE_MAX ")).toInt();
+        if (saveThrottleMaxDuty((int16_t)val)) {
+            out.printf("ACK:THROTTLE_MAX %d\n", joystick_cal.throttle_max_duty);
+        } else {
+            out.printf("NACK:THROTTLE_RANGE [%d, 9830]\n", motor_mid_v);
         }
         return true;
     }

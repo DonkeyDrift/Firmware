@@ -65,6 +65,9 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebTelemetry.cpp",
     PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.h",
     PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_auth" / "src" / "AuthService.h",
+    PROJECT_ROOT / "libraries" / "mus4_auth" / "src" / "AuthService.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_auth" / "library.properties",
 ]
 ARDUINO_WSL_SCRIPT = PROJECT_ROOT / "arduino-cli-wsl.ps1"
 CONFIG_YAML = PROJECT_ROOT / "config.yaml"
@@ -3093,3 +3096,122 @@ def test_ota_button_opens_in_same_tab():
 
     assert 'href="/update"' in assets
     assert 'target="_blank" class="otaLink"' not in assets
+
+
+# ============================================================================
+# mus4_auth — eFuse 芯片 ID 身份识别服务 源码断言
+# ============================================================================
+
+def test_auth_service_compile_switch_enabled():
+    """ENABLE_AUTH_SERVICE 宏应在 FirmwareConfig.h 中定义且未注释。"""
+    fw_config = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h").read_text(
+        encoding="utf-8"
+    )
+    # 必须存在未注释的 #define ENABLE_AUTH_SERVICE
+    assert re.search(r'^#define ENABLE_AUTH_SERVICE', fw_config, re.MULTILINE)
+
+
+def test_auth_service_includes_efuse_mac_api():
+    """AuthService.cpp 应调用 esp_efuse_mac_get_default() 读取 eFuse MAC。"""
+    cpp = (PROJECT_ROOT / "libraries" / "mus4_auth" / "src" / "AuthService.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "esp_efuse_mac_get_default" in cpp
+
+
+def test_auth_service_nvs_namespace():
+    """AuthService.cpp 应使用独立的 \"auth\" 命名空间存储 user_id。"""
+    cpp = (PROJECT_ROOT / "libraries" / "mus4_auth" / "src" / "AuthService.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert '"auth"' in cpp
+    assert '"user_id"' in cpp
+
+
+def test_auth_service_handles_all_four_commands():
+    """AuthService.cpp 应处理全部 4 条 Auth 命令。"""
+    cpp = (PROJECT_ROOT / "libraries" / "mus4_auth" / "src" / "AuthService.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "READ_HW_ID" in cpp
+    assert "READ_UID" in cpp
+    assert "WRITE_UID" in cpp
+    assert "CLEAR_UID" in cpp
+
+
+def test_auth_service_has_error_codes():
+    """AuthService.cpp 应包含全部 5 个错误码（01-05）。"""
+    cpp = (PROJECT_ROOT / "libraries" / "mus4_auth" / "src" / "AuthService.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "ERR:01" in cpp  # unknown command
+    assert "ERR:02" in cpp  # invalid argument
+    assert "ERR:03" in cpp  # NVS write/erase fail
+    assert "ERR:04" in cpp  # NVS read fail
+    assert "ERR:05" in cpp  # timeout waiting for argument
+
+
+def test_auth_service_multi_line_state_machine():
+    """AuthService.cpp 应有处理 CMD:WRITE_UID + ARG:... 多行协议的状态机。"""
+    cpp = (PROJECT_ROOT / "libraries" / "mus4_auth" / "src" / "AuthService.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "AUTH_WAIT_ARG" in cpp
+    assert "AUTH_ARG_TIMEOUT_MS" in cpp
+
+
+def test_command_dispatcher_includes_auth_service():
+    """CommandDispatcher.cpp 应在 ENABLE_AUTH_SERVICE 下调用 processAuthCommand。"""
+    cpp = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "processAuthCommand" in cpp
+
+
+def test_command_dispatcher_header_includes_auth():
+    """CommandDispatcher.h 应在 ENABLE_AUTH_SERVICE 下包含 AuthService.h。"""
+    hdr = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.h").read_text(
+        encoding="utf-8"
+    )
+    assert "AuthService.h" in hdr
+
+
+def test_auth_library_properties_exists():
+    """mus4_auth 的 library.properties 应存在且声明 esp32 架构。"""
+    props = (PROJECT_ROOT / "libraries" / "mus4_auth" / "library.properties").read_text(
+        encoding="utf-8"
+    )
+    assert "mus4_auth" in props
+    assert "architectures=esp32" in props
+
+
+def test_handle_serial2_includes_auth_service():
+    """MUS4_FW.ino 的 handleSerial2() 应在 ENABLE_AUTH_SERVICE 下调用 processAuthCommand。"""
+    ino = (PROJECT_ROOT / "MUS4_FW.ino").read_text(encoding="utf-8")
+    assert "processAuthCommand" in ino
+    # 验证三路路由结构存在（PING → Auth → ECHO）
+    assert 'strncmp(line, "CMD:", 4)' in ino
+    assert 'strncmp(line, "ARG:", 4)' in ino
+    assert 'strncmp(line, "PING,", 5)' in ino
+
+
+def test_handle_serial2_parses_host_wifi_responses():
+    """handleSerial2() 应解析上位机配网响应 STATUS|/OK|/FAIL| 三路。"""
+    ino = (PROJECT_ROOT / "MUS4_FW.ino").read_text(encoding="utf-8")
+    assert 'strncmp(line, "STATUS|", 7)' in ino
+    assert 'strncmp(line, "OK|", 3)' in ino
+    assert 'strncmp(line, "FAIL|", 5)' in ino
+
+
+def test_update_web_console_server_does_not_read_serial2():
+    """updateWebConsoleServer() 不应直接读 Serial2。
+
+    配网响应（STATUS|/OK|/FAIL|）解析由 MUS4_FW.ino 的 handleSerial2() 统一负责，
+    Web 侧再读一遍会造成双消费者竞争 + readStringUntil 阻塞。
+    """
+    cpp = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+    m = re.search(r"void updateWebConsoleServer\(\)\s*\{(.*?)^\}", cpp, re.DOTALL | re.MULTILINE)
+    assert m, "未找到 updateWebConsoleServer 函数体"
+    body = m.group(1)
+    assert "Serial2.readStringUntil" not in body, "updateWebConsoleServer 不应用 readStringUntil 读 Serial2"
+    assert "Serial2.available" not in body, "updateWebConsoleServer 不应直接读 Serial2.available（由 handleSerial2 统一消费）"

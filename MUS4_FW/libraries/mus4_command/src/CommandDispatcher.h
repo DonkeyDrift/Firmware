@@ -4,6 +4,10 @@
 #include "FirmwareConfig.h"
 #include "SerialBufferTypes.h"
 
+#ifdef ENABLE_AUTH_SERVICE
+#include "AuthService.h"
+#endif
+
 #ifdef ENABLE_WIFI_CONSOLE
 #include "RuntimeState.h"
 void setCommandDispatcherRuntimeStates(OtaRuntimeState& os, WifiRuntimeState& ws);

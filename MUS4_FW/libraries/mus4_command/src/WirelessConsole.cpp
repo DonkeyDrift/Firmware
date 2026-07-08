@@ -161,7 +161,7 @@ bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, 
     if (isWirelessOtaOpenCommand(line)) return (webDevMode || ws.consoleAuthenticated) && car_output.park == PARK_LOCKED;
     if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || ws.consoleAuthenticated;
     // DEV ON 显式白名单：显示/日志切换、Wi-Fi STA 配置类命令。
-    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || line.equalsIgnoreCase("JOYSTICK_STATUS") || line.startsWith("SERVO_MID") || line.startsWith("MOTOR_MID") || isWifiStaConfigCommand(line)) return ws.consoleAuthenticated || webDevMode;
+    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || line.equalsIgnoreCase("JOYSTICK_STATUS") || line.startsWith("SERVO_MID") || line.startsWith("MOTOR_MID") || line.startsWith("THROTTLE_MIN") || line.startsWith("THROTTLE_MAX") || isWifiStaConfigCommand(line)) return ws.consoleAuthenticated || webDevMode;
     // DEV ON 允许校准命令免认证（但仍需 Park 锁定）。
     if (webDevMode && isCalibrationCommand(line)) return car_output.park == PARK_LOCKED;
     // 其余命令（控制 / 诊断）严格要求认证，不读 webDevMode。

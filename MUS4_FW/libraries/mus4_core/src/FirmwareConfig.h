@@ -5,7 +5,9 @@
 #define ENABLE_WIFI_WEBSOCKET_TELEMETRY
 #endif
 // #define ENABLE_DIAGNOSTIC_COMMANDS
+// #define ENABLE_SERIAL2_ECHO_TO_SERIAL0  // 调试：Serial2 收到的所有数据透传到 Serial0（hex dump 格式）
 // #define ENABLE_BOOT_STEERING_SELF_TEST
+#define ENABLE_AUTH_SERVICE  // 启用基于 eFuse 芯片 ID 的身份识别服务（CMD:READ_HW_ID 等）
 
 #ifndef ENABLE_WIFI_CONSOLE
 #define ENABLE_GAMEPAD_MODE
@@ -64,8 +66,8 @@
 #define BAUD_RATE_0 115200
 #define RX_1_PIN 16
 #define TX_1_PIN 17
-// #define RX_1_PIN 19
-// #define TX_1_PIN 18      // MU02 cannot connect; use pins 16 and 17 consistently.
+#define RX_2_PIN 19     // UART_SEL should be LOW to connect CPU
+#define TX_2_PIN 18     // UART_SEL should be LOW to connect CPU
 #define BAUD_RATE_1 115200
 #define UART_SEL 12
 

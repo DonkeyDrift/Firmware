@@ -7,8 +7,8 @@ Wants=network.target NetworkManager.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/home/dkc/project/mus4/provisioning_system/linux_agent
-ExecStart=/usr/bin/python3 /home/dkc/project/mus4/provisioning_system/linux_agent/agent.py
+WorkingDirectory=/home/dkc/projects/Firmware/MUS4_FW/provisioning_system/linux_agent
+ExecStart=/usr/bin/python3 /home/dkc/projects/Firmware/MUS4_FW/provisioning_system/linux_agent/agent.py --port /dev/ttyS6 --interface wlp1s0
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -18,9 +18,8 @@ SyslogIdentifier=mus4-provisioning-agent
 # 环境变量
 Environment="PYTHONUNBUFFERED=1"
 
-# 安全设置
+# 安全设置：代码位于 /home 下，不能用 ProtectHome=true（否则服务无法读取 agent.py）
 ProtectSystem=strict
-ProtectHome=true
 ReadWritePaths=/tmp /var/tmp
 
 [Install]

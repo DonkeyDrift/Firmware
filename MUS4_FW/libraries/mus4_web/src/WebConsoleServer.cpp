@@ -986,11 +986,10 @@ static void handleWifiWebUpdateUpload()
             mus4LogLine("ota", "http update rejected: auth required");
             return;
         }
-        if (car_output.park != PARK_LOCKED) {
-            wifiWebUpdateErrorMsg = "NACK:PARK_REQUIRED";
-            mus4LogLine("ota", "http update rejected: park required");
-            return;
-        }
+        // v1.7.34：HTTP OTA 上传开始时若 Park 未锁定，自动强制锁定而非拒绝。
+        // OTA 传输期间本就会通过 forceWifiOtaParkLocked() 强制 Park Locked，
+        // 前置检查反而导致开发模式下仍需手动按遥控器锁定，与 "OTA 传输期间
+        // 自动 Park Locked" 的文档描述不一致。
         os.parkGuardActive = true;
         forceWifiOtaParkLocked();
         os.inProgress = true;

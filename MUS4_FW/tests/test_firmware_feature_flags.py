@@ -268,13 +268,14 @@ def test_websocket_supports_limited_multi_client():
     assert "wifiWebSocket.count() > WIFI_WEB_SOCKET_MAX_CLIENTS" in telemetry_cpp
 
 
-def test_firmware_version_is_v1_7_22_and_changelog_is_current():
+def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.31"' in build_info
-    assert "v1.7.23" in changelog
-    assert changelog.index("v1.7.23") < changelog.index("v1.7.22")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.34"' in build_info
+    assert "v1.7.34" in changelog
+    assert "v1.7.33" in changelog
+    assert changelog.index("v1.7.34") < changelog.index("v1.7.33")
 
 
 def test_apply_wifi_sta_credentials_restores_ap_before_begin():
@@ -638,8 +639,10 @@ def test_serial1_telemetry_has_dedicated_web_log_buffer():
     # web console when the hardware telemetry line is also emitted.
     assert "appendWebLog(\"serial1\", telem)" in sketch_source
     assert "if (shouldEmitSerial1Telemetry(otaRuntime)) {" in sketch_source
-    assert "Serial1.print(telem);" in sketch_source
-    assert "if (car_output.mode == CAR_MODE_MANUAL)" in sketch_source
+    # v1.7.33 起 T<t>S<s> 与 $IMU、M:P 统一拼入 s1Buf 后一次性 Serial1.write 发出，
+    # 不再使用单独的 Serial1.print(telem)。
+    assert "Serial1.write((const uint8_t*)s1Buf" in sketch_source
+    assert "car_output.mode == CAR_MODE_MANUAL" in sketch_source
 
     # Dedicated compact buffer for high-rate Serial1 telemetry.
     assert "static const uint8_t SERIAL1_WEB_LOG_CAPACITY = 64;" in wifi_types
@@ -683,17 +686,17 @@ def test_serial1_uplink_matches_host_pilot_protocol():
     )
 
     # $IMU 帧组装：固定前缀 + seq + ts_ms + 6 轴。
-    # v1.7.15：用 snprintf 写到固定 char 缓冲，再 Serial1.write 一次发出。
-    # 不能用 `String("$IMU,") + ... + String(x, 4)` 拼装——100Hz 下每秒约 900 次
-    # 堆 alloc/free 会在十几秒内把堆打成碎片，配合 AsyncTCP/AsyncWebSocket 触发
-    # `Failed to fetch` 与 ws disconnect 风暴，最终 OOM 重启。
+    # v1.7.33 起：T<t>S<s>、M<m>:P<p>、$IMU 三类帧统一拼入 char s1Buf[512]，
+    # 通过一次 Serial1.write 发出，彻底消除多次 print/write 导致的 TX 缓冲区
+    # 指针竞争与帧拼接。v1.7.34 进一步将 setTxBufferSize 提到 begin 之前，
+    # 确保 1024B TX 缓冲区真正生效。
     assert '"$IMU,%u,%lu,' in sketch_source  # snprintf 格式串前缀（含逗号）
     assert "static uint16_t imuSeq" in sketch_source
     assert "lastImuEmitMs" in sketch_source
     assert "IMU_TELEMETRY_INTERVAL_MS" in sketch_source
-    assert "char imuBuf[96]" in sketch_source
-    assert "snprintf(imuBuf, sizeof(imuBuf)," in sketch_source
-    assert "Serial1.write((const uint8_t*)imuBuf" in sketch_source
+    assert "char s1Buf[512]" in sketch_source
+    assert "snprintf(s1Buf + s1Len, sizeof(s1Buf) - s1Len," in sketch_source
+    assert "Serial1.write((const uint8_t*)s1Buf" in sketch_source
     # MPU 未在线时静默：必须显式判 valid。
     assert "mpu6050Data.valid" in sketch_source
     # $IMU 文本流不能镜像进 Web Console 日志窗口：100Hz JSON 会顶爆 AsyncWebSocket
@@ -722,18 +725,16 @@ def test_wireless_console_policy_mirrors_serial1_uplink_format():
     assert "def format_imu_telemetry_line(" in policy_source
 
 
-def test_web_console_serial_targets_are_disabled():
+def test_web_console_serial_targets_forward_to_serial2():
     server_source = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
 
-    # Serial/Serial1 command forwarding from Web Console is disabled to avoid
-    # interfering with hardware serial processing.
+    # Web Console 的 serial/serial1 目标不再直接转发到硬件 Serial/Serial1，
+    # 而是通过 Serial2 转发到 Linux 上位机（v1.7.29 配网协议），避免干扰
+    # 车辆控制串口。
     assert "Serial.println(line);" not in server_source
     assert "Serial1.println(line);" not in server_source
     assert 'target.equalsIgnoreCase("serial")' in server_source
-    # ESP32 Arduino core 3.x 起 String::toUpperCase() 返回 void（in-place），
-    # 不能直接拼到字符串表达式里；必须先在临时变量上转换再拼接。
-    assert "targetUpper.toUpperCase();" in server_source
-    assert 'String("NACK:") + targetUpper + "_DISABLED"' in server_source
+    assert "Serial2.print(cmdLine);" in server_source
 
 
 def test_wifi_console_types_are_split_from_sketch():

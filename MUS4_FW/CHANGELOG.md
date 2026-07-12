@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-07-12 v1.7.34
+
+- fix(Serial1): 修复 `Serial1.setTxBufferSize(1024)` 调用顺序错误
+  - 原代码在 `Serial1.begin()` 之后调用 `setTxBufferSize()`，导致 ESP32 Arduino 内核仍使用默认 256B TX 环形缓冲区，1024B 设置不生效。
+  - 100Hz `$IMU` + 60Hz `T<t>S<s>` 并发写入时，256B 缓冲区溢出，造成逗号/换行符丢失，上位机出现 `$IMU` 解析失败和 `-0T2S-1`、`-0.15800.1293` 等帧污染。
+  - 将 `setTxBufferSize(1024)` 与新增的 `setRxBufferSize(1024)` 均移到 `Serial1.begin()` 之前。
+  - `loop()` 中 `Serial1.write()` 增加返回值检查，用于调试统计发送截断次数。
+  - 同步更新 DonkeyDrifter Python 端：`Arduino_readline` 对 $IMU 帧增加字段正则校验与 T/S 污染检测，被污染帧静默丢弃且不再刷屏报错。
+
 ## 2026-06-30 v1.7.33
 
 - 固件版本号从 `v1.7.31` 更新到 `v1.7.33`。

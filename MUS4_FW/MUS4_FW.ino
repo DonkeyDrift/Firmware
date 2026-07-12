@@ -498,9 +498,14 @@ void setup()
     digitalWrite(UART_SEL, HIGH); // Set HIGH to enable TTL <=> CPU: RX_2_PIN = 19, TX_2_PIN = 18      
                            
     Serial.begin(BAUD_RATE_0);                                  // TypeC
+    // v1.7.34: setTxBufferSize must be called BEFORE Serial1.begin(), otherwise
+    // begin() allocates the default 256B TX ring buffer and the size change
+    // has no effect. This leads to buffer overflow under 100Hz IMU + 60Hz
+    // telemetry, causing lost commas/newlines and the $IMU/T/S frame corruption
+    // seen on the host.
+    Serial1.setTxBufferSize(1024);
+    Serial1.setRxBufferSize(1024);
     Serial1.begin(BAUD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // TTL <=> CPU: RX_1_PIN = 16, TX_1_PIN = 17
-    Serial1.setTxBufferSize(1024);  // v1.7.33：增大 TX 缓冲区，避免 100Hz IMU + 60Hz 遥测并发写入时
-                                    // 默认 256B 环形缓冲区溢出导致帧拼接和字符丢失。
     Serial2.begin(BAUD_RATE_1, SERIAL_8N1, RX_2_PIN, TX_2_PIN); // TTL <=> CPU: RX_2_PIN = 19, TX_2_PIN = 18
     mus4Logf("boot", "firmware=%s version=%s build=\"%s %s\"",
         MUS4_FIRMWARE_NAME,
@@ -779,7 +784,14 @@ void loop()
 
         // ── 一次性发出 ──
         if (s1Len > 0) {
-            Serial1.write((const uint8_t*)s1Buf, (size_t)s1Len);
+            size_t written = Serial1.write((const uint8_t*)s1Buf, (size_t)s1Len);
+            if (written != (size_t)s1Len) {
+                // 即使增大了 TX 缓冲区，仍可能因极端抖动导致写入不完整。
+                // 此处仅做调试计数，避免在 release 版本刷屏。
+                static uint32_t s1WriteDropCount = 0;
+                s1WriteDropCount++;
+                (void)s1WriteDropCount;
+            }
         }
     }
 

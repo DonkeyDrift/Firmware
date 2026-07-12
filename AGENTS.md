@@ -22,7 +22,7 @@ C:/Dev/DDC/Firmware/
 ├── CLAUDE.md                 # 仓库根级 Agent/Claude 约定
 ├── AGENTS.md                 # 本文件
 ├── .gitignore                # 仅覆盖 OS / 编辑器级垃圾（见下文）
-├── docs/superpowers/         # 根级唯一文档目录：实现计划与设计规格
+├── docs/                     # 根级文档目录（superpowers/ + guide/inspect/plan 跨切面设计文档）
 └── MUS4_FW/                  # 当前唯一在驻固件子项目
     ├── MUS4_FW.ino           # MUS4 主 sketch
     ├── libraries/            # Arduino 本地库（含 mus4_* 自有模块与第三方库）
@@ -128,7 +128,7 @@ python tests/test_agent.py -v
 
 ## 根级文档
 
-- `docs/superpowers/` 是仓库根级唯一的额外文档目录，存放 superpowers 技能产出的跨切面 `plans/`（实现计划）与 `specs/`（设计稿）。当前内容均针对 MUS4 固件，引用前需对照 `MUS4_FW/` 源码验证。
+- `docs/` 是仓库根级文档目录，存放 MUS4 固件相关的跨切面文档，与 `MUS4_FW/docs/`（子项目内部文档）并存：`docs/superpowers/`（superpowers 产出的 `plans/` 与 `specs/`），以及 `docs/guide/`、`docs/inspect/`、`docs/plan/`（ESP32 串口拓扑、驱动循环 Hz 分析、遥测频率设计、eFuse ID 系统等设计与分析文档，不遵循 superpowers 命名）。引用前需对照 `MUS4_FW/` 源码验证。
 
 # 代码风格与开发约定
 
@@ -180,7 +180,7 @@ MUS4 直接控制舵机和电调，属于安全关键固件：
 | [`MUS4_FW/README.md`](MUS4_FW/README.md) | MUS4 对外 README（英文） |
 | [`MUS4_FW/CHANGELOG.md`](MUS4_FW/CHANGELOG.md) | MUS4 版本发布记录 |
 | [`MUS4_FW/docs/`](MUS4_FW/docs/) | MUS4 架构、硬件、工具、计划文档 |
-| [`docs/superpowers/`](docs/superpowers/) | 根级实现计划与设计规格 |
+| [`docs/`](docs/) | 根级文档目录：superpowers/ 计划与设计稿 + guide/inspect/plan 跨切面设计文档 |
 
 # 快速检查清单
 

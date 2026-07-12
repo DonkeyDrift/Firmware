@@ -77,4 +77,7 @@ MUS4 子项目的 `.claude/settings.local.json` 配置了 `PostToolUse` 钩子�
 - [`MUS4_FW/README.md`](MUS4_FW/README.md) / [`MUS4_FW/README.zh-CN.md`](MUS4_FW/README.zh-CN.md) — MUS4 子项目对外介绍。
 - [`MUS4_FW/CLAUDE.md`](MUS4_FW/CLAUDE.md) — MUS4 子项目的权威工作指南；进入该子项目工作前优先读它。
 - [`MUS4_FW/docs/`](MUS4_FW/docs/) — MUS4 架构、硬件引脚、工具、计划文档目录（部分历史描述可能滞后，引用前对照源码）。
-- [`docs/superpowers/`](docs/superpowers/) — 根级唯一的文档目录，存放 superpowers 技能产出的跨切面 `plans/`（实现计划，含 `- [ ]` 任务清单）与 `specs/`（设计稿）。当前内容均针对 MUS4 固件（如 Wi-Fi 蜂鸣器提示音），引用前同样对照 `MUS4_FW/` 源码验证。
+- [`docs/`](docs/) — 仓库根级文档目录，存放 MUS4 固件相关的跨切面文档，与 `MUS4_FW/docs/`（子项目内部文档）并存：
+  - `docs/superpowers/` — superpowers 技能产出的 `plans/`（实现计划，含 `- [ ]` 任务清单）与 `specs/`（设计稿，`YYYY-MM-DD-*-design.md` 命名）。
+  - `docs/guide/`、`docs/inspect/`、`docs/plan/` — 设计与分析文档（ESP32 串口拓扑、驱动循环 Hz 与环形缓冲分析、遥测频率设计、eFuse ID 系统），不遵循 superpowers 命名约定。
+  引用前同样对照 `MUS4_FW/` 源码验证。

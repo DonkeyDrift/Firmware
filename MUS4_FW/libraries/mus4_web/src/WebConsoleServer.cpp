@@ -16,6 +16,7 @@
 #include "WifiManager.h"
 #include "WifiOta.h"
 #include "WifiStaConfig.h"
+#include "DriftAssist.h"
 
 #include <WebServer.h>
 #include <WiFi.h>
@@ -172,6 +173,12 @@ static void handleWifiWebJudge()
 {
     wifiWebServer.sendHeader("Cache-Control", "no-store");
     wifiWebServer.send_P(200, "text/html", WIFI_WEB_JUDGE_HTML);
+}
+
+static void handleWifiWebDrift()
+{
+    wifiWebServer.sendHeader("Cache-Control", "no-store");
+    wifiWebServer.send_P(200, "text/html", WIFI_WEB_DRIFT_HTML);
 }
 
 static void handleWifiWebCaptivePortal()
@@ -607,6 +614,195 @@ static void handleWifiWebJudgeConfigReset()
     wifiWebServer.send(200, "application/json", response);
 }
 
+static void appendDriftConfigJson(String& response, const DriftConfig& config)
+{
+    response += "{\"steeringGyroSign\":";
+    response += config.steeringGyroSign;
+    response += ",\"maxYawRate\":";
+    response += String(config.maxYawRate, 2);
+    response += ",\"kp\":";
+    response += String(config.kp, 3);
+    response += ",\"kd\":";
+    response += String(config.kd, 3);
+    response += ",\"maxSteeringCorrection\":";
+    response += String(config.maxSteeringCorrection, 2);
+    response += ",\"gyroFilterAlpha\":";
+    response += String(config.gyroFilterAlpha, 2);
+    response += ",\"spinThreshold\":";
+    response += String(config.spinThreshold, 2);
+    response += ",\"steeringThreshold\":";
+    response += String(config.steeringThreshold, 2);
+    response += ",\"continuousThrottle\":";
+    response += String(config.continuousThrottle, 2);
+    response += ",\"pulseThrottle\":";
+    response += String(config.pulseThrottle, 2);
+    response += ",\"pulseFreqHz\":";
+    response += String(config.pulseFreqHz, 2);
+    response += ",\"pulseDuty\":";
+    response += String(config.pulseDuty, 2);
+    response += ",\"defaults\":{";
+    response += "\"steeringGyroSign\":";
+    response += WIFI_DRIFT_STEERING_GYRO_SIGN_DEFAULT;
+    response += ",\"maxYawRate\":";
+    response += String(WIFI_DRIFT_MAX_YAW_RATE_DEFAULT, 2);
+    response += ",\"kp\":";
+    response += String(WIFI_DRIFT_KP_DEFAULT, 3);
+    response += ",\"kd\":";
+    response += String(WIFI_DRIFT_KD_DEFAULT, 3);
+    response += ",\"maxSteeringCorrection\":";
+    response += String(WIFI_DRIFT_MAX_STEERING_CORRECTION_DEFAULT, 2);
+    response += ",\"gyroFilterAlpha\":";
+    response += String(WIFI_DRIFT_GYRO_FILTER_ALPHA_DEFAULT, 2);
+    response += ",\"spinThreshold\":";
+    response += String(WIFI_DRIFT_SPIN_THRESHOLD_DEFAULT, 2);
+    response += ",\"steeringThreshold\":";
+    response += String(WIFI_DRIFT_STEERING_THRESHOLD_DEFAULT, 2);
+    response += ",\"continuousThrottle\":";
+    response += String(WIFI_DRIFT_CONTINUOUS_THROTTLE_DEFAULT, 2);
+    response += ",\"pulseThrottle\":";
+    response += String(WIFI_DRIFT_PULSE_THROTTLE_DEFAULT, 2);
+    response += ",\"pulseFreqHz\":";
+    response += String(WIFI_DRIFT_PULSE_FREQ_HZ_DEFAULT, 2);
+    response += ",\"pulseDuty\":";
+    response += String(WIFI_DRIFT_PULSE_DUTY_DEFAULT, 2);
+    response += "},\"limits\":{\"steeringGyroSignMin\":";
+    response += WIFI_DRIFT_STEERING_GYRO_SIGN_MIN;
+    response += ",\"steeringGyroSignMax\":";
+    response += WIFI_DRIFT_STEERING_GYRO_SIGN_MAX;
+    response += ",\"maxYawRateMin\":";
+    response += String(WIFI_DRIFT_MAX_YAW_RATE_MIN, 2);
+    response += ",\"maxYawRateMax\":";
+    response += String(WIFI_DRIFT_MAX_YAW_RATE_MAX, 2);
+    response += ",\"kpMin\":";
+    response += String(WIFI_DRIFT_KP_MIN, 3);
+    response += ",\"kpMax\":";
+    response += String(WIFI_DRIFT_KP_MAX, 3);
+    response += ",\"kdMin\":";
+    response += String(WIFI_DRIFT_KD_MIN, 3);
+    response += ",\"kdMax\":";
+    response += String(WIFI_DRIFT_KD_MAX, 3);
+    response += ",\"maxSteeringCorrectionMin\":";
+    response += String(WIFI_DRIFT_MAX_STEERING_CORRECTION_MIN, 2);
+    response += ",\"maxSteeringCorrectionMax\":";
+    response += String(WIFI_DRIFT_MAX_STEERING_CORRECTION_MAX, 2);
+    response += ",\"gyroFilterAlphaMin\":";
+    response += String(WIFI_DRIFT_GYRO_FILTER_ALPHA_MIN, 2);
+    response += ",\"gyroFilterAlphaMax\":";
+    response += String(WIFI_DRIFT_GYRO_FILTER_ALPHA_MAX, 2);
+    response += ",\"spinThresholdMin\":";
+    response += String(WIFI_DRIFT_SPIN_THRESHOLD_MIN, 2);
+    response += ",\"spinThresholdMax\":";
+    response += String(WIFI_DRIFT_SPIN_THRESHOLD_MAX, 2);
+    response += ",\"steeringThresholdMin\":";
+    response += String(WIFI_DRIFT_STEERING_THRESHOLD_MIN, 2);
+    response += ",\"steeringThresholdMax\":";
+    response += String(WIFI_DRIFT_STEERING_THRESHOLD_MAX, 2);
+    response += ",\"continuousThrottleMin\":";
+    response += String(WIFI_DRIFT_CONTINUOUS_THROTTLE_MIN, 2);
+    response += ",\"continuousThrottleMax\":";
+    response += String(WIFI_DRIFT_CONTINUOUS_THROTTLE_MAX, 2);
+    response += ",\"pulseThrottleMin\":";
+    response += String(WIFI_DRIFT_PULSE_THROTTLE_MIN, 2);
+    response += ",\"pulseThrottleMax\":";
+    response += String(WIFI_DRIFT_PULSE_THROTTLE_MAX, 2);
+    response += ",\"pulseFreqHzMin\":";
+    response += String(WIFI_DRIFT_PULSE_FREQ_HZ_MIN, 2);
+    response += ",\"pulseFreqHzMax\":";
+    response += String(WIFI_DRIFT_PULSE_FREQ_HZ_MAX, 2);
+    response += ",\"pulseDutyMin\":";
+    response += String(WIFI_DRIFT_PULSE_DUTY_MIN, 2);
+    response += ",\"pulseDutyMax\":";
+    response += String(WIFI_DRIFT_PULSE_DUTY_MAX, 2);
+    response += "}}";
+}
+
+static String wifiDriftConfigJson()
+{
+    String response;
+    response.reserve(512);
+    appendDriftConfigJson(response, ws.driftConfig);
+    return response;
+}
+
+static void handleWifiWebDriftConfig()
+{
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", wifiDriftConfigJson());
+}
+
+static void handleWifiWebDriftConfigSet()
+{
+    if (!wifiWebServer.hasArg("steeringGyroSign") ||
+        !wifiWebServer.hasArg("maxYawRate") ||
+        !wifiWebServer.hasArg("kp") ||
+        !wifiWebServer.hasArg("kd") ||
+        !wifiWebServer.hasArg("maxSteeringCorrection") ||
+        !wifiWebServer.hasArg("gyroFilterAlpha") ||
+        !wifiWebServer.hasArg("spinThreshold") ||
+        !wifiWebServer.hasArg("steeringThreshold") ||
+        !wifiWebServer.hasArg("continuousThrottle") ||
+        !wifiWebServer.hasArg("pulseThrottle") ||
+        !wifiWebServer.hasArg("pulseFreqHz") ||
+        !wifiWebServer.hasArg("pulseDuty")) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"missing_fields\"}");
+        return;
+    }
+
+    DriftConfig config = ws.driftConfig;
+    int sign = wifiWebServer.arg("steeringGyroSign").toInt();
+    config.steeringGyroSign = (int8_t)sign;
+    config.maxYawRate = wifiWebServer.arg("maxYawRate").toFloat();
+    config.kp = wifiWebServer.arg("kp").toFloat();
+    config.kd = wifiWebServer.arg("kd").toFloat();
+    config.maxSteeringCorrection = wifiWebServer.arg("maxSteeringCorrection").toFloat();
+    config.gyroFilterAlpha = wifiWebServer.arg("gyroFilterAlpha").toFloat();
+    config.spinThreshold = wifiWebServer.arg("spinThreshold").toFloat();
+    config.steeringThreshold = wifiWebServer.arg("steeringThreshold").toFloat();
+    config.continuousThrottle = wifiWebServer.arg("continuousThrottle").toFloat();
+    config.pulseThrottle = wifiWebServer.arg("pulseThrottle").toFloat();
+    config.pulseFreqHz = wifiWebServer.arg("pulseFreqHz").toFloat();
+    config.pulseDuty = wifiWebServer.arg("pulseDuty").toFloat();
+    if (!isValidDriftConfig(config)) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
+        return;
+    }
+    if (!saveDriftConfigPreference(config)) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(500, "application/json", "{\"saved\":false}");
+        return;
+    }
+    // 使新配置立即在控制循环中生效
+    load_drift_config(ws.driftConfig);
+
+    String response;
+    response.reserve(520);
+    response += "{\"saved\":true,\"config\":";
+    appendDriftConfigJson(response, ws.driftConfig);
+    response += "}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
+static void handleWifiWebDriftConfigReset()
+{
+    if (!resetDriftConfigPreference()) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(500, "application/json", "{\"reset\":false}");
+        return;
+    }
+    load_drift_config(ws.driftConfig);
+
+    String response;
+    response.reserve(520);
+    response += "{\"reset\":true,\"config\":";
+    appendDriftConfigJson(response, ws.driftConfig);
+    response += "}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
 static void handleWifiWebStaPassword()
 {
     if (!ws.consoleAuthenticated && !ws.devModeEnabled) {
@@ -885,6 +1081,12 @@ static void appendWifiWebStateJson(String& response, WebDataPoint& point)
     response += String(point.driftCompensation, 2);
     response += ",\"gzf\":";
     response += String(point.gyroZFiltered, 3);
+    response += ",\"dye\":";
+    response += String(point.driftYawError, 3);
+    response += ",\"dsc\":";
+    response += String(point.driftSteeringCorrection, 2);
+    response += ",\"dtm\":";
+    response += point.driftThrottleMode;
     response += ",\"pseudoSpeed\":";
     response += String(point.pseudoSpeed, 1);
     response += ",\"sd\":";
@@ -1078,6 +1280,7 @@ void setupWebConsoleServer()
     });
     wifiWebServer.on("/", HTTP_GET, handleWifiWebRoot);
     wifiWebServer.on("/judge", HTTP_GET, handleWifiWebJudge);
+    wifiWebServer.on("/drift", HTTP_GET, handleWifiWebDrift);
     wifiWebServer.on("/connecttest.txt", HTTP_GET, handleWifiWebWindowsConnectTest);
     wifiWebServer.on("/ncsi.txt", HTTP_GET, handleWifiWebWindowsNcsi);
     wifiWebServer.on("/redirect", HTTP_GET, handleWifiWebCaptivePortalRedirectPage);
@@ -1105,6 +1308,9 @@ void setupWebConsoleServer()
     wifiWebServer.on("/api/judge-config", HTTP_GET, handleWifiWebJudgeConfig);
     wifiWebServer.on("/api/judge-config", HTTP_POST, handleWifiWebJudgeConfigSet);
     wifiWebServer.on("/api/judge-config/reset", HTTP_POST, handleWifiWebJudgeConfigReset);
+    wifiWebServer.on("/api/drift-config", HTTP_GET, handleWifiWebDriftConfig);
+    wifiWebServer.on("/api/drift-config", HTTP_POST, handleWifiWebDriftConfigSet);
+    wifiWebServer.on("/api/drift-config/reset", HTTP_POST, handleWifiWebDriftConfigReset);
     wifiWebServer.on("/api/log", HTTP_GET, handleWifiWebLog);
     wifiWebServer.on("/api/data", HTTP_GET, handleWifiWebData);
     wifiWebServer.on("/update", HTTP_GET, handleWifiWebUpdateGet);

@@ -108,6 +108,58 @@ static const float WIFI_JUDGE_THROTTLE_STABILITY_WEIGHT_DEFAULT = 180.0f;
 static const float WIFI_JUDGE_THROTTLE_STABILITY_WEIGHT_MIN = 40.0f;
 static const float WIFI_JUDGE_THROTTLE_STABILITY_WEIGHT_MAX = 360.0f;
 
+// --- Drift assist runtime configuration keys ---
+// NVS key names must be <= 15 characters (excluding null terminator).
+static const char* MUS4_PREF_DRIFT_STEERING_GYRO_SIGN_KEY = "drift_sg_sign";
+static const char* MUS4_PREF_DRIFT_MAX_YAW_RATE_KEY = "drift_max_yaw";
+static const char* MUS4_PREF_DRIFT_KP_KEY = "drift_kp";
+static const char* MUS4_PREF_DRIFT_KD_KEY = "drift_kd";
+static const char* MUS4_PREF_DRIFT_MAX_STEERING_CORRECTION_KEY = "drift_max_corr";
+static const char* MUS4_PREF_DRIFT_GYRO_FILTER_ALPHA_KEY = "drift_g_alpha";
+static const char* MUS4_PREF_DRIFT_SPIN_THRESHOLD_KEY = "drift_spin_th";
+static const char* MUS4_PREF_DRIFT_STEERING_THRESHOLD_KEY = "drift_str_th";
+static const char* MUS4_PREF_DRIFT_CONTINUOUS_THROTTLE_KEY = "drift_cont_thr";
+static const char* MUS4_PREF_DRIFT_PULSE_THROTTLE_KEY = "drift_pulse_thr";
+static const char* MUS4_PREF_DRIFT_PULSE_FREQ_HZ_KEY = "drift_pulse_hz";
+static const char* MUS4_PREF_DRIFT_PULSE_DUTY_KEY = "drift_p_duty";
+
+static const int8_t WIFI_DRIFT_STEERING_GYRO_SIGN_DEFAULT = -1;
+static const int8_t WIFI_DRIFT_STEERING_GYRO_SIGN_MIN = -1;
+static const int8_t WIFI_DRIFT_STEERING_GYRO_SIGN_MAX = 1;
+static const float WIFI_DRIFT_MAX_YAW_RATE_DEFAULT = 3.0f;
+static const float WIFI_DRIFT_MAX_YAW_RATE_MIN = 0.5f;
+static const float WIFI_DRIFT_MAX_YAW_RATE_MAX = 10.0f;
+static const float WIFI_DRIFT_KP_DEFAULT = 0.15f;
+static const float WIFI_DRIFT_KP_MIN = 0.0f;
+static const float WIFI_DRIFT_KP_MAX = 2.0f;
+static const float WIFI_DRIFT_KD_DEFAULT = 0.02f;
+static const float WIFI_DRIFT_KD_MIN = 0.0f;
+static const float WIFI_DRIFT_KD_MAX = 1.0f;
+static const float WIFI_DRIFT_MAX_STEERING_CORRECTION_DEFAULT = 0.35f;
+static const float WIFI_DRIFT_MAX_STEERING_CORRECTION_MIN = 0.0f;
+static const float WIFI_DRIFT_MAX_STEERING_CORRECTION_MAX = 1.0f;
+static const float WIFI_DRIFT_GYRO_FILTER_ALPHA_DEFAULT = 0.3f;
+static const float WIFI_DRIFT_GYRO_FILTER_ALPHA_MIN = 0.01f;
+static const float WIFI_DRIFT_GYRO_FILTER_ALPHA_MAX = 1.0f;
+static const float WIFI_DRIFT_SPIN_THRESHOLD_DEFAULT = 2.0f;
+static const float WIFI_DRIFT_SPIN_THRESHOLD_MIN = 0.1f;
+static const float WIFI_DRIFT_SPIN_THRESHOLD_MAX = 8.0f;
+static const float WIFI_DRIFT_STEERING_THRESHOLD_DEFAULT = 0.15f;
+static const float WIFI_DRIFT_STEERING_THRESHOLD_MIN = 0.0f;
+static const float WIFI_DRIFT_STEERING_THRESHOLD_MAX = 1.0f;
+static const float WIFI_DRIFT_CONTINUOUS_THROTTLE_DEFAULT = 0.45f;
+static const float WIFI_DRIFT_CONTINUOUS_THROTTLE_MIN = 0.0f;
+static const float WIFI_DRIFT_CONTINUOUS_THROTTLE_MAX = 1.0f;
+static const float WIFI_DRIFT_PULSE_THROTTLE_DEFAULT = 0.65f;
+static const float WIFI_DRIFT_PULSE_THROTTLE_MIN = 0.0f;
+static const float WIFI_DRIFT_PULSE_THROTTLE_MAX = 1.0f;
+static const float WIFI_DRIFT_PULSE_FREQ_HZ_DEFAULT = 5.0f;
+static const float WIFI_DRIFT_PULSE_FREQ_HZ_MIN = 0.5f;
+static const float WIFI_DRIFT_PULSE_FREQ_HZ_MAX = 30.0f;
+static const float WIFI_DRIFT_PULSE_DUTY_DEFAULT = 0.4f;
+static const float WIFI_DRIFT_PULSE_DUTY_MIN = 0.0f;
+static const float WIFI_DRIFT_PULSE_DUTY_MAX = 1.0f;
+
 static const uint8_t WIFI_AP_SSID_MAX_LEN = 32;
 static const uint8_t WIFI_STA_SSID_MAX_LEN = 32;
 static const uint8_t WIFI_STA_PASSWORD_MAX_LEN = 63;
@@ -182,6 +234,78 @@ static inline bool isValidJudgeConfig(const JudgeConfig& config)
         config.throttleStabilityWeight <= WIFI_JUDGE_THROTTLE_STABILITY_WEIGHT_MAX;
 }
 
+struct DriftConfig {
+    int8_t steeringGyroSign;
+    float maxYawRate;
+    float kp;
+    float kd;
+    float maxSteeringCorrection;
+    float gyroFilterAlpha;
+    float spinThreshold;
+    float steeringThreshold;
+    float continuousThrottle;
+    float pulseThrottle;
+    float pulseFreqHz;
+    float pulseDuty;
+};
+
+static inline DriftConfig defaultDriftConfig()
+{
+    DriftConfig config = {
+        WIFI_DRIFT_STEERING_GYRO_SIGN_DEFAULT,
+        WIFI_DRIFT_MAX_YAW_RATE_DEFAULT,
+        WIFI_DRIFT_KP_DEFAULT,
+        WIFI_DRIFT_KD_DEFAULT,
+        WIFI_DRIFT_MAX_STEERING_CORRECTION_DEFAULT,
+        WIFI_DRIFT_GYRO_FILTER_ALPHA_DEFAULT,
+        WIFI_DRIFT_SPIN_THRESHOLD_DEFAULT,
+        WIFI_DRIFT_STEERING_THRESHOLD_DEFAULT,
+        WIFI_DRIFT_CONTINUOUS_THROTTLE_DEFAULT,
+        WIFI_DRIFT_PULSE_THROTTLE_DEFAULT,
+        WIFI_DRIFT_PULSE_FREQ_HZ_DEFAULT,
+        WIFI_DRIFT_PULSE_DUTY_DEFAULT
+    };
+    return config;
+}
+
+static inline bool isValidDriftConfig(const DriftConfig& config)
+{
+    return (config.steeringGyroSign == -1 || config.steeringGyroSign == 1) &&
+        !isnan(config.maxYawRate) &&
+        config.maxYawRate >= WIFI_DRIFT_MAX_YAW_RATE_MIN &&
+        config.maxYawRate <= WIFI_DRIFT_MAX_YAW_RATE_MAX &&
+        !isnan(config.kp) &&
+        config.kp >= WIFI_DRIFT_KP_MIN &&
+        config.kp <= WIFI_DRIFT_KP_MAX &&
+        !isnan(config.kd) &&
+        config.kd >= WIFI_DRIFT_KD_MIN &&
+        config.kd <= WIFI_DRIFT_KD_MAX &&
+        !isnan(config.maxSteeringCorrection) &&
+        config.maxSteeringCorrection >= WIFI_DRIFT_MAX_STEERING_CORRECTION_MIN &&
+        config.maxSteeringCorrection <= WIFI_DRIFT_MAX_STEERING_CORRECTION_MAX &&
+        !isnan(config.gyroFilterAlpha) &&
+        config.gyroFilterAlpha >= WIFI_DRIFT_GYRO_FILTER_ALPHA_MIN &&
+        config.gyroFilterAlpha <= WIFI_DRIFT_GYRO_FILTER_ALPHA_MAX &&
+        !isnan(config.spinThreshold) &&
+        config.spinThreshold >= WIFI_DRIFT_SPIN_THRESHOLD_MIN &&
+        config.spinThreshold <= WIFI_DRIFT_SPIN_THRESHOLD_MAX &&
+        !isnan(config.steeringThreshold) &&
+        config.steeringThreshold >= WIFI_DRIFT_STEERING_THRESHOLD_MIN &&
+        config.steeringThreshold <= WIFI_DRIFT_STEERING_THRESHOLD_MAX &&
+        !isnan(config.continuousThrottle) &&
+        config.continuousThrottle >= WIFI_DRIFT_CONTINUOUS_THROTTLE_MIN &&
+        config.continuousThrottle <= WIFI_DRIFT_CONTINUOUS_THROTTLE_MAX &&
+        !isnan(config.pulseThrottle) &&
+        config.pulseThrottle >= WIFI_DRIFT_PULSE_THROTTLE_MIN &&
+        config.pulseThrottle <= WIFI_DRIFT_PULSE_THROTTLE_MAX &&
+        !isnan(config.pulseFreqHz) &&
+        config.pulseFreqHz >= WIFI_DRIFT_PULSE_FREQ_HZ_MIN &&
+        config.pulseFreqHz <= WIFI_DRIFT_PULSE_FREQ_HZ_MAX &&
+        !isnan(config.pulseDuty) &&
+        config.pulseDuty >= WIFI_DRIFT_PULSE_DUTY_MIN &&
+        config.pulseDuty <= WIFI_DRIFT_PULSE_DUTY_MAX;
+}
+
 struct WebDataPoint {
     uint32_t seq;
     unsigned long t;
@@ -207,6 +331,9 @@ struct WebDataPoint {
     bool driftActive;
     float driftCompensation;
     float gyroZFiltered;
+    float driftYawError;
+    float driftSteeringCorrection;
+    int8_t driftThrottleMode;
     float pseudoSpeed;
     int actuatorSteeringDuty;   // 舵机 PWM ledc 占空比 (300Hz/14bit)
     int actuatorThrottleDuty;   // 电调 PWM ledc 占空比 (300Hz/14bit)

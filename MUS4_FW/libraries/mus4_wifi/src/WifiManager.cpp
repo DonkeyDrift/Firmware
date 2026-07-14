@@ -341,6 +341,150 @@ bool resetJudgeConfigPreference()
     return saveJudgeConfigPreference(defaultJudgeConfig());
 }
 
+void loadDriftConfigPreference()
+{
+    DriftConfig config = defaultDriftConfig();
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) {
+        wifiRuntime.driftConfig = config;
+        mus4LogLine("wifi", "drift config load failed");
+        return;
+    }
+    config.steeringGyroSign = (int8_t)mus4Prefs.getInt(
+        MUS4_PREF_DRIFT_STEERING_GYRO_SIGN_KEY,
+        WIFI_DRIFT_STEERING_GYRO_SIGN_DEFAULT);
+    config.maxYawRate = mus4Prefs.getFloat(
+        MUS4_PREF_DRIFT_MAX_YAW_RATE_KEY,
+        WIFI_DRIFT_MAX_YAW_RATE_DEFAULT);
+    config.kp = mus4Prefs.getFloat(
+        MUS4_PREF_DRIFT_KP_KEY,
+        WIFI_DRIFT_KP_DEFAULT);
+    config.kd = mus4Prefs.getFloat(
+        MUS4_PREF_DRIFT_KD_KEY,
+        WIFI_DRIFT_KD_DEFAULT);
+    config.maxSteeringCorrection = mus4Prefs.getFloat(
+        MUS4_PREF_DRIFT_MAX_STEERING_CORRECTION_KEY,
+        WIFI_DRIFT_MAX_STEERING_CORRECTION_DEFAULT);
+    config.gyroFilterAlpha = mus4Prefs.getFloat(
+        MUS4_PREF_DRIFT_GYRO_FILTER_ALPHA_KEY,
+        WIFI_DRIFT_GYRO_FILTER_ALPHA_DEFAULT);
+    config.spinThreshold = mus4Prefs.getFloat(
+        MUS4_PREF_DRIFT_SPIN_THRESHOLD_KEY,
+        WIFI_DRIFT_SPIN_THRESHOLD_DEFAULT);
+    config.steeringThreshold = mus4Prefs.getFloat(
+        MUS4_PREF_DRIFT_STEERING_THRESHOLD_KEY,
+        WIFI_DRIFT_STEERING_THRESHOLD_DEFAULT);
+    config.continuousThrottle = mus4Prefs.getFloat(
+        MUS4_PREF_DRIFT_CONTINUOUS_THROTTLE_KEY,
+        WIFI_DRIFT_CONTINUOUS_THROTTLE_DEFAULT);
+    config.pulseThrottle = mus4Prefs.getFloat(
+        MUS4_PREF_DRIFT_PULSE_THROTTLE_KEY,
+        WIFI_DRIFT_PULSE_THROTTLE_DEFAULT);
+    config.pulseFreqHz = mus4Prefs.getFloat(
+        MUS4_PREF_DRIFT_PULSE_FREQ_HZ_KEY,
+        WIFI_DRIFT_PULSE_FREQ_HZ_DEFAULT);
+    config.pulseDuty = mus4Prefs.getFloat(
+        MUS4_PREF_DRIFT_PULSE_DUTY_KEY,
+        WIFI_DRIFT_PULSE_DUTY_DEFAULT);
+    mus4Prefs.end();
+    if (!isValidDriftConfig(config)) {
+        config = defaultDriftConfig();
+        mus4LogLine("wifi", "drift config invalid, using defaults");
+    }
+    wifiRuntime.driftConfig = config;
+    mus4Logf(
+        "wifi",
+        "drift cfg sign=%d yaw=%.2f kp=%.3f kd=%.3f maxCorr=%.2f alpha=%.2f spin=%.2f strTh=%.2f cont=%.2f pulse=%.2f freq=%.2f duty=%.2f",
+        (int)wifiRuntime.driftConfig.steeringGyroSign,
+        (double)wifiRuntime.driftConfig.maxYawRate,
+        (double)wifiRuntime.driftConfig.kp,
+        (double)wifiRuntime.driftConfig.kd,
+        (double)wifiRuntime.driftConfig.maxSteeringCorrection,
+        (double)wifiRuntime.driftConfig.gyroFilterAlpha,
+        (double)wifiRuntime.driftConfig.spinThreshold,
+        (double)wifiRuntime.driftConfig.steeringThreshold,
+        (double)wifiRuntime.driftConfig.continuousThrottle,
+        (double)wifiRuntime.driftConfig.pulseThrottle,
+        (double)wifiRuntime.driftConfig.pulseFreqHz,
+        (double)wifiRuntime.driftConfig.pulseDuty);
+}
+
+bool saveDriftConfigPreference(const DriftConfig& config)
+{
+    if (!isValidDriftConfig(config)) return false;
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) {
+        mus4LogLine("wifi", "drift config save failed: prefs begin");
+        return false;
+    }
+    size_t signWritten = mus4Prefs.putInt(
+        MUS4_PREF_DRIFT_STEERING_GYRO_SIGN_KEY,
+        config.steeringGyroSign);
+    size_t yawWritten = mus4Prefs.putFloat(
+        MUS4_PREF_DRIFT_MAX_YAW_RATE_KEY,
+        config.maxYawRate);
+    size_t kpWritten = mus4Prefs.putFloat(
+        MUS4_PREF_DRIFT_KP_KEY,
+        config.kp);
+    size_t kdWritten = mus4Prefs.putFloat(
+        MUS4_PREF_DRIFT_KD_KEY,
+        config.kd);
+    size_t maxCorrWritten = mus4Prefs.putFloat(
+        MUS4_PREF_DRIFT_MAX_STEERING_CORRECTION_KEY,
+        config.maxSteeringCorrection);
+    size_t alphaWritten = mus4Prefs.putFloat(
+        MUS4_PREF_DRIFT_GYRO_FILTER_ALPHA_KEY,
+        config.gyroFilterAlpha);
+    size_t spinWritten = mus4Prefs.putFloat(
+        MUS4_PREF_DRIFT_SPIN_THRESHOLD_KEY,
+        config.spinThreshold);
+    size_t strThWritten = mus4Prefs.putFloat(
+        MUS4_PREF_DRIFT_STEERING_THRESHOLD_KEY,
+        config.steeringThreshold);
+    size_t contWritten = mus4Prefs.putFloat(
+        MUS4_PREF_DRIFT_CONTINUOUS_THROTTLE_KEY,
+        config.continuousThrottle);
+    size_t pulseWritten = mus4Prefs.putFloat(
+        MUS4_PREF_DRIFT_PULSE_THROTTLE_KEY,
+        config.pulseThrottle);
+    size_t freqWritten = mus4Prefs.putFloat(
+        MUS4_PREF_DRIFT_PULSE_FREQ_HZ_KEY,
+        config.pulseFreqHz);
+    size_t dutyWritten = mus4Prefs.putFloat(
+        MUS4_PREF_DRIFT_PULSE_DUTY_KEY,
+        config.pulseDuty);
+    mus4Prefs.end();
+    if (signWritten == 0 || yawWritten == 0 || kpWritten == 0 || kdWritten == 0 ||
+        maxCorrWritten == 0 || alphaWritten == 0 || spinWritten == 0 || strThWritten == 0 ||
+        contWritten == 0 || pulseWritten == 0 || freqWritten == 0 || dutyWritten == 0) {
+        mus4Logf("wifi", "drift config save failed: sign=%u yaw=%u kp=%u kd=%u corr=%u alpha=%u spin=%u str=%u cont=%u pulse=%u freq=%u duty=%u",
+                 (unsigned)signWritten, (unsigned)yawWritten, (unsigned)kpWritten, (unsigned)kdWritten,
+                 (unsigned)maxCorrWritten, (unsigned)alphaWritten, (unsigned)spinWritten, (unsigned)strThWritten,
+                 (unsigned)contWritten, (unsigned)pulseWritten, (unsigned)freqWritten, (unsigned)dutyWritten);
+        return false;
+    }
+    wifiRuntime.driftConfig = config;
+    mus4Logf(
+        "wifi",
+        "drift cfg saved sign=%d yaw=%.2f kp=%.3f kd=%.3f maxCorr=%.2f alpha=%.2f spin=%.2f strTh=%.2f cont=%.2f pulse=%.2f freq=%.2f duty=%.2f",
+        (int)wifiRuntime.driftConfig.steeringGyroSign,
+        (double)wifiRuntime.driftConfig.maxYawRate,
+        (double)wifiRuntime.driftConfig.kp,
+        (double)wifiRuntime.driftConfig.kd,
+        (double)wifiRuntime.driftConfig.maxSteeringCorrection,
+        (double)wifiRuntime.driftConfig.gyroFilterAlpha,
+        (double)wifiRuntime.driftConfig.spinThreshold,
+        (double)wifiRuntime.driftConfig.steeringThreshold,
+        (double)wifiRuntime.driftConfig.continuousThrottle,
+        (double)wifiRuntime.driftConfig.pulseThrottle,
+        (double)wifiRuntime.driftConfig.pulseFreqHz,
+        (double)wifiRuntime.driftConfig.pulseDuty);
+    return true;
+}
+
+bool resetDriftConfigPreference()
+{
+    return saveDriftConfigPreference(defaultDriftConfig());
+}
+
 void startWifiMdnsIfNeeded()
 {
 #ifdef DISABLE_WIFI_NAME_DISCOVERY

@@ -296,6 +296,9 @@ void sampleWifiWebData()
     point.driftActive = drift_assist_active;
     point.driftCompensation = drift_compensation;
     point.gyroZFiltered = gyro_z_filtered;
+    point.driftYawError = drift_yaw_error;
+    point.driftSteeringCorrection = drift_steering_correction;
+    point.driftThrottleMode = drift_throttle_mode;
     point.pseudoSpeed = computePseudoSpeed();
     point.actuatorSteeringDuty = actuator_steering_duty;
     point.actuatorThrottleDuty = actuator_throttle_duty;
@@ -528,6 +531,8 @@ void setup()
       loadWifiApPreference();
       loadWifiStaPreference();
       loadJudgeConfigPreference();
+      loadDriftConfigPreference();
+      load_drift_config(wifiRuntime.driftConfig);
       loadJoystickCalibration();
       loadServoOutputConfig();
       loadMotorOutputConfig();

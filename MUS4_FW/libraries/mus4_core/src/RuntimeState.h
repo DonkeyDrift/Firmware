@@ -51,6 +51,9 @@ struct WifiRuntimeState {
         WIFI_JUDGE_WINDOW_SIZE_DEFAULT
     };
 
+    // Drift assist tuning
+    DriftConfig driftConfig = defaultDriftConfig();
+
     // Timing
     unsigned long staConnectStartMs = 0;
     unsigned long staApplyDeadlineMs = 0;

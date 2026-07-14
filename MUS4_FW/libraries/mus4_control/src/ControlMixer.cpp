@@ -135,4 +135,9 @@ void updateControlOutput()
         // Drift Assist: add counter-steer compensation when enabled
         car_output.steering = apply_drift_assist(car_output.steering);
     }
+
+    // Drift Assist: modulate throttle when enabled and not parked
+    if (car_output.park != PARK_LOCKED) {
+        car_output.throttle = apply_drift_throttle(car_output.throttle);
+    }
 }

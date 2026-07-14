@@ -13,6 +13,9 @@ bool saveDevModePreference(bool enabled);
 void loadJudgeConfigPreference();
 bool saveJudgeConfigPreference(const JudgeConfig& config);
 bool resetJudgeConfigPreference();
+void loadDriftConfigPreference();
+bool saveDriftConfigPreference(const DriftConfig& config);
+bool resetDriftConfigPreference();
 
 void startWifiMdnsIfNeeded();
 void stopWifiMdnsIfNeeded();

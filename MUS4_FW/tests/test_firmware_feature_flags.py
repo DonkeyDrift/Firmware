@@ -3216,3 +3216,77 @@ def test_update_web_console_server_does_not_read_serial2():
     body = m.group(1)
     assert "Serial2.readStringUntil" not in body, "updateWebConsoleServer 不应用 readStringUntil 读 Serial2"
     assert "Serial2.available" not in body, "updateWebConsoleServer 不应直接读 Serial2.available（由 handleSerial2 统一消费）"
+
+
+def test_drift_assist_config_is_persisted_and_exposed_via_web_console():
+    """DriftAssist 参数可在 Drifter Console 调整并持久化到 NVS。
+
+    - DriftConfig 结构体、默认值、limits 在 WifiConsoleTypes.h 中定义。
+    - RuntimeState 持有 driftConfig。
+    - WifiManager 提供 load/save/reset 持久化接口。
+    - WebConsoleServer 暴露 /api/drift-config GET/POST/reset。
+    - WebConsoleAssets 提供 /drift 调参页面及主页面入口。
+    - DriftAssist 暴露 apply_drift_throttle。
+    - WebDataPoint 与 /api/data latest 携带漂移遥测字段。
+    """
+    source = firmware_source_text()
+    wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+    runtime_state = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "RuntimeState.h").read_text(encoding="utf-8")
+    wifi_manager_h = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.h").read_text(encoding="utf-8")
+    wifi_manager_cpp = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
+    server_cpp = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+    assets_h = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+    drift_h = (PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "DriftAssist.h").read_text(encoding="utf-8")
+    sketch = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    # Config structure and defaults
+    assert "struct DriftConfig" in wifi_types
+    assert "steeringGyroSign" in wifi_types
+    assert "maxYawRate" in wifi_types
+    assert "defaultDriftConfig()" in source
+    assert "isValidDriftConfig(" in source
+
+    # Runtime state
+    assert "DriftConfig driftConfig" in runtime_state
+
+    # Persistence
+    assert "void loadDriftConfigPreference()" in wifi_manager_h
+    assert "bool saveDriftConfigPreference(const DriftConfig& config)" in wifi_manager_h
+    assert "bool resetDriftConfigPreference()" in wifi_manager_h
+    assert "MUS4_PREF_DRIFT_STEERING_GYRO_SIGN_KEY" in wifi_manager_cpp
+    assert "MUS4_PREF_DRIFT_PULSE_DUTY_KEY" in wifi_manager_cpp
+
+    # HTTP API
+    assert "static void handleWifiWebDriftConfig()" in server_cpp
+    assert "static void handleWifiWebDriftConfigSet()" in server_cpp
+    assert "static void handleWifiWebDriftConfigReset()" in server_cpp
+    assert 'wifiWebServer.on("/api/drift-config", HTTP_GET, handleWifiWebDriftConfig)' in server_cpp
+    assert 'wifiWebServer.on("/api/drift-config", HTTP_POST, handleWifiWebDriftConfigSet)' in server_cpp
+    assert 'wifiWebServer.on("/api/drift-config/reset", HTTP_POST, handleWifiWebDriftConfigReset)' in server_cpp
+
+    # Web UI
+    assert "WIFI_WEB_DRIFT_HTML" in assets_h
+    assert 'href="/drift"' in assets_h
+    assert "function saveDriftConfig()" in assets_h
+    assert "function resetDriftConfigToDefault()" in assets_h
+    assert "fetch('/api/drift-config'" in assets_h
+    assert 'id="driftConfigPanel"' not in assets_h  # 使用独立 /drift 页面，避免破坏主页面结构测试
+
+    # DriftAssist throttle control
+    assert "int apply_drift_throttle(int driver_throttle)" in drift_h
+    assert "int apply_drift_throttle(int driver_throttle)" in source
+
+    # Telemetry fields
+    assert "float driftYawError;" in wifi_types
+    assert "float driftSteeringCorrection;" in wifi_types
+    assert "int8_t driftThrottleMode;" in wifi_types
+    assert "point.driftYawError = drift_yaw_error;" in sketch
+    assert "point.driftSteeringCorrection = drift_steering_correction;" in sketch
+    assert "point.driftThrottleMode = drift_throttle_mode;" in sketch
+    assert '\\"dye\\":' in server_cpp
+    assert '\\"dsc\\":' in server_cpp
+    assert '\\"dtm\\":' in server_cpp
+
+    # Boot load
+    assert "loadDriftConfigPreference();" in sketch
+    assert "load_drift_config(wifiRuntime.driftConfig);" in sketch

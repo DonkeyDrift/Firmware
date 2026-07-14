@@ -19,9 +19,9 @@
           {
             "type": "command",
             "shell": "powershell",
-            "command": "$payload = [Console]::In.ReadToEnd() | ConvertFrom-Json; $cmd = [string]$payload.tool_input.command; if ($cmd -match 'arduino-cli-wsl\\.ps1' -and (($cmd -match '(^|\\s)-Compile(\\s|$)') -or ($cmd -match '(^|\\s)-c(\\s|$)')) -and ($cmd -notmatch '(^|\\s)-(Upload|u)(\\s|$)') -and ($cmd -match 'MUS4_FW\\.ino')) { if ($env:MUS4_HOOK_DRY_RUN -eq '1') { Write-Output 'would-http-ota 192.168.3.52'; exit 0 }; & '.\\arduino-cli-wsl.ps1' -Upload -HttpOta -HttpOtaHost '192.168.3.52' -Sketch 'MUS4_FW.ino' }",
+            "command": "$payload = [Console]::In.ReadToEnd() | ConvertFrom-Json; $cmd = [string]$payload.tool_input.command; if ($cmd -match 'arduino-cli-wsl\\.ps1' -and (($cmd -match '(^|\\s)-Compile(\\s|$)') -or ($cmd -match '(^|\\s)-c(\\s|$)')) -and ($cmd -notmatch '(^|\\s)-(Upload|u)(\\s|$)') -and ($cmd -match 'MUS4_FW\\.ino')) { if ($env:MUS4_HOOK_DRY_RUN -eq '1') { Write-Output 'would-http-ota 192.168.3.150'; exit 0 }; & '.\\arduino-cli-wsl.ps1' -Upload -HttpOta -HttpOtaHost '192.168.3.150' -Sketch 'MUS4_FW.ino' }",
             "timeout": 180,
-            "statusMessage": "编译成功后自动 HTTP OTA 到 192.168.3.52"
+            "statusMessage": "编译成功后自动 HTTP OTA 到 192.168.3.150"
           }
         ]
       }

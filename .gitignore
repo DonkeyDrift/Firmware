@@ -10,3 +10,4 @@ Thumbs.db
 # 本地运行时产物（不应纳入版本控制，见 CLAUDE.md「仓库根级约定」）
 ota_weblog.json
 .donkey_history
+MUS4_FW/.mus4_ota_target

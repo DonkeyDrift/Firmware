@@ -5,6 +5,7 @@
 
 // --- 漂移辅助编译期开关 ---
 #define DRIFT_ASSIST_ENABLED     1        // 编译期开启漂移辅助
+#define DRIFT_THROTTLE_ASSIST_ENABLED 0   // 默认关闭漂移油门辅助（保持转向辅助可用）
 
 bool drift_assist_enabled = false;   // 用户是否已启用辅助（RC CH5）
 bool drift_assist_active = false;    // 辅助当前是否正在介入
@@ -128,7 +129,7 @@ int apply_drift_assist(int driver_steering) {
 // 输入：driver_throttle 为当前已合并的油门输出（-100~100）。
 // 输出：漂移辅助调整后的油门输出（-100~100）。
 int apply_drift_throttle(int driver_throttle) {
-#if DRIFT_ASSIST_ENABLED
+#if DRIFT_ASSIST_ENABLED && DRIFT_THROTTLE_ASSIST_ENABLED
     if (!drift_assist_enabled || !mpu6050Data.valid) {
         drift_throttle_mode = 0;
         return driver_throttle;

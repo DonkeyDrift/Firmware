@@ -2961,6 +2961,25 @@ def test_joystick_cal_modal_handles_auth_and_nack():
     assert "I18N.en['error.authRequired']" in assets, "缺少英文 error.authRequired 错误文案"
 
 
+def test_drift_settings_button_next_to_joystick_calibration():
+    """
+    Diagnostics 面板的"手柄校准"按钮旁需提供"漂移设置"入口，
+    方便用户跳转到上位机漂移配置页 http://192.168.3.150/drift。
+    """
+    assets = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
+    ).read_text(encoding="utf-8")
+
+    assert "button.driftSettings" in assets, "前端缺少漂移设置按钮的 data-i18n key"
+    assert "http://192.168.3.150/drift" in assets, "漂移设置按钮应跳转到上位机 drift 配置页"
+    assert "I18N.zh['button.driftSettings']" in assets, "缺少中文漂移设置文案"
+    assert "I18N.en['button.driftSettings']" in assets, "缺少英文漂移设置文案"
+    # 漂移设置按钮应与手柄校准按钮位于同一容器（margin:10px 0 的 div）
+    cal_btn = assets.index("openJoystickCalModal()")
+    drift_btn = assets.index("button.driftSettings")
+    assert abs(cal_btn - drift_btn) < 200, "漂移设置按钮应紧邻手柄校准按钮"
+
+
 def test_ota_closes_websocket_during_upload():
     """
     OTA 窗口打开或 HTTP OTA 上传开始时，应请求主循环关闭并发的 WebSocket

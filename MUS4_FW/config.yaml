@@ -13,7 +13,7 @@ serial_detection:
   description_keywords: ["ESP32", "USB Serial", "USB-SERIAL", "UART", "CP210", "CH340", "FTDI"]
   manufacturer_keywords: ["Espressif", "Silicon Labs", "wch", "FTDI"]
   hwid_keywords: ["VID:PID=10C4:EA60", "VID:PID=1A86:55D2", "VID:PID=0403:6001", "VID:PID=303A:"]
-  preferred_description_keywords: ["SERIAL-A"] # 双串口板可改成 SERIAL-B
+  preferred_description_keywords: ["SERIAL-B"] # 双串口板可改成 SERIAL-A（实测 SERIAL-B 通道连 ESP32 UART0 下载口）
   preferred_manufacturer_keywords: []
   preferred_hwid_keywords: []
   vid_pid: []

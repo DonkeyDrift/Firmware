@@ -47,6 +47,8 @@ static const char* MUS4_PREF_AP_SSID_KEY = "ap_ssid";
 static const char* MUS4_PREF_STA_ENABLED_KEY = "sta_en";
 static const char* MUS4_PREF_STA_SSID_KEY = "sta_ssid";
 static const char* MUS4_PREF_STA_PASSWORD_KEY = "sta_pass";
+// STA 连接历史槽位数：NVS 键 sta_h{0..4}s/sta_h{0..4}p 存 SSID/密码，槽 0 为最近。
+static const uint8_t WIFI_STA_HISTORY_SIZE = 5;
 static const char* MUS4_PREF_STEER_MIN_KEY = "str_min";
 static const char* MUS4_PREF_STEER_MID_KEY = "str_mid";
 static const char* MUS4_PREF_STEER_MAX_KEY = "str_max";

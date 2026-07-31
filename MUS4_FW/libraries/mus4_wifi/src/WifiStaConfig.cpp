@@ -4,6 +4,7 @@
 #include <Preferences.h>
 
 #include "Mus4Log.h"
+#include "WifiStaHistory.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
 #if __has_include("WirelessSecrets.h")
@@ -149,6 +150,7 @@ bool clearWifiStaPreference()
     ws().prefs->end();
     if (enabledWritten == 0) return false;
     clearWifiStaRuntimeStateWithoutDisconnect();
+    clearWifiStaHistory();
     return true;
 }
 

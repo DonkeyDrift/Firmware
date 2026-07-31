@@ -46,6 +46,8 @@ FIRMWARE_SOURCE_PATHS = [
     PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.cpp",
     PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaConfig.h",
     PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaConfig.cpp",
+    PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaHistory.h",
+    PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaHistory.cpp",
     PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiIdentity.h",
     PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiIdentity.cpp",
     PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "DriftAssist.h",
@@ -272,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.34"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.35"' in build_info
+    assert "v1.7.35" in changelog
     assert "v1.7.34" in changelog
-    assert "v1.7.33" in changelog
-    assert changelog.index("v1.7.34") < changelog.index("v1.7.33")
+    assert changelog.index("v1.7.35") < changelog.index("v1.7.34")
 
 
 def test_apply_wifi_sta_credentials_restores_ap_before_begin():
@@ -3309,3 +3311,231 @@ def test_drift_assist_config_is_persisted_and_exposed_via_web_console():
     # Boot load
     assert "loadDriftConfigPreference();" in sketch
     assert "load_drift_config(wifiRuntime.driftConfig);" in sketch
+
+
+
+def test_wifi_sta_history_nvs_keys_and_size_constant():
+    history_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaHistory.cpp").read_text(encoding="utf-8")
+    wifi_types = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "WifiConsoleTypes.h").read_text(encoding="utf-8")
+
+    # 容量常量与 NVS 命名空间集中定义在 WifiConsoleTypes.h
+    assert "static const uint8_t WIFI_STA_HISTORY_SIZE = 5;" in wifi_types
+    assert 'static const char* MUS4_PREF_NAMESPACE = "mus4";' in wifi_types
+
+    # 槽位键数组：sta_h{0..4}s 存 SSID、sta_h{0..4}p 存密码（NVS 键长 <= 15 字符）
+    assert "static const char* const WIFI_STA_HISTORY_SSID_KEYS[WIFI_STA_HISTORY_SIZE]" in history_source
+    assert "static const char* const WIFI_STA_HISTORY_PASS_KEYS[WIFI_STA_HISTORY_SIZE]" in history_source
+    for slot in range(5):
+        assert f'"sta_h{slot}s"' in history_source
+        assert f'"sta_h{slot}p"' in history_source
+
+    # 持久化与加载都走共享 mus4Prefs 的 "mus4" 命名空间
+    assert "mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)" in history_source
+    assert "mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)" in history_source
+
+    # loadWifiStaHistory 含旧单槽 sta_ssid/sta_pass → 历史槽 0 迁移逻辑
+    assert "MUS4_PREF_STA_ENABLED_KEY" in history_source
+    assert "MUS4_PREF_STA_SSID_KEY" in history_source
+    assert "MUS4_PREF_STA_PASSWORD_KEY" in history_source
+    assert "旧单槽配置迁移" in history_source
+
+
+def test_wifi_sta_history_module_is_split_from_sketch():
+    history_header = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaHistory.h").read_text(encoding="utf-8")
+    history_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaHistory.cpp").read_text(encoding="utf-8")
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    for declaration in [
+        "uint8_t wifiStaHistoryCount();",
+        "bool copyWifiStaHistorySsid(uint8_t index, String& ssidOut);",
+        "bool findWifiStaHistoryEntry(const String& ssid, String& passwordOut);",
+        "int8_t wifiStaHistoryRankOf(const String& ssid);",
+        "bool recordWifiStaHistory(const String& ssid, const String& password);",
+        "bool removeWifiStaHistoryEntry(const String& ssid);",
+        "void clearWifiStaHistory();",
+        "void loadWifiStaHistory();",
+    ]:
+        assert declaration in history_header
+
+    for definition in [
+        "uint8_t wifiStaHistoryCount()",
+        "bool copyWifiStaHistorySsid(uint8_t index, String& ssidOut)",
+        "bool findWifiStaHistoryEntry(const String& ssid, String& passwordOut)",
+        "int8_t wifiStaHistoryRankOf(const String& ssid)",
+        "bool recordWifiStaHistory(const String& ssid, const String& password)",
+        "bool removeWifiStaHistoryEntry(const String& ssid)",
+        "void clearWifiStaHistory()",
+        "void loadWifiStaHistory()",
+    ]:
+        assert definition in history_source
+
+    # 主 Sketch 只 include 头文件并调用 API，不承载任何实现
+    assert '#include "WifiStaHistory.h"' in sketch_source
+    for symbol in [
+        "uint8_t wifiStaHistoryCount()",
+        "bool copyWifiStaHistorySsid(uint8_t index, String& ssidOut)",
+        "bool findWifiStaHistoryEntry(const String& ssid, String& passwordOut)",
+        "int8_t wifiStaHistoryRankOf(const String& ssid)",
+        "bool recordWifiStaHistory(const String& ssid, const String& password)",
+        "bool removeWifiStaHistoryEntry(const String& ssid)",
+        "void clearWifiStaHistory()",
+        "void loadWifiStaHistory()",
+        "struct WifiStaHistoryEntry",
+        "persistWifiStaHistory",
+        "WIFI_STA_HISTORY_SSID_KEYS",
+        "WIFI_STA_HISTORY_PASS_KEYS",
+    ]:
+        assert symbol not in sketch_source
+
+
+def test_wifi_sta_history_runtime_state_fields():
+    runtime_state = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "RuntimeState.h").read_text(encoding="utf-8")
+
+    assert "bool staHistRetryActive = false;" in runtime_state
+    assert "unsigned long staHistRetryDeadlineMs = 0;" in runtime_state
+    assert "uint8_t staHistTriedMask = 0;" in runtime_state
+
+
+def test_wifi_sta_history_sketch_hooks_and_clear_cascade():
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    sta_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiStaConfig.cpp").read_text(encoding="utf-8")
+    manager_header = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.h").read_text(encoding="utf-8")
+    manager_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
+
+    # setup()：loadWifiStaPreference() 之后加载历史；loop()：updateWifiSta() 之后跑历史重试
+    load_pref_idx = sketch_source.find("loadWifiStaPreference();")
+    load_hist_idx = sketch_source.find("loadWifiStaHistory();")
+    assert -1 < load_pref_idx < load_hist_idx
+    update_sta_idx = sketch_source.find("updateWifiSta();")
+    update_hist_idx = sketch_source.find("updateWifiStaHistoryRetry();")
+    assert -1 < update_sta_idx < update_hist_idx
+
+    # 重试状态机经 WifiManager.h 导出
+    assert "void updateWifiStaHistoryRetry();" in manager_header
+
+    # WIFI_STA_CLEAR 级联：clearWifiStaPreference() 内同步清空连接历史
+    clear_body = re.search(
+        r"bool clearWifiStaPreference\(\)\s*\{(?P<body>.*?)\n\}",
+        sta_source,
+        re.DOTALL,
+    ).group("body")
+    assert "clearWifiStaRuntimeStateWithoutDisconnect();" in clear_body
+    assert "clearWifiStaHistory();" in clear_body
+
+    # updateWifiSta() 连接成功分支把当前凭据记入历史
+    update_sta_body = re.search(
+        r"(?:static )?void updateWifiSta\(\)\s*\{(?P<body>.*?)\n\}",
+        manager_source,
+        re.DOTALL,
+    ).group("body")
+    assert "recordWifiStaHistory(wifiStaSsid, wifiStaPassword);" in update_sta_body
+
+
+def test_wifi_sta_history_retry_state_machine_preserves_ap():
+    manager_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
+
+    retry_body = re.search(
+        r"(?:static )?void updateWifiStaHistoryRetry\(\)\s*\{(?P<body>.*?)\n\}",
+        manager_source,
+        re.DOTALL,
+    ).group("body")
+
+    # 异步扫描 → 按历史优先级挑未试过的可见条目 → 复用 applyWifiStaCredentials 重连
+    assert "WiFi.scanNetworks(true, true)" in retry_body
+    assert "WiFi.scanComplete()" in retry_body
+    assert "WiFi.scanDelete()" in retry_body
+    assert "copyWifiStaHistorySsid" in retry_body
+    assert "findWifiStaHistoryEntry(histSsid, histPassword)" in retry_body
+    assert "wifiRuntime.staHistTriedMask" in retry_body
+    assert "applyWifiStaCredentials();" in retry_body
+    assert "WIFI_STA_HISTORY_RETRY_INTERVAL_MS" in retry_body
+
+    # 重试只换 STA 凭据：不得拆 AP、不得关 Wi-Fi（全仓库 softAPdisconnect(true)
+    # 计数仍由 test_soft_ap_disconnect_is_limited_to_explicit_ap_restart 守护）
+    assert "WiFi.softAPdisconnect(true)" not in retry_body
+    assert "WiFi.mode(WIFI_OFF)" not in retry_body
+
+
+def test_wifi_sta_history_boot_scan_falls_back_to_history():
+    manager_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
+
+    setup_body = re.search(
+        r"(?:static )?void setupWifiConsole\(\)\s*\{(?P<body>.*?)\n\}",
+        manager_source,
+        re.DOTALL,
+    ).group("body")
+
+    # 开机扫描块：已配置 SSID 不可见（或未配置）时，按历史优先级（槽 0 最近）
+    # 挑最佳可见条目接管本次开机连接
+    assert "if (wifiStaHistoryCount() > 0)" in setup_body
+    assert "staHistBootPicked" in setup_body
+    assert "findWifiStaHistoryEntry(histSsid, histPassword)" in setup_body
+    assert "wifiStaHistoryRankOf(String(wifiStaSsid))" in setup_body
+    assert "STA boot: history slot %u" in setup_body
+
+
+def test_web_console_wifi_sta_history_api():
+    server_source = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+
+    assert "static void handleWifiWebStaHistory()" in server_source
+    assert "static void handleWifiWebStaHistoryDelete()" in server_source
+
+    # 路由注册在 /api/wifi-sta/clear 之后
+    clear_idx = server_source.find('wifiWebServer.on("/api/wifi-sta/clear", HTTP_POST, handleWifiWebStaClear)')
+    history_idx = server_source.find('wifiWebServer.on("/api/wifi-sta/history", HTTP_GET, handleWifiWebStaHistory)')
+    delete_idx = server_source.find('wifiWebServer.on("/api/wifi-sta/history/delete", HTTP_POST, handleWifiWebStaHistoryDelete)')
+    assert -1 < clear_idx < history_idx < delete_idx
+
+    # 公开 GET：只输出 rank/ssid/password_set 标志，绝不含密码明文
+    history_body = re.search(
+        r"static void handleWifiWebStaHistory\(\)\s*\{(?P<body>.*?)\n\}",
+        server_source,
+        re.DOTALL,
+    ).group("body")
+    assert '{\\"rank\\":' in history_body
+    assert '\\"password_set\\":' in history_body
+    assert "wifiStaHistoryCount()" in history_body
+    assert "copyWifiStaHistorySsid(slot, ssid)" in history_body
+    assert "appendJsonString(response, ssid.c_str())" in history_body
+    assert "password.c_str()" not in history_body
+
+    # 删除需认证或 devMode；只移除历史记录，不动当前连接凭据
+    delete_body = re.search(
+        r"static void handleWifiWebStaHistoryDelete\(\)\s*\{(?P<body>.*?)\n\}",
+        server_source,
+        re.DOTALL,
+    ).group("body")
+    assert "if (!ws.consoleAuthenticated && !ws.devModeEnabled)" in delete_body
+    assert "403" in delete_body
+    assert '\\"error\\":\\"auth_required\\"' in delete_body
+    assert 'wifiWebServer.arg("ssid")' in delete_body
+    assert "removeWifiStaHistoryEntry(ssid)" in delete_body
+    assert "404" in delete_body
+    assert '\\"error\\":\\"not_found\\"' in delete_body
+    assert '{\\"deleted\\":true' in delete_body
+
+
+def test_web_console_wifi_sta_history_ui():
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+
+    # STA 弹窗双栏布局：左侧表单列、右侧连接历史列
+    assert ".staCols{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;align-items:start}" in assets
+    assert 'id="wifiHistoryList"' in assets
+    assert 'id="wifiHistoryEmpty"' in assets
+
+    # 历史列表拉取走公开 GET，删除走需认证 POST
+    assert "async function refreshWifiHistory()" in assets
+    assert "async function deleteWifiHistoryEntry(ssid,isCurrent)" in assets
+    assert "fetch('/api/wifi-sta/history')" in assets
+    assert "fetch('/api/wifi-sta/history/delete'" in assets
+
+    # i18n 补丁式追加：5 个键各有中英文文案
+    for key in [
+        "wifi.historyTitle",
+        "wifi.historyEmpty",
+        "wifi.historyDeleteConfirm",
+        "wifi.historyKeepCurrentNote",
+        "wifi.historyDelete",
+    ]:
+        assert f"I18N.zh['{key}']" in assets
+        assert f"I18N.en['{key}']" in assets

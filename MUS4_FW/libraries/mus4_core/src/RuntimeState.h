@@ -31,6 +31,15 @@ struct WifiRuntimeState {
     // 仅运行时使用，不持久化；STA apply 前消费，成功关闭 AP 或失败恢复 AP 时清零。
     uint8_t staTargetChannel = 0;
 
+    // STA 连接历史运行期重试状态（仅运行时，不持久化）：
+    // staHistRetryActive     - 历史重试周期是否进行中；
+    // staHistRetryDeadlineMs - 下一次允许启动扫描/重试的最早时刻；
+    // staHistTriedMask       - 本轮周期已试过的历史槽位掩码（bit i = 槽 i）；
+    //                          STA 连接成功边沿清零，新断线后据此重新武装。
+    bool staHistRetryActive = false;
+    unsigned long staHistRetryDeadlineMs = 0;
+    uint8_t staHistTriedMask = 0;
+
     // AP / mDNS / handoff
     bool apRestartPending = false;
     bool mdnsStarted = false;

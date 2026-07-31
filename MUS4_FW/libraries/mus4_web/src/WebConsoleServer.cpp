@@ -16,6 +16,7 @@
 #include "WifiManager.h"
 #include "WifiOta.h"
 #include "WifiStaConfig.h"
+#include "WifiStaHistory.h"
 #include "DriftAssist.h"
 
 #include <WebServer.h>
@@ -972,6 +973,59 @@ static void handleWifiWebStaClear()
     wifiWebServer.send(200, "application/json", "{\"cleared\":true}");
 }
 
+// STA connection history is read-only and public (same visibility as the
+// scan list); passwords are never emitted, only a "password_set" flag.
+static void handleWifiWebStaHistory()
+{
+    String response;
+    response.reserve(256);
+    response += "{\"count\":";
+    response += wifiStaHistoryCount();
+    response += ",\"entries\":[";
+    bool firstEntry = true;
+    for (uint8_t slot = 0; slot < WIFI_STA_HISTORY_SIZE; slot++) {
+        String ssid;
+        if (!copyWifiStaHistorySsid(slot, ssid)) continue;
+        String password;
+        findWifiStaHistoryEntry(ssid, password);
+        if (!firstEntry) response += ',';
+        firstEntry = false;
+        response += "{\"rank\":";
+        response += slot + 1;
+        response += ",\"ssid\":";
+        appendJsonString(response, ssid.c_str());
+        response += ",\"password_set\":";
+        response += password.length() > 0 ? "true" : "false";
+        response += '}';
+    }
+    response += "]}";
+    wifiWebServer.send(200, "application/json", response);
+}
+
+static void handleWifiWebStaHistoryDelete()
+{
+    if (!ws.consoleAuthenticated && !ws.devModeEnabled) {
+        wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
+        return;
+    }
+    String ssid = wifiWebServer.arg("ssid");
+    ssid.trim();
+    // Only the history record is removed: the configured credentials and the
+    // live STA connection (ws.staSsid/staPassword) are intentionally kept,
+    // so deleting the currently connected WiFi does not drop the link.
+    if (ssid.length() == 0 || !removeWifiStaHistoryEntry(ssid)) {
+        wifiWebServer.send(404, "application/json", "{\"error\":\"not_found\"}");
+        return;
+    }
+    mus4Logf("web", "wifi sta history deleted ssid=%s", ssid.c_str());
+    String response;
+    response.reserve(48);
+    response += "{\"deleted\":true,\"count\":";
+    response += wifiStaHistoryCount();
+    response += "}";
+    wifiWebServer.send(200, "application/json", response);
+}
+
 // 上位机配网状态查询（通过 Serial2 发送 WIFI|ssid|password 给 Linux 上位机后，
 // Linux 上位机会回复 STATUS|CONNECTING / OK|<ip> / FAIL|<reason>）。
 static void handleWifiWebHostWifiStatus()
@@ -1304,6 +1358,8 @@ void setupWebConsoleServer()
     wifiWebServer.on("/api/wifi-sta/password", HTTP_GET, handleWifiWebStaPassword);
     wifiWebServer.on("/api/wifi-sta/scan", HTTP_GET, handleWifiWebStaScan);
     wifiWebServer.on("/api/wifi-sta/clear", HTTP_POST, handleWifiWebStaClear);
+    wifiWebServer.on("/api/wifi-sta/history", HTTP_GET, handleWifiWebStaHistory);
+    wifiWebServer.on("/api/wifi-sta/history/delete", HTTP_POST, handleWifiWebStaHistoryDelete);
     wifiWebServer.on("/api/host-wifi-status", HTTP_GET, handleWifiWebHostWifiStatus);
     wifiWebServer.on("/api/judge-config", HTTP_GET, handleWifiWebJudgeConfig);
     wifiWebServer.on("/api/judge-config", HTTP_POST, handleWifiWebJudgeConfigSet);

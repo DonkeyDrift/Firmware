@@ -14,4 +14,5 @@
 #include "WifiManager.h"
 #include "WifiOta.h"
 #include "WifiStaConfig.h"
+#include "WifiStaHistory.h"
 #include "WifiIdentity.h"

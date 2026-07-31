@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-07-31 v1.7.35
+
+- 固件版本号从 `v1.7.34` 更新到 `v1.7.35`。
+- feat(WiFi): STA 连接历史——自动记录最近 5 个成功连接的 WiFi，开机/断线按优先级自动连接，Web Console 列表管理
+  - 新增 `libraries/mus4_wifi/src/WifiStaHistory.{h,cpp}`：NVS（命名空间 `mus4`，键 `sta_h0s/sta_h0p`…`sta_h4s/sta_h4p`）持久化最近 5 条成功连接的 STA 凭据，槽 0 为最近一次（MRU 置顶、去重更新密码、满 5 条淘汰最旧）；旧单槽 `sta_ssid/sta_pass` 在首次启动时自动迁移为槽 0；`WIFI_STA_CLEAR` / Web 清除 / BOOT 长按清配网时连带清空历史。
+  - 记录时机：`updateWifiSta()` 首次拿到有效 IP 的成功分支与 `updateWifiStaHistoryRetry()` 的连接上升沿双重记录，只记"真正连上"的网络；密码随最近一次成功连接更新。
+  - 开机自动连接：`setupWifiConsole()` 扫描块扩展——已配置 SSID 不可见（或 STA 未配置）而历史条目可见时，按优先级（槽 0→4）挑最佳可见条目接管本次开机连接（仅改运行时凭据，不动 NVS 配置），并用其信道预对齐 AP。
+  - 断线重连：新增 `updateWifiStaHistoryRetry()` 状态机——断线落地 `restoreApAfterStaLost()` 后以 3s 节奏异步扫描，对未试过的可见历史条目按优先级逐个重试，全部试完停在 AP-only（与旧行为一致）；连上可用网络即停止，不做后台扫描切换。
+  - Web API：新增 `GET /api/wifi-sta/history`（公开，只回 `rank/ssid/password_set`，不含密码明文）与 `POST /api/wifi-sta/history/delete`（需认证或 DEV 模式；只删历史记录、不动当前连接——删除正在使用的 WiFi 不断线，仅今后不再自动连接它）。
+  - Web UI：STA 配置弹窗改双栏布局，右栏新增"已保存的 WiFi"列表（#优先级徽标 + SSID + 删除按钮，宽屏并列/窄屏堆叠）；删除前 confirm 确认，删除当前连接条目时 toast 提示"仅移除记录，不影响本次连接"；中英 i18n 各新增 5 个键。
+- 同步更新 `tests/test_firmware_feature_flags.py`：版本号断言；`FIRMWARE_SOURCE_PATHS` 注册新模块；新增 8 个 WiFi 历史结构断言（NVS 键与容量常量、模块拆分、sketch 挂接点、状态机安全约束、API 安全契约、UI DOM/i18n）。
+
 ## 2026-07-12 v1.7.34
 
 - fix(Serial1): 修复 `Serial1.setTxBufferSize(1024)` 调用顺序错误

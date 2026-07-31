@@ -47,6 +47,7 @@ String getActiveWifiApSsid();
 
 void setupWifiConsole();
 void updateWifiSta();
+void updateWifiStaHistoryRetry();
 void updateWifiConsole();
 
 void setupWifiWebConsole();

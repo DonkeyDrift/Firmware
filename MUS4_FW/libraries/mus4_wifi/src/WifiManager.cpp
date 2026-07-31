@@ -6,6 +6,7 @@
 #include "WifiIdentity.h"
 #include "WifiOta.h"
 #include "WifiStaConfig.h"
+#include "WifiStaHistory.h"
 #include "WebLogBuffer.h"
 #include "WirelessConsole.h"
 #include "Mus4Log.h"
@@ -98,6 +99,9 @@ static bool bootWifiResetTriggered = false;
 // STA 连上后临时覆盖 AP SSID 为 "MUS4-<sta_ip>"；非空时 getActiveWifiApSsid()
 // 返回此名字，配合一次 SoftAP 重启把带 IP 名广播出去。关闭/失败恢复 AP 时清空。
 static String g_staIpApSsidOverride = "";
+
+// STA 连接历史重试节奏：两次扫描/尝试之间的最小间隔，避免 AP-only 下空转扫频。
+static const unsigned long WIFI_STA_HISTORY_RETRY_INTERVAL_MS = 3000;
 
 #ifdef ENABLE_WIFI_LLMNR_DISCOVERY
 static WiFiUDP wifiLlmnrUdp;
@@ -976,6 +980,63 @@ void setupWifiConsole()
         }
     }
 
+    // STA 连接历史开机回退：已配置 SSID 不可见（或 STA 未配置）而历史条目可见时，
+    // 按历史优先级（槽 0 最近）挑最佳可见条目，把凭据写入运行时状态接管本次开机
+    // 连接；仅改运行时，不触碰 NVS 中的 sta_ssid/sta_pass 配置。首试槽位记入
+    // staHistTriedMask，供 updateWifiStaHistoryRetry() 在断线重试时跳过。
+    if (wifiStaHistoryCount() > 0) {
+        // 上面的开机扫描已命中已配置 SSID（信道被记录且非默认值）时无需回退；
+        // 其余情况（未配置 / 未扫到 / 恰好在默认信道）补一次阻塞扫描判定可见性。
+        bool staBootConfiguredVisible = wifiStaConfigured && strlen(wifiStaSsid) > 0 &&
+            apChannel != WIFI_CONSOLE_CHANNEL;
+        if (!staBootConfiguredVisible) {
+            int n = WiFi.scanNetworks(false, false);  // 阻塞同步扫描（历史回退判定）
+            if (n > 0) {
+                if (wifiStaConfigured && strlen(wifiStaSsid) > 0) {
+                    for (int i = 0; i < n; i++) {
+                        if (WiFi.SSID(i) == String(wifiStaSsid)) {
+                            staBootConfiguredVisible = true;
+                            apChannel = (uint8_t)WiFi.channel(i);
+                            mus4Logf("wifi", "STA boot: found %s on channel %u (history scan)",
+                                     wifiStaSsid, apChannel);
+                            break;
+                        }
+                    }
+                }
+                if (!staBootConfiguredVisible) {
+                    bool staHistBootPicked = false;
+                    for (uint8_t rank = 0; rank < wifiStaHistoryCount() && !staHistBootPicked; rank++) {
+                        if ((wifiRuntime.staHistTriedMask & (uint8_t)(1u << rank)) != 0) continue;
+                        String histSsid;
+                        if (!copyWifiStaHistorySsid(rank, histSsid)) continue;
+                        for (int i = 0; i < n; i++) {
+                            if (WiFi.SSID(i) != histSsid) continue;
+                            String histPassword;
+                            if (findWifiStaHistoryEntry(histSsid, histPassword) &&
+                                copyWifiStaSsid(histSsid) && copyWifiStaPassword(histPassword)) {
+                                wifiStaConfigured = true;
+                                apChannel = (uint8_t)WiFi.channel(i);
+                                wifiRuntime.staHistTriedMask |= (uint8_t)(1u << rank);
+                                staHistBootPicked = true;
+                                mus4Logf("wifi", "STA boot: history slot %u ssid=\"%s\" on channel %u",
+                                         rank, histSsid.c_str(), apChannel);
+                            }
+                            break;
+                        }
+                    }
+                }
+                WiFi.scanDelete();
+            }
+        }
+        if (staBootConfiguredVisible) {
+            // 已配置 SSID 可见：保持原有连接目标，仅把它的历史槽位标记为已首试。
+            int8_t rank = wifiStaHistoryRankOf(String(wifiStaSsid));
+            if (rank >= 0) {
+                wifiRuntime.staHistTriedMask |= (uint8_t)(1u << rank);
+            }
+        }
+    }
+
     mus4LogLine("wifi", "setup: start AP services");
     if (!startWifiApServices("AP started", apChannel)) {
         return;
@@ -1057,6 +1118,8 @@ void updateWifiSta()
             wifiStaDownGraceDeadlineMs = 0;
             // handoff 在新方案里已经退役；保留 finish 调用是为了把残留字段清空。
             finishWifiStaHandoff();
+            // 连接成功：把当前凭据记入 STA 连接历史（去重/置顶在函数内部处理）。
+            recordWifiStaHistory(wifiStaSsid, wifiStaPassword);
         } else if (wifiStaDownGraceDeadlineMs != 0) {
             // STA 抖动后又恢复（grace 窗口内），取消 down grace，保持 STA_ONLY。
             wifiStaDownGraceDeadlineMs = 0;
@@ -1103,6 +1166,107 @@ void updateWifiSta()
         restoreApAfterStaLost();
         mus4LogLine("wifi", "AP restored after STA timeout");
     }
+}
+
+// STA 连接历史运行期重试状态机：
+// - 上升沿（staConnected false→true）：记录/置顶历史，清空已试掩码与周期标志；
+// - 重试窗口（!connected && !connecting && !applyPending && (configured || lastError 非空)，
+//   即开机首试失败或 sta_lost 断线落地之后的状态）：还有未试槽位时启动异步扫描，
+//   按历史优先级挑未试过的可见条目，copy 凭据、标记已试后发起新一轮连接；
+// - 可见候选全部试完（或扫描失败）：本轮周期结束，停在 AP-only（与现状一致）；
+//   下次 connected 边沿清掩码后，新断线自然重新武装。
+void updateWifiStaHistoryRetry()
+{
+    static bool lastStaConnected = false;
+    static bool staHistScanPending = false;
+    bool connected = wifiStaConnected;
+    if (connected && !lastStaConnected) {
+        recordWifiStaHistory(wifiStaSsid, wifiStaPassword);
+        wifiRuntime.staHistTriedMask = 0;
+        wifiRuntime.staHistRetryActive = false;
+        wifiRuntime.staHistRetryDeadlineMs = 0;
+    }
+    lastStaConnected = connected;
+
+    bool inRetryWindow = !wifiStaConnected && !wifiStaConnecting && !wifiStaApplyPending &&
+        (wifiStaConfigured || wifiStaLastError[0] != 0);
+
+    if (staHistScanPending) {
+        int16_t scanResult = WiFi.scanComplete();
+        if (scanResult == WIFI_SCAN_RUNNING) return;
+        staHistScanPending = false;
+        if (!inRetryWindow || wifiStaHistoryCount() == 0) {
+            // 窗口已关闭（用户发起新的 apply 等）：丢弃扫描结果并结束本轮周期。
+            WiFi.scanDelete();
+            wifiRuntime.staHistRetryActive = false;
+            return;
+        }
+        if (scanResult > 0) {
+            int8_t bestRank = -1;
+            uint8_t bestChannel = 0;
+            for (uint8_t rank = 0; rank < wifiStaHistoryCount() && bestRank < 0; rank++) {
+                if ((wifiRuntime.staHistTriedMask & (uint8_t)(1u << rank)) != 0) continue;
+                String histSsid;
+                if (!copyWifiStaHistorySsid(rank, histSsid)) continue;
+                for (int16_t i = 0; i < scanResult; i++) {
+                    if (WiFi.SSID(i) == histSsid) {
+                        bestRank = (int8_t)rank;
+                        bestChannel = (uint8_t)WiFi.channel(i);
+                        break;
+                    }
+                }
+            }
+            if (bestRank >= 0) {
+                String histSsid;
+                String histPassword;
+                copyWifiStaHistorySsid((uint8_t)bestRank, histSsid);
+                findWifiStaHistoryEntry(histSsid, histPassword);
+                WiFi.scanDelete();
+                if (copyWifiStaSsid(histSsid) && copyWifiStaPassword(histPassword)) {
+                    wifiStaConfigured = true;
+                    wifiRuntime.staHistTriedMask |= (uint8_t)(1u << bestRank);
+                    wifiRuntime.staHistRetryDeadlineMs = millis() + WIFI_STA_HISTORY_RETRY_INTERVAL_MS;
+                    mus4Logf("wifi", "STA history retry: slot %d ssid=\"%s\" ch=%u",
+                             bestRank, histSsid.c_str(), bestChannel);
+                    applyWifiStaCredentials();
+                }
+                return;
+            }
+        }
+        // 扫描失败或无可见的未试候选：把当前槽位全部标记为已试，结束本轮周期。
+        WiFi.scanDelete();
+        wifiRuntime.staHistTriedMask = 0;
+        for (uint8_t rank = 0; rank < wifiStaHistoryCount(); rank++) {
+            wifiRuntime.staHistTriedMask |= (uint8_t)(1u << rank);
+        }
+        wifiRuntime.staHistRetryActive = false;
+        mus4LogLine("wifi", "STA history retry: candidates exhausted");
+        return;
+    }
+
+    if (!inRetryWindow) return;
+    if (wifiStaHistoryCount() == 0) {
+        wifiRuntime.staHistRetryActive = false;
+        return;
+    }
+    bool anyUntried = false;
+    for (uint8_t rank = 0; rank < wifiStaHistoryCount(); rank++) {
+        if ((wifiRuntime.staHistTriedMask & (uint8_t)(1u << rank)) == 0) {
+            anyUntried = true;
+            break;
+        }
+    }
+    if (!anyUntried) {
+        wifiRuntime.staHistRetryActive = false;
+        return;
+    }
+    wifiRuntime.staHistRetryActive = true;
+    if ((long)(millis() - wifiRuntime.staHistRetryDeadlineMs) < 0) return;
+    // 异步扫描（含隐藏 SSID）；即使启动失败也置 pending，下一轮按扫描失败
+    // 收敛为「候选试完」，避免在 AP-only 下空转扫频。
+    wifiRuntime.staHistRetryDeadlineMs = millis() + WIFI_STA_HISTORY_RETRY_INTERVAL_MS;
+    WiFi.scanNetworks(true, true);
+    staHistScanPending = true;
 }
 
 void updateWifiConsole()

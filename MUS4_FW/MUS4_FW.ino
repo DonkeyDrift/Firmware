@@ -66,6 +66,7 @@
 #include "WirelessConsole.h"
 #include "WifiStaConfig.h"
 #include "WifiIdentity.h"
+#include "WifiStaHistory.h"
 #include "WifiOta.h"
 #include "WebTelemetry.h"
 #include "WifiManager.h"
@@ -530,6 +531,7 @@ void setup()
       loadDevModePreference();
       loadWifiApPreference();
       loadWifiStaPreference();
+      loadWifiStaHistory();
       loadJudgeConfigPreference();
       loadDriftConfigPreference();
       load_drift_config(wifiRuntime.driftConfig);
@@ -595,6 +597,7 @@ void loop()
       updateWifiConsole();
       updateWifiWebConsole();
       updateWifiSta();
+      updateWifiStaHistoryRetry();
       updateWifiBootResetButton();
       updateWifiOta(otaRuntime, wifiRuntime);
     #endif

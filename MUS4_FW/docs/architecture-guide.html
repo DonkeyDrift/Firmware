@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MUS4 固件架构科普 — 高中生也能看懂</title>
+<style>
+  :root {
+    --ink: #263238;
+    --muted: #607d8b;
+    --accent: #1565c0;
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --line: #e0e6ed;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.8;
+  }
+  .page { max-width: 920px; margin: 0 auto; padding: 24px 20px 64px; }
+  header.site-header {
+    background: linear-gradient(135deg, #1565c0, #00838f);
+    color: #fff;
+    border-radius: 14px;
+    padding: 36px 32px;
+    margin-bottom: 24px;
+  }
+  header.site-header h1 { margin: 0 0 8px; font-size: 1.9rem; }
+  header.site-header p { margin: 0; opacity: .92; }
+  nav.toc {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 24px;
+    margin-bottom: 32px;
+  }
+  nav.toc strong { color: var(--accent); }
+  nav.toc ol { margin: 8px 0 0; padding-left: 22px; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+
+  .arch-section {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 32px;
+  }
+  .arch-section h2 {
+    margin-top: 0;
+    color: var(--accent);
+    border-bottom: 2px solid var(--line);
+    padding-bottom: 10px;
+  }
+  .arch-figure {
+    margin: 20px 0;
+    padding: 16px;
+    background: #fafcfe;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    text-align: center;
+  }
+  .arch-figure svg { max-width: 100%; height: auto; }
+  .arch-caption {
+    margin-top: 10px;
+    font-size: .88rem;
+    color: var(--muted);
+  }
+  .arch-note {
+    background: #fff8e1;
+    border-left: 4px solid #ffb300;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 16px 0;
+    font-size: .95rem;
+  }
+  .arch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin: 16px 0;
+  }
+  .arch-card {
+    background: #f8fafd;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .arch-card h3, .arch-card h4 { margin-top: 0; }
+  code {
+    font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
+    background: #eceff1;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: .88em;
+    color: #37474f;
+  }
+  footer.site-footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: .85rem;
+    margin-top: 40px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+<header class="site-header">
+  <h1>MUS4 固件架构科普</h1>
+  <p>一辆 RC 漂移车的 ESP32"大脑"是怎么工作的 —— 基于固件 v1.7.34 源码，写给高中生的图解指南</p>
+</header>
+<nav class="toc">
+  <strong>目录</strong>
+  <ol>
+    <li><a href="#sec1">一页看懂整车数据流</a></li>
+    <li><a href="#sec2">主循环 loop() 像什么</a></li>
+    <li><a href="#sec3">12 个 mus4 库 = 12 个部门</a></li>
+    <li><a href="#sec4">安全系统：手刹 + 安全气囊</a></li>
+    <li><a href="#sec5">三条串口 + Wi-Fi：怎么和上位机打电话</a></li>
+    <li><a href="#sec6">漂移辅助与信号滤波</a></li>
+  </ol>
+</nav>
+<section id="sec1" class="arch-section">
+  <h2>第 1 章 · 一页看懂整车数据流</h2>
+
+  <p>
+    如果把这辆漂移车比作一家快递公司，那么 ESP32 固件就是分拣中心里的「值班主任」：它一秒钟上百次地接收各路包裹单——
+    遥控器手柄的拨动、上位机 AI 算出的驾驶指令、车身传感器上报的姿态与电流——然后把它们汇总、核对、按规矩分拣，
+    最后翻译成舵机和电调唯一听得懂的语言：<strong>PWM 信号</strong>（一种用「高电平持续多久」来表示数值的方波暗号）。
+    固件的全部本质工作，就是一句话：<strong>把人和 AI 的驾驶意图，安全地翻译成舵机和电调的 PWM 信号</strong>。
+    下面这张图就是这条流水线的全景。
+  </p>
+
+  <figure class="arch-figure">
+    <svg viewBox="0 0 800 520" width="100%" font-family="sans-serif" role="img" aria-label="整车数据流示意图">
+      <defs>
+        <marker id="archArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#607D8B"/>
+        </marker>
+      </defs>
+
+      <!-- ══ 左侧：输入 ══ -->
+      <rect x="20" y="40" width="170" height="90" rx="10" fill="#E3F2FD" stroke="#1E88E5" stroke-width="2"/>
+      <text x="105" y="68" text-anchor="middle" font-size="14" font-weight="bold" fill="#1565C0">RC 遥控器</text>
+      <text x="105" y="90" text-anchor="middle" font-size="12" fill="#37474F">6 通道 PWM 信号</text>
+      <text x="105" y="108" text-anchor="middle" font-size="12" fill="#37474F">脉宽 1000~2000µs</text>
+
+      <rect x="20" y="180" width="170" height="90" rx="10" fill="#FFF3E0" stroke="#FB8C00" stroke-width="2"/>
+      <text x="105" y="208" text-anchor="middle" font-size="14" font-weight="bold" fill="#E65100">上位机 AI 指令</text>
+      <text x="105" y="230" text-anchor="middle" font-size="12" fill="#37474F">串口 T&lt;油门&gt;S&lt;转向&gt;</text>
+      <text x="105" y="248" text-anchor="middle" font-size="12" fill="#37474F">来自自动驾驶电脑</text>
+
+      <rect x="20" y="320" width="170" height="90" rx="10" fill="#E8F5E9" stroke="#43A047" stroke-width="2"/>
+      <text x="105" y="348" text-anchor="middle" font-size="14" font-weight="bold" fill="#2E7D32">I2C 传感器</text>
+      <text x="105" y="370" text-anchor="middle" font-size="12" fill="#37474F">MPU6050 陀螺仪</text>
+      <text x="105" y="388" text-anchor="middle" font-size="12" fill="#37474F">INA219 电流计</text>
+
+      <!-- ══ 中间：ESP32 大脑 ══ -->
+      <rect x="290" y="20" width="220" height="475" rx="14" fill="#FAFAFA" stroke="#78909C" stroke-width="2"/>
+      <text x="400" y="45" text-anchor="middle" font-size="15" font-weight="bold" fill="#37474F">ESP32 大脑</text>
+
+      <rect x="310" y="60" width="180" height="70" rx="8" fill="#E8EAF6" stroke="#5C6BC0" stroke-width="1.5"/>
+      <text x="400" y="85" text-anchor="middle" font-size="13" font-weight="bold" fill="#3949AB">① 信号滤波</text>
+      <text x="400" y="107" text-anchor="middle" font-size="12" fill="#37474F">超时检测 + 中值滤波</text>
+
+      <rect x="310" y="165" width="180" height="95" rx="8" fill="#E8EAF6" stroke="#5C6BC0" stroke-width="1.5"/>
+      <text x="400" y="190" text-anchor="middle" font-size="13" font-weight="bold" fill="#3949AB">② 模式 / Park 状态机</text>
+      <text x="400" y="212" text-anchor="middle" font-size="12" fill="#37474F">手动 · 半自动 · 全自动</text>
+      <text x="400" y="232" text-anchor="middle" font-size="12" fill="#37474F">Park = 拉起手刹</text>
+
+      <rect x="310" y="295" width="180" height="75" rx="8" fill="#E8EAF6" stroke="#5C6BC0" stroke-width="1.5"/>
+      <text x="400" y="320" text-anchor="middle" font-size="13" font-weight="bold" fill="#3949AB">③ ControlMixer 融合</text>
+      <text x="400" y="342" text-anchor="middle" font-size="12" fill="#37474F">决定「现在听谁的」</text>
+      <text x="400" y="360" text-anchor="middle" font-size="12" fill="#37474F">叠加漂移辅助修正</text>
+
+      <rect x="310" y="405" width="180" height="70" rx="8" fill="#E8EAF6" stroke="#5C6BC0" stroke-width="1.5"/>
+      <text x="400" y="430" text-anchor="middle" font-size="13" font-weight="bold" fill="#3949AB">④ 输出映射与限幅</text>
+      <text x="400" y="452" text-anchor="middle" font-size="12" fill="#37474F">-100~100 → PWM 占空比</text>
+
+      <!-- ══ 右侧：输出 ══ -->
+      <rect x="610" y="55" width="170" height="80" rx="10" fill="#E8F5E9" stroke="#43A047" stroke-width="2"/>
+      <text x="695" y="83" text-anchor="middle" font-size="14" font-weight="bold" fill="#2E7D32">遥测上行</text>
+      <text x="695" y="105" text-anchor="middle" font-size="12" fill="#37474F">T/S · M:P · $IMU</text>
+      <text x="695" y="123" text-anchor="middle" font-size="12" fill="#37474F">回传给上位机</text>
+
+      <rect x="610" y="170" width="170" height="80" rx="10" fill="#E3F2FD" stroke="#1E88E5" stroke-width="2"/>
+      <text x="695" y="198" text-anchor="middle" font-size="14" font-weight="bold" fill="#1565C0">舵机 · 转向</text>
+      <text x="695" y="220" text-anchor="middle" font-size="12" fill="#37474F">GPIO23 · 300Hz PWM</text>
+
+      <rect x="610" y="280" width="170" height="80" rx="10" fill="#E3F2FD" stroke="#1E88E5" stroke-width="2"/>
+      <text x="695" y="308" text-anchor="middle" font-size="14" font-weight="bold" fill="#1565C0">电调 · 油门</text>
+      <text x="695" y="330" text-anchor="middle" font-size="12" fill="#37474F">GPIO25 · 300Hz PWM</text>
+
+      <rect x="610" y="390" width="170" height="80" rx="10" fill="#FFF3E0" stroke="#FB8C00" stroke-width="2"/>
+      <text x="695" y="418" text-anchor="middle" font-size="14" font-weight="bold" fill="#E65100">LED / 蜂鸣器</text>
+      <text x="695" y="440" text-anchor="middle" font-size="12" fill="#37474F">用颜色和声音报状态</text>
+
+      <!-- ══ 输入箭头 ══ -->
+      <line x1="190" y1="85" x2="306" y2="92" stroke="#607D8B" stroke-width="2" marker-end="url(#archArrow)"/>
+      <text x="248" y="75" text-anchor="middle" font-size="12" fill="#546E7A">中断采集</text>
+
+      <line x1="190" y1="225" x2="306" y2="328" stroke="#607D8B" stroke-width="2" marker-end="url(#archArrow)"/>
+      <text x="248" y="266" text-anchor="middle" font-size="12" fill="#546E7A">串口指令</text>
+
+      <line x1="190" y1="365" x2="306" y2="425" stroke="#607D8B" stroke-width="2" marker-end="url(#archArrow)"/>
+      <text x="248" y="382" text-anchor="middle" font-size="12" fill="#546E7A">I2C 读取</text>
+
+      <!-- ══ 大脑内部流水线箭头 ══ -->
+      <line x1="400" y1="130" x2="400" y2="161" stroke="#607D8B" stroke-width="2" marker-end="url(#archArrow)"/>
+      <line x1="400" y1="260" x2="400" y2="291" stroke="#607D8B" stroke-width="2" marker-end="url(#archArrow)"/>
+      <line x1="400" y1="370" x2="400" y2="401" stroke="#607D8B" stroke-width="2" marker-end="url(#archArrow)"/>
+
+      <!-- ══ 输出箭头 ══ -->
+      <line x1="490" y1="95" x2="606" y2="95" stroke="#607D8B" stroke-width="2" marker-end="url(#archArrow)"/>
+      <text x="548" y="85" text-anchor="middle" font-size="12" fill="#546E7A">串口上行</text>
+
+      <polyline points="490,440 575,440 575,210 606,210" fill="none" stroke="#607D8B" stroke-width="2" marker-end="url(#archArrow)"/>
+      <polyline points="490,440 565,440 565,320 606,320" fill="none" stroke="#607D8B" stroke-width="2" marker-end="url(#archArrow)"/>
+      <text x="532" y="432" text-anchor="middle" font-size="12" fill="#546E7A">PWM 驱动</text>
+
+      <polyline points="490,333 555,333 555,430 606,430" fill="none" stroke="#607D8B" stroke-width="2" marker-end="url(#archArrow)"/>
+      <text x="523" y="325" text-anchor="middle" font-size="12" fill="#546E7A">状态提示</text>
+    </svg>
+    <figcaption class="arch-caption">
+      图 1 · 整车数据流全景：左边三路人马进件，中间 ESP32 按「滤波 → 状态机 → 融合 → 限幅」四步流水线处理，右边兵分四路出货。
+    </figcaption>
+  </figure>
+
+  <p>
+    <strong>先看输入。</strong>三路信息的「性格」完全不同：RC 遥控器的 6 个通道各自是一根独立的信号线，
+    用脉冲宽度表达摇杆位置，固件给每个通道挂了硬件中断，脉宽一到就被立刻记下（<code>libraries/mus4_rc/src/RcPwmCapture.cpp:79</code>），
+    像 6 部电话各自有专人接听；上位机 AI 的指令走串口，是一句 <code>T1500S1500</code> 这样的文本暗号，
+    解析后写进 <code>pilot_data</code>（<code>libraries/mus4_command/src/CommandDispatcher.cpp:226</code>）；
+    MPU6050 陀螺仪和 INA219 电流计则挂在 I2C 总线上，由主循环定时主动询问（<code>MUS4_FW.ino:582</code>）。
+  </p>
+
+  <p>
+    <strong>滤波是流水线的质检员。</strong>无线电信号像嘈杂环境下的电话，难免有杂音和断线。固件先查「这条通道多久没收到新消息了」，
+    超过时限就判定信号丢失；再从最近 5 个采样值里挑中位数，把偶尔的毛刺直接丢掉（<code>MUS4_FW.ino:619</code>）。
+    最妙的是失效保护：一旦遥控器断联，转向和油门自动回到中点，Park 通道被强制写成「松开手刹」的安全值
+    （<code>MUS4_FW.ino:667</code>~<code>686</code>）——宁可停车，也绝不信一个来路不明的旧数据。
+  </p>
+
+  <p>
+    <strong>状态机是值班主任的「规矩手册」。</strong><code>mode_change()</code> 看遥控器的模式通道给整车「换挡」：
+    手动、半自动、全自动三档（<code>libraries/mus4_control/src/ControlMixer.cpp:26</code>）；
+    而 Park 就像汽车的手刹——只要手刹拉着（Park 锁定），不管谁踩油门，油门输出都保持不动，
+    LED 还会红蓝/红黄交替闪烁提醒「车锁着呢」。
+  </p>
+
+  <p>
+    <strong>ControlMixer 是真正做决定的人。</strong><code>updateControlOutput()</code>
+    （<code>libraries/mus4_control/src/ControlMixer.cpp:55</code>）按照当前模式决定「听谁的」：
+    手动模式全听遥控器；半自动模式人管油门、AI 管方向，像教练扶着方向盘陪你开；全自动模式则完全交给 AI。
+    决定之后，「漂移辅助」这位副驾驶还会根据陀螺仪数据悄悄帮你反打方向、调节油门，让漂移动作更稳。
+    最终的内部意图统一用 -100~+100 的百分数表示——这是一种与硬件无关的「普通话」。
+  </p>
+
+  <p>
+    <strong>最后一步是翻译与限幅。</strong><code>updateActuatorOutput()</code>
+    （<code>libraries/mus4_safety/src/ActuatorOutput.cpp:30</code>）把 -100~+100 映射成 300Hz / 14 位精度的 PWM 占空比，
+    写入 GPIO23（舵机）和 GPIO25（电调），并且无论如何都夹在安全上下限之内——就算上游算错了，也别想让舵机打过头。
+    与此同时，主循环把油门转向（<code>T</code>/<code>S</code> 帧，60Hz）、模式状态（<code>M:P</code> 帧，1Hz 心跳）
+    和 IMU 数据（<code>$IMU</code> 帧，100Hz）打包发回上位机（<code>MUS4_FW.ino:724</code>~<code>801</code>），
+    让 AI 也能「看见」车正在做什么，形成完整的闭环。
+  </p>
+
+  <div class="arch-note">
+    整条流水线跑在 <code>loop()</code>（<code>MUS4_FW.ino:579</code>~<code>834</code>）里：每转一圈就完整走一遍
+    「读传感器 → 收指令 → 滤波 → 状态机 → 融合 → 写 PWM → 发遥测」，圈末只休息 5 毫秒
+    （<code>MUS4_FW.ino:833</code>），一秒钟能转上百圈——这就是一辆 RC 漂移车「反应快」的秘密。
+  </div>
+
+  <div class="arch-grid">
+    <div class="arch-card">
+      <strong>手动模式 · 绿灯</strong><br/>
+      遥控器全权驾驶，AI 只看不碰。PWM 信号经校准映射后直达舵机电调，是最基础也最可靠的兜底模式。
+    </div>
+    <div class="arch-card">
+      <strong>半自动模式 · 黄灯</strong><br/>
+      人机共驾：你管油门，AI 管方向。适合训练数据采集——人决定开多快，AI 学习怎么转弯。
+    </div>
+    <div class="arch-card">
+      <strong>全自动模式 · 蓝灯</strong><br/>
+      AI 全权驾驶，遥控器变成「安全员」：随时可以拨动模式键抢回控制权，Park 手刹一拉立即停车。
+    </div>
+  </div>
+</section>
+<section id="sec2" class="arch-section">
+  <h2>第 2 章 · 主循环 loop() 像什么：一间永不打烊的值班室</h2>
+
+  <p>
+    想象一家 24 小时营业的快递分拣站。每天早上开门前，值班经理只做一次准备工作：接通电话线、
+    清点货架、启动传送带、打开招牌灯——这就是 <code>setup()</code>，开机后只跑一遍
+    （<code>MUS4_FW.ino:487-577</code>）。准备完毕拉下卷帘门，分拣站进入永不停歇的营业状态：
+    工人沿着固定流水线一圈又一圈地转，每圈都按同样的顺序做一批小事——这就是
+    <code>loop()</code>（<code>MUS4_FW.ino:579-834</code>）。Arduino 程序没有"退出"按钮，
+    这圈干完立刻开始下一圈，MUS4 固件的一圈大约只要 5 毫秒（结尾的 <code>delay(5)</code>，
+    <code>MUS4_FW.ino:833</code>），一秒能转上百圈。
+  </p>
+
+  <figure class="arch-figure">
+    <svg viewBox="0 0 800 520" width="100%" role="img" aria-label="loop() 主循环流程图">
+      <defs>
+        <marker id="sec2-arrow" markerWidth="10" markerHeight="10" refX="7" refY="5"
+                orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L10,5 L0,10 Z" fill="#5C7CFA"></path>
+        </marker>
+      </defs>
+
+      <!-- 背景环 -->
+      <circle cx="400" cy="260" r="190" fill="none" stroke="#DEE2E6" stroke-width="3" stroke-dasharray="6 6"></circle>
+
+      <!-- 环形箭头（顺时针，位于相邻节点之间） -->
+      <g fill="none" stroke="#5C7CFA" stroke-width="3">
+        <path d="M460.3,79.8 A190,190 0 0 1 484.8,90.0" marker-end="url(#sec2-arrow)"></path>
+        <path d="M570.0,175.2 A190,190 0 0 1 580.2,199.7" marker-end="url(#sec2-arrow)"></path>
+        <path d="M580.2,320.3 A190,190 0 0 1 570.0,344.8" marker-end="url(#sec2-arrow)"></path>
+        <path d="M484.8,430.0 A190,190 0 0 1 460.3,440.2" marker-end="url(#sec2-arrow)"></path>
+        <path d="M339.7,440.2 A190,190 0 0 1 315.2,430.0" marker-end="url(#sec2-arrow)"></path>
+        <path d="M229.9,344.8 A190,190 0 0 1 219.8,320.3" marker-end="url(#sec2-arrow)"></path>
+        <path d="M219.8,199.7 A190,190 0 0 1 229.9,175.2" marker-end="url(#sec2-arrow)"></path>
+        <path d="M315.2,90.0 A190,190 0 0 1 339.7,79.8" marker-end="url(#sec2-arrow)"></path>
+      </g>
+
+      <!-- 中心：值班室 -->
+      <circle cx="400" cy="260" r="72" fill="#FFF9DB" stroke="#F0B429" stroke-width="2"></circle>
+      <text x="400" y="242" text-anchor="middle" font-size="18" font-weight="bold" fill="#5F3DC4">loop()</text>
+      <text x="400" y="264" text-anchor="middle" font-size="13" fill="#666666">永不打烊的值班室</text>
+      <text x="400" y="284" text-anchor="middle" font-size="13" fill="#666666">每圈约 5 ms</text>
+
+      <!-- 节点 1：顶部 -->
+      <rect x="325" y="46" width="150" height="48" rx="10" fill="#E3F2FD" stroke="#339AF0" stroke-width="1.5"></rect>
+      <text x="400" y="66" text-anchor="middle" font-size="14" font-weight="bold" fill="#1B4F72">1. 读传感器</text>
+      <text x="400" y="84" text-anchor="middle" font-size="12" fill="#555555">电流+IMU · 2ms 节拍</text>
+
+      <!-- 节点 2：右上 -->
+      <rect x="459" y="102" width="150" height="48" rx="10" fill="#E8F5E9" stroke="#51CF66" stroke-width="1.5"></rect>
+      <text x="534" y="122" text-anchor="middle" font-size="14" font-weight="bold" fill="#2B5B34">2. 读串口/Wi-Fi</text>
+      <text x="534" y="140" text-anchor="middle" font-size="12" fill="#555555">Serial0/1/2 · 每圈</text>
+
+      <!-- 节点 3：右侧 -->
+      <rect x="515" y="236" width="150" height="48" rx="10" fill="#FFF3E0" stroke="#FF922B" stroke-width="1.5"></rect>
+      <text x="590" y="256" text-anchor="middle" font-size="14" font-weight="bold" fill="#7A3E0F">3. RC 信号滤波</text>
+      <text x="590" y="274" text-anchor="middle" font-size="12" fill="#555555">中值滤波 · 2ms 节拍</text>
+
+      <!-- 节点 4：右下 -->
+      <rect x="459" y="370" width="150" height="48" rx="10" fill="#F3E5F5" stroke="#CC5DE8" stroke-width="1.5"></rect>
+      <text x="534" y="390" text-anchor="middle" font-size="14" font-weight="bold" fill="#5F2A75">4. 跑状态机</text>
+      <text x="534" y="408" text-anchor="middle" font-size="12" fill="#555555">Park/模式/漂移辅助</text>
+
+      <!-- 节点 5：底部 -->
+      <rect x="325" y="426" width="150" height="48" rx="10" fill="#E3F2FD" stroke="#339AF0" stroke-width="1.5"></rect>
+      <text x="400" y="446" text-anchor="middle" font-size="14" font-weight="bold" fill="#1B4F72">5. 计算输出</text>
+      <text x="400" y="464" text-anchor="middle" font-size="12" fill="#555555">updateControlOutput</text>
+
+      <!-- 节点 6：左下 -->
+      <rect x="191" y="370" width="150" height="48" rx="10" fill="#E8F5E9" stroke="#51CF66" stroke-width="1.5"></rect>
+      <text x="266" y="390" text-anchor="middle" font-size="14" font-weight="bold" fill="#2B5B34">6. 驱动舵机电调</text>
+      <text x="266" y="408" text-anchor="middle" font-size="12" fill="#555555">updateActuatorOutput</text>
+
+      <!-- 节点 7：左侧 -->
+      <rect x="135" y="236" width="150" height="48" rx="10" fill="#FFF3E0" stroke="#FF922B" stroke-width="1.5"></rect>
+      <text x="210" y="256" text-anchor="middle" font-size="14" font-weight="bold" fill="#7A3E0F">7. 发遥测帧</text>
+      <text x="210" y="274" text-anchor="middle" font-size="12" fill="#555555">T/S 60Hz · IMU 100Hz</text>
+
+      <!-- 节点 8：左上 -->
+      <rect x="191" y="102" width="150" height="48" rx="10" fill="#F3E5F5" stroke="#CC5DE8" stroke-width="1.5"></rect>
+      <text x="266" y="122" text-anchor="middle" font-size="14" font-weight="bold" fill="#5F2A75">8. 刷 UI/LED</text>
+      <text x="266" y="140" text-anchor="middle" font-size="12" fill="#555555">TUI 4~10Hz · 蜂鸣器</text>
+    </svg>
+    <figcaption class="arch-caption">
+      loop() 一圈的固定流水线：8 个岗位按顺时针顺序轮流干活，转完一圈回到 1 号岗位重新开始。
+      括号里的频率由各自的 millis() 闹钟控制，不是每圈都一定出手。
+    </figcaption>
+  </figure>
+
+  <p>
+    先看开店前的一次性准备。<code>setup()</code> 里，固件先接通三条"电话线"——Serial0 接调试电脑、
+    Serial1 接上位的 Linux 主机、Serial2 留给配网协议（<code>MUS4_FW.ino:503-512</code>）；
+    然后像点货一样扫描 I2C 货架，把 INA219 电流计和 MPU6050 惯性测量单元（IMU，能感知加速度和
+    旋转速度的传感器）叫醒（<code>MUS4_FW.ino:552-557</code>）；接着装好"传送带"——启动 RC
+    遥控器信号的 PWM 捕获（PWM 是一种用脉冲宽度表示数值的信号）和执行器输出
+    （<code>MUS4_FW.ino:560-561</code>），连上 Wi-Fi 无线控制台、点亮 LED 状态灯
+    （<code>MUS4_FW.ino:548,563-567</code>）。最后也是最重要的：拉上"手刹"——把车强制锁在
+    Park 驻车状态（<code>MUS4_FW.ino:569-573</code>），确保通电瞬间车子不会突然蹿出去。
+    这些事只值得做一次，做完就再也不会重复。
+  </p>
+
+  <p>
+    再看值班室的日常。每一圈 loop() 都按固定顺序巡检一圈：先读传感器（1 号岗），再收下串口和
+    Wi-Fi 里积压的"来信"（2 号岗），然后给摇杆信号做中值滤波——把最近 5 个读数排队取中间那个，
+    毛刺噪声就被自然丢掉了（3 号岗，<code>MUS4_FW.ino:619-664</code>）；接着状态机判断现在该
+    驻车、手动还是辅助漂移（4 号岗），算出该给舵机和电调多大指令（5 号岗），真正驱动轮子
+    （6 号岗），把遥测数据打包发回上位机（7 号岗），最后刷新屏幕、LED 和蜂鸣器（8 号岗）。
+    顺序永远不变，所以行为可以预测——这对安全关键的小车至关重要。
+  </p>
+
+  <p>
+    有趣的是，8 个岗位并非每圈都出手，而是各自揣着一个 <code>millis()</code> 闹钟。
+    <code>millis()</code> 是开机以来的毫秒数，固件给每个任务记一个"上次干活时间"，每圈比对一下：
+    到点了就干活，没到点就跳过。就像分拣站里扫件员每 2 毫秒扫一次包裹，而经理每秒才看一次报表：
+  </p>
+
+  <ul>
+    <li><strong>传感器读取</strong>：每 2 ms 一次（约 500Hz 节拍，<code>FirmwareConfig.h:132</code>，<code>MUS4_FW.ino:582-587</code>）</li>
+    <li><strong>RC 信号滤波</strong>：每 2 ms 一次（<code>FirmwareConfig.h:137</code>，<code>MUS4_FW.ino:619</code>）</li>
+    <li><strong>油门/转向遥测帧 T&lt;t&gt;S&lt;s&gt;</strong>：每 16 ms 一次，约 60Hz（<code>FirmwareConfig.h:133</code>，<code>MUS4_FW.ino:740-745</code>）</li>
+    <li><strong>IMU 数据帧 $IMU</strong>：每 10 ms 一次，100Hz（<code>FirmwareConfig.h:134</code>，<code>MUS4_FW.ino:776-788</code>）</li>
+    <li><strong>模式/驻车心跳 M:m:P:p</strong>：每 1000 ms 一次（1Hz），状态一变立即补发（<code>FirmwareConfig.h:135</code>，<code>MUS4_FW.ino:755-770</code>）</li>
+    <li><strong>串口 TUI 界面</strong>：100~250 ms 自适应，约 4~10Hz（<code>MUS4_FW.ino:133-135,829-830</code>）</li>
+  </ul>
+
+  <p>
+    为什么要这样"排班"？因为不同活儿的新鲜度要求完全不同：车轮转速和车身姿态瞬息万变，
+    必须高频伺候；而发给人看的屏幕刷新到 10Hz 就足够流畅，刷太快纯属浪费。把慢任务的闹钟调长，
+    省下的时间片全让给快任务——这就是单片机世界里最朴素也最有效的"多任务"智慧：不靠操作系统
+    调度，靠一圈圈快速轮转加一排小闹钟。
+  </p>
+
+  <div class="arch-note">
+    <strong>如果某一圈活儿太多、超时了怎么办？</strong>
+    固件每秒做一次"绩效评估"（<code>MUS4_FW.ino:826-832</code>）：发现上一圈画 TUI 界面
+    花了超过 250 ms，就自动把 UI 的闹钟调慢一点（最长 250ms，即降到 4Hz）；负担轻了再调快回去。
+    传感器和控制这些保命的岗位永远优先，界面卡顿一点没关系——值班室的规矩是：先看车，再看屏幕。
+  </div>
+</section>
+<section id="sec3" class="arch-section">
+  <h2>第 3 章 · 12 个 mus4 库 = 12 个部门</h2>
+
+  <p>打开 <code>libraries/</code> 文件夹，你会看到 12 个名字以 <code>mus4_</code> 开头的库（「库」就是一包写好、可以反复使用的代码）。如果把整块 ESP32 芯片想成一家公司的<strong>总经理</strong>，那么这 12 个库就是公司里的 <strong>12 个部门</strong>：总经理不做具体的事，只负责「上班打卡开工」（<code>setup()</code>）和「一遍遍巡视各个部门」（<code>loop()</code>），具体活儿全由部门干。</p>
+
+  <figure class="arch-figure">
+    <svg viewBox="0 0 800 470" width="100%" role="img" aria-label="MUS4 固件组织架构图：ESP32 总经理下辖 12 个 mus4 库部门">
+      <defs>
+        <marker id="arch-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#78909C"></path>
+        </marker>
+      </defs>
+
+      <!-- 总经理 -->
+      <rect x="300" y="16" width="200" height="56" rx="10" fill="#FFF3E0" stroke="#EF9A9A" stroke-width="2"></rect>
+      <text x="400" y="40" text-anchor="middle" font-size="16" font-weight="bold" fill="#4E342E">ESP32 · 总经理</text>
+      <text x="400" y="60" text-anchor="middle" font-size="12" fill="#6D4C41">只装配和调度，不亲自干活</text>
+
+      <!-- 汇报线 -->
+      <line x1="400" y1="72" x2="400" y2="100" stroke="#78909C" stroke-width="2"></line>
+      <line x1="100" y1="100" x2="700" y2="100" stroke="#78909C" stroke-width="2"></line>
+      <line x1="100" y1="100" x2="100" y2="126" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+      <line x1="300" y1="100" x2="300" y2="126" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+      <line x1="500" y1="100" x2="500" y2="126" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+      <line x1="700" y1="100" x2="700" y2="126" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+      <line x1="100" y1="212" x2="100" y2="246" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+      <line x1="300" y1="212" x2="300" y2="246" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+      <line x1="500" y1="212" x2="500" y2="246" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+      <line x1="700" y1="212" x2="700" y2="246" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+      <line x1="100" y1="332" x2="100" y2="366" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+      <line x1="300" y1="332" x2="300" y2="366" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+      <line x1="500" y1="332" x2="500" y2="366" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+      <line x1="700" y1="332" x2="700" y2="366" stroke="#78909C" stroke-width="1.5" marker-end="url(#arch-arrow)"></line>
+
+      <!-- 第一排 -->
+      <rect x="15" y="130" width="170" height="80" rx="8" fill="#E3F2FD" stroke="#64B5F6" stroke-width="1.5"></rect>
+      <text x="100" y="152" text-anchor="middle" font-size="13" font-weight="bold" fill="#0D47A1">总经办 mus4_core</text>
+      <text x="100" y="172" text-anchor="middle" font-size="12" fill="#37474F">规章制度与版本档案</text>
+      <text x="100" y="190" text-anchor="middle" font-size="12" fill="#37474F">全公司共享的通讯录</text>
+
+      <rect x="215" y="130" width="170" height="80" rx="8" fill="#E8F5E9" stroke="#81C784" stroke-width="1.5"></rect>
+      <text x="300" y="152" text-anchor="middle" font-size="13" font-weight="bold" fill="#1B5E20">收发室 mus4_rc</text>
+      <text x="300" y="172" text-anchor="middle" font-size="12" fill="#37474F">接收遥控器 6 通道信号</text>
+      <text x="300" y="190" text-anchor="middle" font-size="12" fill="#37474F">并把抖动过滤干净</text>
+
+      <rect x="415" y="130" width="170" height="80" rx="8" fill="#FFF3E0" stroke="#FFB74D" stroke-width="1.5"></rect>
+      <text x="500" y="152" text-anchor="middle" font-size="13" font-weight="bold" fill="#E65100">参谋部 mus4_control</text>
+      <text x="500" y="172" text-anchor="middle" font-size="12" fill="#37474F">算方向油门、切换驾驶模式</text>
+      <text x="500" y="190" text-anchor="middle" font-size="12" fill="#37474F">还提供漂移辅助</text>
+
+      <rect x="615" y="130" width="170" height="80" rx="8" fill="#FFEBEE" stroke="#E57373" stroke-width="1.5"></rect>
+      <text x="700" y="152" text-anchor="middle" font-size="13" font-weight="bold" fill="#B71C1C">安全部 mus4_safety</text>
+      <text x="700" y="172" text-anchor="middle" font-size="12" fill="#37474F">管急停和 Park 手刹</text>
+      <text x="700" y="190" text-anchor="middle" font-size="12" fill="#37474F">给舵机电调输出上保险</text>
+
+      <!-- 第二排 -->
+      <rect x="15" y="250" width="170" height="80" rx="8" fill="#E8F5E9" stroke="#81C784" stroke-width="1.5"></rect>
+      <text x="100" y="272" text-anchor="middle" font-size="13" font-weight="bold" fill="#1B5E20">客服中心 mus4_command</text>
+      <text x="100" y="292" text-anchor="middle" font-size="12" fill="#37474F">接听串口/无线命令电话</text>
+      <text x="100" y="310" text-anchor="middle" font-size="12" fill="#37474F">查权限后转给相关部门</text>
+
+      <rect x="215" y="250" width="170" height="80" rx="8" fill="#FFF3E0" stroke="#FFB74D" stroke-width="1.5"></rect>
+      <text x="300" y="272" text-anchor="middle" font-size="13" font-weight="bold" fill="#E65100">门卫 mus4_auth</text>
+      <text x="300" y="292" text-anchor="middle" font-size="12" fill="#37474F">用芯片身份证（eFuse）</text>
+      <text x="300" y="310" text-anchor="middle" font-size="12" fill="#37474F">识别来访的上位机</text>
+
+      <rect x="415" y="250" width="170" height="80" rx="8" fill="#E3F2FD" stroke="#64B5F6" stroke-width="1.5"></rect>
+      <text x="500" y="272" text-anchor="middle" font-size="13" font-weight="bold" fill="#0D47A1">通讯部 mus4_wifi</text>
+      <text x="500" y="292" text-anchor="middle" font-size="12" fill="#37474F">管理 Wi-Fi 热点与连接</text>
+      <text x="500" y="310" text-anchor="middle" font-size="12" fill="#37474F">负责无线升级（OTA）</text>
+
+      <rect x="615" y="250" width="170" height="80" rx="8" fill="#F3E5F5" stroke="#BA68C8" stroke-width="1.5"></rect>
+      <text x="700" y="272" text-anchor="middle" font-size="13" font-weight="bold" fill="#6A1B9A">网站窗口 mus4_web</text>
+      <text x="700" y="292" text-anchor="middle" font-size="12" fill="#37474F">浏览器里的 Web 控制台</text>
+      <text x="700" y="310" text-anchor="middle" font-size="12" fill="#37474F">实时推送遥测数据</text>
+
+      <!-- 第三排 -->
+      <rect x="15" y="370" width="170" height="80" rx="8" fill="#FFF3E0" stroke="#FFB74D" stroke-width="1.5"></rect>
+      <text x="100" y="392" text-anchor="middle" font-size="13" font-weight="bold" fill="#E65100">传感器部 mus4_i2c</text>
+      <text x="100" y="412" text-anchor="middle" font-size="12" fill="#37474F">照顾两个「感觉器官」</text>
+      <text x="100" y="430" text-anchor="middle" font-size="12" fill="#37474F">陀螺仪 IMU 与电流计</text>
+
+      <rect x="215" y="370" width="170" height="80" rx="8" fill="#E3F2FD" stroke="#64B5F6" stroke-width="1.5"></rect>
+      <text x="300" y="392" text-anchor="middle" font-size="13" font-weight="bold" fill="#0D47A1">行政部 mus4_ui</text>
+      <text x="300" y="412" text-anchor="middle" font-size="12" fill="#37474F">串口仪表盘、状态灯</text>
+      <text x="300" y="430" text-anchor="middle" font-size="12" fill="#37474F">蜂鸣器，负责「面子工程」</text>
+
+      <rect x="415" y="370" width="170" height="80" rx="8" fill="#E8F5E9" stroke="#81C784" stroke-width="1.5"></rect>
+      <text x="500" y="392" text-anchor="middle" font-size="13" font-weight="bold" fill="#1B5E20">档案室 mus4_log</text>
+      <text x="500" y="412" text-anchor="middle" font-size="12" fill="#37474F">统一记日志、存档案</text>
+      <text x="500" y="430" text-anchor="middle" font-size="12" fill="#37474F">谁都能来查记录</text>
+
+      <rect x="615" y="370" width="170" height="80" rx="8" fill="#FFEBEE" stroke="#E57373" stroke-width="1.5"></rect>
+      <text x="700" y="392" text-anchor="middle" font-size="13" font-weight="bold" fill="#B71C1C">质检部 mus4_diag</text>
+      <text x="700" y="412" text-anchor="middle" font-size="12" fill="#37474F">给公司做体检、压力测试</text>
+      <text x="700" y="430" text-anchor="middle" font-size="12" fill="#37474F">还兼职蓝牙手柄</text>
+    </svg>
+    <figcaption class="arch-caption">MUS4 公司组织架构图：总经理 ESP32 只管调度，12 个部门（mus4 库）各管一摊，汇报线箭头表示「听总经理的统一安排」。</figcaption>
+  </figure>
+
+  <p>这些职责都不是猜的，而是写在代码里的。比如「收发室」<code>mus4_rc</code> 里的 <code>RcPwmCapture.h</code> 用硬件中断捕捉遥控器发来的 PWM 脉冲（PWM：一种用脉冲宽度表示数值的信号），<code>RcFilter.h</code> 再做滑动窗口中值滤波把抖动抹平；「安全部」<code>mus4_safety</code> 的 <code>SafetyState.h</code> 注释里就写着「Emergency stop state machine」（急停状态机）和「Park button state machine」（Park 手刹状态机），<code>ActuatorOutput.h</code> 则负责最后把 300Hz/14bit 的 PWM 安全地发给舵机和电调——任何部门算出的油门，最终都要过安全部这道关。</p>
+
+  <p>部门之间怎么协作？想象有人打客服电话：串口或 Wi-Fi 上收到一行命令，<strong>客服中心</strong> <code>mus4_command</code> 先用 <code>CommandParser.h</code> 听懂这句话，再由 <code>CommandDispatcher.h</code> 转给对应部门；如果是无线来的命令，<code>WirelessConsole.h</code> 还要先查权限——涉及车辆动作的命令必须拉了 Park 手刹才放行（<code>WirelessConsole.h:20-21</code>）。而 <strong>门卫</strong> <code>mus4_auth</code> 的活儿更单纯：通过串口回答「你是谁」，报出 ESP32 芯片出厂烧死的唯一身份证 eFuse ID（<code>AuthService.h:2-5</code>）。</p>
+
+  <p>剩下的部门也很好记：<strong>传感器部</strong> <code>mus4_i2c</code> 守着 I2C 总线（一种两根线挂多个传感器的「内部电话线」），定时读陀螺仪 MPU6050 和电流计 INA219（<code>Sensors.h:5-7</code>）；<strong>通讯部</strong> <code>mus4_wifi</code> 管 Wi-Fi 热点、连路由器和 OTA 无线升级（<code>WifiManager.h:48-50</code>）；<strong>网站窗口</strong> <code>mus4_web</code> 让你在浏览器里看控制台和实时遥测（<code>WebConsoleServer.h</code>）；<strong>行政部</strong> <code>mus4_ui</code> 管串口仪表盘 TUI、状态灯和蜂鸣器；<strong>档案室</strong> <code>mus4_log</code> 提供统一的记日志入口 <code>mus4Logf()</code>（<code>Mus4Log.h:11-12</code>）；<strong>质检部</strong> <code>mus4_diag</code> 负责性能退化检测、基准/压力测试，外加蓝牙手柄输出（<code>Diagnostics.h:6-12</code>）。最特殊的是 <strong>总经办</strong> <code>mus4_core</code>：它不干活，只发「红头文件」——全公司共享的引脚定义、时序常量、版本号和公共数据类型都在它的 <code>FirmwareConfig.h</code> 和 <code>BuildInfo.h</code> 里。</p>
+
+  <p>你可能会问：那主文件 <code>MUS4_FW.ino</code> 干什么？答案是它<strong>故意很薄</strong>——全部 834 行里，核心只有两段：<code>setup()</code>（<code>MUS4_FW.ino:487</code>）像开工前的早会，把各部门挨个「组建」起来（初始化串口、I2C、Wi-Fi、执行器）；<code>loop()</code>（<code>MUS4_FW.ino:579</code>）像值班主任的巡回检查，一圈一圈地喊「传感器部读一下数据」「通讯部处理一下网络」「收发室看看遥控器」。具体的判断和计算，全都写在部门自己的代码里。</p>
+
+  <ul>
+    <li><strong>分工明确，出问题好找人</strong>：遥控器信号飘了？去翻「收发室」；无线命令没反应？去查「客服中心」。不用在一个几千行的大文件里大海捞针。</li>
+    <li><strong>改一个部门，不吓到其他部门</strong>：比如升级漂移辅助算法只动 <code>mus4_control</code>，安全部的限幅逻辑原封不动，车不会因为你改代码就突然失控——对一辆真会跑的车来说，这点特别重要。</li>
+    <li><strong>部门牌子就是说明书</strong>：每个库都有一个同名「聚合头文件」（如 <code>mus4_safety.h:13-14</code>），几行 <code>#include</code> 就列出了这个部门对外提供哪些服务，想看全貌先看牌子。</li>
+  </ul>
+
+  <div class="arch-note">
+    <strong>小知识</strong>：这种「薄薄的总入口 + 一堆各司其职的库」的写法，在软件工程里叫「模块化」。就像快递公司把分拣、运输、派送分给不同网点一样——ESP32 总经理只要记住 12 个部门的电话，公司就能一直转下去。
+  </div>
+</section>
+<section id="sec4" class="arch-section">
+  <h2>第 4 章　安全系统：手刹 + 安全气囊</h2>
+
+  <p>一辆能自己跑的小车，最怕的不是「跑不快」，而是「停不下来」。MUS4 的固件作者显然深谙此道：整套安全设计就像给车叠了四层防护盾——最里面是限制输出的「护栏」，中间是永远默认拉起的「手刹」（Park 锁定），外面还有「断线自动松油门」和「升级时强制停车」两道保险。这一章我们一层层拆开看。</p>
+
+  <figure class="arch-figure">
+    <svg viewBox="0 0 800 560" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr4" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#546E7A"/>
+        </marker>
+        <marker id="arr4r" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#E53935"/>
+        </marker>
+        <marker id="arr4g" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#43A047"/>
+        </marker>
+      </defs>
+
+      <!-- ===== 左侧：四层防护盾 ===== -->
+      <text x="200" y="34" text-anchor="middle" font-size="16" font-weight="bold" fill="#37474F">四层防护盾（从外到内）</text>
+
+      <rect x="25" y="55" width="350" height="360" rx="28" fill="#E3F2FD" stroke="#64B5F6" stroke-width="2"/>
+      <text x="200" y="80" text-anchor="middle" font-size="13" font-weight="bold" fill="#1565C0">第1层 RC 失控保护</text>
+      <text x="200" y="98" text-anchor="middle" font-size="12" fill="#1565C0">信号断 1 秒 → 自动回中位</text>
+
+      <rect x="55" y="112" width="290" height="275" rx="24" fill="#FFF3E0" stroke="#FFB74D" stroke-width="2"/>
+      <text x="200" y="136" text-anchor="middle" font-size="13" font-weight="bold" fill="#E65100">第2层 Park 手刹锁定</text>
+      <text x="200" y="153" text-anchor="middle" font-size="12" fill="#E65100">默认锁死 · 长按 1 秒才解锁</text>
+
+      <rect x="85" y="166" width="230" height="195" rx="20" fill="#F3E5F5" stroke="#BA68C8" stroke-width="2"/>
+      <text x="200" y="190" text-anchor="middle" font-size="13" font-weight="bold" fill="#6A1B9A">第3层 OTA 升级强制 Park</text>
+      <text x="200" y="207" text-anchor="middle" font-size="12" fill="#6A1B9A">刷固件时绝不能踩油门</text>
+
+      <rect x="115" y="220" width="170" height="115" rx="16" fill="#E8F5E9" stroke="#81C784" stroke-width="2"/>
+      <text x="200" y="244" text-anchor="middle" font-size="13" font-weight="bold" fill="#2E7D32">第4层 PWM 限幅</text>
+      <text x="200" y="261" text-anchor="middle" font-size="12" fill="#2E7D32">输出永不越界</text>
+
+      <rect x="145" y="278" width="110" height="42" rx="10" fill="#FFFFFF" stroke="#546E7A" stroke-width="2"/>
+      <text x="200" y="304" text-anchor="middle" font-size="13" font-weight="bold" fill="#37474F">电机 / 舵机</text>
+
+      <text x="200" y="440" text-anchor="middle" font-size="12" fill="#546E7A">任何一层生效，车都不会「发疯」</text>
+
+      <!-- ===== 右侧：Park 状态机 ===== -->
+      <text x="590" y="34" text-anchor="middle" font-size="16" font-weight="bold" fill="#37474F">Park 手刹状态机</text>
+
+      <rect x="490" y="60" width="190" height="56" rx="12" fill="#FFEBEE" stroke="#E53935" stroke-width="2.5"/>
+      <text x="585" y="83" text-anchor="middle" font-size="14" font-weight="bold" fill="#C62828">Park 锁定 LOCKED</text>
+      <text x="585" y="102" text-anchor="middle" font-size="12" fill="#C62828">手刹拉起 · 油门被没收（开机默认）</text>
+
+      <rect x="490" y="220" width="190" height="56" rx="12" fill="#E8F5E9" stroke="#43A047" stroke-width="2.5"/>
+      <text x="585" y="243" text-anchor="middle" font-size="14" font-weight="bold" fill="#2E7D32">解锁行驶 UNLOCKED</text>
+      <text x="585" y="262" text-anchor="middle" font-size="12" fill="#2E7D32">手刹放下 · 正常响应油门</text>
+
+      <!-- 解锁箭头 -->
+      <path d="M 555 116 L 555 220" fill="none" stroke="#43A047" stroke-width="2.5" marker-end="url(#arr4g)"/>
+      <text x="462" y="172" text-anchor="middle" font-size="12" fill="#2E7D32" transform="rotate(-90 462 172)">长按 Park 键 1 秒</text>
+
+      <!-- 锁定箭头 -->
+      <path d="M 615 220 L 615 116" fill="none" stroke="#E53935" stroke-width="2.5" marker-end="url(#arr4r)"/>
+      <text x="708" y="172" text-anchor="middle" font-size="12" fill="#C62828" transform="rotate(-90 708 172)">长按 Park 键 1 秒</text>
+
+      <!-- RC 失控 -->
+      <rect x="560" y="300" width="160" height="44" rx="10" fill="#E3F2FD" stroke="#64B5F6" stroke-width="2" stroke-dasharray="5 4"/>
+      <text x="640" y="318" text-anchor="middle" font-size="12" font-weight="bold" fill="#1565C0">遥控器信号丢失</text>
+      <text x="640" y="334" text-anchor="middle" font-size="12" fill="#1565C0">超时 1 秒判定</text>
+      <path d="M 560 322 C 480 322 460 300 448 280" fill="none" stroke="#1565C0" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arr4)"/>
+      <text x="442" y="312" text-anchor="end" font-size="12" fill="#1565C0">油门/转向自动回中位</text>
+
+      <!-- OTA -->
+      <rect x="560" y="360" width="160" height="44" rx="10" fill="#F3E5F5" stroke="#BA68C8" stroke-width="2"/>
+      <text x="640" y="378" text-anchor="middle" font-size="12" font-weight="bold" fill="#6A1B9A">OTA 固件升级中</text>
+      <text x="640" y="394" text-anchor="middle" font-size="12" fill="#6A1B9A">每一拍都强制 Park</text>
+      <path d="M 560 372 C 470 372 430 300 410 240 L 404 160 C 402 120 430 100 486 92" fill="none" stroke="#6A1B9A" stroke-width="2" marker-end="url(#arr4)"/>
+
+      <!-- 紧急制动小流程 -->
+      <text x="590" y="452" text-anchor="middle" font-size="14" font-weight="bold" fill="#37474F">紧急制动状态机（SafetyState.cpp）</text>
+      <rect x="400" y="466" width="110" height="44" rx="8" fill="#FFF3E0" stroke="#FFB74D" stroke-width="2"/>
+      <text x="455" y="484" text-anchor="middle" font-size="12" font-weight="bold" fill="#E65100">READY</text>
+      <text x="455" y="500" text-anchor="middle" font-size="12" fill="#E65100">缓冲 0.5 秒</text>
+      <path d="M 512 488 L 548 488" fill="none" stroke="#546E7A" stroke-width="2" marker-end="url(#arr4)"/>
+      <rect x="550" y="466" width="110" height="44" rx="8" fill="#FFEBEE" stroke="#E53935" stroke-width="2"/>
+      <text x="605" y="484" text-anchor="middle" font-size="12" font-weight="bold" fill="#C62828">BRAKING</text>
+      <text x="605" y="500" text-anchor="middle" font-size="12" fill="#C62828">反向制动 1.5 秒</text>
+      <path d="M 662 488 L 698 488" fill="none" stroke="#546E7A" stroke-width="2" marker-end="url(#arr4)"/>
+      <rect x="700" y="466" width="90" height="44" rx="8" fill="#E8F5E9" stroke="#81C784" stroke-width="2"/>
+      <text x="745" y="484" text-anchor="middle" font-size="12" font-weight="bold" fill="#2E7D32">DONE</text>
+      <text x="745" y="500" text-anchor="middle" font-size="12" fill="#2E7D32">油门归零</text>
+    </svg>
+    <figcaption class="arch-caption">左：四层防护盾——从失控保护到 PWM 限幅层层包裹执行器；右：Park 手刹的开锁/上锁状态转换，以及失控、OTA 两个「自动兜底」入口和紧急制动的三段流程。</figcaption>
+  </figure>
+
+  <p><strong>第 1 层：RC 失控保护——打电话断线了，就先松开油门。</strong>车主循环每拍都会检查遥控器各通道「上一次收到有效信号」的时间戳，一旦超过 1 秒（<code>FirmwareConfig.h:100</code>，<code>RC_SIGNAL_TIMEOUT = 1000000µs</code>）就判定该通道失控（<code>MUS4_FW.ino:612</code>）。失控后转向和油门被强制写回中位值（<code>MUS4_FW.ino:666-676</code>）——相当于驾驶员晕倒的瞬间，车自己把方向盘回正、脚从油门上抬开。更细节的是 Park 通道：失控时它被强制写成「明确松开」的 1000µs（<code>MUS4_FW.ino:679-686</code>），防止残留的「按下」信号在信号恢复后误触发一次锁定/解锁。</p>
+
+  <p><strong>第 2 层：Park 手刹——默认拉起，想放下要「长按确认」。</strong>车一上电就把自己锁死（<code>MUS4_FW.ino:570-573</code>），此时控制混合器直接跳过油门赋值，只让 LED 红蓝闪烁提醒「我在锁定中」（<code>ControlMixer.cpp:109-116</code>）。解锁不是按一下就行的：<code>park_change()</code>（<code>SafetyState.cpp:77-143</code>）要求遥控器 Park 键<strong>连续按住 1 秒</strong>才切换状态，而且用了一对「迟滞阈值」——PWM 高于 1700µs 才算按下、低于 1300µs 才算松开（<code>FirmwareConfig.h:97-98</code>），中间 400µs 的缓冲带让信号噪声无法造成误触发。这就像真车的电子手刹：既要长按，还要踩刹车，双重确认防误碰。</p>
+
+  <p><strong>第 3 层：OTA 升级强制 Park——换发动机的时候，绝不许踩油门。</strong>通过 Wi-Fi 给车刷固件（OTA）时，固件正在改写自己的「大脑」，这是最危险的时刻。所以只要 OTA 传输开始，主循环每一拍都会调用 <code>forceWifiOtaParkLocked()</code>（<code>MUS4_FW.ino:692</code>），把 Park 锁死、油门清零（<code>WifiOta.cpp:29-34</code>）。哪怕你此时按遥控器解锁也没用——守卫在每拍循环里都会把锁重新扣上，直到升级结束。</p>
+
+  <p><strong>第 4 层：PWM 限幅——最后一道护栏。</strong>就算前面所有逻辑都出了错，写到电机和舵机引脚上的数值最后还要过一道「安检门」：转向被钳制在 4915~9830（对应 1000~2000µs 脉宽），油门则被钳制在校准得到的最小/最大占空比之间（<code>ActuatorOutput.cpp:49-50</code>）。无论上层算出什么离谱的数字，物理输出永远不越界。</p>
+
+  <p><strong>紧急制动状态机：不是一脚踩死，而是「三段式刹车」。</strong><code>SafetyState.cpp:26-75</code> 里还设计了一个四状态流程：发现油门不为零时先进入 <code>EST_READY</code> 缓冲 0.5 秒（把油门降到 15），再进入 <code>EST_BRAKING</code> 反向输出 1.5 秒主动刹车，最后 <code>EST_DONE</code> 把油门归零。就像经验丰富的司机急刹：先松油、再踩刹、最后停稳，而不是瞬间抱死导致翻车。</p>
+
+  <div class="arch-note">
+    诚实的小字：紧急制动状态机 <code>emergencyStop()</code> 目前已完整实现在安全库中，但当前版本的主循环并未调用它——实际起保护作用的是「Park 锁定时混合器不写油门」与「失控回中位」这两条路径；该状态机作为预留模块存在，解锁时会将其复位到 <code>EST_IDLE</code>（<code>SafetyState.cpp:115</code>）。
+  </div>
+
+  <div class="arch-grid">
+    <div class="arch-card">
+      <h3>失控保护</h3>
+      <p>信号超时 1 秒即判失控，转向/油门回中位，Park 键状态强制清零，防止「幽灵按键」。</p>
+    </div>
+    <div class="arch-card">
+      <h3>Park 手刹</h3>
+      <p>开机默认锁定；长按 1 秒 + 迟滞阈值双重防误触；锁定期间油门被混合器直接无视。</p>
+    </div>
+    <div class="arch-card">
+      <h3>OTA 守卫</h3>
+      <p>刷固件期间每拍强制 Park 锁定、油门清零，升级完成前谁也别想动车。</p>
+    </div>
+    <div class="arch-card">
+      <h3>PWM 限幅</h3>
+      <p>最底层的硬件护栏：无论上层逻辑多离谱，输出脉宽永远钳在安全区间内。</p>
+    </div>
+  </div>
+</section>
+<section id="sec5" class="arch-section">
+  <h2>第 5 章 · 三条串口 + Wi-Fi：怎么和上位机打电话</h2>
+
+  <p>一辆会自己漂移的车，其实是"两个人"在合作：车上的 ESP32 负责反应快的活儿（转舵机、踩油门），旁边的 Linux 上位机负责动脑筋的活儿（跑神经网络、做决定）。那它们怎么商量？答案是<strong>三条串口线加一段 Wi-Fi</strong>——就像你和同学之间既有热线电话、又有短信、还有班级群。每条通道分工明确、互不打扰：一条只用来给程序员"看病"（调试），一条是开车时的"热线电话"，一条是刚开机时的"接通测试与报户口"，Wi-Fi 则是给你用手机围观用的"广播台"。协议约定写在主程序顶部的注释里（<code>MUS4_FW.ino:20-25</code>），下面这张图把每条线都画出来，并标上真实跑过的数据帧。</p>
+
+  <figure class="arch-figure">
+    <svg viewBox="0 0 800 560" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrB" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#1565C0"/>
+        </marker>
+        <marker id="arrG" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#2E7D32"/>
+        </marker>
+        <marker id="arrO" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#E65100"/>
+        </marker>
+      </defs>
+
+      <!-- ESP32 车端 -->
+      <rect x="50" y="70" width="200" height="300" rx="12" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
+      <text x="150" y="98" text-anchor="middle" font-size="16" font-weight="bold" fill="#0D47A1">ESP32 车端</text>
+      <text x="150" y="118" text-anchor="middle" font-size="12" fill="#0D47A1">MUS4_FW 固件</text>
+      <text x="150" y="340" text-anchor="middle" font-size="12" fill="#0D47A1">管舵机 / 电调 / IMU</text>
+      <text x="150" y="358" text-anchor="middle" font-size="12" fill="#0D47A1">反应快，不管"想"</text>
+
+      <!-- Linux 上位机 -->
+      <rect x="550" y="70" width="200" height="240" rx="12" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
+      <text x="650" y="98" text-anchor="middle" font-size="16" font-weight="bold" fill="#1B5E20">Linux 上位机</text>
+      <text x="650" y="118" text-anchor="middle" font-size="12" fill="#1B5E20">DonkeyDrift</text>
+      <text x="650" y="280" text-anchor="middle" font-size="12" fill="#1B5E20">跑 AI 模型，做决策</text>
+
+      <!-- 开发电脑 -->
+      <rect x="50" y="440" width="200" height="80" rx="12" fill="#FFF3E0" stroke="#E65100" stroke-width="2"/>
+      <text x="150" y="468" text-anchor="middle" font-size="14" font-weight="bold" fill="#E65100">开发电脑</text>
+      <text x="150" y="490" text-anchor="middle" font-size="12" fill="#E65100">串口助手 / 调试 TUI</text>
+
+      <!-- 手机/笔记本 -->
+      <rect x="550" y="420" width="200" height="100" rx="12" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="2"/>
+      <text x="650" y="448" text-anchor="middle" font-size="14" font-weight="bold" fill="#6A1B9A">手机 / 笔记本</text>
+      <text x="650" y="468" text-anchor="middle" font-size="12" fill="#6A1B9A">浏览器围观 · 无线调参</text>
+
+      <!-- Serial1 上行：T/M 帧 -->
+      <line x1="250" y1="130" x2="544" y2="130" stroke="#1565C0" stroke-width="2.5" marker-end="url(#arrB)"/>
+      <text x="397" y="122" text-anchor="middle" font-size="12" fill="#0D47A1">上行 ① 遥测 60Hz（仅人工模式）</text>
+      <text x="397" y="144" text-anchor="middle" font-size="13" font-family="monospace" fill="#0D47A1">T512S489　M1:P0</text>
+
+      <!-- Serial1 上行：IMU 帧 -->
+      <line x1="250" y1="185" x2="544" y2="185" stroke="#1565C0" stroke-width="2.5" marker-end="url(#arrB)"/>
+      <text x="397" y="177" text-anchor="middle" font-size="12" fill="#0D47A1">上行 ② 九轴 IMU 100Hz（所有模式）</text>
+      <text x="397" y="200" text-anchor="middle" font-size="12" font-family="monospace" fill="#0D47A1">$IMU,42,123456,0.0123,-0.4567,9.8100,…</text>
+
+      <!-- Serial1 下行：控制指令 -->
+      <line x1="550" y1="245" x2="256" y2="245" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arrG)"/>
+      <text x="397" y="237" text-anchor="middle" font-size="12" fill="#1B5E20">下行：AI 的控制指令 &lt;油门&gt;:&lt;转向&gt;</text>
+      <text x="397" y="259" text-anchor="middle" font-size="13" font-family="monospace" fill="#1B5E20">45:-12:7*3A</text>
+
+      <!-- Serial2 ping-pong -->
+      <line x1="250" y1="295" x2="544" y2="295" stroke="#E65100" stroke-width="2" stroke-dasharray="8,4" marker-end="url(#arrO)"/>
+      <line x1="550" y1="315" x2="256" y2="315" stroke="#E65100" stroke-width="2" stroke-dasharray="8,4" marker-end="url(#arrO)"/>
+      <text x="397" y="290" text-anchor="middle" font-size="12" font-family="monospace" fill="#E65100">PING,7 →</text>
+      <text x="397" y="331" text-anchor="middle" font-size="12" font-family="monospace" fill="#E65100">← PONG,7,123456　BEAT,98765</text>
+      <text x="150" y="328" text-anchor="middle" font-size="12" fill="#E65100">Serial2</text>
+      <text x="650" y="331" text-anchor="middle" font-size="12" fill="#E65100">配网应答</text>
+
+      <!-- 通道标签 -->
+      <text x="150" y="143" text-anchor="middle" font-size="12" fill="#0D47A1">Serial1</text>
+      <text x="150" y="258" text-anchor="middle" font-size="12" fill="#1B5E20">Serial1</text>
+
+      <!-- Serial0 调试线 -->
+      <line x1="150" y1="370" x2="150" y2="434" stroke="#E65100" stroke-width="2.5" marker-end="url(#arrO)"/>
+      <text x="262" y="406" text-anchor="middle" font-size="12" fill="#E65100">Serial0 · USB · 程序员专用"听诊器"</text>
+
+      <!-- Wi-Fi 虚线 -->
+      <path d="M250,360 C400,400 500,420 556,455" fill="none" stroke="#6A1B9A" stroke-width="2.5" stroke-dasharray="10,6" marker-end="url(#arrO)"/>
+      <text x="400" y="428" text-anchor="middle" font-size="12" fill="#6A1B9A">Wi-Fi Console：TCP 2323 · Web 80 · WebSocket 81 · OTA 3232</text>
+    </svg>
+    <figcaption class="arch-caption">图 5-1　ESP32 与上位机之间的"通信地图"：三条串口各司其职，Wi-Fi 是给旁观者开的窗户。帧样例均为协议里的真实格式。</figcaption>
+  </figure>
+
+  <p><strong>Serial1 是那根"热线电话"</strong>（接收 RX=16、发送 TX=17，波特率 115200，<code>MUS4_FW.ino:511</code>）。车开起来时，ESP32 每秒钟往上位机"汇报"三种消息，全部在主循环里拼装发出（<code>MUS4_FW.ino:724-801</code>）：</p>
+
+  <ul>
+    <li><strong>遥测帧 <code>T512S489</code></strong>：T 后面是油门、S 后面是转向，每秒约 60 次，只在人工驾驶模式发送——相当于你开车时，副驾不断把你的操作报给记录员，好让 AI 事后学习（<code>FirmwareConfig.h:134</code> 附近定义节奏）。</li>
+    <li><strong>模式心跳 <code>M1:P0</code></strong>：M 是驾驶模式、P 是"手刹"（Park）状态。每秒固定报一次平安，状态一变立刻补报——就像值班主任每秒喊一句"一切正常"，喊不出来就说明电话断了（<code>FirmwareConfig.h:135</code>）。</li>
+    <li><strong>IMU 帧 <code>$IMU,42,123456,0.0123,…</code></strong>：惯性测量单元（IMU，感受加速度和旋转的传感器）的九轴数据——3 轴加速度 + 3 轴角速度，外加序号和时间戳，每秒约 100 次，任何模式都发，是 AI 判断车身姿态的"前庭觉"。</li>
+  </ul>
+
+  <p>反方向，上位机把 AI 算出来的决策以 <code>&lt;油门&gt;:&lt;转向&gt;</code> 的格式发回来，比如 <code>45:-12:7*3A</code>——冒号分隔油门与转向，后面还可以带序号和 CRC 校验（一种"对暗号"式的检错码，防止数据在电线上被干扰出错）。固件逐字节收、按行解析后交给命令分发器处理（<code>libraries/mus4_command/src/SerialLineReader.cpp:18</code>）。</p>
+
+  <p>有个工程细节很能说明问题：三类上行帧不是各发各的，而是先拼进同一个 512 字节的"快递箱"，<strong>一次 <code>write()</code> 整箱寄出</strong>（<code>MUS4_FW.ino:790-800</code>）。这是 v1.7.33 修的 bug——分多次发送时，高速率下两帧会"粘"在一起或丢字符，就像两封信塞进同一个信封，收信人拆都拆不开。</p>
+
+  <p><strong>Serial2 是"接通测试热线"</strong>（RX=19 / TX=18，<code>MUS4_FW.ino:512</code>），由专门的 <code>handleSerial2()</code> 处理（<code>MUS4_FW.ino:378-485</code>），分三级：上位机发 <code>PING,7</code>，固件立刻回 <code>PONG,7,123456</code>（带上自己的开机毫秒数）——这是"喂，听得到吗？"；发 <code>CMD:</code>/<code>ARG:</code> 开头的命令则转给身份识别模块"报户口"；其余任何文本原样回声（ECHO）。此外固件每秒还主动发一次 <code>BEAT,98765</code> 心跳。上位机帮车连 Wi-Fi 的结果（<code>OK|192.168.1.5</code> 或 <code>FAIL|密码错误</code>）也从这条线回传。注意它故意<strong>不走</strong>控制命令通道——免得一声 PING 被误当成打方向盘。</p>
+
+  <p><strong>Wi-Fi Console 是"广播台"</strong>，一口气开四个端口（定义在 <code>libraries/mus4_core/src/WifiConsoleTypes.h:13</code> 起）：TCP 2323 是 telnet 风格的命令行控制台；80 端口是浏览器直接打开的网页控制台（<code>libraries/mus4_web/src/WebConsoleServer.cpp:1281</code> 起注册了一堆 <code>/api/*</code> 接口）；WebSocket 81 专门推送实时遥测曲线（<code>libraries/mus4_web/src/WebTelemetry.cpp:27</code>）；OTA 3232 则用来"隔空刷固件"——不用插线就能给车升级程序（<code>MUS4_FW.ino:313</code>）。</p>
+
+  <div class="arch-note">
+    <strong>为什么要三条串口，一条不够用吗？</strong>够，但很危险。把调试打印、AI 控制、接通测试挤在一条线上，一旦调试信息刷屏，控制指令就可能被淹没——这就像把 120 急救电话和外卖热线合并成一个号码。三条线物理分开，谁出问题都不拖累别人：Serial0 随便刷日志，Serial1 永远畅通，Serial2 安静待命。安全关键系统里，"分线"就是最便宜也最可靠的保险。
+  </div>
+
+  <div class="arch-grid">
+    <div class="arch-card">
+      <strong>Serial0 · 听诊器</strong>
+      <p>USB 接开发电脑，跑调试 TUI 界面，程序员看波形、查状态专用，车跑起来后拔掉也不影响。</p>
+    </div>
+    <div class="arch-card">
+      <strong>Serial1 · 热线电话</strong>
+      <p>上行 T/M/$IMU 三种帧（60/1/100Hz），下行油门转向指令。开车期间唯一不能断的线。</p>
+    </div>
+    <div class="arch-card">
+      <strong>Serial2 · 门铃</strong>
+      <p>PING/PONG 测连通、身份识别、Wi-Fi 配网应答，外加每秒一次 BEAT 心跳。</p>
+    </div>
+    <div class="arch-card">
+      <strong>Wi-Fi · 广播台</strong>
+      <p>2323 命令行 / 80 网页 / 81 曲线推送 / 3232 无线刷机，给人围观和维护用。</p>
+    </div>
+  </div>
+</section>
+<section id="sec6" class="arch-section">
+  <h2>第 6 章 · 漂移辅助与信号滤波：让车又稳又漂</h2>
+
+  <p>
+    一辆真正的漂移车要"又稳又漂"，靠的是两位幕后高手。第一位是<b>信号滤波器</b>：遥控器发来的
+    PWM 信号（一种用脉冲宽度表示数值的无线电编码，比如 1500 微秒代表"中位"）在空气中飞行时难免沾上"毛刺"，
+    如果照单全收，舵机就会无缘无故地抽搐。第二位是<b>漂移辅助 DriftAssist</b>：车头上装着一颗陀螺仪
+    （MPU6050，能感知车身旋转快慢的小芯片），它像人骑车时身体自动调整平衡那样，实时感知车身横摆，
+    发现车尾甩得比你想要的更凶，就悄悄帮你回一把方向。这两位高手一个"降噪"，一个"闭环"，
+    本章就来看看它们是怎么工作的。
+  </p>
+
+  <figure class="arch-figure">
+    <svg viewBox="0 0 800 320" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="sec6-arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L10,4 L0,8 Z" fill="#546E7A"></path>
+        </marker>
+      </defs>
+
+      <!-- 标题 -->
+      <text x="400" y="24" font-size="16" text-anchor="middle" fill="#37474F">漂移辅助闭环控制框图（每秒重复上百次）</text>
+
+      <!-- 期望值 -->
+      <rect x="20" y="70" width="150" height="70" rx="10" fill="#E3F2FD" stroke="#64B5F6" stroke-width="2"></rect>
+      <text x="95" y="98" font-size="13" text-anchor="middle" fill="#0D47A1">期望横摆速度</text>
+      <text x="95" y="118" font-size="12" text-anchor="middle" fill="#1565C0">驾驶员转向 × 上限</text>
+
+      <!-- 箭头：期望 -> 比较器 -->
+      <line x1="170" y1="105" x2="205" y2="105" stroke="#546E7A" stroke-width="2" marker-end="url(#sec6-arrow)"></line>
+      <text x="188" y="95" font-size="14" text-anchor="middle" fill="#2E7D32">+</text>
+
+      <!-- 比较器 -->
+      <circle cx="230" cy="105" r="22" fill="#FFF3E0" stroke="#FFB74D" stroke-width="2"></circle>
+      <text x="230" y="111" font-size="16" text-anchor="middle" fill="#E65100">Σ</text>
+      <text x="230" y="62" font-size="12" text-anchor="middle" fill="#BF360C">比较器：求差</text>
+
+      <!-- 箭头：比较器 -> 控制器 -->
+      <line x1="252" y1="105" x2="295" y2="105" stroke="#546E7A" stroke-width="2" marker-end="url(#sec6-arrow)"></line>
+      <text x="273" y="95" font-size="12" text-anchor="middle" fill="#BF360C">误差</text>
+
+      <!-- P+D 控制器 -->
+      <rect x="300" y="70" width="140" height="70" rx="10" fill="#E8F5E9" stroke="#81C784" stroke-width="2"></rect>
+      <text x="370" y="98" font-size="13" text-anchor="middle" fill="#1B5E20">P+D 控制器</text>
+      <text x="370" y="118" font-size="12" text-anchor="middle" fill="#2E7D32">差多少 × 力度</text>
+
+      <!-- 箭头：控制器 -> 车 -->
+      <line x1="440" y1="105" x2="485" y2="105" stroke="#546E7A" stroke-width="2" marker-end="url(#sec6-arrow)"></line>
+      <text x="462" y="95" font-size="12" text-anchor="middle" fill="#1B5E20">转向修正</text>
+
+      <!-- 车 -->
+      <rect x="490" y="60" width="150" height="90" rx="10" fill="#E3F2FD" stroke="#64B5F6" stroke-width="2"></rect>
+      <text x="565" y="95" font-size="13" text-anchor="middle" fill="#0D47A1">漂移车</text>
+      <text x="565" y="115" font-size="12" text-anchor="middle" fill="#1565C0">舵机 + 电调</text>
+      <text x="565" y="135" font-size="12" text-anchor="middle" fill="#1565C0">车身实际横摆</text>
+
+      <!-- 输出标记 -->
+      <line x1="640" y1="105" x2="700" y2="105" stroke="#546E7A" stroke-width="2" marker-end="url(#sec6-arrow)"></line>
+      <text x="720" y="110" font-size="13" fill="#37474F">车跑起来</text>
+
+      <!-- 反馈：车 -> 下方 -> 陀螺仪 -->
+      <path d="M565,150 L565,200 L610,200 L610,235" fill="none" stroke="#546E7A" stroke-width="2" marker-end="url(#sec6-arrow)"></path>
+
+      <!-- 陀螺仪 -->
+      <rect x="520" y="235" width="180" height="60" rx="10" fill="#FFF3E0" stroke="#FFB74D" stroke-width="2"></rect>
+      <text x="610" y="260" font-size="13" text-anchor="middle" fill="#E65100">陀螺仪 MPU6050</text>
+      <text x="610" y="280" font-size="12" text-anchor="middle" fill="#BF360C">测出实际横摆 gyroZ</text>
+
+      <!-- 反馈线：陀螺仪 -> 左 -> 上 -> 比较器 -->
+      <path d="M520,265 L110,265 L110,170 L208,170 L208,127" fill="none" stroke="#546E7A" stroke-width="2" marker-end="url(#sec6-arrow)"></path>
+      <text x="120" y="255" font-size="12" fill="#BF360C">反馈：实际横摆送回去对比</text>
+      <text x="230" y="160" font-size="14" text-anchor="middle" fill="#C62828">−</text>
+
+      <!-- 底部注释 -->
+      <text x="400" y="312" font-size="12" text-anchor="middle" fill="#607D8B">期望与实际的差距（误差）驱动修正，一圈又一圈，直到车身横摆贴近你想要的甩尾速度</text>
+    </svg>
+    <figcaption class="arch-caption">
+      图：漂移辅助是一个闭环反馈控制。陀螺仪把"车身实际甩多快"送回比较器，和"你想要甩多快"做减法，
+      误差交给 P+D 控制器算出转向修正量，叠加到舵机上——就像骑自行车时身体自动调平衡。
+    </figcaption>
+  </figure>
+
+  <p>
+    先看第一位高手：<b>滑动窗口中值滤波</b>。固件给每个遥控通道开了一个只能装 5 个数的"小窗"
+    （<code>libraries/mus4_core/src/FirmwareConfig.h:107</code>），每来一个新读数就把最老的挤出去，
+    然后把窗里 5 个数排序，取最中间那个（<code>libraries/mus4_rc/src/RcFilter.cpp:14</code>）。
+    这和跳水比赛"去掉最高分和最低分"是同一个思路：一个突然蹿到 2000 微秒的毛刺，
+    排序后只会被挤到边上，根本轮不到它当"代表"。固件里的自检测试专门验证了这一点——
+    哪怕 5 个值里混进两个 2000，输出依然稳稳是 1500（<code>libraries/mus4_rc/src/RcFilter.cpp:121</code>）。
+  </p>
+
+  <p>
+    进窗口之前还有一道"门卫"：凡是超出 800～2200 微秒合理范围的读数直接丢弃，连进窗的资格都没有
+    （<code>MUS4_FW.ino:628</code>）。整个滤波流程写在一个 lambda（就地定义的小函数）里，
+    以约 500Hz 的节奏批量处理全部 6 个通道（<code>MUS4_FW.ino:619-664</code>）。
+    这就像快递分拣流水线：包裹（原始读数）先过安检（范围检查），再进分拣格（滑动窗口），
+    最后由中值这位"值班主任"拍板一个干净的结果交给下游。
+  </p>
+
+  <p>
+    中值滤波之后，两类通道还要各过一道"性格不同"的精加工。转向和油门是<b>主通道</b>，要的是顺滑：
+    变化小于 6 微秒的抖动被死区直接按住不理，变化超过 80 微秒说明你真在打方向、立即放行，
+    中间的则只跟上 35%（<code>libraries/mus4_rc/src/RcFilter.cpp:44</code>）——
+    像老司机扶方向盘，手不抖、但该转的时候绝不含糊。Park、模式、漂移开关这些是<b>辅助通道</b>，
+    要的是"想清楚再动"：开关类信号不怕慢就怕乱跳，所以一个新值必须连续出现 3 次才被采信
+    （<code>libraries/mus4_rc/src/RcFilter.cpp:66</code>），这叫"消抖"，
+    就像换台时遥控器要确认你真按了，而不是口袋误触。
+  </p>
+
+  <div class="arch-grid">
+    <div class="arch-card">
+      <b>中值滤波（5 点窗口）</b>
+      <p>类比：跳水评分去掉最高最低分。作用：毛刺读数排不进"中位"，天然被淘汰。窗口大小 5、更新节奏 2 毫秒一次，代价极小、效果立竿见影。</p>
+    </div>
+    <div class="arch-card">
+      <b>漂移辅助（P+D 闭环）</b>
+      <p>类比：骑自行车时身体自动调平衡。陀螺仪每秒上报上百次车身横摆，控制器按"误差 × Kp − 横摆 × Kd"算修正，全程有限幅保护。</p>
+    </div>
+  </div>
+
+  <p>
+    再看第二位高手 <b>DriftAssist</b> 的闭环是怎么转起来的。驾驶员的转向输入（−100～100）先换算成
+    "期望横摆速度"——你想让车尾甩多快（<code>libraries/mus4_control/src/DriftAssist.cpp:88</code>）。
+    陀螺仪的 gyroZ 读数先做一阶低通滤波去毛刺（<code>libraries/mus4_control/src/DriftAssist.cpp:81</code>），
+    然后两者相减得到误差。修正量 = Kp × 误差 − Kd × 当前横摆速度：Kp 项负责"差多少补多少"，
+    Kd 项负责"甩得越猛压得越狠"，防止过冲（<code>libraries/mus4_control/src/DriftAssist.cpp:93</code>）。
+    这就是经典的 P+D 反馈，P 是"当下的差距"，D 是"变化的趋势"，一个管到位、一个管别过头。
+  </p>
+
+  <p>
+    这套辅助有几个贴心的设计。遥控器第 5 通道是总开关，第 6 通道是"强度旋钮"，
+    可以把修正量按比例调小（<code>libraries/mus4_control/src/DriftAssist.cpp:47-54</code>）；
+    修正量本身被双重限幅，默认最多只能叠加 ±35% 的转向，绝不允许辅助抢过驾驶员的主导权
+    （<code>libraries/mus4_control/src/DriftAssist.cpp:96-115</code>，
+    默认值见 <code>libraries/mus4_core/src/WifiConsoleTypes.h:129-144</code>）。
+    此外还有一个默认关闭的油门辅助：检测到原地打转时输出持续小油门，大半径漂移时按频率和占空比
+    "点动"油门（<code>libraries/mus4_control/src/DriftAssist.cpp:131</code>），
+    只在未拉手刹（Park 解除）时生效（<code>libraries/mus4_control/src/ControlMixer.cpp:140-141</code>）。
+  </p>
+
+  <div class="arch-note">
+    <b>安全提醒：</b>漂移辅助是"辅助"不是"代驾"。修正量被限幅封顶、开关随时可关、
+    陀螺仪数据无效时立即退出介入——所有设计都遵循同一条原则：驾驶员永远是方向盘的最终主人。
+    这正是安全关键固件该有的样子：算法再聪明，也不能越过失效安全的底线。
+  </div>
+</section>
+<footer class="site-footer">
+  <p>本页内容依据 <code>Firmware/MUS4_FW</code> 固件源码（v1.7.34）整理，文中 <code>文件:行号</code> 可直接跳转查阅源码。</p>
+  <p>DonkeyDrift · MUS4 Firmware · 生成于 2026-07-26</p>
+</footer>
+</div>
+</body>
+</html>

@@ -1,5 +1,23 @@
 # CHANGELOG.md
 
+## 2026-08-02 v1.7.38
+
+- 固件版本号从 `v1.7.37` 更新到 `v1.7.38`。
+- feat(WiFi): 硬件 UI（本地串口控制台）应用 STA 配置时自动打开上位机配网
+  - 场景：此前触发 Linux 上位机配网（`WIFI|ssid|password` 协议，v1.7.29）的唯一入口是浏览器 Web Console STA 弹窗的"上位机配网"开关；在车辆本地硬件 UI（USB Serial / Serial1 控制台）用 `WIFI_STA_SSID:` / `WIFI_STA_PASSWORD:` / `WIFI_STA_APPLY` 配置 Wi-Fi 时不会通知上位机，上位机仍停留在旧网络。
+  - 改动：`libraries/mus4_wifi/src/WifiStaConfig.cpp` 的 `WIFI_STA_APPLY` 分支在 `applyWifiStaCredentials()` 成功后，自动把当前 STA 凭据经 Serial2 推给 Linux 上位机（`Serial2.printf("WIFI|%s|%s\n", ...)`，与 Web 路径同一协议帧），上位机配网 agent 收到即自动配网并回 `STATUS|/OK|/FAIL|`（由既有 `handleSerial2()` 状态解析链路处理）；控制台新增回执 `HOST_WIFI_PROVISIONING_SENT ssid="..."` 并写 `wifi` 日志，任何响应/日志均不回显明文密码。
+  - 覆盖入口：本地 USB Serial、Serial1、TCP/Web 命令控制台（均经 `processWifiStaConfigCommand()`）；Web Console STA 弹窗走 `scheduleWifiStaApply()`  deferred 应用路径、不经过该分支，其"上位机配网"开关行为不变，不会重复推送。
+- 同步更新 `tests/test_firmware_feature_flags.py`：版本号断言；STA 配置结构断言新增自动推送符号。
+
+## 2026-08-02 v1.7.37
+
+- 固件版本号从 `v1.7.36` 更新到 `v1.7.37`。
+- fix(WiFi): 修复 STA 连接失败后历史回退被锁死的问题（连接失败自愈）
+  - 场景：NVS 中 `sta_ssid`/`sta_pass` 不一致（如 keep_password 流程只更新了 `sta_ssid`、`sta_pass` 残留旧值；或路由器改密码后配置未同步）时，开机/看门狗周期里已配置 SSID 可见，固件用错误密码反复连接反复失败；而开机扫描会把该 SSID 的历史槽位标记为"已试"，运行期重试状态机找不到未试候选——历史记录里保存的正确密码永远无法启用，车辆只能停在 AP 模式。
+  - 修复：`updateWifiStaHistoryRetry()` 新增自愈分支——`lastError` 非空（WPA2 密码错误在 ESP32 上多表现为 `timeout` 而非 `auth_failed`，故不按单一错误码判定）且历史中同一 SSID 存有不同密码时，清除该槽位的已试标记，让重试状态机用历史（最近一次成功连接）密码再试一次；历史密码与当前一致时不解锁，避免同一错误密码无限重试（用历史凭据重试后运行时密码与历史一致，条件自然失效，重试次数有界）。
+  - 配套新增 `healWifiStaPreferenceAfterConnect()`：连接成功边沿，若连上的网络与 NVS `sta_ssid` 相同但 `sta_pass` 与本次成功密码不一致，把验证成功的密码同步回 `sta_pass`（修复 NVS 凭据对，下次开机直连不再先失败一轮）；连上的 SSID 与 NVS 配置不同（回退到其它网络）时不触碰 NVS，沿用 v1.7.35「回退仅改运行时」的设计边界。
+- 同步更新 `tests/test_firmware_feature_flags.py`：版本号断言；新增连接失败自愈结构断言。
+
 ## 2026-08-02 v1.7.36
 
 - 固件版本号从 `v1.7.35` 更新到 `v1.7.36`。

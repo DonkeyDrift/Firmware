@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.36"' in build_info
-    assert "v1.7.36" in changelog
-    assert "v1.7.35" in changelog
-    assert changelog.index("v1.7.36") < changelog.index("v1.7.35")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.38"' in build_info
+    assert "v1.7.38" in changelog
+    assert "v1.7.37" in changelog
+    assert changelog.index("v1.7.38") < changelog.index("v1.7.37")
 
 
 def test_apply_wifi_sta_credentials_restores_ap_before_begin():
@@ -924,6 +924,9 @@ def test_wifi_sta_config_command_entry_is_split_from_sketch():
         "WIFI_STA_PASSWORD_SAVED password_set=%d",
         "NACK:WIFI_STA_NOT_CONFIGURED",
         "WIFI_STA_APPLY_OK ssid=\\\"%s\\\"",
+        "Serial2.printf(\"WIFI|%s|%s\\n\", ws().staSsid, ws().staPassword);",
+        "HOST_WIFI_PROVISIONING_SENT ssid=\\\"%s\\\"",
+        "host wifi provisioning sent ssid=%s",
         "WIFI_STA_CLEARED",
     ]:
         assert symbol in sta_source
@@ -3504,6 +3507,47 @@ def test_wifi_sta_history_retry_state_machine_preserves_ap():
     # 计数仍由 test_soft_ap_disconnect_is_limited_to_explicit_ap_restart 守护）
     assert "WiFi.softAPdisconnect(true)" not in retry_body
     assert "WiFi.mode(WIFI_OFF)" not in retry_body
+
+
+def test_wifi_sta_history_auth_failed_self_heal_unlocks_slot():
+    manager_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
+
+    retry_body = re.search(
+        r"(?:static )?void updateWifiStaHistoryRetry\(\)\s*\{(?P<body>.*?)\n\}",
+        manager_source,
+        re.DOTALL,
+    ).group("body")
+
+    # 连接失败自愈：已配置凭据连接失败（如 NVS sta_pass 过期/写错，WPA2 密码错误
+    # 在 ESP32 上多表现为 timeout 而非 auth_failed），而历史中同一 SSID 存有不同
+    # 密码时，清除该槽位已试标记，让重试状态机用历史（最近成功）密码再试一次——
+    # 否则开机扫描会把该槽位标为已试，历史回退永远被锁死。
+    assert "wifiStaLastError[0] != 0" in retry_body
+    assert "wifiStaHistoryRankOf(String(wifiStaSsid))" in retry_body
+    assert "findWifiStaHistoryEntry(String(wifiStaSsid), histPassword)" in retry_body
+    assert "histPassword != String(wifiStaPassword)" in retry_body
+    assert "wifiRuntime.staHistTriedMask &= (uint8_t)~(1u << rank);" in retry_body
+
+    # 有界性守卫：自愈分支必须在 connected 上升沿清掩码逻辑之后、重试窗口判定之前
+    mask_clear_idx = retry_body.find("wifiRuntime.staHistTriedMask = 0;")
+    self_heal_idx = retry_body.find("wifiStaLastError[0] != 0")
+    window_idx = retry_body.find("bool inRetryWindow")
+    assert -1 < mask_clear_idx < self_heal_idx < window_idx
+
+    # NVS 凭据自愈：连接成功边沿把验证成功的密码同步回 sta_pass（仅当连上的
+    # SSID 与 NVS sta_ssid 相同且密码不一致；回退到其它网络时不触碰 NVS）
+    assert "healWifiStaPreferenceAfterConnect();" in retry_body
+    heal_body = re.search(
+        r"static void healWifiStaPreferenceAfterConnect\(\)\s*\{(?P<body>.*?)\n\}",
+        manager_source,
+        re.DOTALL,
+    ).group("body")
+    assert "MUS4_PREF_STA_ENABLED_KEY" in heal_body
+    assert "MUS4_PREF_STA_SSID_KEY" in heal_body
+    assert "MUS4_PREF_STA_PASSWORD_KEY" in heal_body
+    assert "nvsSsid != String(wifiStaSsid)" in heal_body
+    assert "nvsPass == String(wifiStaPassword)" in heal_body
+    assert "saveWifiStaPreference(String(wifiStaSsid), String(wifiStaPassword))" in heal_body
 
 
 def test_wifi_sta_history_boot_scan_falls_back_to_history():

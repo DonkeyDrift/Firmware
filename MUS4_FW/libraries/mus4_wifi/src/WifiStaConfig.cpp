@@ -234,6 +234,12 @@ bool processWifiStaConfigCommand(const String& line, Print& out, WifiRuntimeStat
         }
         applyWifiStaCredentials();
         out.printf("WIFI_STA_APPLY_OK ssid=\"%s\"\n", ws().staSsid);
+        // v1.7.38：硬件 UI（本地 USB Serial/Serial1 控制台）应用 STA 配置时，自动把
+        // 凭据经 Serial2 推给 Linux 上位机（WIFI|ssid|password 协议，与 Web 控制台
+        // “上位机配网”开关同一协议），无需打开浏览器即触发上位机配网。
+        Serial2.printf("WIFI|%s|%s\n", ws().staSsid, ws().staPassword);
+        out.printf("HOST_WIFI_PROVISIONING_SENT ssid=\"%s\"\n", ws().staSsid);
+        mus4Logf("wifi", "host wifi provisioning sent ssid=%s", ws().staSsid);
         return true;
     }
     if (line.equalsIgnoreCase("WIFI_STA_CLEAR")) {

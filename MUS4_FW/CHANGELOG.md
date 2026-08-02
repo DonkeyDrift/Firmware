@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-02 v1.7.36
+
+- 固件版本号从 `v1.7.35` 更新到 `v1.7.36`。
+- feat(WebConsole): 主控制台新增"切换 UI 风格"分段选择条——点击分段直接切换为 DonkeyDrifter Web UI 皮肤（zinc/cyan 暗色），仅换视觉风格，功能与布局位置完全不变
+  - `WebConsoleAssets.h` 主页面 `</head>` 前新增第三个 `<style id="donkeySkin">`：40 余条规则全部以 `body.donkey-skin` 前缀覆写配色/字体/圆角/边框色（背景 `#09090b`、面板 `#18181b`、边框 `#27272a`、主按钮 `#0891b2`、强调 `#22d3ee`），不含任何布局属性，现有 CSS 一行未动。
+  - 头部右侧新增分段选择条 `skinSwitch`（位于 OTA 按钮左侧、DEV 开关左边，分段字号/字重/胶囊圆角对齐 `.otaButton`，分段条整组含边框与 OTA 按钮同为 24px 高、底边平行对齐）：pill 容器内并排 `ESP32 UI` / `Donkey UI` 两个分段，点击直接切到对应皮肤；当前生效分段实色填充与 OTA 按钮一致（默认皮肤蓝底 `#5cc8ff` + 深色字 `#061019`，donkey 皮肤 `#0891b2` + 白字）一眼可辨；容器以 `margin-left:auto` 接管右推（`.headerRow .otaLink` 边距补偿追加在第二块 `<style>` 末尾），`donkeySkin` 块内同步追加 `body.donkey-skin` 覆写。
+  - 新增 `THEME_STORAGE_KEY='mus4.ui.theme'` 与 `readStoredUiTheme()/writeStoredUiTheme()/applyUiSkin()/setUiSkin()`：localStorage 持久化（隐私模式 try/catch 降级为默认皮肤），启动时恢复上次选择并同步两个分段的 active 态，默认原风格。
+  - i18n 补丁式追加 zh『切换 UI 风格』/ en 'Switch UI style'（容器 aria-label）；分段文字 'ESP32 UI'/'Donkey UI' 为专有名词不翻译。
+  - 仅主控制台 `/` 生效，`/judge`、`/drift`、`/update` 保持原皮肤；遥测曲线 canvas 等 JS 绘制颜色不随皮肤切换。
+- 同步更新 `tests/test_firmware_feature_flags.py`：版本号断言；新增 2 个结构断言（`skinSwitch` 头部位置/双分段/active 配色、`mus4.ui.theme` 持久化与 `body.donkey-skin` CSS 前缀规则）。
+
 ## 2026-07-31 v1.7.35
 
 - 固件版本号从 `v1.7.34` 更新到 `v1.7.35`。

@@ -1170,11 +1170,35 @@ void updateWifiSta()
 
 // STA 连接历史运行期重试状态机：
 // - 上升沿（staConnected false→true）：记录/置顶历史，清空已试掩码与周期标志；
+// - 连接失败自愈：lastError 非空（auth_failed/timeout 等）且历史中同 SSID 存有
+//   不同密码时，解锁该槽位的已试标记，让重试状态机用历史（最近成功）密码再试
+//   一次，有界不死循环；
 // - 重试窗口（!connected && !connecting && !applyPending && (configured || lastError 非空)，
 //   即开机首试失败或 sta_lost 断线落地之后的状态）：还有未试槽位时启动异步扫描，
 //   按历史优先级挑未试过的可见条目，copy 凭据、标记已试后发起新一轮连接；
 // - 可见候选全部试完（或扫描失败）：本轮周期结束，停在 AP-only（与现状一致）；
 //   下次 connected 边沿清掩码后，新断线自然重新武装。
+
+// NVS 凭据自愈：连上的网络与 NVS sta_ssid 相同、但 NVS sta_pass 与本次成功密码
+// 不一致时（keep_password 只写 sta_ssid、路由器改密码后只更新了历史等场景），
+// 把本次验证成功的密码同步回 sta_pass，修复 NVS 凭据对；否则下次开机仍用旧
+// （错误）密码先试失败一轮。连上的 SSID 与 NVS 配置不同（回退到其它网络）时不
+// 触碰 NVS，沿用 v1.7.35「回退仅改运行时」的设计边界。
+static void healWifiStaPreferenceAfterConnect()
+{
+    if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, true)) return;
+    bool staEnabled = mus4Prefs.getBool(MUS4_PREF_STA_ENABLED_KEY, false);
+    String nvsSsid = mus4Prefs.getString(MUS4_PREF_STA_SSID_KEY, "");
+    String nvsPass = mus4Prefs.getString(MUS4_PREF_STA_PASSWORD_KEY, "");
+    mus4Prefs.end();
+    if (!staEnabled || nvsSsid.length() == 0) return;
+    if (nvsSsid != String(wifiStaSsid)) return;
+    if (nvsPass == String(wifiStaPassword)) return;
+    if (saveWifiStaPreference(String(wifiStaSsid), String(wifiStaPassword))) {
+        mus4LogLine("wifi", "STA pref healed: sta_pass synced with working password");
+    }
+}
+
 void updateWifiStaHistoryRetry()
 {
     static bool lastStaConnected = false;
@@ -1182,11 +1206,29 @@ void updateWifiStaHistoryRetry()
     bool connected = wifiStaConnected;
     if (connected && !lastStaConnected) {
         recordWifiStaHistory(wifiStaSsid, wifiStaPassword);
+        healWifiStaPreferenceAfterConnect();
         wifiRuntime.staHistTriedMask = 0;
         wifiRuntime.staHistRetryActive = false;
         wifiRuntime.staHistRetryDeadlineMs = 0;
     }
     lastStaConnected = connected;
+
+    // 连接失败自愈：当前凭据连接失败（auth_failed / timeout 等任何 lastError 非空），
+    // 而历史中同一 SSID 存有不同的密码时，解锁该槽位，让下面的重试状态机用历史
+    // 凭据再试一次。历史保存的是最近一次成功连接的密码，可覆盖 NVS sta_pass 过期/
+    // 写错（如 keep_password 只更新了 sta_ssid）导致开机反复失败、历史回退却因
+    // 「已配置 SSID 可见」被锁死的场景。WPA2 密码错误在 ESP32 上多表现为 timeout
+    // 而非 auth_failed，因此按 lastError 非空判定而非单一错误码。历史密码与当前
+    // 一致时不解锁，避免同一个错误密码无限重试；用历史凭据重试后运行时密码与
+    // 历史一致，本条件自然失效，重试次数有界。
+    if (!connected && !wifiStaConnecting && wifiStaLastError[0] != 0) {
+        int8_t rank = wifiStaHistoryRankOf(String(wifiStaSsid));
+        String histPassword;
+        if (rank >= 0 && findWifiStaHistoryEntry(String(wifiStaSsid), histPassword) &&
+            histPassword != String(wifiStaPassword)) {
+            wifiRuntime.staHistTriedMask &= (uint8_t)~(1u << rank);
+        }
+    }
 
     bool inRetryWindow = !wifiStaConnected && !wifiStaConnecting && !wifiStaApplyPending &&
         (wifiStaConfigured || wifiStaLastError[0] != 0);

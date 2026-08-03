@@ -90,9 +90,13 @@ String hostWifiSsid = "";
 String hostWifiIp = "";
 String hostWifiError = "";
 
+// 上位机周期上报的自身局域网 IP（Serial2 HOSTIP|<ipv4> 帧，仅运行时保存）
+String hostReportedIp = "";
+unsigned long hostReportedIpMs = 0;
+
 void printWirelessStatus(Print& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s mdns_host=\"%s\" mdns_url=%s mdns_started=%d web_log_dropped=%lu\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s mdns_host=\"%s\" mdns_url=%s mdns_started=%d host_ip=%s host_ip_age_s=%lu web_log_dropped=%lu\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -153,6 +157,8 @@ void printWirelessStatus(Print& out)
         wifiMdnsHostText().c_str(),
         wifiMdnsUrlText().c_str(),
         wifiRuntime.mdnsStarted ? 1 : 0,
+        hostReportedIp.c_str(),
+        hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL,
         (unsigned long)webLogBufferDropped());
 }
 

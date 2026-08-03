@@ -374,6 +374,37 @@ int Pilot_steering = 0; // Steering value from the host computer
 
 // RC calibration defaults moved to top of file (must precede function definitions for Arduino preprocessor compatibility)
 
+// 校验点分十进制 IPv4 文本：4 段 0-255、段间单点、总长 ≤15，拒绝其它字符。
+static bool isValidIpv4Text(const char* s)
+{
+    if (!s || !*s || strlen(s) > 15) return false;
+    int octets = 0;
+    while (*s)
+    {
+        int value = 0;
+        int digits = 0;
+        while (*s >= '0' && *s <= '9')
+        {
+            value = value * 10 + (*s - '0');
+            if (value > 255) return false;
+            s++;
+            digits++;
+        }
+        if (digits == 0) return false;
+        octets++;
+        if (*s == '.')
+        {
+            if (octets >= 4) return false;
+            s++;
+        }
+        else if (*s != '\0')
+        {
+            return false;
+        }
+    }
+    return octets == 4;
+}
+
 // Serial2 双向联通验证：独立 ping-pong 协议处理。
 // 不走 dispatchCommandLine，避免 PING/PONG 被当作控制命令解析。
 static void handleSerial2()
@@ -425,6 +456,18 @@ static void handleSerial2()
                 hostWifiStatus = "failed";
                 hostWifiError = String(line + 5);
                 appendWebLog("serial2", String("HOST-WIFI: failed reason=") + hostWifiError);
+            }
+            else if (strncmp(line, "HOSTIP|", 7) == 0)
+            {
+                // 上位机周期上报自身局域网 IP：HOSTIP|<ipv4>
+                extern String hostReportedIp;
+                extern unsigned long hostReportedIpMs;
+                if (isValidIpv4Text(line + 7))
+                {
+                    hostReportedIp = String(line + 7);
+                    hostReportedIpMs = millis();
+                    appendWebLog("serial2", String("HOST-IP: ") + hostReportedIp);
+                }
             }
             else if (strncmp(line, "PING,", 5) == 0)
             {

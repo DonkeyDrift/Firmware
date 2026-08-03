@@ -274,10 +274,35 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.38"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.39"' in build_info
+    assert "v1.7.39" in changelog
     assert "v1.7.38" in changelog
-    assert "v1.7.37" in changelog
-    assert changelog.index("v1.7.38") < changelog.index("v1.7.37")
+    assert changelog.index("v1.7.39") < changelog.index("v1.7.38")
+
+
+def test_host_ip_report_channel():
+    """v1.7.39：Serial2 新增 HOSTIP|<ipv4> 上行帧，ESP32 存运行时状态并在
+    /api/status 输出 host_ip/host_ip_age_s，Web Console Network 卡片新增 HOST 分页。"""
+
+    sketch = MUS4_SKETCH.read_text(encoding="utf-8")
+    server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+
+    # 固件侧：HOSTIP| 帧处理 + IPv4 严格校验
+    assert 'strncmp(line, "HOSTIP|", 7)' in sketch
+    assert "isValidIpv4Text(line + 7)" in sketch
+    assert "hostReportedIpMs = millis();" in sketch
+
+    # 状态输出：host_ip / host_ip_age_s 字段与运行时存储
+    assert 'String hostReportedIp = "";' in server
+    assert "host_ip=%s host_ip_age_s=%lu" in server
+    assert "hostReportedIp.c_str()" in server
+
+    # Web Console：Network 卡片 HOST 分页
+    host_tab = '<button id="networkHostTab" type="button" onclick="setNetworkTab(' + chr(39) + 'host' + chr(39) + ')">HOST</button>'
+    assert host_tab in assets
+    assert "selected==='host'" in assets
+    assert "s.host_ip||''" in assets
 
 
 def test_apply_wifi_sta_credentials_restores_ap_before_begin():

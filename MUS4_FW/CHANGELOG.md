@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-08-03 v1.7.39
+
+- 固件版本号从 `v1.7.38` 更新到 `v1.7.39`。
+- feat(Serial2): 新增上位机 IP 上报通道，Drifter Console Network 卡片可查看上位机（Linux 主机）局域网 IP
+  - 场景：车上 ESP32 与 Linux 上位机经 Serial2 常连，但 ESP32 侧一直不知道上位机的局域网 IP；想 SSH / 访问上位机服务时只能去路由器或上位机本机查。v1.7.38 刚打通 ESP32→上位机的配网推送，本次补上反向信息通道。
+  - 协议：Serial2 新增上行帧 `HOSTIP|<ipv4>`（Linux → ESP32），与既有 `STATUS|`/`OK|`/`FAIL|` 上位机响应帧同通道、同处理方式；上位机侧由 `donkeycar/parts/provisioning.py` 的 `ProvisioningPart` 周期上报（默认 10 秒，UDP 路由查询取默认出口 IPv4，不发实际包），首次启动立即上报，ESP32 重启后 10 秒内自动恢复显示。
+  - 固件改动：`MUS4_FW.ino` 的 `handleSerial2()` 新增 `HOSTIP|` 分支，经新增 `isValidIpv4Text()` 严格校验（4 段 0-255、总长 ≤15，非法帧直接丢弃）后存入运行时全局 `hostReportedIp`/`hostReportedIpMs`（定义于 `libraries/mus4_web/src/WebConsoleServer.cpp`，仅运行时保存、不写 NVS，避免显示过期网络配置），并写 `serial2` Web 日志。
+  - 状态输出：`printWirelessStatus()`（`/api/status` 与无线控制台 `STATUS` 命令共用）新增 `host_ip=<ipv4>` 与 `host_ip_age_s=<秒>` 两个字段；未上报时 `host_ip` 为空。
+  - Web Console：`libraries/mus4_web/src/WebConsoleAssets.h` 主控制台 Network 卡片新增 `HOST` 分页（与 AP/STA 并列），点击显示上位机 IP、元信息行显示来源 `Serial2`，点击 IP 支持复制（复用 `copyNetworkIp()`）；未上报时显示 `--`、卡片为熄灭态。HOST 分页仅在用户点击时选中，不影响 AP/STA 自动切换逻辑。
+- 同步更新 `tests/test_firmware_feature_flags.py`：版本号断言；新增 HOSTIP 帧处理、`host_ip` 状态字段与 HOST 分页结构断言。
+
+
 ## 2026-08-02 v1.7.38
 
 - 固件版本号从 `v1.7.37` 更新到 `v1.7.38`。

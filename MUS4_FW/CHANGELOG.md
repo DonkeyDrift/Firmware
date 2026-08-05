@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-08-05 v1.7.39
+
+- fix(WebConsole): UI 风格切换按钮名称与 DonkeyDrifter Web UI 保持一致
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：将 `ESP32 UI` / `Donkey UI` 同步命名为 `Drifter Console UI` / `DonkeyDrifter Web UI`，与上位机 `web_ui/frontend/src/components/SkinSwitcher.tsx` 的分段文案一致。
+  - `tests/test_firmware_feature_flags.py`：同步更新 Web Console 结构断言；`pytest tests/` 共 293 项全部通过。
+  - 使用 Arduino CLI 干净编译通过（Flash 78%、全局 RAM 33%），并通过 HTTP OTA 上传至 STA 设备 `192.168.3.46`；设备重启后确认运行 `v1.7.39`（构建时间 `Aug 5 2026 13:07:48`）。
+
 ## 2026-08-03 v1.7.39
 
 - 固件版本号从 `v1.7.38` 更新到 `v1.7.39`。

@@ -446,8 +446,8 @@ def test_web_console_has_skin_switch_for_ui_skin_toggle():
     assert 'id="skinSwitch"' in source
     assert 'id="skinEsp32"' in source
     assert 'id="skinDonkey"' in source
-    assert ">ESP32 UI<" in source
-    assert ">Donkey UI<" in source
+    assert ">Drifter Console UI<" in source
+    assert ">DonkeyDrifter Web UI<" in source
     assert 'data-i18n-aria="theme.title"' in source
     assert "setUiSkin('esp32')" in source
     assert "setUiSkin('donkey')" in source

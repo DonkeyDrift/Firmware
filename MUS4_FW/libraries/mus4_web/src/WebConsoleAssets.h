@@ -73,7 +73,7 @@ body.donkey-skin .skinSeg.active:hover{background:#0e7490;color:#fff}
 </style>
 </head>
 <body>
-<div class="headerRow"><h1 data-i18n="app.title">Drifter Console</h1><span class="version" id="versionLabel">--</span><div id="skinSwitch" class="skinSwitch" role="group" aria-label="切换 UI 风格" data-i18n-aria="theme.title"><button id="skinEsp32" type="button" class="skinSeg" onclick="setUiSkin('esp32')">ESP32 UI</button><button id="skinDonkey" type="button" class="skinSeg" onclick="setUiSkin('donkey')">Donkey UI</button></div><a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch" id="devModeToggle" style="gap:4px"><span class="toggleLabel devHint">DEV <b id="devModeSwitchText">OFF</b></span><input type="checkbox" id="devModeCheck" onchange="toggleDevModeFromSwitch()"><span class="slider"></span></label></div>
+<div class="headerRow"><h1 data-i18n="app.title">Drifter Console</h1><span class="version" id="versionLabel">--</span><div id="skinSwitch" class="skinSwitch" role="group" aria-label="切换 UI 风格" data-i18n-aria="theme.title"><button id="skinEsp32" type="button" class="skinSeg" onclick="setUiSkin('esp32')">Drifter Console UI</button><button id="skinDonkey" type="button" class="skinSeg" onclick="setUiSkin('donkey')">DonkeyDrifter Web UI</button></div><a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch" id="devModeToggle" style="gap:4px"><span class="toggleLabel devHint">DEV <b id="devModeSwitchText">OFF</b></span><input type="checkbox" id="devModeCheck" onchange="toggleDevModeFromSwitch()"><span class="slider"></span></label></div>
 <div class="grid">
 <section class="panel wide">
 <div class="stateGrid">

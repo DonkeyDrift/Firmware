@@ -65,7 +65,6 @@ const log=document.getElementById('log'),cmd=document.getElementById('cmd'),cmdT
 const fabActions=document.getElementById('fabActions'),langFab=document.getElementById('langFab'),langMenu=document.getElementById('langMenu'),reconnectOverlay=document.getElementById('reconnectOverlay');
 const joystickCalModal=document.getElementById('joystickCalModal'),joystickCalStepText=document.getElementById('joystickCalStepText'),joystickCalLive=document.getElementById('joystickCalLive'),joystickCalActionBtn=document.getElementById('joystickCalActionBtn'),joystickCalRetryBtn=document.getElementById('joystickCalRetryBtn'),joystickCalSaveBtn=document.getElementById('joystickCalSaveBtn'),joystickCalStatus=document.getElementById('joystickCalStatus');
 const LANG_STORAGE_KEY='mus4.ui.lang';
-const THEME_STORAGE_KEY='mus4.ui.theme';
 let connectionLost=false,reconnectTimer=0;
 const ICON_PAUSE='<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
 const ICON_PLAY='<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
@@ -115,8 +114,6 @@ I18N.zh['wifi.historyKeepCurrentNote']='仅移除记录，不影响本次连接'
 I18N.en['wifi.historyKeepCurrentNote']='Record removed; current connection kept';
 I18N.zh['wifi.historyDelete']='删除';
 I18N.en['wifi.historyDelete']='Delete';
-I18N.zh['theme.title']='切换 UI 风格';
-I18N.en['theme.title']='Switch UI style';
 let uiLang=readStoredLanguage();
 const LOG_SOURCE_MAX_BYTES=1024*1024;
 const sourceBuffers={web:'',serial:'',serial1:''};
@@ -126,10 +123,6 @@ let calPollTimer=0;
 function initCanvasDpr(){dpr=window.devicePixelRatio||1;cw=Math.round((canvas.clientWidth||canvas.width||760));ch=Math.round((canvas.clientHeight||canvas.height||260));canvas.width=cw*dpr;canvas.height=ch*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);gridCanvas.width=cw*dpr;gridCanvas.height=ch*dpr;gridCtx.setTransform(dpr,0,0,dpr,0,0);gridReady=false;}function normalizeLanguage(lang){return lang==='en'?'en':'zh'}
 function readStoredLanguage(){try{return normalizeLanguage(localStorage.getItem(LANG_STORAGE_KEY))}catch(e){return 'zh'}}
 function writeStoredLanguage(lang){try{localStorage.setItem(LANG_STORAGE_KEY,lang)}catch(e){}}
-function readStoredUiTheme(){try{return localStorage.getItem(THEME_STORAGE_KEY)==='donkey'?'donkey':'default'}catch(e){return 'default'}}
-function writeStoredUiTheme(theme){try{localStorage.setItem(THEME_STORAGE_KEY,theme)}catch(e){}}
-function applyUiSkin(){const skin=readStoredUiTheme();document.body.classList.toggle('donkey-skin',skin==='donkey');document.getElementById('skinEsp32').classList.toggle('active',skin!=='donkey');document.getElementById('skinDonkey').classList.toggle('active',skin==='donkey')}
-function setUiSkin(skin){writeStoredUiTheme(skin==='donkey'?'donkey':'default');applyUiSkin()}
 function t(key){return (I18N[uiLang]&&I18N[uiLang][key])||I18N.zh[key]||key}
 function refreshDynamicLabels(){const p=document.getElementById('pauseBtn'),c=document.getElementById('chartBtn'),f=document.getElementById('chartFullscreenBtn'),s=document.getElementById('sendBtn');if(s)s.title=t('button.send');p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE;p.title=logPaused?t('button.resume'):t('button.pause');c.innerHTML=chartPaused?ICON_PLAY:ICON_PAUSE;c.title=chartPaused?t('button.draw'):t('button.pause');f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN;f.title=document.fullscreenElement===chartPanel?t('button.split'):t('button.fullscreen');if(tubRecordBtn){tubRecordBtn.innerHTML=tubRecording?ICON_RECORDING:ICON_RECORD;tubRecordBtn.title=tubRecording?t('button.tubStopRecord'):t('button.tubRecord');tubRecordBtn.classList.toggle('recording',tubRecording)}updateStaPasswordEye()}
 function applyLanguage(lang){uiLang=normalizeLanguage(lang);document.documentElement.lang=uiLang;document.querySelectorAll('[data-i18n]').forEach(e=>{const v=t(e.dataset.i18n);if(v)e.textContent=v});document.querySelectorAll('[data-i18n-placeholder]').forEach(e=>{const v=t(e.dataset.i18nPlaceholder);if(v)e.placeholder=v});document.querySelectorAll('[data-i18n-aria]').forEach(e=>{const v=t(e.dataset.i18nAria);if(v)e.setAttribute('aria-label',v)});langMenu.querySelectorAll('button[data-lang]').forEach(b=>b.classList.toggle('active',b.dataset.lang===uiLang));refreshDynamicLabels()}
@@ -258,7 +251,7 @@ function ensureGrid(){const w=cw,h=ch;if(gridReady&&gridCanvas.width===w*dpr&&gr
 function drawSeries(key,color,min,max,divisor=1){const w=cw,h=ch,plotX=36,plotW=w-52,plotH=h-40;if(pointCount<2)return;const stepX=plotW/255,rightX=plotX+plotW,buckets=[];for(let i=0;i<pointCount;i++){const p=pointAt(i);if(!p)continue;const x=rightX-(pointCount-1-i)*stepX;const xi=Math.round(x);if(xi<plotX-5||xi>w-16+5)continue;const y=20+map((p[key]||0)/divisor,min,max,plotH);let b=buckets[xi];if(!b)buckets[xi]={min:y,max:y,xSum:x,count:1,gap:(p.dt||16)>80};else{if(y<b.min)b.min=y;if(y>b.max)b.max=y;b.xSum+=x;b.count++;if((p.dt||16)>80)b.gap=true}}ctx.strokeStyle=color;ctx.beginPath();let drawn=false;for(let xi=0;xi<=w;xi++){const b=buckets[xi];if(!b)continue;const x=b.xSum/b.count;const mid=(b.min+b.max)/2;if(!drawn||b.gap){ctx.moveTo(x,mid);drawn=true}else{ctx.lineTo(x,mid)}if(b.max-b.min>1){ctx.moveTo(x,b.min);ctx.lineTo(x,b.max);ctx.moveTo(x,mid)}}if(drawn)ctx.stroke()}
 function draw(){const w=cw,h=ch;ensureGrid();ctx.clearRect(36,0,w-52,h);ctx.drawImage(gridCanvas,36*dpr,0,(w-52)*dpr,h*dpr,36,0,w-52,h);ctx.fillStyle='#8fa1b5';ctx.font='bold 11px sans-serif';ctx.textAlign='right';ctx.textBaseline='middle';const yLabels=[1,0.75,0.5,0.25,0,-0.25,-0.5,-0.75,-1];for(let i=0;i<9;i++){ctx.fillText(String(yLabels[i]),32,Math.round(20+i*(h-40)/8))}ctx.save();ctx.beginPath();ctx.rect(36,0,w-52,h);ctx.clip();ctx.lineWidth=2;drawSeries('thr','#39d98a',-1,1,100);drawSeries('str','#5cc8ff',-1,1,100);drawSeries('gz','#ff6b6b',-1,1,5);if(screenSaverActive){ctx.fillStyle='#5cc8ff';ctx.font='20px sans-serif';ctx.textAlign='center';ctx.fillText('Drifting for Fun~',w/2,h/2)}ctx.restore()}
 function renderLoop(now){requestAnimationFrame(renderLoop);let dt=Math.min(100,now-lastFrameTime);lastFrameTime=now;if(document.hidden||chartPaused)return;if(screenSaverActive){const stepX=(cw-52)/255;scrollOffset+=dt/18*stepX;scrollOffset=Math.min(scrollOffset,stepX*1.5);while(scrollOffset>=stepX){addPoint({seq:0,t:saverTime,dt:16,thr:90*Math.sin(saverTime/400),str:90*Math.sin(saverTime/550+1),gz:5*Math.sin(saverTime/300+2)});saverTime+=16;scrollOffset-=stepX}if(now-lastDrawTime>=16){lastDrawTime=now;draw()}}}
-initCanvasDpr();applyUiSkin();applyLanguage(uiLang);refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,5000);setInterval(refreshWifiSta,5000);setInterval(pollLog,1000);connectDataSocket();setTimeout(()=>{if(!dataWsConnected)pollData()},1200);updateTubMeta();draw();requestAnimationFrame(renderLoop);refreshJoystickCalStatus();
+initCanvasDpr();applyLanguage(uiLang);refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,5000);setInterval(refreshWifiSta,5000);setInterval(pollLog,1000);connectDataSocket();setTimeout(()=>{if(!dataWsConnected)pollData()},1200);updateTubMeta();draw();requestAnimationFrame(renderLoop);refreshJoystickCalStatus();
 </script>
 </body>
 </html>

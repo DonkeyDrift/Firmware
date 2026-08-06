@@ -1,12 +1,19 @@
 # CHANGELOG.md
 
-## 2026-08-06
+## 2026-08-06 v1.7.40
 
 - feat(WebConsole): 四个 Web 页面（Console/Judge/Drift/OTA）统一嵌入头盔 favicon
   - `libraries/mus4_web/src/WebConsoleFavicon.h`（新增）：200x200 头盔 logo PNG 以 PROGMEM 字节数组嵌入固件，浏览器不再请求到 404 的默认 favicon。
   - `libraries/mus4_web/src/WebConsoleServer.cpp`：新增 `/favicon.png` 与 `/favicon.ico` 路由（同一 handler 提供嵌入 PNG，`Cache-Control: max-age=86400` 长缓存）。
   - `libraries/mus4_web/src/WebConsoleAssets.h`：四个页面 `<head>` 增加 `<link rel="icon" type="image/png" href="/favicon.png">`。
   - `tests/test_firmware_feature_flags.py`：新增 `test_web_console_pages_share_embedded_png_favicon` 源码断言（逐页校验 link 标签位置、路由注册与 PNG 魔数）。
+
+- refactor(WebConsole): 移除 UI 风格切换，Web Console 只保留 ESP32（Drifter Console）皮肤
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：删除顶栏 `skinSwitch` 分段切换按钮（`Drifter Console UI` / `DonkeyDrifter Web UI`）、整段 `<style id="donkeySkin">` DonkeyDrift 皮肤 CSS、`.skinSwitch`/`.skinSeg` 样式与 `.headerRow .otaLink` 覆盖（OTA 链接恢复 `margin-left:auto` 右对齐），以及 JS 侧 `THEME_STORAGE_KEY`、`readStoredUiTheme()`/`writeStoredUiTheme()`/`applyUiSkin()`/`setUiSkin()` 与 `theme.title` 双语词条；初始化链不再调用 `applyUiSkin()`。
+  - `tests/test_firmware_feature_flags.py`：删除 `test_web_console_has_skin_switch_for_ui_skin_toggle` 与 `test_web_console_ui_theme_persists_via_local_storage_and_donkey_skin_css` 两个皮肤切换断言用例；`pytest tests/` 共 292 项全部通过。
+  - 使用 `arduino-cli.py -c` 编译验证通过。
+  - 配套：上位机 DonkeyDrift 仓库同步移除其 Web UI 的 SkinSwitcher 与 `theme-mus4` 皮肤（各自只保留自己的 UI，删除转换键）。
+
 ## 2026-08-05 v1.7.39
 
 - fix(WebConsole): UI 风格切换按钮名称与 DonkeyDrifter Web UI 保持一致

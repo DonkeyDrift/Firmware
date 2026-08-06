@@ -379,6 +379,29 @@ def test_web_console_keeps_original_ui_and_direct_curve_path():
     assert "\"pong\"" not in source
 
 
+def test_web_console_pages_share_embedded_png_favicon():
+    """四个 Web 页面（Console/Judge/Drift/OTA）统一引用 /favicon.png，
+    由 WebConsoleServer 以嵌入 PNG（WebConsoleFavicon.h）提供。"""
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+    server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+    favicon = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleFavicon.h").read_text(encoding="utf-8")
+
+    icon_link = '<link rel="icon" type="image/png" href="/favicon.png">'
+    for title in ("Drifter Console", "Drift Judge", "Drift Assist Tuning", "MUS4 OTA Update"):
+        idx = assets.find(f"<title>{title}</title>")
+        assert idx != -1, title
+        # favicon <link> 必须紧跟在同页 <title> 之前，不能跨页面误匹配
+        assert assets[max(0, idx - 200):idx].count(icon_link) == 1, title
+
+    assert 'wifiWebServer.on("/favicon.png", HTTP_GET, handleWifiWebFavicon);' in server
+    assert '"image/png"' in server
+    assert "WEB_CONSOLE_FAVICON_PNG" in server
+
+    # PNG 文件头魔数：‰PNG
+    assert "0x89, 0x50, 0x4E, 0x47" in favicon
+    assert "WEB_CONSOLE_FAVICON_PNG_LEN" in favicon
+
+
 def test_web_console_has_help_floating_modal():
     source = firmware_source_text()
 

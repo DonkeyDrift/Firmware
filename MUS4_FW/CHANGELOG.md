@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-08-06
+
+- feat(WebConsole): 四个 Web 页面（Console/Judge/Drift/OTA）统一嵌入头盔 favicon
+  - `libraries/mus4_web/src/WebConsoleFavicon.h`（新增）：200x200 头盔 logo PNG 以 PROGMEM 字节数组嵌入固件，浏览器不再请求到 404 的默认 favicon。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：新增 `/favicon.png` 与 `/favicon.ico` 路由（同一 handler 提供嵌入 PNG，`Cache-Control: max-age=86400` 长缓存）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：四个页面 `<head>` 增加 `<link rel="icon" type="image/png" href="/favicon.png">`。
+  - `tests/test_firmware_feature_flags.py`：新增 `test_web_console_pages_share_embedded_png_favicon` 源码断言（逐页校验 link 标签位置、路由注册与 PNG 魔数）。
 ## 2026-08-05 v1.7.39
 
 - fix(WebConsole): UI 风格切换按钮名称与 DonkeyDrifter Web UI 保持一致

@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-07 v1.7.41
+
+- 固件版本号从 `v1.7.40` 更新到 `v1.7.41`。
+- fix(WebConsole): Network 卡片 HOST 分页隐藏齿轮设置按钮
+  - 场景：Network 卡片右上角齿轮（`openNetworkSettings()`）是 AP/STA 网络设置入口；HOST 分页（v1.7.39 上位机 IP 显示，数据来自 Serial2）没有可配置的网络项，点击会错误地弹出 STA 配置弹窗。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：齿轮按钮新增 `id="networkGear"`；`updateNetworkCard()` 按选中分页切换 `networkGear.style.display`——HOST 分页隐藏，AP/STA 分页保持显示，按钮本身与两个设置弹窗逻辑不变。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.41；`test_host_ip_report_channel` 新增 HOST 分页隐藏齿轮的源码断言。
+  - 验证：`pytest tests/` 292 项全部通过；`arduino-cli.py -c` 编译通过；HTTP OTA 刷至 STA 设备 192.168.3.46，设备重启后确认运行 v1.7.41、页面已包含按分页隐藏齿轮的逻辑，`host_ip` 上报链路（10 秒周期）恢复正常。
+
 ## 2026-08-06 v1.7.40
 
 - feat(WebConsole): 四个 Web 页面（Console/Judge/Drift/OTA）统一嵌入头盔 favicon

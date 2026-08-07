@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.40"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.41"' in build_info
+    assert "v1.7.41" in changelog
     assert "v1.7.40" in changelog
-    assert "v1.7.39" in changelog
-    assert changelog.index("v1.7.40") < changelog.index("v1.7.39")
+    assert changelog.index("v1.7.41") < changelog.index("v1.7.40")
 
 
 def test_host_ip_report_channel():
@@ -303,6 +303,10 @@ def test_host_ip_report_channel():
     assert host_tab in assets
     assert "selected==='host'" in assets
     assert "s.host_ip||''" in assets
+
+    # v1.7.41：HOST 分页隐藏齿轮设置按钮（AP/STA 分页保留，HOST 页无网络设置）
+    assert '<button id="networkGear" class="gear"' in assets
+    assert "networkGear.style.display=selected==='host'?'none':''" in assets
 
 
 def test_apply_wifi_sta_credentials_restores_ap_before_begin():
@@ -1344,7 +1348,7 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
 
     assert ".headerRow{display:flex;align-items:flex-end;" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
-    assert ".otaLink{margin-left:auto;text-decoration:none}" in source
+    assert ".otaLink{text-decoration:none}" in source
     assert ".otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;line-height:1}" in source
     assert ".devHint{position:relative}" in source
     assert ".devHint:hover:after" in source
@@ -1358,6 +1362,28 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert "#networkCard{grid-area:network}" in source
     assert 'grid-template-areas:"mode park drift voltage network"' in source
     assert 'grid-template-areas:"mode park drift" "voltage network network"' in source
+
+
+def test_web_console_language_tabs_are_inert_placeholder():
+    """顶栏中文/English 分段控件：与 DonkeyDrift Web UI 顶栏切换器同款，
+    当前为纯占位（无 onclick、不接 setLanguage），语言切换功能后续再接。
+    位置在 OTA 按钮左边、右对齐组内（.langTabs 用 margin-left:auto 顶替原
+    .otaLink 的右推），选中态沿用 ESP32 填充语言（蓝底 #5cc8ff + 黑字 #061019
+    + 800 粗），当前页面语言为英文故 English 常亮。"""
+
+    source = firmware_source_text()
+
+    assert ".langTabs{display:inline-flex;gap:4px;margin-left:auto}" in source
+    assert ".langTabs button.active{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800}" in source
+    assert '<span class="langTabs"' in source
+    assert '<button type="button">中文</button><button type="button" class="active">English</button>' in source
+    # 位置：langTabs 在 OTA 按钮左边；右推由 langTabs 承担，otaLink 不再 margin-left:auto
+    assert source.index('<span class="langTabs"') < source.index('<a href="/update" class="otaLink">')
+    assert ".otaLink{margin-left:auto" not in source
+    # 惰性：langTabs 片段内没有任何 onclick / setLanguage 绑定
+    lang_tabs = source[source.index('<span class="langTabs"'):source.index('<a href="/update" class="otaLink">')]
+    assert "onclick" not in lang_tabs
+    assert "setLanguage" not in lang_tabs
     assert 'grid-template-areas:"mode park voltage" "drift drift drift" "network network network"' in source
     assert "minmax(160px,.56fr)" in source
     assert "grid-template-columns:84px 154px 100px" in source

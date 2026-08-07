@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-07 v1.7.43
+
+- 固件版本号从 `v1.7.42` 更新到 `v1.7.43`。
+- feat(WebConsole): STA 配网弹窗默认开启"上位机配网"
+  - 场景：绑定新 Wi-Fi 时若只给车辆配网，Linux 上位机会留在旧网络导致两车失联；用户希望默认联动。此前每次打开 STA 弹窗都强制把开关复位为关（`checked=false`），需要手动打开。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`openWifiStaModal()` 改为打开弹窗时默认勾选"上位机配网"（`checked=true`）并联动 `onHostWifiToggle()`——连接按钮默认呈现为"发送到上位机"，保存时经串口把凭据发给上位机执行 nmcli 连接；用户仍可手动关回去退化为仅车辆配网。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.43；新增 `test_web_console_sta_modal_defaults_host_provisioning_on` 源码断言。
+
 ## 2026-08-07 v1.7.42
 
 - 固件版本号从 `v1.7.41` 更新到 `v1.7.42`。

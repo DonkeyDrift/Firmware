@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.42"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.43"' in build_info
+    assert "v1.7.43" in changelog
     assert "v1.7.42" in changelog
-    assert "v1.7.41" in changelog
-    assert changelog.index("v1.7.42") < changelog.index("v1.7.41")
+    assert changelog.index("v1.7.43") < changelog.index("v1.7.42")
 
 
 def test_host_ip_report_channel():
@@ -1373,10 +1373,13 @@ def test_web_console_language_tabs_are_inert_placeholder():
 
     source = firmware_source_text()
 
-    assert ".langTabs{display:inline-flex;align-items:center;gap:2px;margin-left:auto;background:#171c24;border:1px solid #2b3441;border-radius:999px;padding:1px}" in source
-    # 分段连在一起：外层 pill 容器（padding:1px + border:1px）+ 20px 分段 = 24px 总高，与旁边 OTA 按钮同高
-    assert ".langTabs button{padding:0 10px;height:20px;" in source
-    assert ".langTabs button.active{background:#5cc8ff;border-color:#5cc8ff;color:#061019}" in source
+    assert ".langTabs{display:inline-flex;align-items:center;margin-left:auto;background:#171c24;border:none;border-radius:999px;overflow:hidden;height:24px;padding:0}" in source
+    # 分段连在一起且与 OTA 按钮严格同高：容器无边框无内边距（overflow:hidden 保持连体），
+    # 分段 height:24px（button UA 样式为 border-box，总高=24=OTA 的 height:24px+border-box），
+    # 两段之间 1px 分隔线；实测（Chromium getBoundingClientRect）langTabs/分段/otaButton 均为 24px 且顶底对齐
+    assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;" in source
+    assert ".langTabs button+button{border-left:1px solid #2b3441}" in source
+    assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
     assert '<span class="langTabs"' in source
     assert '<button type="button">中文</button><button type="button" class="active">English</button>' in source
     # 位置：langTabs 在 OTA 按钮左边；右推由 langTabs 承担，otaLink 不再 margin-left:auto
@@ -1425,7 +1428,7 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert 'id="networkSub"' not in source
     assert '<b data-i18n="state.ssid">SSID</b><span id="networkSsidValue">--</span>' in source
     assert '<b>LAN</b><span id="networkMdnsValue" onclick="openNetworkLanUrl()">--</span>' not in source
-    assert '<b data-i18n="state.remain">REMAIN</b><span id="voltageSub">battery</span>' in source
+    assert '<b data-i18n="state.remain">REMAIN</b><span id="voltageSub">--</span>' in source
     assert 'onclick="event.stopPropagation();openNetworkSettings()"' in source
     # v1.7.42：无可复制 IP（disabled/--/0.0.0.0/空）时去掉 copyValue，悬停不再出现"点击复制 IP"
     assert "networkValue.classList.toggle('copyValue',!!networkCopyIp&&networkCopyIp!=='--'&&networkCopyIp!=='0.0.0.0'&&networkCopyIp!=='disabled')" in source
@@ -1443,7 +1446,8 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert "LAN 名称不可用，请使用 STA IP" not in source
     assert "v.toFixed(1)+'V'" in source
     assert "if(!isNaN(v)&&v>=5)" in source
-    assert "voltageValue.textContent=t('voltage.disconnected')" in source
+    assert "voltageValue.textContent='--'" in source
+    assert "voltageSub.textContent='--'" in source
     assert "if(!isNaN(v)&&v>0)" not in source
     assert "v.toFixed(2)+'V'" not in source
 
@@ -1766,7 +1770,8 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert '<div class="muted" style="margin:8px 0">开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。</div>' not in source
     assert ".log{height:calc(5 * 1.35em + 16px);" in source
     assert ".log{height:280px;" not in source
-    assert "versionLabel.textContent=s.version.replace(/^V/,'v')" in source
+    assert 'id="versionLabel"' not in source
+    assert "versionLabel.textContent" not in source
     assert '<div id="log" class="log"></div>' in source
     assert 'id="logMeta"' not in source
     assert "logMeta" not in source
@@ -1882,6 +1887,18 @@ def test_web_console_sta_refresh_does_not_overwrite_open_modal_input():
     assert "async function openWifiStaModal()" in source
     assert "await refreshWifiSta(true)" in source
     assert "wifiStaModal.classList.add('show')" in source
+
+
+def test_web_console_sta_modal_defaults_host_provisioning_on():
+    """v1.7.43：STA 配网弹窗默认开启"上位机配网"——绑定新 Wi-Fi 时默认
+    同步把凭据发给 Linux 上位机，避免车辆换网后与上位机失联。"""
+
+    source = firmware_source_text()
+
+    assert "document.getElementById('hostWifiToggle').checked=true;onHostWifiToggle()" in source
+    assert "document.getElementById('hostWifiToggle').checked=false" not in source
+    assert "connectBtn.textContent='发送到上位机'" in source
+    assert "connectBtn.onclick=saveHostWifi" in source
 
 
 def test_web_console_sta_settings_support_scan_and_password_visibility():

@@ -8,6 +8,7 @@
 #include "SharedTypes.h"
 #include "StringPrint.h"
 #include "WebConsoleAssets.h"
+#include "WebConsoleFavicon.h"
 #include "WebLogBuffer.h"
 #include "WifiConsoleTypes.h"
 #include "WirelessConsole.h"
@@ -186,6 +187,13 @@ static void handleWifiWebDrift()
 {
     wifiWebServer.sendHeader("Cache-Control", "no-store");
     wifiWebServer.send_P(200, "text/html", WIFI_WEB_DRIFT_HTML);
+}
+
+static void handleWifiWebFavicon()
+{
+    // 浏览器标签页图标为嵌入的静态资源，内容不变，可长缓存
+    wifiWebServer.sendHeader("Cache-Control", "max-age=86400");
+    wifiWebServer.send_P(200, "image/png", (PGM_P)WEB_CONSOLE_FAVICON_PNG, WEB_CONSOLE_FAVICON_PNG_LEN);
 }
 
 static void handleWifiWebCaptivePortal()
@@ -1341,6 +1349,8 @@ void setupWebConsoleServer()
     wifiWebServer.on("/", HTTP_GET, handleWifiWebRoot);
     wifiWebServer.on("/judge", HTTP_GET, handleWifiWebJudge);
     wifiWebServer.on("/drift", HTTP_GET, handleWifiWebDrift);
+    wifiWebServer.on("/favicon.png", HTTP_GET, handleWifiWebFavicon);
+    wifiWebServer.on("/favicon.ico", HTTP_GET, handleWifiWebFavicon);
     wifiWebServer.on("/connecttest.txt", HTTP_GET, handleWifiWebWindowsConnectTest);
     wifiWebServer.on("/ncsi.txt", HTTP_GET, handleWifiWebWindowsNcsi);
     wifiWebServer.on("/redirect", HTTP_GET, handleWifiWebCaptivePortalRedirectPage);

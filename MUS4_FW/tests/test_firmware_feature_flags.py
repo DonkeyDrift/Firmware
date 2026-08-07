@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.39"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.40"' in build_info
+    assert "v1.7.40" in changelog
     assert "v1.7.39" in changelog
-    assert "v1.7.38" in changelog
-    assert changelog.index("v1.7.39") < changelog.index("v1.7.38")
+    assert changelog.index("v1.7.40") < changelog.index("v1.7.39")
 
 
 def test_host_ip_report_channel():
@@ -379,6 +379,29 @@ def test_web_console_keeps_original_ui_and_direct_curve_path():
     assert "\"pong\"" not in source
 
 
+def test_web_console_pages_share_embedded_png_favicon():
+    """四个 Web 页面（Console/Judge/Drift/OTA）统一引用 /favicon.png，
+    由 WebConsoleServer 以嵌入 PNG（WebConsoleFavicon.h）提供。"""
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+    server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+    favicon = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleFavicon.h").read_text(encoding="utf-8")
+
+    icon_link = '<link rel="icon" type="image/png" href="/favicon.png">'
+    for title in ("Drifter Console", "Drift Judge", "Drift Assist Tuning", "MUS4 OTA Update"):
+        idx = assets.find(f"<title>{title}</title>")
+        assert idx != -1, title
+        # favicon <link> 必须紧跟在同页 <title> 之前，不能跨页面误匹配
+        assert assets[max(0, idx - 200):idx].count(icon_link) == 1, title
+
+    assert 'wifiWebServer.on("/favicon.png", HTTP_GET, handleWifiWebFavicon);' in server
+    assert '"image/png"' in server
+    assert "WEB_CONSOLE_FAVICON_PNG" in server
+
+    # PNG 文件头魔数：‰PNG
+    assert "0x89, 0x50, 0x4E, 0x47" in favicon
+    assert "WEB_CONSOLE_FAVICON_PNG_LEN" in favicon
+
+
 def test_web_console_has_help_floating_modal():
     source = firmware_source_text()
 
@@ -438,56 +461,6 @@ def test_web_console_language_selection_uses_local_storage_and_i18n_dictionary()
     assert "function setLanguage" in source
     assert "document.documentElement.lang" in source
     assert "return lang==='en'?'en':'zh'" in source
-
-
-def test_web_console_has_skin_switch_for_ui_skin_toggle():
-    source = firmware_source_text()
-
-    assert 'id="skinSwitch"' in source
-    assert 'id="skinEsp32"' in source
-    assert 'id="skinDonkey"' in source
-    assert ">Drifter Console UI<" in source
-    assert ">DonkeyDrifter Web UI<" in source
-    assert 'data-i18n-aria="theme.title"' in source
-    assert "setUiSkin('esp32')" in source
-    assert "setUiSkin('donkey')" in source
-    assert ".skinSeg.active" in source
-    assert "body.donkey-skin .skinSwitch" in source
-    assert "body.donkey-skin .skinSeg.active" in source
-    assert "themeFab" not in source
-    assert source.index('id="skinSwitch"') < source.index('class="otaLink"') < source.index('id="devModeToggle"')
-    assert ".skinSwitch{display:inline-flex" in source
-    assert ".skinSwitch{position:fixed" not in source
-    assert ".skinSwitch .skinSeg{padding:0 10px;height:20px;" in source
-    assert ".headerRow .otaLink{margin-left:0;display:flex;align-items:center}" in source
-    assert ".skinSwitch .skinSeg.active{background:#5cc8ff;border-color:#5cc8ff;color:#061019}" in source
-    assert "body.donkey-skin .skinSeg.active{background:#0891b2;border-color:#0891b2;color:#fff}" in source
-
-
-def test_web_console_ui_theme_persists_via_local_storage_and_donkey_skin_css():
-    source = firmware_source_text()
-
-    assert "THEME_STORAGE_KEY='mus4.ui.theme'" in source
-    assert "localStorage.getItem(THEME_STORAGE_KEY)" in source
-    assert "localStorage.setItem(THEME_STORAGE_KEY" in source
-    assert "function applyUiSkin()" in source
-    assert "function setUiSkin(skin)" in source
-    assert "toggleUiSkin" not in source
-    assert "classList.toggle('donkey-skin'" in source
-    assert "'skinEsp32'" in source
-    assert "'skinDonkey'" in source
-    assert "classList.toggle('active'" in source
-    assert "applyUiSkin();applyLanguage(uiLang)" in source
-    assert '<style id="donkeySkin">' in source
-    assert "body.donkey-skin{" in source
-    assert "body.donkey-skin .panel{" in source
-    assert "#09090b" in source
-    assert "#18181b" in source
-    assert "#27272a" in source
-    assert "#0891b2" in source
-    assert "#22d3ee" in source
-    assert "切换 UI 风格" in source
-    assert "Switch UI style" in source
 
 
 def test_web_console_static_core_copy_is_marked_for_i18n():

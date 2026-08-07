@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.41"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.42"' in build_info
+    assert "v1.7.42" in changelog
     assert "v1.7.41" in changelog
-    assert "v1.7.40" in changelog
-    assert changelog.index("v1.7.41") < changelog.index("v1.7.40")
+    assert changelog.index("v1.7.42") < changelog.index("v1.7.41")
 
 
 def test_host_ip_report_channel():
@@ -1373,13 +1373,17 @@ def test_web_console_language_tabs_are_inert_placeholder():
 
     source = firmware_source_text()
 
-    assert ".langTabs{display:inline-flex;gap:4px;margin-left:auto}" in source
-    assert ".langTabs button.active{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800}" in source
+    assert ".langTabs{display:inline-flex;align-items:center;gap:2px;margin-left:auto;background:#171c24;border:1px solid #2b3441;border-radius:999px;padding:1px}" in source
+    # 分段连在一起：外层 pill 容器（padding:1px + border:1px）+ 20px 分段 = 24px 总高，与旁边 OTA 按钮同高
+    assert ".langTabs button{padding:0 10px;height:20px;" in source
+    assert ".langTabs button.active{background:#5cc8ff;border-color:#5cc8ff;color:#061019}" in source
     assert '<span class="langTabs"' in source
     assert '<button type="button">中文</button><button type="button" class="active">English</button>' in source
     # 位置：langTabs 在 OTA 按钮左边；右推由 langTabs 承担，otaLink 不再 margin-left:auto
     assert source.index('<span class="langTabs"') < source.index('<a href="/update" class="otaLink">')
     assert ".otaLink{margin-left:auto" not in source
+    # otaLink 改 flex 消除 inline-block 基线下沉，保证 OTA 按钮与 langTabs 容器顶/底对齐同高
+    assert ".headerRow .otaLink{display:flex;align-items:center}" in source
     # 惰性：langTabs 片段内没有任何 onclick / setLanguage 绑定
     lang_tabs = source[source.index('<span class="langTabs"'):source.index('<a href="/update" class="otaLink">')]
     assert "onclick" not in lang_tabs
@@ -1423,6 +1427,8 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert '<b>LAN</b><span id="networkMdnsValue" onclick="openNetworkLanUrl()">--</span>' not in source
     assert '<b data-i18n="state.remain">REMAIN</b><span id="voltageSub">battery</span>' in source
     assert 'onclick="event.stopPropagation();openNetworkSettings()"' in source
+    # v1.7.42：无可复制 IP（disabled/--/0.0.0.0/空）时去掉 copyValue，悬停不再出现"点击复制 IP"
+    assert "networkValue.classList.toggle('copyValue',!!networkCopyIp&&networkCopyIp!=='--'&&networkCopyIp!=='0.0.0.0'&&networkCopyIp!=='disabled')" in source
     assert '<button class="gear" onclick="event.stopPropagation();openWifiStaModal()">' not in source
     assert 'ap_ssid=\\"%s\\"' in source
     assert 'sta_ssid=\\"%s\\"' in source

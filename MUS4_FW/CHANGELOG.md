@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-07 v1.7.42
+
+- 固件版本号从 `v1.7.41` 更新到 `v1.7.42`。
+- fix(WebConsole): Network 卡片无可复制 IP 时悬停不再显示"点击复制 IP"
+  - 场景：STA 分页未配置 STA 时显示 `disabled`（设备处于 AP 模式时的常见状态）、HOST 分页未收到上位机上报时显示 `--`，此时悬停 IP 显示区仍浮现"点击复制 IP"提示与手型光标，点击只会弹"复制失败"提示。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`updateNetworkCard()` 末尾按 `networkCopyIp` 有效性切换 `networkValue` 的 `copyValue` 类（条件与 `copyNetworkIp()` 点击守卫一致：`--`/`0.0.0.0`/`disabled`/空均不可复制）；去掉该类后悬停提示与手型光标不再出现，点击守卫逻辑不变。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.42；Network 卡片结构断言新增 `copyValue` 切换逻辑。
+
 ## 2026-08-07 v1.7.41
 
 - 固件版本号从 `v1.7.40` 更新到 `v1.7.41`。

@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.43"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.44"' in build_info
+    assert "v1.7.44" in changelog
     assert "v1.7.43" in changelog
-    assert "v1.7.42" in changelog
-    assert changelog.index("v1.7.43") < changelog.index("v1.7.42")
+    assert changelog.index("v1.7.44") < changelog.index("v1.7.43")
 
 
 def test_host_ip_report_channel():
@@ -1373,12 +1373,10 @@ def test_web_console_language_tabs_are_inert_placeholder():
 
     source = firmware_source_text()
 
-    assert ".langTabs{display:inline-flex;align-items:center;margin-left:auto;background:#171c24;border:none;border-radius:999px;overflow:hidden;height:24px;padding:0}" in source
-    # 分段连在一起且与 OTA 按钮严格同高：容器无边框无内边距（overflow:hidden 保持连体），
-    # 分段 height:24px（button UA 样式为 border-box，总高=24=OTA 的 height:24px+border-box），
-    # 两段之间 1px 分隔线；实测（Chromium getBoundingClientRect）langTabs/分段/otaButton 均为 24px 且顶底对齐
-    assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;" in source
-    assert ".langTabs button+button{border-left:1px solid #2b3441}" in source
+    assert ".langTabs{display:inline-flex;align-items:center;gap:2px;margin-left:auto;background:#171c24;border:1px solid #2b3441;border-radius:999px;padding:1px;height:24px;box-sizing:border-box}" in source
+    # 外大椭圆（box-sizing:border-box 固定总高 24px=OTA/DEV 同高）+ 内两个小椭圆分段（20px 内嵌），
+    # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言
+    assert ".langTabs button{padding:0 10px;height:20px;min-width:0;border:none;border-radius:999px;" in source
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
     assert '<span class="langTabs"' in source
     assert '<button type="button">中文</button><button type="button" class="active">English</button>' in source
@@ -1430,8 +1428,17 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert '<b>LAN</b><span id="networkMdnsValue" onclick="openNetworkLanUrl()">--</span>' not in source
     assert '<b data-i18n="state.remain">REMAIN</b><span id="voltageSub">--</span>' in source
     assert 'onclick="event.stopPropagation();openNetworkSettings()"' in source
-    # v1.7.42：无可复制 IP（disabled/--/0.0.0.0/空）时去掉 copyValue，悬停不再出现"点击复制 IP"
-    assert "networkValue.classList.toggle('copyValue',!!networkCopyIp&&networkCopyIp!=='--'&&networkCopyIp!=='0.0.0.0'&&networkCopyIp!=='disabled')" in source
+    # v1.7.42：无可复制 IP 时去掉 copyValue，悬停不再出现"点击复制 IP"；
+    # v1.7.44 起统一抽为 netIpValid()（含大写 Disabled——固件 ap_ip 直报 Disabled）
+    assert "function netIpValid(v){return !!v&&v!=='--'&&v!=='0.0.0.0'&&v.toLowerCase()!=='disabled'}" in source
+    assert "networkValue.classList.toggle('copyValue',netIpValid(networkCopyIp))" in source
+    # v1.7.44：AP Disabled（STA-only 关 AP）与 HOST 未上报时卡片边框与小点变红（#ff6b6b）
+    assert ".netDown{border-color:#ff6b6b}" in source
+    assert ".netDown .stateDot{background:#ff6b6b}" in source
+    assert "'stateCard '+(hostIp?'mode0':'netDown')" in source
+    assert "'stateCard '+(netIpValid(ap)?'mode0':'netDown')" in source
+    assert "'stateCard '+(hostIp?'mode0':'driftOff')" not in source
+    assert "networkCard.className='stateCard mode0'" not in source
     assert '<button class="gear" onclick="event.stopPropagation();openWifiStaModal()">' not in source
     assert 'ap_ssid=\\"%s\\"' in source
     assert 'sta_ssid=\\"%s\\"' in source

@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-07 v1.7.44
+
+- 固件版本号从 `v1.7.43` 更新到 `v1.7.44`。
+- fix(WebConsole): Network 卡片无连接状态显示红色边框与红色状态点
+  - 场景：STA-only 模式下 AP 关闭（`/api/status` 直报 `ap_ip=Disabled`），AP 分页显示 Disabled 但卡片仍是绿色边框绿点；HOST 分页未收到上位机上报显示 `--` 时为灰色（driftOff），都不足以表达"无连接"。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `.netDown` 样式类（边框与 `.stateDot` 均为 `#ff6b6b`，与 Park Locked 等既有红色一致）；`updateNetworkCard()` 中 HOST 分页未上报、AP 分页无有效 IP（`--`/`0.0.0.0`/`Disabled`，大小写不敏感）时改用 `netDown`，有连接时保持 `mode0` 绿色；STA 分页样式不变。
+  - 顺带修复 v1.7.42 的遗漏：复制提示的有效 IP 判断抽出为 `netIpValid()`，`Disabled` 改为大小写不敏感比较——此前 AP 分页显示大写 `Disabled` 时悬停仍会浮现"点击复制 IP"。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.44；Network 卡片结构断言更新为 `netIpValid` 与 `netDown` 红框红点样式。
+
 ## 2026-08-07 v1.7.43
 
 - 固件版本号从 `v1.7.42` 更新到 `v1.7.43`。

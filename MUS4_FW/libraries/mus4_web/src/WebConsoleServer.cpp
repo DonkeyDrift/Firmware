@@ -5,6 +5,7 @@
 #include "JsonUtil.h"
 #include "Mus4Log.h"
 #include "BuildInfo.h"
+#include "MutePreference.h"
 #include "SharedTypes.h"
 #include "StringPrint.h"
 #include "WebConsoleAssets.h"
@@ -85,10 +86,6 @@ static uint32_t wifiWebStatusMaxDtMs = 0;
 static uint32_t wifiWebLogMaxDtMs = 0;
 static uint32_t wifiWebDataMaxDtMs = 0;
 static uint32_t wifiWebCommandMaxDtMs = 0;
-
-// Web UI mute preference (runtime mirror of NVS "webui"/"muted"; persistence
-// only for now, the actual silencing behavior is applied separately)
-static bool webUiMuted = false;
 
 // Web UI language preference (runtime mirror of NVS "webui"/"lang";
 // "zh" or "en", default "zh" so first boot shows the Chinese console)
@@ -641,39 +638,19 @@ static void handleWifiWebJudgeConfigReset()
 // ---------------------------------------------------------------------------
 // Web UI mute preference
 //
-// Persisted in NVS namespace "webui", key "muted" (UChar 0/1), default 0
-// (unmuted) when the key is absent. Open endpoints like judge-config: the
-// wireless command permission layering only applies to console commands.
-
-static void loadWebUiMutePreference()
-{
-    Preferences prefs;
-    if (!prefs.begin("webui", true)) {
-        webUiMuted = false;
-        mus4LogLine("web", "mute pref load failed, default unmuted");
-        return;
-    }
-    webUiMuted = prefs.getUChar("muted", 0) != 0;
-    prefs.end();
-}
-
-static bool saveWebUiMutePreference(bool muted)
-{
-    Preferences prefs;
-    if (!prefs.begin("webui", false)) return false;
-    size_t written = prefs.putUChar("muted", muted ? 1 : 0);
-    prefs.end();
-    if (written == 0) return false;
-    webUiMuted = muted;
-    return true;
-}
+// State and NVS persistence (namespace "webui", key "muted" UChar 0/1,
+// default unmuted) live in mus4_core's MutePreference, so every firmware
+// sound producer (the Buzzer) shares one gate; the preference is loaded
+// early in setup() before Wi-Fi setup can play the AP start melody. Open
+// endpoints like judge-config: the wireless command permission layering
+// only applies to console commands.
 
 static void handleWifiWebMuteGet()
 {
     String response;
     response.reserve(16);
     response += "{\"muted\":";
-    response += (webUiMuted ? '1' : '0');
+    response += (isSystemMuted() ? '1' : '0');
     response += "}";
     sendWifiWebApiHeaders();
     wifiWebServer.send(200, "application/json", response);
@@ -692,7 +669,7 @@ static void handleWifiWebMuteSet()
         wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
         return;
     }
-    if (!saveWebUiMutePreference(mutedArg == "1")) {
+    if (!saveMutePreference(mutedArg == "1")) {
         sendWifiWebApiHeaders();
         wifiWebServer.send(500, "application/json", "{\"saved\":false}");
         return;
@@ -701,7 +678,7 @@ static void handleWifiWebMuteSet()
     String response;
     response.reserve(28);
     response += "{\"saved\":true,\"muted\":";
-    response += (webUiMuted ? '1' : '0');
+    response += (isSystemMuted() ? '1' : '0');
     response += "}";
     sendWifiWebApiHeaders();
     wifiWebServer.send(200, "application/json", response);
@@ -1546,8 +1523,6 @@ void setupWebConsoleServer()
     wifiWebServer.on("/update", HTTP_GET, handleWifiWebUpdateGet);
     wifiWebServer.on("/update", HTTP_POST, handleWifiWebUpdatePost, handleWifiWebUpdateUpload);
     wifiWebServer.onNotFound(handleWifiWebCaptivePortalNotFound);
-    // Load the persisted Web UI mute preference once at server init (default: unmuted)
-    loadWebUiMutePreference();
     // Load the persisted Web UI language preference once at server init (default: zh)
     loadWebUiLanguagePreference();
     wifiWebServer.begin();

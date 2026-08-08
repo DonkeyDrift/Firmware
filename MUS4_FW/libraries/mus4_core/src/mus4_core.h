@@ -10,6 +10,7 @@
 
 #include "BuildInfo.h"
 #include "FirmwareConfig.h"
+#include "MutePreference.h"
 #include "SharedTypes.h"
 #include "RuntimeState.h"
 #include "WifiConsoleTypes.h"

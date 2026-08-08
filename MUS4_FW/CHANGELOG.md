@@ -1,5 +1,47 @@
 # CHANGELOG.md
 
+## 2026-08-08 v1.7.50
+
+- 固件版本号从 `v1.7.49` 更新到 `v1.7.50`。
+- feat(WebConsole): 标题右侧新增 GitHub 仓库链接图标（原版本号位置）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：headerRow 在主标题 `<h1>` 后插入 `.ghLink` 链接（内嵌 20px GitHub Mark SVG，`fill="currentColor"`），新标签页打开 `https://github.com/DonkeyDrift/Firmware`（`target="_blank" rel="noopener"`，带 title/aria-label）；默认 `#8fa1b5`、hover ESP32 蓝 `#5cc8ff`，`transform:translateY(-1px)` 沿用原版本号视觉对齐。
+  - `tests/test_firmware_feature_flags.py`：新增 `test_web_console_header_github_link_replaces_version_label`（href/新标签页/SVG 内联/位置在标题与 langTabs 之间/CSS 断言）。
+- fix(WebConsole): DRIFT 卡片右上角 Tune 链接与状态灯互相遮挡 → 同行排列且视觉对齐
+  - 场景：Tune 链接（right:8px/top:6px）与 `.stateDot`（right:12px/top:12px）挤在同一角落；中间方案曾直接删除该卡片状态灯、曾按像素硬调两者各自 `top`（9px/8.5px/8px，因不同浏览器 system-ui 字体度量差异无法收敛），均不理想。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：最终方案为新增 `.tunePair` 行内容器（`right:12px;top:11px`、11px 字号、10px 行高、nowrap）包住 Tune 链接与状态灯；状态灯脱离绝对定位改 `inline-block + vertical-align:middle`（圆心对齐文字 x 字高中心，由浏览器按当前字体度量计算，跨字体成立），无 transform 等额外位移，与其余四张卡片状态灯同为 cy=83 保持平行；Tune 链接用 `vertical-align:-1px` 下移 1px 使其油墨中心与圆点对齐（只动文字、不动圆点）；卡片末尾独立 `<span class="stateDot">` 移入该容器。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_drift_card_tune_link_left_of_state_dot` 随方案迭代重写（tunePair 结构、两段 CSS、卡片末尾无独立状态灯断言）。
+
+## 2026-08-08 v1.7.49
+
+- 固件版本号从 `v1.7.48` 更新到 `v1.7.49`。
+- feat(WebConsole): 中英双语覆盖扩展到全部子页面（/judge、/drift、/update），修复主控制台切换语言后手柄校准读数不重渲染
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主控制台：`applyLanguage()` 末尾挂 `refreshJoystickCalStatus()`——切换语言立即重渲染"方向/油门"实时读数（此前停留在切换前语言直到下次刷新）；`#joystickCalStatus` 静态默认文本改为中文快照（默认中文界面）。
+    - JUDGE 评分页：内嵌自包含 i18n 核心（与主控制台同款 `initLanguage()`——启动 GET `/api/language` 恢复设备语言，localStorage 兜底，页面不放切换 UI），新增 80 对 `judge.*` 键：维度名 `DIMENSION_KEYS` 键化、等级 `grade.*`、拖分原因 `reason.*`、碰撞提示、评分阈值表单 field/section、配置状态消息、按钮运行态等全部动态文案走 `t()`；`scoreState` 内部改存键而非中文字符串；`decodeBinaryDataPayload` 局部 `t` 改名 `ts` 消除对全局 `t()` 的遮蔽。
+    - DRIFT 调参页：该页原本纯英文——en = 原文逐字快照、zh = 反向补译中文，新增 62 对 `drift.*` 键；`setDriftConfigStatus` 改键驱动（记录 `{key,kind,suffix}` 供语言切换重放），12 个调参字段 label/hint 与运行时状态值全覆盖。
+    - UPDATE OTA 页：新增 10 对 `ota.*` 键（拖放提示、上传状态、错误前缀等）；`setStatus(t,c)` 形参改名 `text` 消除遮蔽；`<title>` 经 `document.title` 双语化（规避 favicon 测试的精确串断言）。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.49；JUDGE 页 `startBtn`/`getWeakestTrendReason` 断言同步为 i18n 形式；新增 `test_web_console_sub_pages_follow_device_language`（三页 i18n 核心、`/api/language` 接线、zh/en 键 parity 与前缀、无切换 UI）与 `test_web_console_language_switch_rerenders_joystick_cal_status` 两项源码断言。
+
+## 2026-08-08 v1.7.48
+
+- 固件版本号从 `v1.7.47` 更新到 `v1.7.48`。
+- feat(mute): 静音按钮落地实际静音功能——蜂鸣器全局静音闸门 + 开机前加载偏好，静音选择关机重启后仍记住
+  - `libraries/mus4_core/src/MutePreference.h` / `MutePreference.cpp`（新增）：系统级静音偏好单一数据源，API 为 `loadMutePreference()` / `saveMutePreference()` / `isSystemMuted()`；NVS 命名空间 `webui`、键 `muted`（UChar 0/1，缺省不静音）持久化，关机重启后恢复。
+  - `libraries/mus4_ui/src/Buzzer.cpp`：`startMelody()` 开头按 `isSystemMuted()` 拒绝启动任何旋律——模式切换、Park 锁/解锁、Wi-Fi AP 启动/关闭、STA 连接/断开提示音全覆盖，含开机 AP 启动音；`update()` 检测到播放中被静音立即停音并复位状态机（Web Console 切静音即时生效，无需重启）。
+  - `MUS4_FW.ino`：`setup()` 在 `setupWifiConsole()` 之前调用 `loadMutePreference()`（v1.7.45 在 `setupWebConsoleServer()` 里加载，晚于 Wi-Fi 初始化期间的 AP 启动音，开机音无法被静音）。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：`/api/mute` 处理器改调 MutePreference 核心 API，删除本地 `webUiMuted` 静态镜像与 `loadWebUiMutePreference()` / `saveWebUiMutePreference()`。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.48；静音持久化断言改指 `MutePreference.cpp` 并新增薄处理器断言；新增蜂鸣器静音闸门、开机加载顺序两项源码断言；发布标记断言不再钉死 build_info 当前版本——已失效的 v1.7.46 旧标记移除，v1.7.47 起改为校验 CHANGELOG 历史条目（否则每次发新版都误红）。
+  - 边界说明：电调（ESC）上电/解锁提示音由电调硬件自身驱动电机绕组发声，固件无法经油门信号线消除；Ubuntu 上位机侧与浏览器侧经全仓排查无任何发声代码，静音状态由设备端持久化，各浏览器打开控制台时经 GET `/api/mute` 同步。
+
+## 2026-08-08 v1.7.47
+
+- 固件版本号从 `v1.7.46` 更新到 `v1.7.47`。
+- feat(WebConsole): "功能说明"弹窗完全模仿 DonkeyDrifter Web UI 快捷键弹窗——新增功能分类小标题，关闭按钮统一为幽灵样式
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：6 条功能说明按"状态与日志 / 网络与诊断 / 数据与维护"三组分类（新增 `.helpSection` 结构），配 DonkeyDrifter 同款 uppercase 灰色小标题（`.helpSection h3`：12px / 500 / uppercase / .05em / `#8fa1b5`）；i18n 新增 `help.groupStatus` / `help.groupNetwork` / `help.groupData` 中英词条；`.helpClose` 从蓝底圆形改为幽灵按钮（28px 透明底 + `#a1a1aa` ×，hover `#27272a` 底白字），与 DonkeyDrifter 弹窗关闭按钮一致；新增 `.helpHead h2` 标题样式（16px / 700 / `#e8edf2`）；`.helpModal` 新增 `max-height:calc(100vh - 100px)` + `overflow-y:auto` 与 `color:#dbeafe`（右下角锚定、蓝边渐变面板不变）；`Serial Log` 条目随分类调整移至第一组。功能说明内容条目与既有 `help.*` 词条不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.7.47。
+  - `tests/test_firmware_feature_flags.py`：新增 `test_web_console_help_modal_mirrors_donkeydrifter_layout`（右下角定位、渐变面板、幽灵关闭按钮、三组分类小标题及双语词条、内容条目不变断言）与 `test_firmware_version_bumped_to_v1_7_47_for_help_modal_donkeydrifter_layout`；版本号断言更新至 v1.7.47。
+  - 验证：`tests/` 全量 pytest 通过；编译通过；已 OTA 刷机（HTTP `/update` → `192.168.3.46`），实机中英文两态截图确认右下角弹窗、三组分类小标题与幽灵关闭按钮渲染正确。
+
 ## 2026-08-08 v1.7.46
 
 - 固件版本号从 `v1.7.45` 更新到 `v1.7.46`。

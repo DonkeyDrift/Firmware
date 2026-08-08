@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.46"' in build_info
-    assert "v1.7.46" in changelog
-    assert "v1.7.45" in changelog
-    assert changelog.index("v1.7.46") < changelog.index("v1.7.45")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.50"' in build_info
+    assert "v1.7.50" in changelog
+    assert "v1.7.49" in changelog
+    assert changelog.index("v1.7.50") < changelog.index("v1.7.49")
 
 
 def test_host_ip_report_channel():
@@ -424,24 +424,27 @@ def test_web_console_has_help_floating_modal():
     assert "Status Cards: view mode, Park, OTA, and connection status" in source
 
 
-def test_web_console_help_modal_uses_donkeydrifter_glass_style():
+def test_web_console_help_modal_mirrors_donkeydrifter_layout():
     source = firmware_source_text()
 
-    # 帮助弹窗改为 DonkeyDrifter Web UI 风格：居中玻璃拟态（遮罩模糊 + 半透明 zinc 面板）
-    assert '.helpOverlay{position:fixed;inset:0;display:none;background:rgba(0,0,0,.4);backdrop-filter:blur(4px)' in source
-    assert 'left:50%;top:50%;transform:translate(-50%,-50%)' in source
-    assert 'width:min(512px,calc(100vw - 32px))' in source
-    assert 'background:rgba(24,24,27,.7)' in source
-    assert 'border:1px solid rgba(63,63,70,.5)' in source
-    assert 'backdrop-filter:blur(12px)' in source
-    # 幽灵关闭按钮：透明底 + zinc-400 字形，hover 变 zinc-800
+    # 帮助弹窗完全模仿 DonkeyDrifter：右下角锚定 + 蓝边渐变面板
+    assert '.helpModal{position:fixed;right:18px;bottom:74px;width:min(340px,calc(100vw - 36px))' in source
+    assert 'background:linear-gradient(135deg,#1c2430,#121821);border:1px solid #5cc8ff;border-radius:14px;padding:14px' in source
+    # 幽灵关闭按钮（与 DonkeyDrifter 一致：透明底 + zinc-400 ×，hover zinc-800）
     assert '.helpClose{min-width:0;width:28px;height:28px;padding:0;border:none;border-radius:50%;background:transparent;color:#a1a1aa' in source
     assert '.helpClose:hover{background:#27272a;color:#f4f4f5}' in source
-    # 标题带青色信息图标，且图标在 data-i18n 元素之外（语言切换不会清掉图标）
-    assert 'class="helpTitle"' in source
-    assert 'stroke="#22d3ee"' in source
+    # 功能分类 + 小标题（双语 i18n，uppercase 灰色小标题样式）
+    assert 'class="helpSection"' in source
+    assert '.helpSection h3{margin:0 0 8px;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:#8fa1b5}' in source
+    assert 'data-i18n="help.groupStatus"' in source
+    assert 'data-i18n="help.groupNetwork"' in source
+    assert 'data-i18n="help.groupData"' in source
+    assert "'help.groupStatus':'状态与日志'" in source
+    assert "'help.groupStatus':'Status & Logs'" in source
+    assert "'help.groupNetwork':'Network & Diagnostics'" in source
+    assert "'help.groupData':'Data & Maintenance'" in source
     # 功能说明内容条目保持不变
-    assert 'data-i18n="help.title"' in source
+    assert 'data-i18n="help.statusCards"' in source
     assert "状态卡片：查看模式、Park、OTA、连接状态" in source
 
 
@@ -1445,17 +1448,21 @@ def test_web_console_header_github_link_replaces_version_label():
 
 
 def test_web_console_drift_card_tune_link_left_of_state_dot():
-    """DRIFT 卡片右上角保留状态灯（原位 right:12px、10px 宽），Tune 文字
-    链接放在状态灯左边（right:28px 起）且与状态灯视觉平行：bbox 对齐时
-    （top:9px）"Tune" 以小写字母为主、油墨质心比圆点低约 1px，故用 top:8px
-    让油墨质心对齐圆点中心，水平错开互不遮挡。"""
+    """DRIFT 卡片右上角：Tune 文字与状态灯包在 .tunePair 行内容器里。状态灯
+    inline-block + vertical-align:middle、无额外位移，圆点中心与其它卡片
+    状态灯同为 cy=83 保持平行（圆点位置不再调整）；Tune 文字用
+    vertical-align:-1px 下移 1px，使其视觉中心与圆点对齐（文字偏上的反馈）。
+    卡片末尾不再有独立状态灯，避免与 Tune 文字挤在同一角落。"""
 
     source = firmware_source_text()
 
     drift = source[source.index('id="driftCard"'):source.index('id="voltageCard"')]
-    assert '<span class="stateDot"></span>' in drift
-    assert '<a href="/drift" style="position:absolute;right:28px;top:8px;font-size:11px;color:#5cc8ff;text-decoration:none;z-index:2">Tune</a>' in drift
-    # 不遮挡几何关系：Tune 右缘从 right:28px 起，状态灯左缘在 right:22px（12px 偏移 + 10px 宽）
+    assert '<span class="tunePair"><a href="/drift">Tune</a><span class="stateDot"></span></span>' in drift
+    assert 'id="driftNeedle"></i></div><span class="stateDot"></span></div>' not in drift
+    assert '.tunePair{position:absolute;right:12px;top:11px;font-size:11px;line-height:10px;' in source
+    assert '.tunePair a{color:#5cc8ff;text-decoration:none;vertical-align:-1px}' in source
+    # 圆点无 transform 位移，保持与其它卡片平行；只调 Tune 文字
+    assert '.tunePair .stateDot{position:static;display:inline-block;vertical-align:middle;margin-left:5px;width:10px;height:10px}' in source
     assert '.stateDot{position:absolute;right:12px;top:12px;width:10px;height:10px;' in source
 
 
@@ -3036,7 +3043,10 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     assert "new WebSocket(dataWsUrl())" in assets
     assert "function pollJudgeData()" in assets
     assert 'fetch(\'/api/data?since=\'+lastSeq' in assets
-    assert "startBtn.textContent='结束计分'" in assets
+    # v1.7.46 起按钮文案走 i18n
+    assert "startBtn.textContent=t('judge.button.stop')" in assets
+    assert "I18N.zh['judge.button.stop']='结束计分'" in assets
+    assert "I18N.en['judge.button.stop']='Stop Scoring'" in assets
     assert "function resetScore()" in assets
     assert "function updateScore(latest)" in assets
     assert "dim1-fill" in assets
@@ -3060,7 +3070,7 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     assert "dim1-trend" in assets
     assert "function computeDimensionTrend(values)" in assets
     assert "function refreshScoreBreakdown()" in assets
-    assert "function getWeakestTrendReason(name)" in assets
+    assert "function getWeakestTrendReason(key)" in assets
     assert "SCORE_TREND_WINDOW=8" in assets
     assert "速度稳定敏感度" in assets
     assert "大弯阈值" in assets
@@ -3790,22 +3800,31 @@ def test_web_console_mute_toggle_button_ui():
 
 def test_web_console_mute_api_persists_nvs_preference():
     """v1.7.45：/api/mute GET/POST 端点读写静音状态，静音偏好经 Preferences
-    持久化到 NVS 命名空间 "webui"、键 "muted"（UChar 0/1）。"""
+    持久化到 NVS 命名空间 "webui"、键 "muted"（UChar 0/1）。
+    v1.7.48：状态与持久化上移到 mus4_core 的 MutePreference（全系统唯一静音
+    数据源，蜂鸣器等发声方共享同一闸门），WebConsoleServer 只保留调用核心
+    API 的薄处理器。"""
     server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+    pref = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "MutePreference.cpp").read_text(encoding="utf-8")
 
     # 路由注册：GET 查询、POST 设置
     assert 'wifiWebServer.on("/api/mute", HTTP_GET, handleWifiWebMuteGet);' in server
     assert 'wifiWebServer.on("/api/mute", HTTP_POST, handleWifiWebMuteSet);' in server
 
-    # NVS 持久化：Preferences 命名空间 "webui"、键 "muted"（UChar 0/1）
-    assert "#include <Preferences.h>" in server
-    assert "static bool webUiMuted = false;" in server
-    assert "static void loadWebUiMutePreference()" in server
-    assert "static bool saveWebUiMutePreference(bool muted)" in server
-    assert 'prefs.begin("webui", true)' in server
-    assert 'prefs.begin("webui", false)' in server
-    assert 'prefs.getUChar("muted", 0)' in server
-    assert 'prefs.putUChar("muted", muted ? 1 : 0)' in server
+    # 薄处理器：读写都委托 mus4_core 的 MutePreference API，本地不再镜像状态
+    assert '#include "MutePreference.h"' in server
+    assert "isSystemMuted()" in server
+    assert "saveMutePreference(" in server
+    assert "webUiMuted" not in server
+    assert "loadWebUiMutePreference" not in server
+
+    # NVS 持久化：Preferences 命名空间 "webui"、键 "muted"（UChar 0/1），缺省不静音
+    assert "#include <Preferences.h>" in pref
+    assert "static bool systemMuted = false;" in pref
+    assert 'prefs.begin("webui", true)' in pref
+    assert 'prefs.begin("webui", false)' in pref
+    assert 'prefs.getUChar("muted", 0)' in pref
+    assert 'prefs.putUChar("muted", muted ? 1 : 0)' in pref
 
 
 def test_web_console_language_api_persists_nvs_preference():
@@ -3831,8 +3850,106 @@ def test_web_console_language_api_persists_nvs_preference():
     assert server.count('\\"error\\":\\"invalid_value\\"') >= 4
 
 
-def test_firmware_version_bumped_to_v1_7_46_for_language_i18n():
-    """v1.7.46：Web Console 中英文翻译与语言选择持久化随版本号 v1.7.46 发布。"""
-    build_info = BUILD_INFO.read_text(encoding="utf-8")
+def test_firmware_version_bumped_to_v1_7_47_for_help_modal_donkeydrifter_layout():
+    """v1.7.47：Web Console 功能说明弹窗完全模仿 DonkeyDrifter（右下角锚定 + 功能分类小标题 + 幽灵关闭按钮）随版本号 v1.7.47 发布。
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.46"' in build_info
+    发布标记只校验 CHANGELOG 历史条目，不钉死 build_info 当前版本（否则每次发新版都误红）。"""
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+
+    assert "## 2026-08-08 v1.7.47" in changelog
+
+
+def test_buzzer_mute_gate_blocks_all_sounds():
+    """v1.7.48：蜂鸣器全局静音闸门——静音时 startMelody() 拒绝启动任何旋律
+    （模式切换、Park 锁/解锁、Wi-Fi AP 启动/关闭、STA 连接/断开提示音全覆盖，
+    含开机 AP 启动音）；update() 检测到播放中被静音立即停音并复位状态机。"""
+    buzzer = (PROJECT_ROOT / "libraries" / "mus4_ui" / "src" / "Buzzer.cpp").read_text(encoding="utf-8")
+
+    assert '#include "MutePreference.h"' in buzzer
+
+    # startMelody 开头：静音即直接返回，一切旋律（含开机音）不得启动
+    start = buzzer.index("void Buzzer::startMelody")
+    gate = buzzer.index("if (isSystemMuted()) return;", start)
+    assert gate - start < 400
+
+    # update()：播放中被静音 → 立即停音并复位播放状态
+    update = buzzer.index("void Buzzer::update()")
+    update_body = buzzer[update:update + 500]
+    assert "if (isSystemMuted())" in update_body
+    assert "stopTone();" in update_body
+    assert "_playing = false;" in update_body
+
+
+def test_mute_preference_loaded_before_wifi_setup():
+    """v1.7.48：静音偏好必须在 setupWifiConsole() 之前加载——AP 启动提示音
+    在 Wi-Fi 初始化期间播放，加载晚了开机音就关不掉。"""
+    sketch = (PROJECT_ROOT / "MUS4_FW.ino").read_text(encoding="utf-8")
+
+    assert '#include "MutePreference.h"' in sketch
+    assert "loadMutePreference();" in sketch
+    assert sketch.index("loadMutePreference();") < sketch.index("setupWifiConsole();")
+
+
+def test_firmware_version_bumped_to_v1_7_48_for_mute_function():
+    """v1.7.48：静音按钮落地实际静音功能（蜂鸣器全局静音闸门 + 开机前加载偏好，
+    静音选择 NVS 持久化、关机重启后恢复）随版本号 v1.7.48 发布。
+
+    发布标记只校验 CHANGELOG 历史条目，不钉死 build_info 当前版本（否则每次发新版都误红）。"""
+    changelog = CHANGELOG.read_text(encoding="utf-8")
+
+    assert "## 2026-08-08 v1.7.48" in changelog
+
+
+def _page_region(assets, marker):
+    start = assets.index(f"static const char {marker}[] PROGMEM")
+    return assets[start:assets.index(')rawliteral";', start)]
+
+
+def _page_i18n_keys(page, lang):
+    keys = set(re.findall(rf"I18N\.{lang}\['([^']+)'\]", page))
+    marker = f"{lang}:{{"
+    if marker in page:
+        block = page.split(marker, 1)[1]
+        block = block.split("en:{")[0] if lang == "zh" else block.split("}}")[0]
+        keys |= set(re.findall(r"'([a-z]+\.[A-Za-z.]+)':", block))
+    return keys
+
+
+def test_web_console_sub_pages_follow_device_language():
+    """JUDGE/DRIFT/UPDATE 三个子页面与主控制台共享语言偏好：各页内嵌自包含
+    i18n 核心（localStorage 键 mus4.ui.lang + 启动时 GET /api/language 恢复设备
+    语言），zh/en 字典键完全对齐且各页键统一前缀（judge./drift./ota.）。"""
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+
+    for marker, prefix in [
+        ("WIFI_WEB_JUDGE_HTML", "judge."),
+        ("WIFI_WEB_DRIFT_HTML", "drift."),
+        ("WIFI_WEB_UPDATE_HTML", "ota."),
+    ]:
+        page = _page_region(assets, marker)
+        assert "const LANG_STORAGE_KEY='mus4.ui.lang'" in page
+        assert "async function initLanguage()" in page
+        assert "fetch('/api/language'" in page
+        assert "function applyLanguage(lang)" in page
+        assert page.count("initLanguage()") == 2, f"{marker} initLanguage 应恰好 1 定义 + 1 调用"
+        assert "setLanguage" not in page, f"{marker} 不应带语言切换 UI（跟随设备偏好）"
+
+        zh_keys = _page_i18n_keys(page, "zh")
+        en_keys = _page_i18n_keys(page, "en")
+        assert zh_keys, f"{marker} 缺少 zh 字典"
+        assert zh_keys == en_keys, f"{marker} zh/en 键不对齐: {zh_keys ^ en_keys}"
+        assert all(k.startswith(prefix) for k in zh_keys), f"{marker} 存在非 {prefix} 前缀键"
+
+
+def test_web_console_language_switch_rerenders_joystick_cal_status():
+    """主控制台切换语言时，手柄校准实时读数（方向/油门）等动态文案必须立即重渲染，
+    不能停留在旧语言；静态默认文本为中文快照（默认中文界面）。"""
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+
+    apply_body = re.search(
+        r"function applyLanguage\(lang\)\{(?P<body>.*?)\}\n",
+        assets,
+        re.DOTALL,
+    ).group("body")
+    assert "refreshJoystickCalStatus()" in apply_body
+    assert "方向: -- / -- / -- | 油门: -- / -- / --" in assets

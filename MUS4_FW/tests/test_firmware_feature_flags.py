@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.45"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.46"' in build_info
+    assert "v1.7.46" in changelog
     assert "v1.7.45" in changelog
-    assert "v1.7.44" in changelog
-    assert changelog.index("v1.7.45") < changelog.index("v1.7.44")
+    assert changelog.index("v1.7.46") < changelog.index("v1.7.45")
 
 
 def test_host_ip_report_channel():
@@ -1385,12 +1385,13 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert 'grid-template-areas:"mode park drift" "voltage network network"' in source
 
 
-def test_web_console_language_tabs_are_inert_placeholder():
-    """顶栏中文/English 分段控件：与 DonkeyDrift Web UI 顶栏切换器同款，
-    当前为纯占位（无 onclick、不接 setLanguage），语言切换功能后续再接。
+def test_web_console_language_tabs_wired_to_set_language():
+    """顶栏中文/English 分段控件：与 DonkeyDrift Web UI 顶栏切换器同款。
+    v1.7.46 起正式接通语言切换（data-lang + onclick=setLanguage，不再是占位），
+    默认中文选中态（首次启动默认中文界面）；title 走 data-i18n-title。
     位置在 OTA 按钮左边、右对齐组内（v1.7.45 起头部右推由 muteButton 承担，
     langTabs 不再 margin-left:auto），选中态沿用 ESP32 填充语言（蓝底 #5cc8ff
-    + 黑字 #061019 + 800 粗），当前页面语言为英文故 English 常亮。"""
+    + 黑字 #061019 + 800 粗）。"""
 
     source = firmware_source_text()
 
@@ -1400,17 +1401,19 @@ def test_web_console_language_tabs_are_inert_placeholder():
     # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言
     assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
-    assert '<span class="langTabs"' in source
-    assert '<button type="button">中文</button><button type="button" class="active">English</button>' in source
+    assert '<span class="langTabs" title="语言" data-i18n-title="language.title">' in source
+    assert '<button type="button" data-lang="zh" onclick="setLanguage(\'zh\')" class="active">中文</button><button type="button" data-lang="en" onclick="setLanguage(\'en\')">English</button>' in source
     # 位置：langTabs 在 OTA 按钮左边；右推由 muteButton 承担，langTabs/otaLink 均不再 margin-left:auto
     assert source.index('<span class="langTabs"') < source.index('<a href="/update" class="otaLink">')
     assert ".otaLink{margin-left:auto" not in source
     # otaLink 改 flex 消除 inline-block 基线下沉，保证 OTA 按钮与 langTabs 容器顶/底对齐同高
     assert ".headerRow .otaLink{display:flex;align-items:center}" in source
-    # 惰性：langTabs 片段内没有任何 onclick / setLanguage 绑定
+    # v1.7.46：langTabs 已接线（onclick + data-lang + setLanguage），不再是惰性占位
     lang_tabs = source[source.index('<span class="langTabs"'):source.index('<a href="/update" class="otaLink">')]
-    assert "onclick" not in lang_tabs
-    assert "setLanguage" not in lang_tabs
+    assert "onclick" in lang_tabs
+    assert "setLanguage" in lang_tabs
+    assert 'data-lang="zh"' in lang_tabs
+    assert 'data-lang="en"' in lang_tabs
     assert 'grid-template-areas:"mode park voltage" "drift drift drift" "network network network"' in source
     assert "minmax(160px,.56fr)" in source
     assert "grid-template-columns:84px 154px 100px" in source
@@ -1443,14 +1446,15 @@ def test_web_console_header_github_link_replaces_version_label():
 
 def test_web_console_drift_card_tune_link_left_of_state_dot():
     """DRIFT 卡片右上角保留状态灯（原位 right:12px、10px 宽），Tune 文字
-    链接放在状态灯左边（right:28px 起）且中心与状态灯平行：状态灯中心在
-    top:17px（12+5），Tune top:9px + 行高约 16px 一半 = 17px，水平错开互不遮挡。"""
+    链接放在状态灯左边（right:28px 起）且与状态灯视觉平行：bbox 对齐时
+    （top:9px）"Tune" 以小写字母为主、油墨质心比圆点低约 1px，故用 top:8px
+    让油墨质心对齐圆点中心，水平错开互不遮挡。"""
 
     source = firmware_source_text()
 
     drift = source[source.index('id="driftCard"'):source.index('id="voltageCard"')]
     assert '<span class="stateDot"></span>' in drift
-    assert '<a href="/drift" style="position:absolute;right:28px;top:9px;font-size:11px;color:#5cc8ff;text-decoration:none;z-index:2">Tune</a>' in drift
+    assert '<a href="/drift" style="position:absolute;right:28px;top:8px;font-size:11px;color:#5cc8ff;text-decoration:none;z-index:2">Tune</a>' in drift
     # 不遮挡几何关系：Tune 右缘从 right:28px 起，状态灯左缘在 right:22px（12px 偏移 + 10px 宽）
     assert '.stateDot{position:absolute;right:12px;top:12px;width:10px;height:10px;' in source
 
@@ -1730,7 +1734,7 @@ def test_web_console_sta_success_shows_lan_url_before_ap_closes():
     assert "showWifiStaHandoffModal(j)" in wait_body
     assert "redirectToStaConsole(j.sta_ip)" not in wait_body
     assert "if(j.handoff_active){showWifiStaHandoffModal(j);return true}" not in wait_body
-    assert "staNotice.textContent='STA 已连接\\n局域网 IP：'+j.sta_ip+'\\n访问地址：http://'+j.sta_ip+'/'" in wait_body
+    assert "staNotice.textContent=t('wifi.staConnected')+'\\n'+t('wifi.handoffLanIp')+j.sta_ip+'\\n'+t('wifi.handoffUrl')+'http://'+j.sta_ip+'/'" in wait_body
     assert "wifiStaModal.classList.remove('show')" not in wait_body
     assert "closeWifiStaModal();return true" not in wait_body
     assert "await new Promise(resolve=>setTimeout(resolve,800))" in wait_body
@@ -1739,13 +1743,18 @@ def test_web_console_sta_success_shows_lan_url_before_ap_closes():
     assert "(j&&j.sta_ip)||(j&&j.handoff_sta_ip)||''" in handoff_url_body
     assert "'http://'+ip+'/'" in handoff_url_body
 
-    assert "局域网 IP" in handoff_modal_body
-    assert "访问地址" in handoff_modal_body
-    assert "请将电脑/手机切换到 Wi-Fi" in handoff_modal_body
+    # v1.7.46：handoff 弹窗文案走 i18n（t()），中英文案在 I18N 字典
+    assert "t('wifi.handoffLanIp')" in handoff_modal_body
+    assert "t('wifi.handoffUrl')" in handoff_modal_body
+    assert "t('wifi.handoffSwitch')" in handoff_modal_body
+    assert "t('wifi.handoffConnecting')" in handoff_modal_body
+    assert "t('wifi.handoffHint')" in handoff_modal_body
+    assert "I18N.zh['wifi.handoffSwitch']='请将电脑/手机切换到 Wi-Fi：'" in source
+    assert "I18N.zh['wifi.handoffLanIp']='局域网 IP：'" in source
     # 带 IP AP 名新方案：引导去 Wi-Fi 列表看 MUS4-<设备IP>，不再让用户连 AP 开 192.168.4.1
-    assert "MUS4-" in handoff_modal_body
-    assert "Wi-Fi 列表" in handoff_modal_body
-    assert "恢复 AP" in handoff_modal_body
+    assert "MUS4-" in source
+    assert "Wi-Fi 列表" in source
+    assert "恢复 AP" in source
     assert "连接设备 AP" not in handoff_modal_body
     assert "192.168.4.1" not in handoff_modal_body
 
@@ -1802,7 +1811,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert 'class="recMeta"' in source
     assert 'function updateTubMeta()' in source
     assert 'tubMeta.textContent=tubSamples.length' in source
-    assert '<span class="recMeta">录制量<b id="tubMeta">0</b></span>' in source
+    assert '<span class="recMeta"><span data-i18n="tub.recorded">录制量</span><b id="tubMeta">0</b></span>' in source
     assert 'function clearChart(){pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;tubSamples=[];tubStartedMs=0;tubStoppedMs=0;tubLastSeq=0;tubRecording=false;updateTubMeta();draw()}' in source
     assert "c.innerHTML=chartPaused?ICON_PLAY:ICON_PAUSE" in source
     assert "f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
@@ -1813,7 +1822,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
-    assert '<button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" title="清空"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
+    assert '<button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
@@ -1956,7 +1965,10 @@ def test_web_console_sta_modal_defaults_host_provisioning_on():
 
     assert "document.getElementById('hostWifiToggle').checked=true;onHostWifiToggle()" in source
     assert "document.getElementById('hostWifiToggle').checked=false" not in source
-    assert "connectBtn.textContent='发送到上位机'" in source
+    # v1.7.46：按钮文案走 i18n
+    assert "connectBtn.textContent=t('wifi.hostSendBtn')" in source
+    assert "I18N.zh['wifi.hostSendBtn']='发送到上位机'" in source
+    assert "I18N.en['wifi.hostSendBtn']='Send to host'" in source
     assert "connectBtn.onclick=saveHostWifi" in source
 
 
@@ -1966,8 +1978,9 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
     assert 'id="staNotice"' in source
     assert "注意只能连接2.4G WiFi" in source
     assert "Wi-Fi 列表" in source
-    assert "staNotice.textContent='STA 已连接\\n局域网 IP：'+j.sta_ip+'\\n访问地址：http://'+j.sta_ip+'/'" in source
-    assert "staNotice.textContent='连接失败'" in source
+    # v1.7.46：STA 结果提示走 i18n（t() 拼接）
+    assert "staNotice.textContent=t('wifi.staConnected')+'\\n'+t('wifi.handoffLanIp')+j.sta_ip+'\\n'+t('wifi.handoffUrl')+'http://'+j.sta_ip+'/'" in source
+    assert "staNotice.textContent=t('wifi.connectFailed')" in source
     assert ">连接</button>" in source
     assert ">保存并连接</button>" not in source
     assert "保存前请先 AUTH；密码不会回显，凭据会保存到设备 NVS。" not in source
@@ -2126,7 +2139,10 @@ def test_web_console_redirects_to_sta_ip_after_successful_wifi_sta_connection():
     assert "redirectToStaConsole(j.sta_ip)" not in source
     assert "j.sta_ip&&j.sta_ip!=='0.0.0.0'" in source
     assert "const url='http://'+ip+'/'" in source
-    assert "STA 已连接，IP：'+ip+'，请切换到该 Wi-Fi 后打开 '+url" in source
+    # v1.7.46：跳转提示走 i18n
+    assert "staNotice.textContent=t('wifi.staConnectedIp')+ip+t('wifi.staSwitchAndOpen')+url" in source
+    assert "I18N.zh['wifi.staConnectedIp']='STA 已连接，IP：'" in source
+    assert "I18N.zh['wifi.staSwitchAndOpen']='，请切换到该 Wi-Fi 后打开 '" in source
 
 
 def test_web_console_sta_save_defers_wifi_reconnect_until_after_http_response():
@@ -2340,8 +2356,9 @@ def test_web_console_sta_setup_guides_wifi_list_and_drops_mdns_probe():
         source,
         re.DOTALL,
     ).group("body")
-    assert "Wi-Fi 列表" in save_body
-    assert "MUS4-" in save_body
+    # v1.7.46：引导文案走 i18n，Wi-Fi 列表/MUS4-<IP> 在字典值里
+    assert "staNotice.textContent=t('wifi.staConnecting')" in save_body
+    assert "I18N.zh['wifi.staConnecting']='设备正在连接 Wi-Fi。连上后请在电脑/手机的 Wi-Fi 列表中查看名为 MUS4-<设备IP> 的网络（约 60 秒后该 AP 自动关闭）'" in source
 
 
 def test_boot_button_long_press_clears_sta_and_restores_ap_without_restart():
@@ -2404,7 +2421,7 @@ def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
     assert "await refreshWifiSta(true);refreshStatus();await waitWifiStaConnectionResult()" in save_body
     assert "showCommandError(t)" not in save_body
     assert "await refreshStatus();cmd.value=''" in wait_body
-    assert "STA 已连接\\n局域网 IP：'+j.sta_ip+'\\n访问地址：http://'+j.sta_ip+'/'" in wait_body
+    assert "staNotice.textContent=t('wifi.staConnected')+'\\n'+t('wifi.handoffLanIp')+j.sta_ip+'\\n'+t('wifi.handoffUrl')+'http://'+j.sta_ip+'/'" in wait_body
     assert "AP 可能已关闭，STA 可能已连接" not in wait_body
     assert "showWifiStaFailureModal({ssid:staSsid.value.trim(),last_error_message:'AP 可能已关闭" not in wait_body
     assert "Date.now()+17000" not in wait_body
@@ -2416,9 +2433,10 @@ def test_web_console_sta_failure_uses_page_modal_and_waits_for_result():
         source,
         re.DOTALL,
     ).group("body")
-    assert "Wi-Fi 列表" in save_prompt_body
-    assert "MUS4-" in save_prompt_body
-    assert wait_body.index("staNotice.textContent='STA 已连接\\n局域网 IP：'+j.sta_ip+'\\n访问地址：http://'+j.sta_ip+'/'") < wait_body.index("await refreshStatus();cmd.value=''")
+    # v1.7.46：引导文案走 i18n，Wi-Fi 列表/MUS4-<IP> 在字典值里
+    assert "staNotice.textContent=t('wifi.staConnecting')" in save_prompt_body
+    assert "Wi-Fi 列表中查看名为 MUS4-" in source
+    assert wait_body.index("staNotice.textContent=t('wifi.staConnected')") < wait_body.index("await refreshStatus();cmd.value=''")
 
 
 def test_wifi_mdns_lifecycle_follows_sta_connection():
@@ -3766,8 +3784,8 @@ def test_web_console_mute_toggle_button_ui():
     assert "async function initMute()" in assets
     assert "async function toggleMute()" in assets
 
-    # 启动链：initMute() 与 applyLanguage(uiLang) 同行依次调用
-    assert "applyLanguage(uiLang);initMute();" in assets
+    # 启动链：initLanguage()（v1.7.46 起取代直接 applyLanguage）后接 initMute()
+    assert "initLanguage();initMute();" in assets
 
 
 def test_web_console_mute_api_persists_nvs_preference():
@@ -3790,8 +3808,31 @@ def test_web_console_mute_api_persists_nvs_preference():
     assert 'prefs.putUChar("muted", muted ? 1 : 0)' in server
 
 
-def test_firmware_version_bumped_to_v1_7_45_for_mute_toggle():
-    """v1.7.45：静音切换功能随版本号 v1.7.45 发布。"""
+def test_web_console_language_api_persists_nvs_preference():
+    """v1.7.46：/api/language GET/POST 端点读写界面语言，语言偏好经 Preferences
+    持久化到 NVS 命名空间 "webui"、键 "lang"（String "zh"/"en"），缺省 "zh"
+    （首次启动默认中文），非法值 400 invalid_value。"""
+    server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+
+    # 路由注册：GET 查询、POST 设置
+    assert 'wifiWebServer.on("/api/language", HTTP_GET, handleWifiWebLanguageGet);' in server
+    assert 'wifiWebServer.on("/api/language", HTTP_POST, handleWifiWebLanguageSet);' in server
+
+    # NVS 持久化：Preferences 命名空间 "webui"、键 "lang"（String），缺省 zh
+    assert 'static String webUiLang = "zh";' in server
+    assert "static void loadWebUiLanguagePreference()" in server
+    assert "static bool saveWebUiLanguagePreference(const String& lang)" in server
+    assert 'prefs.getString("lang", "zh")' in server
+    assert 'prefs.putString("lang", lang)' in server
+    assert 'loadWebUiLanguagePreference();' in server
+
+    # 非法值与错误路径与 mute 同款：缺参/非法 400 invalid_value、写失败 500
+    assert 'return lang == "zh" || lang == "en";' in server
+    assert server.count('\\"error\\":\\"invalid_value\\"') >= 4
+
+
+def test_firmware_version_bumped_to_v1_7_46_for_language_i18n():
+    """v1.7.46：Web Console 中英文翻译与语言选择持久化随版本号 v1.7.46 发布。"""
     build_info = BUILD_INFO.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.45"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.46"' in build_info

@@ -90,6 +90,10 @@ static uint32_t wifiWebCommandMaxDtMs = 0;
 // only for now, the actual silencing behavior is applied separately)
 static bool webUiMuted = false;
 
+// Web UI language preference (runtime mirror of NVS "webui"/"lang";
+// "zh" or "en", default "zh" so first boot shows the Chinese console)
+static String webUiLang = "zh";
+
 // 上位机配网状态（通过 Serial2 接收来自 Linux 上位机的响应）
 String hostWifiStatus = "IDLE";
 String hostWifiSsid = "";
@@ -699,6 +703,82 @@ static void handleWifiWebMuteSet()
     response += "{\"saved\":true,\"muted\":";
     response += (webUiMuted ? '1' : '0');
     response += "}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
+// ---------------------------------------------------------------------------
+// Web UI language preference
+//
+// Persisted in NVS namespace "webui", key "lang" (String "zh"/"en"), default
+// "zh" when the key is absent so a fresh device boots into the Chinese
+// console. Open endpoints like mute/judge-config: the wireless command
+// permission layering only applies to console commands.
+
+static bool isValidWebUiLang(const String& lang)
+{
+    return lang == "zh" || lang == "en";
+}
+
+static void loadWebUiLanguagePreference()
+{
+    Preferences prefs;
+    if (!prefs.begin("webui", true)) {
+        webUiLang = "zh";
+        mus4LogLine("web", "lang pref load failed, default zh");
+        return;
+    }
+    String lang = prefs.getString("lang", "zh");
+    prefs.end();
+    webUiLang = isValidWebUiLang(lang) ? lang : "zh";
+}
+
+static bool saveWebUiLanguagePreference(const String& lang)
+{
+    Preferences prefs;
+    if (!prefs.begin("webui", false)) return false;
+    size_t written = prefs.putString("lang", lang);
+    prefs.end();
+    if (written == 0) return false;
+    webUiLang = lang;
+    return true;
+}
+
+static void handleWifiWebLanguageGet()
+{
+    String response;
+    response.reserve(16);
+    response += "{\"lang\":\"";
+    response += webUiLang;
+    response += "\"}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
+static void handleWifiWebLanguageSet()
+{
+    if (!wifiWebServer.hasArg("lang")) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
+        return;
+    }
+    String langArg = wifiWebServer.arg("lang");
+    if (!isValidWebUiLang(langArg)) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
+        return;
+    }
+    if (!saveWebUiLanguagePreference(langArg)) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(500, "application/json", "{\"saved\":false}");
+        return;
+    }
+
+    String response;
+    response.reserve(30);
+    response += "{\"saved\":true,\"lang\":\"";
+    response += webUiLang;
+    response += "\"}";
     sendWifiWebApiHeaders();
     wifiWebServer.send(200, "application/json", response);
 }
@@ -1456,6 +1536,8 @@ void setupWebConsoleServer()
     wifiWebServer.on("/api/judge-config/reset", HTTP_POST, handleWifiWebJudgeConfigReset);
     wifiWebServer.on("/api/mute", HTTP_GET, handleWifiWebMuteGet);
     wifiWebServer.on("/api/mute", HTTP_POST, handleWifiWebMuteSet);
+    wifiWebServer.on("/api/language", HTTP_GET, handleWifiWebLanguageGet);
+    wifiWebServer.on("/api/language", HTTP_POST, handleWifiWebLanguageSet);
     wifiWebServer.on("/api/drift-config", HTTP_GET, handleWifiWebDriftConfig);
     wifiWebServer.on("/api/drift-config", HTTP_POST, handleWifiWebDriftConfigSet);
     wifiWebServer.on("/api/drift-config/reset", HTTP_POST, handleWifiWebDriftConfigReset);
@@ -1466,6 +1548,8 @@ void setupWebConsoleServer()
     wifiWebServer.onNotFound(handleWifiWebCaptivePortalNotFound);
     // Load the persisted Web UI mute preference once at server init (default: unmuted)
     loadWebUiMutePreference();
+    // Load the persisted Web UI language preference once at server init (default: zh)
+    loadWebUiLanguagePreference();
     wifiWebServer.begin();
 }
 

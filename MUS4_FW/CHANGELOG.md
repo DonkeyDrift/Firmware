@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-08 v1.7.46
+
+- 固件版本号从 `v1.7.45` 更新到 `v1.7.46`。
+- feat(WebConsole): 主控制台中英文翻译全量完成，语言选择持久化到设备——首次启动默认中文（现有中英混合界面原样作为中文版），切英文后全部内容英文，关机重启仍记住选择
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：中文版 = 当前界面原样快照（既有中英混合文案一律不动），英文版全量翻译——新增 52 对 i18n key（zh/en 键完全对齐，各 140 键），覆盖图表/RC（`tub.recorded`、`rc.setSteeringMid/ThrottleMid`）、FAB/重连遮罩/日志（`fab.quick`、`reconnect.*`、`log.empty`）、AP 流程、扫描、上位机配网、STA 全流程、handoff/失败弹窗等动态文案，JS 内所有 textContent/alert/confirm 均改走 `t()`；顶栏 langTabs 占位控件正式接线（`data-lang` + `onclick=setLanguage`，默认中文选中态，"coming soon" title 改为 `data-i18n-title="language.title"`）；`applyLanguage` 新增 `[data-i18n-title]` 通用处理，active 同步选择器扩为 document 级 `button[data-lang]`（同时覆盖 langTabs 与 langMenu）；CSS `devHint`/`copyValue` 的 `:hover:after` content 按 `html[lang=zh/en]` 选择器双语化；新增 `initLanguage()`——启动时 GET `/api/language` 恢复设备语言偏好（失败回退 localStorage→zh，恰好一次 `applyLanguage`），`setLanguage()` 立即生效并 best-effort POST 回设备；`saveWifiAp`/`saveWifiSta`/`saveHostWifi` 错误分支局部变量 `t` 改名 `txt` 消除对全局 `t()` 的遮蔽。JUDGE/DRIFT/UPDATE 三页未动。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：新增 `GET /api/language`（返回 `{"lang":"zh"|"en"}`）与 `POST /api/language`（缺参/非法值 400 `invalid_value`，NVS 写失败 500 `{"saved":false}`，成功 `{"saved":true,"lang":"x"}`），错误路径与 `/api/mute` 同款；运行时状态 `webUiLang` 经 Preferences NVS（命名空间 `webui`、键 `lang`、String）持久化，缺省 `zh`（首次启动默认中文），`setupWebConsoleServer()` 注册路由时加载。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.46；langTabs 惰性占位断言改为接线断言（`test_web_console_language_tabs_wired_to_set_language`）；STA/handoff/recMeta/上位机配网/静音启动链等 9 处旧硬编码串断言同步为 i18n 形式；新增 `/api/language` NVS 持久化、版本号两项源码断言。
+
 ## 2026-08-07 v1.7.45
 
 - 固件版本号从 `v1.7.44` 更新到 `v1.7.45`。

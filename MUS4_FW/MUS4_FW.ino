@@ -82,6 +82,7 @@
 #include "SerialBufferTypes.h"
 
 #include "Buzzer.h"
+#include "MutePreference.h"
 // #include "test_runner.h"
 
 TUI tui(Serial);
@@ -572,6 +573,9 @@ void setup()
     #ifdef ENABLE_WIFI_CONSOLE
       pinMode(WIFI_BOOT_RESET_PIN, INPUT_PULLUP);
       loadDevModePreference();
+      // Mute preference must be loaded before setupWifiConsole(): the AP start
+      // melody plays during Wi-Fi setup, so the mute gate has to be armed first.
+      loadMutePreference();
       loadWifiApPreference();
       loadWifiStaPreference();
       loadWifiStaHistory();

@@ -1,5 +1,6 @@
 #include "Buzzer.h"
 #include "SharedTypes.h"
+#include "MutePreference.h"
 
 int Buzzer::_channelCounter = 2; // 从2开始避免与PWM通道(0,1)冲突
 
@@ -108,6 +109,9 @@ void Buzzer::startNote(int pitch, unsigned long durationMs) {
 
 void Buzzer::startMelody(const BuzzerNote* melody, int length) {
     if (melody == nullptr || length <= 0) return;
+    // System-wide mute gate: suppress every firmware-driven sound (including
+    // the boot-time AP start melody) while the user preference is muted.
+    if (isSystemMuted()) return;
     // Stop any currently playing melody and start the new one immediately.
     stopTone();
     _currentMelody = melody;
@@ -144,6 +148,14 @@ void Buzzer::playParkUnlockSound() {
 
 void Buzzer::update() {
     if (!_playing || _currentMelody == nullptr) return;
+
+    // Muted mid-melody: stop the active tone immediately and reset the state machine.
+    if (isSystemMuted()) {
+        stopTone();
+        _playing = false;
+        _currentMelody = nullptr;
+        return;
+    }
 
     unsigned long now = millis();
     unsigned long elapsed = now - _noteStartMs;

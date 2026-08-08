@@ -5,6 +5,7 @@
 #include "JsonUtil.h"
 #include "Mus4Log.h"
 #include "BuildInfo.h"
+#include "MutePreference.h"
 #include "SharedTypes.h"
 #include "StringPrint.h"
 #include "WebConsoleAssets.h"
@@ -23,6 +24,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <Update.h>
+#include <Preferences.h>
 
 // Hardware/framework globals defined in MUS4_FW.ino
 extern WebServer wifiWebServer;
@@ -84,6 +86,10 @@ static uint32_t wifiWebStatusMaxDtMs = 0;
 static uint32_t wifiWebLogMaxDtMs = 0;
 static uint32_t wifiWebDataMaxDtMs = 0;
 static uint32_t wifiWebCommandMaxDtMs = 0;
+
+// Web UI language preference (runtime mirror of NVS "webui"/"lang";
+// "zh" or "en", default "zh" so first boot shows the Chinese console)
+static String webUiLang = "zh";
 
 // 上位机配网状态（通过 Serial2 接收来自 Linux 上位机的响应）
 String hostWifiStatus = "IDLE";
@@ -625,6 +631,131 @@ static void handleWifiWebJudgeConfigReset()
     response += "{\"reset\":true,\"config\":";
     appendJudgeConfigJson(response, ws.judgeConfig);
     response += "}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
+// ---------------------------------------------------------------------------
+// Web UI mute preference
+//
+// State and NVS persistence (namespace "webui", key "muted" UChar 0/1,
+// default unmuted) live in mus4_core's MutePreference, so every firmware
+// sound producer (the Buzzer) shares one gate; the preference is loaded
+// early in setup() before Wi-Fi setup can play the AP start melody. Open
+// endpoints like judge-config: the wireless command permission layering
+// only applies to console commands.
+
+static void handleWifiWebMuteGet()
+{
+    String response;
+    response.reserve(16);
+    response += "{\"muted\":";
+    response += (isSystemMuted() ? '1' : '0');
+    response += "}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
+static void handleWifiWebMuteSet()
+{
+    if (!wifiWebServer.hasArg("muted")) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
+        return;
+    }
+    String mutedArg = wifiWebServer.arg("muted");
+    if (mutedArg != "0" && mutedArg != "1") {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
+        return;
+    }
+    if (!saveMutePreference(mutedArg == "1")) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(500, "application/json", "{\"saved\":false}");
+        return;
+    }
+
+    String response;
+    response.reserve(28);
+    response += "{\"saved\":true,\"muted\":";
+    response += (isSystemMuted() ? '1' : '0');
+    response += "}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
+// ---------------------------------------------------------------------------
+// Web UI language preference
+//
+// Persisted in NVS namespace "webui", key "lang" (String "zh"/"en"), default
+// "zh" when the key is absent so a fresh device boots into the Chinese
+// console. Open endpoints like mute/judge-config: the wireless command
+// permission layering only applies to console commands.
+
+static bool isValidWebUiLang(const String& lang)
+{
+    return lang == "zh" || lang == "en";
+}
+
+static void loadWebUiLanguagePreference()
+{
+    Preferences prefs;
+    if (!prefs.begin("webui", true)) {
+        webUiLang = "zh";
+        mus4LogLine("web", "lang pref load failed, default zh");
+        return;
+    }
+    String lang = prefs.getString("lang", "zh");
+    prefs.end();
+    webUiLang = isValidWebUiLang(lang) ? lang : "zh";
+}
+
+static bool saveWebUiLanguagePreference(const String& lang)
+{
+    Preferences prefs;
+    if (!prefs.begin("webui", false)) return false;
+    size_t written = prefs.putString("lang", lang);
+    prefs.end();
+    if (written == 0) return false;
+    webUiLang = lang;
+    return true;
+}
+
+static void handleWifiWebLanguageGet()
+{
+    String response;
+    response.reserve(16);
+    response += "{\"lang\":\"";
+    response += webUiLang;
+    response += "\"}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
+static void handleWifiWebLanguageSet()
+{
+    if (!wifiWebServer.hasArg("lang")) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
+        return;
+    }
+    String langArg = wifiWebServer.arg("lang");
+    if (!isValidWebUiLang(langArg)) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
+        return;
+    }
+    if (!saveWebUiLanguagePreference(langArg)) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(500, "application/json", "{\"saved\":false}");
+        return;
+    }
+
+    String response;
+    response.reserve(30);
+    response += "{\"saved\":true,\"lang\":\"";
+    response += webUiLang;
+    response += "\"}";
     sendWifiWebApiHeaders();
     wifiWebServer.send(200, "application/json", response);
 }
@@ -1380,6 +1511,10 @@ void setupWebConsoleServer()
     wifiWebServer.on("/api/judge-config", HTTP_GET, handleWifiWebJudgeConfig);
     wifiWebServer.on("/api/judge-config", HTTP_POST, handleWifiWebJudgeConfigSet);
     wifiWebServer.on("/api/judge-config/reset", HTTP_POST, handleWifiWebJudgeConfigReset);
+    wifiWebServer.on("/api/mute", HTTP_GET, handleWifiWebMuteGet);
+    wifiWebServer.on("/api/mute", HTTP_POST, handleWifiWebMuteSet);
+    wifiWebServer.on("/api/language", HTTP_GET, handleWifiWebLanguageGet);
+    wifiWebServer.on("/api/language", HTTP_POST, handleWifiWebLanguageSet);
     wifiWebServer.on("/api/drift-config", HTTP_GET, handleWifiWebDriftConfig);
     wifiWebServer.on("/api/drift-config", HTTP_POST, handleWifiWebDriftConfigSet);
     wifiWebServer.on("/api/drift-config/reset", HTTP_POST, handleWifiWebDriftConfigReset);
@@ -1388,6 +1523,8 @@ void setupWebConsoleServer()
     wifiWebServer.on("/update", HTTP_GET, handleWifiWebUpdateGet);
     wifiWebServer.on("/update", HTTP_POST, handleWifiWebUpdatePost, handleWifiWebUpdateUpload);
     wifiWebServer.onNotFound(handleWifiWebCaptivePortalNotFound);
+    // Load the persisted Web UI language preference once at server init (default: zh)
+    loadWebUiLanguagePreference();
     wifiWebServer.begin();
 }
 

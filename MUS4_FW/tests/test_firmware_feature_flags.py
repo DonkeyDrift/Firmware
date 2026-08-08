@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.44"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.45"' in build_info
+    assert "v1.7.45" in changelog
     assert "v1.7.44" in changelog
-    assert "v1.7.43" in changelog
-    assert changelog.index("v1.7.44") < changelog.index("v1.7.43")
+    assert changelog.index("v1.7.45") < changelog.index("v1.7.44")
 
 
 def test_host_ip_report_channel():
@@ -422,6 +422,27 @@ def test_web_console_has_help_floating_modal():
     assert "Tub JSON：记录并下载遥测样本" in source
     assert "OTA / DEV：固件更新与开发模式开关" in source
     assert "Status Cards: view mode, Park, OTA, and connection status" in source
+
+
+def test_web_console_help_modal_uses_donkeydrifter_glass_style():
+    source = firmware_source_text()
+
+    # 帮助弹窗改为 DonkeyDrifter Web UI 风格：居中玻璃拟态（遮罩模糊 + 半透明 zinc 面板）
+    assert '.helpOverlay{position:fixed;inset:0;display:none;background:rgba(0,0,0,.4);backdrop-filter:blur(4px)' in source
+    assert 'left:50%;top:50%;transform:translate(-50%,-50%)' in source
+    assert 'width:min(512px,calc(100vw - 32px))' in source
+    assert 'background:rgba(24,24,27,.7)' in source
+    assert 'border:1px solid rgba(63,63,70,.5)' in source
+    assert 'backdrop-filter:blur(12px)' in source
+    # 幽灵关闭按钮：透明底 + zinc-400 字形，hover 变 zinc-800
+    assert '.helpClose{min-width:0;width:28px;height:28px;padding:0;border:none;border-radius:50%;background:transparent;color:#a1a1aa' in source
+    assert '.helpClose:hover{background:#27272a;color:#f4f4f5}' in source
+    # 标题带青色信息图标，且图标在 data-i18n 元素之外（语言切换不会清掉图标）
+    assert 'class="helpTitle"' in source
+    assert 'stroke="#22d3ee"' in source
+    # 功能说明内容条目保持不变
+    assert 'data-i18n="help.title"' in source
+    assert "状态卡片：查看模式、Park、OTA、连接状态" in source
 
 
 def test_web_console_has_collapsed_glow_fab_with_radial_actions():
@@ -1367,20 +1388,21 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
 def test_web_console_language_tabs_are_inert_placeholder():
     """顶栏中文/English 分段控件：与 DonkeyDrift Web UI 顶栏切换器同款，
     当前为纯占位（无 onclick、不接 setLanguage），语言切换功能后续再接。
-    位置在 OTA 按钮左边、右对齐组内（.langTabs 用 margin-left:auto 顶替原
-    .otaLink 的右推），选中态沿用 ESP32 填充语言（蓝底 #5cc8ff + 黑字 #061019
-    + 800 粗），当前页面语言为英文故 English 常亮。"""
+    位置在 OTA 按钮左边、右对齐组内（v1.7.45 起头部右推由 muteButton 承担，
+    langTabs 不再 margin-left:auto），选中态沿用 ESP32 填充语言（蓝底 #5cc8ff
+    + 黑字 #061019 + 800 粗），当前页面语言为英文故 English 常亮。"""
 
     source = firmware_source_text()
 
-    assert ".langTabs{display:inline-flex;align-items:center;gap:2px;margin-left:auto;background:#171c24;border:1px solid #2b3441;border-radius:999px;padding:1px;height:24px;box-sizing:border-box}" in source
-    # 外大椭圆（box-sizing:border-box 固定总高 24px=OTA/DEV 同高）+ 内两个小椭圆分段（20px 内嵌），
+    assert ".langTabs{display:inline-flex;align-items:center;gap:2px;background:#171c24;border:none;border-radius:999px;padding:0 2px;height:24px;box-sizing:border-box;box-shadow:inset 0 0 0 1px #2b3441}" in source
+    # 外大椭圆（box-sizing:border-box 固定总高 24px=OTA/DEV 同高，内嵌 box-shadow 描边
+    # 不占布局）+ 内两个小椭圆分段（24px 满高，蓝色选中段与 OTA 按钮蓝对蓝同高），
     # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言
-    assert ".langTabs button{padding:0 10px;height:20px;min-width:0;border:none;border-radius:999px;" in source
+    assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
     assert '<span class="langTabs"' in source
     assert '<button type="button">中文</button><button type="button" class="active">English</button>' in source
-    # 位置：langTabs 在 OTA 按钮左边；右推由 langTabs 承担，otaLink 不再 margin-left:auto
+    # 位置：langTabs 在 OTA 按钮左边；右推由 muteButton 承担，langTabs/otaLink 均不再 margin-left:auto
     assert source.index('<span class="langTabs"') < source.index('<a href="/update" class="otaLink">')
     assert ".otaLink{margin-left:auto" not in source
     # otaLink 改 flex 消除 inline-block 基线下沉，保证 OTA 按钮与 langTabs 容器顶/底对齐同高
@@ -1401,6 +1423,36 @@ def test_web_console_language_tabs_are_inert_placeholder():
     assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.08}" in source
     assert ".stateMeta span{font-size:15px;font-weight:700;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.2}" in source
     assert "text-overflow:ellipsis" not in source
+
+
+def test_web_console_header_github_link_replaces_version_label():
+    """标题右侧（原版本号位置）放 GitHub 图标链接，新标签页打开
+    DonkeyDrift/Firmware 仓库；图标用 currentColor 内嵌 SVG，
+    默认暗色 #8fa1b5、悬停 ESP32 蓝 #5cc8ff。"""
+
+    source = firmware_source_text()
+
+    assert '<a class="ghLink" href="https://github.com/DonkeyDrift/Firmware" target="_blank" rel="noopener"' in source
+    assert 'aria-label="GitHub: DonkeyDrift/Firmware"' in source
+    assert '<svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58' in source
+    # 位置：紧跟主标题 </h1>（原版本号位置）、在 langTabs 切换条左边
+    assert source.index('<h1 data-i18n="app.title">Drifter Console</h1>') < source.index('<a class="ghLink"') < source.index('<span class="langTabs"')
+    assert '.ghLink{display:inline-flex;align-items:center;color:#8fa1b5;' in source
+    assert '.ghLink:hover{color:#5cc8ff}' in source
+
+
+def test_web_console_drift_card_tune_link_left_of_state_dot():
+    """DRIFT 卡片右上角保留状态灯（原位 right:12px、10px 宽），Tune 文字
+    链接放在状态灯左边（right:28px 起）且中心与状态灯平行：状态灯中心在
+    top:17px（12+5），Tune top:9px + 行高约 16px 一半 = 17px，水平错开互不遮挡。"""
+
+    source = firmware_source_text()
+
+    drift = source[source.index('id="driftCard"'):source.index('id="voltageCard"')]
+    assert '<span class="stateDot"></span>' in drift
+    assert '<a href="/drift" style="position:absolute;right:28px;top:9px;font-size:11px;color:#5cc8ff;text-decoration:none;z-index:2">Tune</a>' in drift
+    # 不遮挡几何关系：Tune 右缘从 right:28px 起，状态灯左缘在 right:22px（12px 偏移 + 10px 宽）
+    assert '.stateDot{position:absolute;right:12px;top:12px;width:10px;height:10px;' in source
 
 
 def test_web_console_places_voltage_before_combined_network_card():
@@ -3687,3 +3739,59 @@ def test_web_console_wifi_sta_history_ui():
     ]:
         assert f"I18N.zh['{key}']" in assets
         assert f"I18N.en['{key}']" in assets
+
+
+def test_web_console_mute_toggle_button_ui():
+    """v1.7.45：Web Console 头部新增静音切换按钮（muteToggle），SVG 双图标
+    （icoSound / icoMute）随静音态切换显隐，aria-label 走 i18n（mute.title），
+    前端经 /api/mute 拉取/切换静音状态并渲染按钮。"""
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+
+    # 头部按钮：全页面仅一处，aria-label 走 i18n
+    assert assets.count('id="muteToggle"') == 1
+    assert 'data-i18n-aria="mute.title"' in assets
+
+    # 图标显隐 CSS：静音态显示 icoMute、隐藏 icoSound
+    assert ".muteButton{" in assets
+    assert ".muteButton.muted .icoMute{display:block}" in assets
+    assert ".muteButton.muted .icoSound{display:none}" in assets
+
+    # i18n 文案：中英文各一条
+    assert "'mute.title':'静音'" in assets
+    assert "'mute.title':'Mute'" in assets
+
+    # 前端逻辑：静音状态、渲染、初始化与切换
+    assert "let uiMuted=false;" in assets
+    assert "function renderMuteButton()" in assets
+    assert "async function initMute()" in assets
+    assert "async function toggleMute()" in assets
+
+    # 启动链：initMute() 与 applyLanguage(uiLang) 同行依次调用
+    assert "applyLanguage(uiLang);initMute();" in assets
+
+
+def test_web_console_mute_api_persists_nvs_preference():
+    """v1.7.45：/api/mute GET/POST 端点读写静音状态，静音偏好经 Preferences
+    持久化到 NVS 命名空间 "webui"、键 "muted"（UChar 0/1）。"""
+    server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+
+    # 路由注册：GET 查询、POST 设置
+    assert 'wifiWebServer.on("/api/mute", HTTP_GET, handleWifiWebMuteGet);' in server
+    assert 'wifiWebServer.on("/api/mute", HTTP_POST, handleWifiWebMuteSet);' in server
+
+    # NVS 持久化：Preferences 命名空间 "webui"、键 "muted"（UChar 0/1）
+    assert "#include <Preferences.h>" in server
+    assert "static bool webUiMuted = false;" in server
+    assert "static void loadWebUiMutePreference()" in server
+    assert "static bool saveWebUiMutePreference(bool muted)" in server
+    assert 'prefs.begin("webui", true)' in server
+    assert 'prefs.begin("webui", false)' in server
+    assert 'prefs.getUChar("muted", 0)' in server
+    assert 'prefs.putUChar("muted", muted ? 1 : 0)' in server
+
+
+def test_firmware_version_bumped_to_v1_7_45_for_mute_toggle():
+    """v1.7.45：静音切换功能随版本号 v1.7.45 发布。"""
+    build_info = BUILD_INFO.read_text(encoding="utf-8")
+
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.45"' in build_info

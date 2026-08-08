@@ -23,6 +23,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <Update.h>
+#include <Preferences.h>
 
 // Hardware/framework globals defined in MUS4_FW.ino
 extern WebServer wifiWebServer;
@@ -84,6 +85,10 @@ static uint32_t wifiWebStatusMaxDtMs = 0;
 static uint32_t wifiWebLogMaxDtMs = 0;
 static uint32_t wifiWebDataMaxDtMs = 0;
 static uint32_t wifiWebCommandMaxDtMs = 0;
+
+// Web UI mute preference (runtime mirror of NVS "webui"/"muted"; persistence
+// only for now, the actual silencing behavior is applied separately)
+static bool webUiMuted = false;
 
 // 上位机配网状态（通过 Serial2 接收来自 Linux 上位机的响应）
 String hostWifiStatus = "IDLE";
@@ -624,6 +629,75 @@ static void handleWifiWebJudgeConfigReset()
     response.reserve(280);
     response += "{\"reset\":true,\"config\":";
     appendJudgeConfigJson(response, ws.judgeConfig);
+    response += "}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
+// ---------------------------------------------------------------------------
+// Web UI mute preference
+//
+// Persisted in NVS namespace "webui", key "muted" (UChar 0/1), default 0
+// (unmuted) when the key is absent. Open endpoints like judge-config: the
+// wireless command permission layering only applies to console commands.
+
+static void loadWebUiMutePreference()
+{
+    Preferences prefs;
+    if (!prefs.begin("webui", true)) {
+        webUiMuted = false;
+        mus4LogLine("web", "mute pref load failed, default unmuted");
+        return;
+    }
+    webUiMuted = prefs.getUChar("muted", 0) != 0;
+    prefs.end();
+}
+
+static bool saveWebUiMutePreference(bool muted)
+{
+    Preferences prefs;
+    if (!prefs.begin("webui", false)) return false;
+    size_t written = prefs.putUChar("muted", muted ? 1 : 0);
+    prefs.end();
+    if (written == 0) return false;
+    webUiMuted = muted;
+    return true;
+}
+
+static void handleWifiWebMuteGet()
+{
+    String response;
+    response.reserve(16);
+    response += "{\"muted\":";
+    response += (webUiMuted ? '1' : '0');
+    response += "}";
+    sendWifiWebApiHeaders();
+    wifiWebServer.send(200, "application/json", response);
+}
+
+static void handleWifiWebMuteSet()
+{
+    if (!wifiWebServer.hasArg("muted")) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
+        return;
+    }
+    String mutedArg = wifiWebServer.arg("muted");
+    if (mutedArg != "0" && mutedArg != "1") {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
+        return;
+    }
+    if (!saveWebUiMutePreference(mutedArg == "1")) {
+        sendWifiWebApiHeaders();
+        wifiWebServer.send(500, "application/json", "{\"saved\":false}");
+        return;
+    }
+
+    String response;
+    response.reserve(28);
+    response += "{\"saved\":true,\"muted\":";
+    response += (webUiMuted ? '1' : '0');
     response += "}";
     sendWifiWebApiHeaders();
     wifiWebServer.send(200, "application/json", response);
@@ -1380,6 +1454,8 @@ void setupWebConsoleServer()
     wifiWebServer.on("/api/judge-config", HTTP_GET, handleWifiWebJudgeConfig);
     wifiWebServer.on("/api/judge-config", HTTP_POST, handleWifiWebJudgeConfigSet);
     wifiWebServer.on("/api/judge-config/reset", HTTP_POST, handleWifiWebJudgeConfigReset);
+    wifiWebServer.on("/api/mute", HTTP_GET, handleWifiWebMuteGet);
+    wifiWebServer.on("/api/mute", HTTP_POST, handleWifiWebMuteSet);
     wifiWebServer.on("/api/drift-config", HTTP_GET, handleWifiWebDriftConfig);
     wifiWebServer.on("/api/drift-config", HTTP_POST, handleWifiWebDriftConfigSet);
     wifiWebServer.on("/api/drift-config/reset", HTTP_POST, handleWifiWebDriftConfigReset);
@@ -1388,6 +1464,8 @@ void setupWebConsoleServer()
     wifiWebServer.on("/update", HTTP_GET, handleWifiWebUpdateGet);
     wifiWebServer.on("/update", HTTP_POST, handleWifiWebUpdatePost, handleWifiWebUpdateUpload);
     wifiWebServer.onNotFound(handleWifiWebCaptivePortalNotFound);
+    // Load the persisted Web UI mute preference once at server init (default: unmuted)
+    loadWebUiMutePreference();
     wifiWebServer.begin();
 }
 

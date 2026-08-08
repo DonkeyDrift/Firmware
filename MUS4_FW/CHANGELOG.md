@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-07 v1.7.45
+
+- 固件版本号从 `v1.7.44` 更新到 `v1.7.45`。
+- feat(WebConsole): 顶栏语言切换左侧新增静音按钮（仅图标与状态持久化，实际静音功能后续实现）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：headerRow 在 langTabs 左侧插入 `#muteToggle` 喇叭图标按钮（内嵌 SVG 分 `.icoSound` 声波 / `.icoMute` 叉号两组，按 `.muted` 类切换显示，静音态图标变蓝）；headerRow 右推 `margin-left:auto` 由 `.langTabs` 移至 `.muteButton`，静音按钮成为右对齐组首个元素；新增 `initMute()`/`toggleMute()`/`renderMuteButton()`——页面加载时 GET `/api/mute` 恢复设备状态，点击 POST 写设备，仅成功时更新本地图标；i18n 新增 `mute.title`（静音/Mute）。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：新增 `GET /api/mute`（返回 `{"muted":0|1}`）与 `POST /api/mute`（缺参/非法值 400 `invalid_value`，NVS 写失败 500 `{"saved":false}`，成功 `{"saved":true,"muted":x}`），错误路径与 judge-config 同款；运行时状态 `webUiMuted` 经 Preferences NVS（命名空间 `webui`、键 `muted`、UChar）持久化，默认不静音，关机重启后恢复；`setupWebConsoleServer()` 注册路由时加载。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.45；langTabs 断言同步移除 `margin-left:auto`（右推改由 `.muteButton` 承担）；新增静音按钮 UI、`/api/mute` NVS 持久化、版本号三项源码断言。
+
 ## 2026-08-07 v1.7.44
 
 - 固件版本号从 `v1.7.43` 更新到 `v1.7.44`。

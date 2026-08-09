@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.51"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.52"' in build_info
+    assert "v1.7.52" in changelog
     assert "v1.7.51" in changelog
-    assert "v1.7.50" in changelog
-    assert changelog.index("v1.7.51") < changelog.index("v1.7.50")
+    assert changelog.index("v1.7.52") < changelog.index("v1.7.51")
 
 
 def test_host_ip_report_channel():
@@ -4037,3 +4037,65 @@ def test_web_console_led_blink_color_selector():
     # 单色选择：与黑色交替（亮灭各 250ms），多色选择：颜色间交替
     assert "setLEDToggle(colors[0], CRGB::Black)" in led
     assert "setLEDToggle(colors[0], colors[1])" in led
+    assert "setLEDToggle(colors[0], colors[1], colors[2])" in led
+
+
+def test_ota_glitch_led_effect():
+    """OTA 固件传输期间状态灯随机乱闪（故障灯效）：灭/红/绿/蓝随机颜色 +
+    30-120ms 随机间隔。HTTP /update 与 ArduinoOTA 两条通道都挂载——上传期间
+    主循环（及 scanLEDToggle）阻塞在传输 handler 里，灯效必须由上传回调直接
+    驱动；传输结束（成功/失败/中止）清 toggleActive，ControlMixer 下一循环
+    自动恢复正常状态指示。"""
+    led_h = (PROJECT_ROOT / "libraries" / "mus4_ui" / "src" / "LedStatus.h").read_text(encoding="utf-8")
+    led = (PROJECT_ROOT / "libraries" / "mus4_ui" / "src" / "LedStatus.cpp").read_text(encoding="utf-8")
+    server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+    sketch = (PROJECT_ROOT / "MUS4_FW.ino").read_text(encoding="utf-8")
+
+    # API 声明与实现
+    for decl in ["void startLedOtaGlitch();", "void scanLedOtaGlitch();", "void stopLedOtaGlitch();"]:
+        assert decl in led_h
+    # 随机颜色：灭/红/绿/蓝四态；随机间隔 30-120ms
+    assert "{CRGB::Black, CRGB::Red, CRGB::Green, CRGB::Blue}" in led
+    assert "random(0, 4)" in led
+    assert "random(30, 121)" in led
+    # 结束时归还状态灯：清 toggle 状态，ControlMixer 下一 loop 重应用
+    stop_fn = led[led.index("void stopLedOtaGlitch()"):]
+    assert "toggleActive = false;" in stop_fn
+
+    # HTTP /update 通道：开始传输启动灯效、每写一块推进一步、END/ABORTED 停止
+    assert '#include "LedStatus.h"' in server
+    upload_fn = server[server.index("static void handleWifiWebUpdateUpload()"):]
+    assert upload_fn.index("startLedOtaGlitch();") < upload_fn.index("UPLOAD_FILE_WRITE")
+    assert upload_fn.index("scanLedOtaGlitch();") > upload_fn.index("UPLOAD_FILE_WRITE")
+    assert upload_fn.count("stopLedOtaGlitch();") == 2  # UPLOAD_FILE_END 与 UPLOAD_FILE_ABORTED
+
+    # ArduinoOTA 通道：onStart/onProgress 驱动，onEnd/onError 停止
+    assert sketch.index("ArduinoOTA.onStart") < sketch.index("startLedOtaGlitch();") < sketch.index("ArduinoOTA.onEnd")
+    onprogress_fn = sketch[sketch.index("ArduinoOTA.onProgress"):]
+    assert "scanLedOtaGlitch();" in onprogress_fn
+
+    # 成功后跨重启延续：HTTP restart 前与 ArduinoOTA onEnd 都写 RTC 标记
+    assert "RTC_DATA_ATTR" in led
+    assert "void markLedOtaGlitchAfterReboot()" in led
+    assert "bool takeLedOtaGlitchAfterReboot()" in led
+    post_fn = server[server.index("static void handleWifiWebUpdatePost()"):]
+    assert post_fn.index("markLedOtaGlitchAfterReboot();") < post_fn.index("ESP.restart();")
+    onend_fn = sketch[sketch.index("ArduinoOTA.onEnd"):sketch.index("ArduinoOTA.onProgress")]
+    assert "markLedOtaGlitchAfterReboot();" in onend_fn
+    assert sketch.count("stopLedOtaGlitch();") == 3  # ArduinoOTA onEnd/onError + loop() 蜂鸣器播完判停
+
+    # 重启后：setup() 自检后取标记、以"等蜂鸣器"模式重启乱闪；loop() 播完判停（800ms 宽限）
+    assert "void startLedOtaGlitchUntilBuzzerIdle()" in led
+    assert "bool isLedOtaGlitchActive()" in led
+    assert "bool ledOtaGlitchWaitsForBuzzer()" in led
+    assert sketch.index("takeLedOtaGlitchAfterReboot()") > sketch.index("runLedPowerOnSelfTest();")
+    assert "startLedOtaGlitchUntilBuzzerIdle();" in sketch
+    loop_fn = sketch[sketch.index("void loop()"):]
+    assert "buzzer.isPlaying()" in loop_fn
+    assert ">= 800" in loop_fn
+    # 乱闪期间正常状态机静默：setLEDColor/setLEDToggle×2/scanLEDToggle 四处 early-return 屏蔽
+    assert led.count("if (isLedOtaGlitchActive())") == 4
+    assert "stopLedOtaGlitch();" in sketch[sketch.index("ArduinoOTA.onError"):]
+    # 上电自检 3 秒期间保持驱动蜂鸣器，避免开机旋律第一个音符被阻塞拖长
+    assert "buzzer.update();" in led
+    assert "delaySelfTestHold(1000)" in led

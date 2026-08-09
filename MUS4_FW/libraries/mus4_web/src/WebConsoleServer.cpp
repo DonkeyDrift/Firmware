@@ -7,6 +7,7 @@
 #include "BuildInfo.h"
 #include "MutePreference.h"
 #include "LedBlinkPreference.h"
+#include "LedStatus.h"
 #include "SharedTypes.h"
 #include "StringPrint.h"
 #include "WebConsoleAssets.h"
@@ -1447,6 +1448,7 @@ static void handleWifiWebUpdateUpload()
         os.windowOpen = true;
         os.closeWsPending = true;
         os.lastProgressPct = 0;
+        startLedOtaGlitch(); // 传输期间状态灯随机乱闪（故障灯效）
         // v1.7.27：同步 WebServer 默认 read timeout 仅 5000ms，OTA 期间 Flash
         // erase/write 可能让 TCP 接收窗口长时间为 0，触发 read timeout 导致
         // "http update aborted"。上传开始时把客户端 timeout 提高到 30s，给
@@ -1468,6 +1470,7 @@ static void handleWifiWebUpdateUpload()
             if (upload.totalSize > 0) {
                 os.lastProgressPct = (uint8_t)((wifiWebUpdateReceived * 100U) / upload.totalSize);
             }
+            scanLedOtaGlitch(); // 每写一块推进一步故障灯效（内部按随机间隔门控）
             // v1.7.26：每收到一块 OTA 数据后让出 CPU，避免长时间连续写 Flash
             // 阻塞 Wi-Fi/AsyncTCP task 触发 Task WDT，导致上传中途断连。
             // 使用 yield() 而非 delay(n)，既能让其他任务（包括 idle/WDT）获得时间片，
@@ -1475,6 +1478,7 @@ static void handleWifiWebUpdateUpload()
             yield();
         }
     } else if (upload.status == UPLOAD_FILE_END) {
+        stopLedOtaGlitch(); // 传输结束（无论成败）归还状态灯给正常状态机
         if (wifiWebUpdateErrorMsg.length() > 0) {
             Update.end();
             return;
@@ -1489,6 +1493,7 @@ static void handleWifiWebUpdateUpload()
     } else if (upload.status == UPLOAD_FILE_ABORTED) {
         // abort 路径由 handleWifiWebUpdatePost 统一清理 OTA 状态；
         // 这里只标记错误并打日志，避免状态重置分散在两处。
+        stopLedOtaGlitch();
         wifiWebUpdateErrorMsg = "NACK:ABORTED";
         mus4LogLine("ota", "http update aborted");
     }
@@ -1510,6 +1515,8 @@ static void handleWifiWebUpdatePost()
     }
     wifiWebServer.send(200, "text/plain", "ACK:UPDATE_OK\n");
     recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
+    // 故障灯效延续到重启后：setup() 取标记重新启动乱闪，直到开机蜂鸣器播完
+    markLedOtaGlitchAfterReboot();
     delay(100);
     ESP.restart();
 }

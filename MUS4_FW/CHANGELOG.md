@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-08-09 v1.7.51
+
+- 固件版本号从 `v1.7.50` 更新到 `v1.7.51`。
+- feat(LED): 上电自检红/绿/蓝依次常亮各 1 秒（共 3 秒）；空闲（手动模式 + Park 锁定）灯色改为 Web Console 顶栏多选——红/绿/蓝可勾选多个，多色交替闪、单色亮灭闪（亮灭各 250ms）、全不选熄灭，选择 NVS 持久化、关机重启后恢复
+  - `libraries/mus4_core/src/LedBlinkPreference.h` / `LedBlinkPreference.cpp`（新增）：空闲闪烁灯色偏好单一数据源——位掩码 bit0 红 / bit1 绿 / bit2 蓝，NVS 命名空间 `webui`、键 `ledblink`（UChar 0-7，缺省 7 三色全选）；API 为 `loadLedBlinkPreference()` / `saveLedBlinkPreference(mask)` / `getLedBlinkMask()`；ControlMixer 每 loop 轮询 `getLedBlinkMask()`、变化即重应用，POST 立即生效无需重启。
+  - `libraries/mus4_ui/src/LedStatus.h` / `LedStatus.cpp`：新增 `runLedPowerOnSelfTest()`（红绿蓝各常亮 1 秒，阻塞式，`setup()` 中 FastLED 初始化后调用一次）与 `applyLedBlinkMask(mask)`（0 色熄灭、1 色 `setLEDToggle(color, Black)` 亮灭闪、2/3 色交替闪，间隔均为既有 250ms）；新增三参 `setLEDToggle(c1,c2,c3)` 三色循环重载，`scanLEDToggle()` 按 `toggleUse3Colors` 走双色/三色轮转。
+  - `libraries/mus4_control/src/ControlMixer.cpp`：手动模式 + Park 锁定的空闲闪烁由硬编码绿/红交替改为 `applyLedBlinkMask(getLedBlinkMask())`，模式切换或掩码变化时重应用（`appliedBlinkMask` 静态缓存）。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：新增 `GET /api/led-blink`（`{"colors":0-7}`）与 `POST /api/led-blink`（缺参/非法 400 `invalid_value`，NVS 写失败 500 `{"saved":false}`，成功 `{"saved":true,"colors":x}`），错误路径与 `/api/mute`、`/api/language` 同款；处理器为薄封装，读写均委托 LedBlinkPreference。
+  - `MUS4_FW.ino`：`setup()` 在 `loadMutePreference()` 后、`setupWifiConsole()` 前调用 `loadLedBlinkPreference()`；FastLED 初始化后调用 `runLedPowerOnSelfTest()`；toggle 状态新增 `toggleUse3Colors` / `toggleColor3`。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：顶栏静音按钮右、语言切换左新增 `#ledBlinkTabs` 三选项多选按钮（红/绿/蓝 Red/Green/Blue，复用 langTabs 胶囊样式，可多选），点击 XOR 取反位并 POST `/api/led-blink`，页面加载 `initLedBlink()` GET 恢复选中态；i18n 新增 `led.title`/`led.red`/`led.green`/`led.blue` 中英词条；相邻勾选按钮无缝连体成大胶囊（JS 对连体边界设 `marginLeft:-2px` 抵消容器原生 2px 间隙 + 段内边直角/段端圆角，非连体边界保留均匀细缝）；悬停高亮始终为独立小椭圆（`border-radius:999px!important` + 更高 z-index），仅在悬停按钮本身已勾选时相邻已选按钮才用伪元素延伸背景垫底填缝——悬停未选按钮不垫底，避免蓝色背景鼓包。
+  - `docs/Hardware/pin_definitions.md`：WS2812B 颜色定义同步——上电自检三色各 1 秒、空闲灯色可配置（缺省三色交替、单色亮灭闪、全不选熄灭）、半自动/全自动 + Park 为模式色/红色交替闪烁。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.7.51。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.51；新增 `test_web_console_led_blink_color_selector`（按钮位置/位掩码/i18n/启动链/路由注册/NVS 持久化/掩码驱动/单色亮灭闪/连体 marginLeft 方案/悬停垫底限定断言）。
+  - 验证：`tests/` 全量 pytest 通过（307 项）；编译通过；已 OTA 刷机（HTTP `/update` → `192.168.3.46`；首次 90s 超时致设备一度滞留 "OTA in progress"，重传成功）；Playwright 对实机页面截图复验全选连体、红蓝两丸分离、连体段内悬停填缝、悬停未选按钮无鼓包等状态全部正确。
+
 ## 2026-08-08 v1.7.50
 
 - 固件版本号从 `v1.7.49` 更新到 `v1.7.50`。

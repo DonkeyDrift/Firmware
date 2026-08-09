@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-08-09 v1.7.52
+
+- 固件版本号从 `v1.7.51` 更新到 `v1.7.52`。
+- feat(LED): OTA 固件传输期间状态灯随机乱闪（故障灯效），成功后跨重启延续到开机蜂鸣器旋律播完
+  - `libraries/mus4_ui/src/LedStatus.h` / `LedStatus.cpp`：新增 `startLedOtaGlitch()` / `scanLedOtaGlitch()` / `stopLedOtaGlitch()`——灭/红/绿/蓝随机颜色 + 30-120ms 随机间隔，由上传回调直接驱动（传输期间主循环及 `scanLEDToggle()` 阻塞在 handler 内）；`startLedOtaGlitchUntilBuzzerIdle()` 等蜂鸣器模式 + `isLedOtaGlitchActive()` / `ledOtaGlitchWaitsForBuzzer()` 查询；乱闪期间正常状态机静默（`setLEDColor` / `setLEDToggle`×2 / `scanLEDToggle` 四处 early-return），`stopLedOtaGlitch()` 清 toggle 状态、ControlMixer 下一循环自动恢复；`markLedOtaGlitchAfterReboot()` / `takeLedOtaGlitchAfterReboot()` 经 `RTC_DATA_ATTR`（软重启保持、冷上电清零）把灯效带过 `ESP.restart()`。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：HTTP `/update` 通道挂载——`UPLOAD_FILE_START` 启动、`UPLOAD_FILE_WRITE` 每块推进、`UPLOAD_FILE_END`/`UPLOAD_FILE_ABORTED` 停止；`handleWifiWebUpdatePost()` 在 `ESP.restart()` 前写 RTC 标记。
+  - `MUS4_FW.ino`：ArduinoOTA 通道同款挂载（`onStart`/`onProgress`/`onEnd`/`onError`，`onEnd` 写 RTC 标记）；`setup()` 上电自检后取标记、以等蜂鸣器模式重启乱闪；`loop()` 尾随 `buzzer.update()` 后推进乱闪并盯 `buzzer.isPlaying()`，蜂鸣器空闲满 800ms（覆盖多段旋律间停顿）才 `stopLedOtaGlitch()`。
+  - `docs/Hardware/pin_definitions.md`：WS2812B 颜色定义新增 OTA 故障灯效条目（传输乱闪、中止/失败即恢复、成功跨重启延续到开机旋律播完）。
+  - `tests/test_firmware_feature_flags.py`：新增 `test_ota_glitch_led_effect`（API 声明/随机颜色与间隔/HTTP 与 ArduinoOTA 双通道挂载/RTC 标记/setup 取标记/loop 800ms 宽限/状态机静默断言）。
+- fix(LED): 上电自检 3 秒阻塞拖长开机旋律第一个音符 → 自检保持切片化、期间持续驱动 `buzzer.update()`
+  - v1.7.51 引入的上电自检（红绿蓝各常亮 1 秒，`delay()` 阻塞共 3 秒）位于 `setupWifiConsole()` 之后——AP 启动音已开始播放（非阻塞旋律，音符切换靠主循环 `buzzer.update()`），自检期间音符无法切换，开机旋律第一个音被拖长约 3 秒，每次上电/重启均复现。
+  - `libraries/mus4_ui/src/LedStatus.cpp`：`runLedPowerOnSelfTest()` 的 `delay(1000)` 改为 `delaySelfTestHold(1000)`——10ms 小片循环、每片调用 `buzzer.update()`（`extern Buzzer buzzer` 全局实例），自检期间旋律正常推进。
+  - `tests/test_firmware_feature_flags.py`：新增自检期间驱动蜂鸣器断言。
+  - 验证：`tests/` 全量 pytest 通过（308 项）；编译通过；已 OTA 刷机（HTTP `/update` → `192.168.3.46`，限速 20KB/s 拉长传输窗口实测乱闪灯效与重启后蜂鸣器延续）。
+
 ## 2026-08-09 v1.7.51
 
 - 固件版本号从 `v1.7.50` 更新到 `v1.7.51`。

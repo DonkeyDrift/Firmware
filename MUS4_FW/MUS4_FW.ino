@@ -323,10 +323,13 @@ static void setupWifiOtaCallbacks()
         wifiOtaParkGuardActive = true;
         forceWifiOtaParkLocked();
         wifiOtaLastProgressPct = 0;
+        startLedOtaGlitch(); // 传输期间状态灯随机乱闪（故障灯效）
         mus4LogLine("ota", "start");
     });
     ArduinoOTA.onEnd([]() {
         wifiOtaInProgress = false;
+        stopLedOtaGlitch();
+        markLedOtaGlitchAfterReboot(); // onEnd 后 ArduinoOTA 库会 ESP.restart()
         if (wifiDevModeEnabled) {
             wifiOtaParkGuardActive = false;
             ensureWifiOtaStarted();
@@ -341,9 +344,11 @@ static void setupWifiOtaCallbacks()
     });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         if (total > 0) wifiOtaLastProgressPct = (uint8_t)((progress * 100U) / total);
+        scanLedOtaGlitch();
     });
     ArduinoOTA.onError([](ota_error_t error) {
         wifiOtaInProgress = false;
+        stopLedOtaGlitch();
         if (wifiDevModeEnabled) {
             wifiOtaParkGuardActive = false;
             ensureWifiOtaStarted();
@@ -618,6 +623,12 @@ void setup()
     // Power-on self test: red/green/blue each solid 1s (3s total)
     runLedPowerOnSelfTest();
 
+    // OTA 成功后重启：故障灯效延续到开机蜂鸣器播完（loop 里判断结束）
+    if (takeLedOtaGlitchAfterReboot())
+    {
+        startLedOtaGlitchUntilBuzzerIdle();
+    }
+
     // Replace the previous direct color-setting method
     setLEDColor(CRGB::Blue); // Set the initial color with the new function
 
@@ -879,6 +890,30 @@ void loop()
     buzzer.update();
 
     scanLEDToggle();
+
+    // OTA 故障灯效（重启后延续段）：乱闪直到开机蜂鸣器播完；
+    // 800ms 空闲宽限覆盖多段旋律之间的停顿，避免提前结束
+    if (isLedOtaGlitchActive())
+    {
+        scanLedOtaGlitch();
+        if (ledOtaGlitchWaitsForBuzzer())
+        {
+            static unsigned long glitchBuzzerIdleSinceMs = 0;
+            if (buzzer.isPlaying())
+            {
+                glitchBuzzerIdleSinceMs = 0;
+            }
+            else if (glitchBuzzerIdleSinceMs == 0)
+            {
+                glitchBuzzerIdleSinceMs = millis();
+            }
+            else if (millis() - glitchBuzzerIdleSinceMs >= 800)
+            {
+                stopLedOtaGlitch();
+                glitchBuzzerIdleSinceMs = 0;
+            }
+        }
+    }
     if (now - lastPerfEval >= 1000)
     {
         evalDegrade();

@@ -6,6 +6,7 @@
 #include "JoystickCalibration.h"
 #include "DriftAssist.h"
 #include "LedStatus.h"
+#include "LedBlinkPreference.h"
 #include "Mus4Log.h"
 #include "Buzzer.h"
 
@@ -108,9 +109,12 @@ void updateControlOutput()
         // Controlled by RC Controller (car_output.mode = CAR_MODE_MANUAL)
         if (car_output.park == 1)
         {
-            if (carOutputModeLast != CAR_MODE_MANUAL || !toggleActive)
+            static uint8_t appliedBlinkMask = 0xFF; // 0xFF is invalid, forces the first apply
+            uint8_t mask = getLedBlinkMask();
+            if (carOutputModeLast != CAR_MODE_MANUAL || mask != appliedBlinkMask || !toggleActive)
             {
-                setLEDToggle(CRGB::Green, CRGB::Red);
+                applyLedBlinkMask(mask); // idle blink colors from Web Console selection
+                appliedBlinkMask = mask;
                 carOutputModeLast = CAR_MODE_MANUAL;
             }
         }

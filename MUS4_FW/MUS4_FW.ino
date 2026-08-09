@@ -83,6 +83,7 @@
 
 #include "Buzzer.h"
 #include "MutePreference.h"
+#include "LedBlinkPreference.h"
 // #include "test_runner.h"
 
 TUI tui(Serial);
@@ -124,7 +125,8 @@ unsigned long lastTelemWebLogMs = 0;      // 上一次 T..S.. 写入 Web 日志�
 int lastEmittedMode = -1;                 // -1 表示尚未发过；强制首次发
 int lastEmittedPark = -1;                 // 同上
 bool toggleActive = false;
-CRGB toggleColor1, toggleColor2;
+bool toggleUse3Colors = false;      // true: cycle color1->color2->color3; false: toggle color1<->color2
+CRGB toggleColor1, toggleColor2, toggleColor3;
 unsigned long toggleTime = 0;
 unsigned long toggleInterval = 250; // LED toggle interval is 250 ms
 bool degradeMode = false;
@@ -576,6 +578,7 @@ void setup()
       // Mute preference must be loaded before setupWifiConsole(): the AP start
       // melody plays during Wi-Fi setup, so the mute gate has to be armed first.
       loadMutePreference();
+      loadLedBlinkPreference();
       loadWifiApPreference();
       loadWifiStaPreference();
       loadWifiStaHistory();
@@ -611,6 +614,9 @@ void setup()
 
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
     FastLED.setBrightness(BRIGHTNESS);
+
+    // Power-on self test: red/green/blue each solid 1s (3s total)
+    runLedPowerOnSelfTest();
 
     // Replace the previous direct color-setting method
     setLEDColor(CRGB::Blue); // Set the initial color with the new function

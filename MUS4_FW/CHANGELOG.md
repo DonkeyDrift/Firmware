@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-08-10 v1.7.55
+
+- 固件版本号从 `v1.7.54` 更新到 `v1.7.55`。
+- feat(WebConsole): RC Channels 的 Min T / Max T 数字可直接点击打字输入；数字与滑块同行居中对齐；Mid S / Mid T 的 Set 键改用 OTA 按钮样式并与数字对齐
+  - 数字可输入：Min T / Max T 的数值由 `<span>` 改为 `<input type="number" class="rcNum">`，点击即可键入，回车/失焦生效；新增 `commitThrottleLimit()`（含 `commitThrottleMin`/`commitThrottleMax` 包装）按滑块动态上下限钳制、同步滑块并发 `THROTTLE_MIN`/`THROTTLE_MAX` 命令；`updateState()` 轮询刷新跳过正在编辑的输入框；i18n 新增 `rc.numInput` 中英词条。
+  - 布局对齐：滑块+数字改为 flex 行（`align-items:center;justify-content:center;gap:10px`，滑块宽 70%），整体在单元格内居中；Mid S / Mid T 单元格数字与 Set 键包为 flex 行垂直居中。
+  - 样式：`.rcNum` 最终定为 14px Consolas、宽 `4.5ch`、无边框（hover/focus 仅淡底色 `#1a2230`，无输入框外观），并显式 `flex:0 0 auto;min-width:0;max-width:none` 以抵消全局 `input{flex:0 1 180px;min-width:120px;max-width:220px}` 规则对 flex 项主轴尺寸的覆盖（此前数字输入框一直被撑到约 180px 宽）；Set 键新增 `.rcSetBtn` 复用 OTA 按钮蓝底胶囊样式（尺寸不变）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：上述 HTML/CSS/JS 全部改动；`libraries/mus4_core/src/BuildInfo.h`：版本号 v1.7.55。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.55（顺序断言 v1.7.55 先于 v1.7.54）。
+  - 说明：Min/Max T 输入与 Set 键样式的主体代码经 PR #22 合入时未记录日志，本条目一并补记。
+  - 验证：`tests/` 全量 pytest 通过；编译通过；已 OTA 刷机（ArduinoOTA → `192.168.3.46`）。
+
 ## 2026-08-10 v1.7.54
 
 - 固件版本号从 `v1.7.53` 更新到 `v1.7.54`。

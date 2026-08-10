@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.54"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.55"' in build_info
+    assert "v1.7.55" in changelog
     assert "v1.7.54" in changelog
-    assert "v1.7.53" in changelog
-    assert changelog.index("v1.7.54") < changelog.index("v1.7.53")
+    assert changelog.index("v1.7.55") < changelog.index("v1.7.54")
 
 
 def test_host_ip_report_channel():

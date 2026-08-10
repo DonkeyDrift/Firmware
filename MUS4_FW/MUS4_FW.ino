@@ -620,7 +620,7 @@ void setup()
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
     FastLED.setBrightness(BRIGHTNESS);
 
-    // Power-on self test: red/green/blue each solid 1s (3s total)
+    // Power-on self test: all RGB channels on (white) for 3s
     runLedPowerOnSelfTest();
 
     // OTA 成功后重启：故障灯效延续到开机蜂鸣器播完（loop 里判断结束）

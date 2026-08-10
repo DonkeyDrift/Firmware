@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.52"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.53"' in build_info
+    assert "v1.7.53" in changelog
     assert "v1.7.52" in changelog
-    assert "v1.7.51" in changelog
-    assert changelog.index("v1.7.52") < changelog.index("v1.7.51")
+    assert changelog.index("v1.7.53") < changelog.index("v1.7.52")
 
 
 def test_host_ip_report_channel():
@@ -4098,4 +4098,7 @@ def test_ota_glitch_led_effect():
     assert "stopLedOtaGlitch();" in sketch[sketch.index("ArduinoOTA.onError"):]
     # 上电自检 3 秒期间保持驱动蜂鸣器，避免开机旋律第一个音符被阻塞拖长
     assert "buzzer.update();" in led
-    assert "delaySelfTestHold(1000)" in led
+    assert "delaySelfTestHold(3000)" in led
+    # v1.7.53：自检改为 RGB 三通道齐亮（白色）常亮 3 秒，不再红绿蓝轮流各 1 秒
+    assert "setLEDColor(CRGB::White);" in led
+    assert "CRGB::Red);\n    delaySelfTestHold" not in led

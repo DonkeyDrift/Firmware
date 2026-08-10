@@ -86,9 +86,9 @@ void scanLEDToggle()
     }
 }
 
-// Power-on self test: red, green, blue each solid for 1 second (3 seconds total).
-// Blocking; called once from setup() after FastLED init.
-// The 1s holds are sliced so buzzer.update() keeps running: the boot melody
+// Power-on self test: all three RGB channels lit together (white) for 3
+// seconds. Blocking; called once from setup() after FastLED init.
+// The hold is sliced so buzzer.update() keeps running: the boot melody
 // (AP start sound) is already playing when the self test runs, and a plain
 // 3s delay() would stretch its first note until the loop takes over.
 static void delaySelfTestHold(unsigned long ms)
@@ -103,12 +103,8 @@ static void delaySelfTestHold(unsigned long ms)
 
 void runLedPowerOnSelfTest()
 {
-    setLEDColor(CRGB::Red);
-    delaySelfTestHold(1000);
-    setLEDColor(CRGB::Green);
-    delaySelfTestHold(1000);
-    setLEDColor(CRGB::Blue);
-    delaySelfTestHold(1000);
+    setLEDColor(CRGB::White); // red+green+blue channels all on -> white
+    delaySelfTestHold(3000);
 }
 
 // Apply the idle blink color selection: bit0 red, bit1 green, bit2 blue.

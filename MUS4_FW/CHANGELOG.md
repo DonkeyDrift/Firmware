@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-08-10 v1.7.53
+
+- 固件版本号从 `v1.7.52` 更新到 `v1.7.53`。
+- fix(LED): 上电自检改为 RGB 三通道齐亮（白色）常亮 3 秒——v1.7.51 误实现为红/绿/蓝轮流各亮 1 秒
+  - 需求本义：RGB 灯珠的红、绿、蓝三个通道一起点亮（即白色）并保持 3 秒；v1.7.51 的 `runLedPowerOnSelfTest()` 做成三色轮流各 1 秒，与需求不符。
+  - `libraries/mus4_ui/src/LedStatus.cpp`：`runLedPowerOnSelfTest()` 改为 `setLEDColor(CRGB::White)` + `delaySelfTestHold(3000)` 一次保持；自检期间持续驱动 `buzzer.update()` 的 v1.7.52 修复保留。
+  - `MUS4_FW.ino`：自检调用点注释同步为 "all RGB channels on (white) for 3s"。
+  - `docs/Hardware/pin_definitions.md`：WS2812B 颜色定义同步为"红/绿/蓝三通道齐亮（白色）常亮 3 秒"。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.7.53。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.53；自检断言同步（`delaySelfTestHold(3000)`、`setLEDColor(CRGB::White)`、不再逐色 `delaySelfTestHold`）。
+  - 验证：`tests/` 全量 pytest 通过（308 项）；编译通过；已 OTA 刷机（HTTP `/update` → `192.168.3.46`）。
+
 ## 2026-08-09 v1.7.52
 
 - 固件版本号从 `v1.7.51` 更新到 `v1.7.52`。

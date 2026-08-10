@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-10 v1.7.54
+
+- 固件版本号从 `v1.7.53` 更新到 `v1.7.54`。
+- feat(WebConsole): 头部主标题右侧、GitHub 图标左侧依次新增"进入 donkey""进入 DonkeyDrifter"两个入口按钮（功能预留，暂未实现跳转）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：headerRow 在主标题 `<h1>` 后、`.ghLink` 前插入两个 `<button type="button" class="otaButton">`（样式完全复用 OTA 按钮蓝色胶囊，无 `onclick`，点击跳转功能预留）；i18n 新增 `button.enterDonkey` / `button.enterDonkeyDrifter` 中英词条（进入 donkey / 进入 DonkeyDrifter，Enter donkey / Enter DonkeyDrifter）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.7.54。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.54；新增 `test_web_console_header_entry_buttons`（位置顺序——标题后、GitHub 图标前，donkey 左 DonkeyDrifter 右/复用 otaButton 样式/i18n 中英词条断言）。
+  - 验证：`tests/` 全量 pytest 通过（309 项）；编译通过；已 OTA 刷机（ArduinoOTA → `192.168.3.46`）。
+
 ## 2026-08-10 v1.7.53
 
 - 固件版本号从 `v1.7.52` 更新到 `v1.7.53`。

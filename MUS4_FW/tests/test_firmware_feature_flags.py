@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.53"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.54"' in build_info
+    assert "v1.7.54" in changelog
     assert "v1.7.53" in changelog
-    assert "v1.7.52" in changelog
-    assert changelog.index("v1.7.53") < changelog.index("v1.7.52")
+    assert changelog.index("v1.7.54") < changelog.index("v1.7.53")
 
 
 def test_host_ip_report_channel():
@@ -4102,3 +4102,32 @@ def test_ota_glitch_led_effect():
     # v1.7.53：自检改为 RGB 三通道齐亮（白色）常亮 3 秒，不再红绿蓝轮流各 1 秒
     assert "setLEDColor(CRGB::White);" in led
     assert "CRGB::Red);\n    delaySelfTestHold" not in led
+
+
+def test_web_console_header_entry_buttons():
+    """v1.7.54：Web Console 头部主标题与 GitHub 图标之间新增"进入 donkey" /
+    "进入 DonkeyDrifter"两个入口按钮，样式复用 OTA 按钮的 otaButton 蓝色胶囊，
+    文案走 i18n（button.enterDonkey / button.enterDonkeyDrifter），
+    点击跳转功能预留（无 onclick）。"""
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
+        encoding="utf-8"
+    )
+
+    # 位置：主标题 <h1> 之后、GitHub 链接之前，donkey 在左、DonkeyDrifter 在右
+    h1_pos = assets.index('<h1 data-i18n="app.title">Drifter Console</h1>')
+    donkey_pos = assets.index('data-i18n="button.enterDonkey"')
+    drifter_pos = assets.index('data-i18n="button.enterDonkeyDrifter"')
+    gh_pos = assets.index('<a class="ghLink"')
+    assert h1_pos < donkey_pos < drifter_pos < gh_pos
+
+    # 样式复用 OTA 按钮；无 onclick 属性（功能预留）
+    donkey_btn = '<button type="button" class="otaButton" data-i18n="button.enterDonkey">进入 donkey</button>'
+    drifter_btn = '<button type="button" class="otaButton" data-i18n="button.enterDonkeyDrifter">进入 DonkeyDrifter</button>'
+    assert donkey_btn in assets
+    assert drifter_btn in assets
+
+    # i18n 中英词条齐全
+    assert "'button.enterDonkey':'进入 donkey'" in assets
+    assert "'button.enterDonkeyDrifter':'进入 DonkeyDrifter'" in assets
+    assert "'button.enterDonkey':'Enter donkey'" in assets
+    assert "'button.enterDonkeyDrifter':'Enter DonkeyDrifter'" in assets

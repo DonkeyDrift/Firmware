@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-11 v1.7.56
+
+- 固件版本号从 `v1.7.55` 更新到 `v1.7.56`。
+- feat(WebConsole): "进入 donkey" / "进入 DonkeyDrifter" 头部按钮接上 onclick 跳转，跳转目标为宿主机 Launcher 服务（端口 8090）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：两个按钮分别添加 `onclick` 属性--"进入 donkey"新标签页打开 `http://192.168.3.150:8090/`（Launcher 菜单页面），"进入 DonkeyDrifter"当前页跳转 `http://192.168.3.150:8090/api/launch/drive`（直接启动 donkey web + manage.py drive 并重定向到驾驶页面）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.7.56。
+  - `tests/test_firmware_feature_flags.py`：版本号断言更新至 v1.7.56；`test_web_console_header_entry_buttons` 改为验证 onclick 跳转属性（不再断言无 onclick）。
+  - 验证：`pytest tests/test_firmware_feature_flags.py` 通过；编译通过；已 OTA 刷机（ArduinoOTA -> `192.168.3.46`）。
+
 ## 2026-08-10 v1.7.55
 
 - 固件版本号从 `v1.7.54` 更新到 `v1.7.55`。

@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.57"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.58"' in build_info
+    assert "v1.7.58" in changelog
     assert "v1.7.57" in changelog
-    assert "v1.7.56" in changelog
-    assert changelog.index("v1.7.57") < changelog.index("v1.7.56")
+    assert changelog.index("v1.7.58") < changelog.index("v1.7.57")
 
 
 def test_host_ip_report_channel():
@@ -1848,8 +1848,9 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert '<div class="muted" style="margin:8px 0">开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。</div>' not in source
     assert ".log{height:calc(5 * 1.35em + 16px);" in source
     assert ".log{height:280px;" not in source
-    assert 'id="versionLabel"' not in source
-    assert "versionLabel.textContent" not in source
+    assert '<span class="version" id="versionLabel">--</span>' in source
+    assert "versionLabel.textContent" in source
+    assert source.index('<a class="ghLink"') < source.index('id="versionLabel"') < source.index('id="muteToggle"')
     assert '<div id="log" class="log"></div>' in source
     assert 'id="logMeta"' not in source
     assert "logMeta" not in source

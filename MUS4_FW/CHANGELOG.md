@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-08-11 v1.7.58
+
+- 固件版本号从 `v1.7.57` 更新到 `v1.7.58`。
+- feat(WebConsole): 顶栏恢复固件版本号显示，放在 GitHub 图标右侧
+  - 背景：版本号此前被移除，用户要求恢复；Drifter Console 顶栏在 GitHub 图标（跳转 DonkeyDrift/Firmware）右边显示版本号，与 DonkeyDrifter Web UI 头部版本号（GitHub 图标左侧）对应。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：ghLink 的 `</a>` 后新增 `<span class="version" id="versionLabel">--</span>`；JS const 声明新增 `versionLabel=document.getElementById('versionLabel')`；`updateNetworkCard()` 末尾从 `/api/status` 的 `version` 字段写入显示（`V` 前缀归一为 `v`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.7.58。
+  - `tests/test_firmware_feature_flags.py`：版本断言更新至 v1.7.58；`test_web_console_header_ota_button_and_log_area_are_compact` 中 versionLabel「不存在」断言翻正为「存在」，并新增位置断言（ghLink < versionLabel < muteToggle）。
+  - 验证：`pytest tests/test_firmware_feature_flags.py` 通过；编译通过；已 OTA 刷机。
+
 ## 2026-08-11 v1.7.57
 
 - 固件版本号从 `v1.7.56` 更新到 `v1.7.57`。

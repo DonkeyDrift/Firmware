@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-11 v1.7.57
+
+- 固件版本号从 `v1.7.56` 更新到 `v1.7.57`。
+- fix(WebConsole): "进入 donkey"/"进入 DonkeyDrifter" 按钮改为动态获取上位机 IP，不再硬编码
+  - 问题：v1.7.56 中按钮 onclick 硬编码 `192.168.3.150`，但宿主机实际 IP 为 `192.168.3.41`（DHCP 动态分配），导致点击按钮后无法打开 Launcher 页面。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：按钮 onclick 改为调用 JS 函数 `enterDonkeyLauncher()` / `enterDonkeyDrifter()`；新增 `getLauncherHostIp()` 函数从 `/api/status` 响应中解析 `host_ip` 字段，回退到 `192.168.3.41`。
+  - 配合 DonkeyDrift 侧 Launcher 服务启动时通过串口向 ESP32 发送 `HOSTIP|<ip>` 命令（每 30 秒），使 `/api/status` 动态输出正确的上位机 IP。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.7.57。
+  - `tests/test_firmware_feature_flags.py`：版本断言更新至 v1.7.57；按钮测试改为验证 JS 函数调用和动态 IP 获取逻辑。
+  - 验证：`pytest tests/test_firmware_feature_flags.py` 通过；编译通过；已 OTA 刷机。
+
 ## 2026-08-11 v1.7.56
 
 - 固件版本号从 `v1.7.55` 更新到 `v1.7.56`。

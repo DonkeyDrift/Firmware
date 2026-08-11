@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.56"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.57"' in build_info
+    assert "v1.7.57" in changelog
     assert "v1.7.56" in changelog
-    assert "v1.7.55" in changelog
-    assert changelog.index("v1.7.56") < changelog.index("v1.7.55")
+    assert changelog.index("v1.7.57") < changelog.index("v1.7.56")
 
 
 def test_host_ip_report_channel():
@@ -4106,8 +4106,8 @@ def test_ota_glitch_led_effect():
 
 def test_web_console_header_entry_buttons():
     """v1.7.54 新增"进入 donkey" / "进入 DonkeyDrifter"两个入口按钮；
-    v1.7.56 为两个按钮接上 onclick 跳转--"进入 donkey"新标签页打开
-    Launcher 菜单页面，"进入 DonkeyDrifter"当前页跳转到 Launcher 的 drive 启动端点。"""
+    v1.7.56 为两个按钮接上 onclick 跳转；
+    v1.7.57 改为动态获取 host_ip（从 /api/status 解析），不再硬编码 IP。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4119,9 +4119,16 @@ def test_web_console_header_entry_buttons():
     gh_pos = assets.index('<a class="ghLink"')
     assert h1_pos < donkey_pos < drifter_pos < gh_pos
 
-    # v1.7.56：按钮带 onclick 跳转到 Launcher 服务（端口 8090）
-    assert "onclick=\"window.open('http://192.168.3.150:8090/','_blank')\"" in assets
-    assert "onclick=\"location.href='http://192.168.3.150:8090/api/launch/drive'\"" in assets
+    # v1.7.57：按钮 onclick 调用 JS 函数，动态获取 host_ip
+    assert 'onclick="enterDonkeyLauncher()"' in assets
+    assert 'onclick="enterDonkeyDrifter()"' in assets
+
+    # JS 函数：从 /api/status 解析 host_ip，回退到 192.168.3.41
+    assert 'getLauncherHostIp' in assets
+    assert '/api/status' in assets
+    assert 'host_ip=' in assets
+    assert '192.168.3.41' in assets  # fallback IP
+    assert ':8090/' in assets  # launcher port
 
     # i18n 中英词条齐全
     assert "'button.enterDonkey':'进入 donkey'" in assets

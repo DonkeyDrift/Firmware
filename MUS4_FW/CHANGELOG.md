@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-08-11 v1.7.59
+
+- 固件版本号从 `v1.7.58` 更新到 `v1.7.59`。
+- fix(WebConsole): "进入 DonkeyDrifter"按钮改为新标签页打开 GET /launch/drive 跳转页，修复原先 GET /api/launch/drive（仅接受 POST）导致 404 的问题
+  - 背景：原 `enterDonkeyDrifter()` 用 `location.href` 导航到 `/api/launch/drive`（POST-only 端点），GET 请求返回 404；且在当前页跳转会离开 Drifter Console。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`enterDonkeyDrifter()` 改为 `window.open('http://'+ip+':8090/launch/drive','_blank')`，在新标签页打开 Launcher 的 GET 跳转页，由该页同源 POST `/api/launch/drive` 启动 Drive 并重定向。
+- fix(Launcher): 新增 GET `/launch/drive` 端点，返回极简跳转 HTML 页
+  - `donkeycar/launcher/server.py`：`do_GET` 新增 `/launch/drive` 路由，返回 `LAUNCH_DRIVE_HTML` 页面；页面加载后自动 fetch POST `/api/launch/drive`（同源），拿到 drive URL 后 `window.location.href` 重定向到 Drive 页面。
+- style(WebConsole): "进入 donkey"按钮文本 D 大写为"进入 Donkey"
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：HTML 默认文本、zh i18n、en i18n 三处 `donkey` 改为 `Donkey`。
+  - `tests/test_firmware_feature_flags.py`：断言同步更新。
+
 ## 2026-08-11 v1.7.58
 
 - 固件版本号从 `v1.7.57` 更新到 `v1.7.58`。

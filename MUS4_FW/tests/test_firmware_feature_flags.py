@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.58"' in build_info
-    assert "v1.7.58" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.59"' in build_info
+    assert "v1.7.59" in changelog
     assert "v1.7.57" in changelog
-    assert changelog.index("v1.7.58") < changelog.index("v1.7.57")
+    assert changelog.index("v1.7.59") < changelog.index("v1.7.57")
 
 
 def test_host_ip_report_channel():
@@ -4106,9 +4106,10 @@ def test_ota_glitch_led_effect():
 
 
 def test_web_console_header_entry_buttons():
-    """v1.7.54 新增"进入 donkey" / "进入 DonkeyDrifter"两个入口按钮；
+    """v1.7.54 新增"进入 Donkey" / "进入 DonkeyDrifter"两个入口按钮；
     v1.7.56 为两个按钮接上 onclick 跳转；
-    v1.7.57 改为动态获取 host_ip（从 /api/status 解析），不再硬编码 IP。"""
+    v1.7.57 改为动态获取 host_ip（从 /api/status 解析），不再硬编码 IP；
+    v1.7.59 "进入 Donkey"按钮 D 大写；enterDonkeyDrifter 改为 GET /launch/drive 新标签页打开。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4132,7 +4133,11 @@ def test_web_console_header_entry_buttons():
     assert ':8090/' in assets  # launcher port
 
     # i18n 中英词条齐全
-    assert "'button.enterDonkey':'进入 donkey'" in assets
+    assert "'button.enterDonkey':'进入 Donkey'" in assets
     assert "'button.enterDonkeyDrifter':'进入 DonkeyDrifter'" in assets
-    assert "'button.enterDonkey':'Enter donkey'" in assets
+    assert "'button.enterDonkey':'Enter Donkey'" in assets
     assert "'button.enterDonkeyDrifter':'Enter DonkeyDrifter'" in assets
+
+    # v1.7.59：enterDonkeyDrifter 改为 GET /launch/drive 新标签页打开
+    assert '/launch/drive' in assets
+    assert 'window.open' in assets

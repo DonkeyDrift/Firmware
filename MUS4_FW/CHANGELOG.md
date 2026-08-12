@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-12 v1.7.63
+
+- 固件版本号从 `v1.7.62` 更新到 `v1.7.63`。
+- fix(WebConsole): 修复 RGB LED 灯色切换时椭圆形容器尺寸抖动
+  - 背景：`renderLedBlinkTabs()` 在相邻按钮激活时动态设置 `marginLeft:-2px` 抵消 flex `gap:2px`，取消某色后 margin 重置导致 gap 恢复，容器总宽度变化 2~4px。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：移除 `marginLeft` 动态修改，改用 `box-shadow` 向相邻方向延伸 2px 填充 gap（`#5cc8ff`），视觉上无缝合并且不影响布局尺寸。`borderRadius` 直角处理保持不变，box-shadow 在直角边上形成干净矩形填充。
+  - `tests/test_firmware_feature_flags.py`：断言同步更新（`style.boxShadow` 替换 `style.marginLeft`，版本号升至 v1.7.63）。
+
 ## 2026-08-12 v1.7.62
 
 - 固件版本号从 `v1.7.61` 更新到 `v1.7.62`。

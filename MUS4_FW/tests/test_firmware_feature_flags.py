@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.60"' in build_info
-    assert "v1.7.60" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.61"' in build_info
+    assert "v1.7.61" in changelog
     assert "v1.7.57" in changelog
-    assert changelog.index("v1.7.60") < changelog.index("v1.7.57")
+    assert changelog.index("v1.7.61") < changelog.index("v1.7.57")
 
 
 def test_host_ip_report_channel():
@@ -1376,7 +1376,7 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert ".headerRow{display:flex;align-items:flex-end;" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
     assert ".otaLink{text-decoration:none}" in source
-    assert ".otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;line-height:1}" in source
+    assert ".otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;line-height:1;text-decoration:none;display:inline-flex;align-items:center;cursor:pointer}" in source
     assert ".devHint{position:relative}" in source
     assert ".devHint:hover:after" in source
     assert "content:'开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。'" in source
@@ -4111,7 +4111,8 @@ def test_web_console_header_entry_buttons():
     v1.7.57 改为动态获取 host_ip（从 /api/status 解析），不再硬编码 IP；
     v1.7.59 "进入 Donkey"按钮 D 大写；enterDonkeyDrifter 改为 GET /launch/drive 新标签页打开。
     v1.7.60 修复 Safari 弹窗拦截：页面加载时预取 host_ip 缓存到 _launcherIp，
-    按钮点击时同步调用 window.open，不再在 async 函数内 await 后开新标签。"""
+    按钮点击时同步调用 window.open，不再在 async 函数内 await 后开新标签。
+    v1.7.61 改用 <a target="_blank"> 原生链接替代 window.open，彻底解决 Safari 弹窗拦截。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4123,11 +4124,13 @@ def test_web_console_header_entry_buttons():
     gh_pos = assets.index('<a class="ghLink"')
     assert h1_pos < donkey_pos < drifter_pos < gh_pos
 
-    # v1.7.57：按钮 onclick 调用 JS 函数，动态获取 host_ip
-    assert 'onclick="enterDonkeyLauncher()"' in assets
-    assert 'onclick="enterDonkeyDrifter()"' in assets
+    # v1.7.61：改用 <a target="_blank"> 原生链接，不再使用 onclick + window.open
+    assert 'id="enterDonkeyBtn"' in assets
+    assert 'id="enterDonkeyDrifterBtn"' in assets
+    assert 'target="_blank"' in assets
+    assert 'rel="noopener"' in assets
 
-    # v1.7.60：页面加载时预取 host_ip 缓存到 _launcherIp，按钮同步调用 window.open
+    # v1.7.60：页面加载时预取 host_ip 缓存到 _launcherIp，动态设置 <a> href
     assert '_launcherIp' in assets
     assert '_fetchLauncherIp' in assets
     assert '/api/status' in assets
@@ -4141,7 +4144,8 @@ def test_web_console_header_entry_buttons():
     assert "'button.enterDonkey':'Enter Donkey'" in assets
     assert "'button.enterDonkeyDrifter':'Enter DonkeyDrifter'" in assets
 
-    # v1.7.59：enterDonkeyDrifter 改为 GET /launch/drive 新标签页打开
-    # v1.7.60：预取 host_ip 缓存，按钮同步调用 window.open（修复 Safari 弹窗拦截）
+    # v1.7.59：enterDonkeyDrifter 指向 /launch/drive
+    # v1.7.61：入口按钮改用 <a target="_blank">，不再使用 onclick + window.open
     assert '/launch/drive' in assets
-    assert 'window.open' in assets
+    assert 'enterDonkeyLauncher' not in assets
+    assert 'enterDonkeyDrifter()' not in assets

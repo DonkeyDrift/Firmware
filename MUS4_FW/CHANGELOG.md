@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-12 v1.7.60
+
+- 固件版本号从 `v1.7.59` 更新到 `v1.7.60`。
+- fix(WebConsole): 修复 Safari 弹窗拦截导致"进入 DonkeyDrifter"无法打开新标签页
+  - 背景：`enterDonkeyDrifter()` / `enterDonkeyLauncher()` 为 `async` 函数，先 `await getLauncherHostIp()` 再 `window.open()`；Safari 认为 `await` 之后已脱离用户手势上下文，静默拦截弹窗。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：页面加载时预取 host_ip 并缓存到全局变量 `_launcherIp`（`_fetchLauncherIp()` 异步执行，不阻塞渲染）；两个按钮改为同步函数，点击时直接 `window.open('http://'+_launcherIp+':8090/...,'_blank')`，不再有 `await`，Safari 识别为用户手势，不拦截。
+  - `tests/test_firmware_feature_flags.py`：断言同步更新（`_launcherIp` / `_fetchLauncherIp` 替换 `getLauncherHostIp`）。
+
 ## 2026-08-11 v1.7.59
 
 - 固件版本号从 `v1.7.58` 更新到 `v1.7.59`。

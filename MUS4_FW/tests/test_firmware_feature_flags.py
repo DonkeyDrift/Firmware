@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.59"' in build_info
-    assert "v1.7.59" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.60"' in build_info
+    assert "v1.7.60" in changelog
     assert "v1.7.57" in changelog
-    assert changelog.index("v1.7.59") < changelog.index("v1.7.57")
+    assert changelog.index("v1.7.60") < changelog.index("v1.7.57")
 
 
 def test_host_ip_report_channel():
@@ -4109,7 +4109,9 @@ def test_web_console_header_entry_buttons():
     """v1.7.54 新增"进入 Donkey" / "进入 DonkeyDrifter"两个入口按钮；
     v1.7.56 为两个按钮接上 onclick 跳转；
     v1.7.57 改为动态获取 host_ip（从 /api/status 解析），不再硬编码 IP；
-    v1.7.59 "进入 Donkey"按钮 D 大写；enterDonkeyDrifter 改为 GET /launch/drive 新标签页打开。"""
+    v1.7.59 "进入 Donkey"按钮 D 大写；enterDonkeyDrifter 改为 GET /launch/drive 新标签页打开。
+    v1.7.60 修复 Safari 弹窗拦截：页面加载时预取 host_ip 缓存到 _launcherIp，
+    按钮点击时同步调用 window.open，不再在 async 函数内 await 后开新标签。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4125,8 +4127,9 @@ def test_web_console_header_entry_buttons():
     assert 'onclick="enterDonkeyLauncher()"' in assets
     assert 'onclick="enterDonkeyDrifter()"' in assets
 
-    # JS 函数：从 /api/status 解析 host_ip，回退到 192.168.3.41
-    assert 'getLauncherHostIp' in assets
+    # v1.7.60：页面加载时预取 host_ip 缓存到 _launcherIp，按钮同步调用 window.open
+    assert '_launcherIp' in assets
+    assert '_fetchLauncherIp' in assets
     assert '/api/status' in assets
     assert 'host_ip=' in assets
     assert '192.168.3.41' in assets  # fallback IP
@@ -4139,5 +4142,6 @@ def test_web_console_header_entry_buttons():
     assert "'button.enterDonkeyDrifter':'Enter DonkeyDrifter'" in assets
 
     # v1.7.59：enterDonkeyDrifter 改为 GET /launch/drive 新标签页打开
+    # v1.7.60：预取 host_ip 缓存，按钮同步调用 window.open（修复 Safari 弹窗拦截）
     assert '/launch/drive' in assets
     assert 'window.open' in assets

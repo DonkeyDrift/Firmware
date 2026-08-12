@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-12 v1.7.61
+
+- 固件版本号从 `v1.7.60` 更新到 `v1.7.61`。
+- fix(WebConsole): 改用 `<a target="_blank">` 原生链接替代 `window.open`，彻底解决 Safari 弹窗拦截
+  - 背景：v1.7.60 虽将 `window.open` 改为同步调用，但 iOS Safari 仍会拦截非用户手势触发的 `window.open` 弹窗。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：两个入口按钮从 `<button onclick="window.open(...)">` 改为 `<a href="..." target="_blank" rel="noopener">`，页面加载时由 JS 动态设置 `href`（预取 host_ip）。Safari 原生支持 `<a target="_blank">` 新标签页打开，不会拦截。
+  - CSS `.otaButton` 新增 `text-decoration:none;display:inline-flex;align-items:center;cursor:pointer` 适配 `<a>` 标签。
+  - `tests/test_firmware_feature_flags.py`：断言同步更新。
+
 ## 2026-08-12 v1.7.60
 
 - 固件版本号从 `v1.7.59` 更新到 `v1.7.60`。

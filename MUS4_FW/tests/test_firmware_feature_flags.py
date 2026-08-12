@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.62"' in build_info
-    assert "v1.7.62" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.63"' in build_info
+    assert "v1.7.63" in changelog
     assert "v1.7.57" in changelog
-    assert changelog.index("v1.7.62") < changelog.index("v1.7.57")
+    assert changelog.index("v1.7.63") < changelog.index("v1.7.57")
 
 
 def test_host_ip_report_channel():
@@ -3991,11 +3991,11 @@ def test_web_console_led_blink_color_selector():
     # 前端逻辑：状态、渲染、初始化与切换（多选用异或取反位），走 /api/led-blink
     assert "let uiLedBlinkMask=7;" in assets
     assert "function renderLedBlinkTabs()" in assets
-    # 相邻勾选按钮无缝连成一段胶囊：连体由 JS marginLeft:-2px 抵消容器间隙实现，
-    # 段内边直角、段端圆角；非连体边界保留 .langTabs 原生 2px 均匀细缝
+    # 相邻勾选按钮无缝连成一段胶囊：连体由 JS box-shadow 向相邻方向延伸 2px 填充
+    # 容器 gap 实现，段内边直角、段端圆角；非连体边界保留 .langTabs 原生 2px 均匀细缝
     assert "#ledBlinkTabs{gap:0}" not in assets
     assert "style.borderRadius" in assets
-    assert "style.marginLeft" in assets
+    assert "style.boxShadow" in assets
     # 悬停高亮框不受连体直角影响，始终为独立小椭圆；仅在悬停按钮本身也已勾选时，
     # 相邻已勾选按钮才用伪元素把背景延伸 12px 垫进悬停按钮底部（悬停按钮 z-index
     # 更高），小椭圆与连体段蓝色严丝合缝；悬停未勾选按钮时不垫底，保持均匀细缝

@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-12 v1.7.62
+
+- 固件版本号从 `v1.7.61` 更新到 `v1.7.62`。
+- fix(WebConsole): "进入 DonkeyDrifter"改用 `#drive` hash 与"进入 Donkey"同路径
+  - 背景：Safari 无法加载 `/launch/drive` 路径（curl 正常但 Safari 报"无法连接服务器"），可能与 HTTP/1.0 + 非标准路径有关。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`enterDonkeyDrifterBtn` 的 href 从 `http://<ip>:8090/launch/drive` 改为 `http://<ip>:8090/#drive`，与"进入 Donkey"使用相同的 `/` 路径（仅 hash 不同），由 Launcher 菜单页 JS 检测 `#drive` 并自动触发启动。
+  - `tests/test_firmware_feature_flags.py`：断言同步更新。
+
 ## 2026-08-12 v1.7.61
 
 - 固件版本号从 `v1.7.60` 更新到 `v1.7.61`。

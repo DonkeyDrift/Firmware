@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.61"' in build_info
-    assert "v1.7.61" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.62"' in build_info
+    assert "v1.7.62" in changelog
     assert "v1.7.57" in changelog
-    assert changelog.index("v1.7.61") < changelog.index("v1.7.57")
+    assert changelog.index("v1.7.62") < changelog.index("v1.7.57")
 
 
 def test_host_ip_report_channel():
@@ -4146,6 +4146,7 @@ def test_web_console_header_entry_buttons():
 
     # v1.7.59：enterDonkeyDrifter 指向 /launch/drive
     # v1.7.61：入口按钮改用 <a target="_blank">，不再使用 onclick + window.open
-    assert '/launch/drive' in assets
+    # v1.7.62：enterDonkeyDrifter 改用 #drive hash（与"进入 Donkey"同路径，避免 Safari 问题）
+    assert '#drive' in assets
     assert 'enterDonkeyLauncher' not in assets
     assert 'enterDonkeyDrifter()' not in assets

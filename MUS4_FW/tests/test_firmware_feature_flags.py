@@ -4008,8 +4008,8 @@ def test_web_console_led_blink_color_selector():
     assert "uiLedBlinkMask^bit" in assets
     assert "fetch('/api/led-blink'" in assets
 
-    # 启动链：initLanguage() 后接 initMute()、initLedBlink()
-    assert "initLanguage();initMute();initLedBlink();" in assets
+    # 启动链：initLanguage() 后接 initMute()、initLedBlink()、initTheme()
+    assert "initLanguage();initMute();initLedBlink();initTheme();" in assets
 
     # 路由注册：GET 查询、POST 设置
     assert 'wifiWebServer.on("/api/led-blink", HTTP_GET, handleWifiWebLedBlinkGet);' in server
@@ -4039,6 +4039,41 @@ def test_web_console_led_blink_color_selector():
     assert "setLEDToggle(colors[0], CRGB::Black)" in led
     assert "setLEDToggle(colors[0], colors[1])" in led
     assert "setLEDToggle(colors[0], colors[1], colors[2])" in led
+
+
+def test_web_console_theme_toggle():
+    """v1.7.xx：头部红绿蓝切换键右边、中英文切换键左边新增深色/浅色模式切换键
+    （themeTabs，复用 langTabs 胶囊样式），三个选项：跟随系统（默认）、浅色、深色。
+    选择通过 localStorage（mus4.ui.theme）持久化，默认 'auto'。"""
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+
+    # 头部主题切换按钮：全页面仅一处，位于红绿蓝切换键右边、中英文切换键左边
+    assert assets.count('id="themeTabs"') == 1
+    assert assets.index('id="ledBlinkTabs"') < assets.index('id="themeTabs"')
+    assert assets.index('id="themeTabs"') < assets.index('data-i18n-title="language.title"')
+
+    # 三个选项：跟随系统、浅色、深色，文案走 i18n
+    assert 'data-theme="auto" onclick="setTheme(\'auto\')" data-i18n="theme.auto"' in assets
+    assert 'data-theme="light" onclick="setTheme(\'light\')" data-i18n="theme.light"' in assets
+    assert 'data-theme="dark" onclick="setTheme(\'dark\')" data-i18n="theme.dark"' in assets
+
+    # i18n 文案：中英文各一条
+    for text in ["'theme.title':'主题'", "'theme.auto':'跟随系统'", "'theme.light':'浅色'", "'theme.dark':'深色'",
+                 "'theme.title':'Theme'", "'theme.auto':'Auto'", "'theme.light':'Light'", "'theme.dark':'Dark'"]:
+        assert text in assets
+
+    # 前端逻辑：状态、渲染、初始化与切换，走 localStorage
+    assert "const THEME_STORAGE_KEY='mus4.ui.theme'" in assets
+    assert "let uiTheme='auto'" in assets
+    assert "function readStoredTheme()" in assets
+    assert "function writeStoredTheme(theme)" in assets
+    assert "function renderThemeTabs()" in assets
+    assert "function setTheme(theme)" in assets
+    assert "function initTheme()" in assets
+    assert "initTheme();" in assets
+
+    # 默认值：localStorage 无值时返回 'auto'
+    assert "localStorage.getItem(THEME_STORAGE_KEY)||'auto'" in assets
 
 
 def test_ota_glitch_led_effect():

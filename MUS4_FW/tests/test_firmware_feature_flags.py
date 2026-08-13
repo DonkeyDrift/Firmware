@@ -4043,7 +4043,7 @@ def test_web_console_led_blink_color_selector():
 
 def test_web_console_theme_toggle():
     """v1.7.xx：头部红绿蓝切换键右边、中英文切换键左边新增深色/浅色模式切换键
-    （themeTabs，复用 langTabs 胶囊样式），三个选项：跟随系统（默认）、浅色、深色。
+    （themeTabs，复用 langTabs 胶囊样式），三个选项：浅色（左）、跟随系统（中，默认）、深色（右）。
     选择通过 localStorage（mus4.ui.theme）持久化，默认 'auto'。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 

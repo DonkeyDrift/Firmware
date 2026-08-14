@@ -4060,7 +4060,9 @@ def test_web_console_led_blink_color_selector():
 def test_web_console_theme_toggle():
     """v1.7.xx：头部红绿蓝切换键右边、中英文切换键左边新增深色/浅色模式切换键
     （themeTabs，复用 langTabs 胶囊样式），三个选项：浅色（左）、跟随系统（中，默认）、深色（右）。
-    选择通过 localStorage（mus4.ui.theme）持久化，默认 'auto'。"""
+    选择通过 localStorage（mus4.ui.theme）持久化，默认 'auto'。
+    跟随系统：'auto' 时经 matchMedia('(prefers-color-scheme: light)') 解析，
+    并监听系统主题 change 实时跟随；<head> 内有防闪烁内联脚本避免首帧闪深色。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
     # 头部主题切换按钮：全页面仅一处，位于红绿蓝切换键右边、中英文切换键左边
@@ -4090,6 +4092,21 @@ def test_web_console_theme_toggle():
 
     # 默认值：localStorage 无值时返回 'auto'
     assert "localStorage.getItem(THEME_STORAGE_KEY)||'auto'" in assets
+
+    # 跟随系统：'auto' 经 matchMedia 解析（matchMedia 不可用/异常时回退 dark），显式 light/dark 原样返回
+    assert "function systemTheme(){try{return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){return 'dark'}}" in assets
+    assert "function resolvedTheme(){return uiTheme==='auto'?systemTheme():(uiTheme==='light'?'light':'dark')}" in assets
+
+    # 系统主题 change 监听：仅 'auto' 时实时重应用；新内核 addEventListener，老内核回退 addListener
+    assert "const mq=window.matchMedia('(prefers-color-scheme: light)')" in assets
+    assert "if(uiTheme==='auto')applyTheme()" in assets
+    assert "mq.addEventListener('change',onThemeChange)" in assets
+    assert "mq.addListener(onThemeChange)" in assets
+
+    # 防闪烁：<head> 内第一个 <style> 之前的内联脚本，按存储值（'auto' 经 matchMedia 解析）预置 data-theme
+    assert "<script>try{let t=localStorage.getItem('mus4.ui.theme')||'auto';if(t==='auto')t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';if(t!=='light')t='dark';document.documentElement.dataset.theme=t}catch(e){}</script>" in assets
+    assert assets.index("<title>Drifter Console</title>") < assets.index("localStorage.getItem('mus4.ui.theme')")
+    assert assets.index("localStorage.getItem('mus4.ui.theme')") < assets.index("<style>")
 
 
 def test_ota_glitch_led_effect():
@@ -4201,3 +4218,57 @@ def test_web_console_header_entry_buttons():
     assert '#drive' in assets
     assert 'enterDonkeyLauncher' not in assets
     assert 'enterDonkeyDrifter()' not in assets
+
+def test_web_console_light_theme_overrides():
+    """浅色主题生效：setTheme/initTheme 通过 applyTheme 把解析结果写到
+    document.documentElement.dataset.theme（'auto' 经 matchMedia 跟随系统，
+    系统为浅色时解析为 light，否则为 dark），并使网格缓存失效重绘。
+    浅色样式全部以新增覆盖规则挂在 html[data-theme="light"] 选择器下
+    （第三个 <style> 块），深色原文逐字不动。
+    canvas 图表与 toast 的 JS 颜色改从 CHART_THEMES 双主题色表取。"""
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+
+    # 浅色覆盖块：基底 / 日志终端 / 状态卡片 / 画布
+    assert 'html[data-theme="light"] body{background:#eef1f5;color:#1a2330}' in assets
+    assert 'html[data-theme="light"] .log{background:#f4f7f5;color:#1a7f37}' in assets
+    assert 'html[data-theme="light"] .stateCard{border-color:#ccd5df;background:linear-gradient(135deg,#fff,#edf1f6);box-shadow:0 1px 3px rgba(15,23,42,.08)}' in assets
+    assert 'html[data-theme="light"] canvas{background:#fbfcfe;border-color:#d5dce4}' in assets
+    # 浅色下脉冲动画换成柔和版（结构与深色 pulse 一致，仅换颜色）
+    assert '@keyframes pulseLight{50%{box-shadow:0 0 18px rgba(229,72,77,.3);transform:translateY(-1px)}}' in assets
+    assert 'html[data-theme="light"] .parkLocked{animation:pulseLight 1.2s infinite}' in assets
+    # 浅色特异性修正：fabToggle 保持青色发光圆点身份（hover/focus/active 加深为 #3aa8dd）
+    assert 'html[data-theme="light"] .fabToggle{background:#5cc8ff;border-color:#5cc8ff}' in assets
+    assert 'html[data-theme="light"] .fabToggle:hover,html[data-theme="light"] .fabToggle:focus-visible,html[data-theme="light"] .fabToggle:active{background:#3aa8dd;border-color:#3aa8dd}' in assets
+    assert 'html[data-theme="light"] .muteButton{background:transparent}' in assets
+    assert 'html[data-theme="light"] .rcNum{background:transparent}' in assets
+    # 浅色特异性修正：胶囊按钮组（语言/主题/LED）未激活段恢复透明，缝隙只露出容器底色，与深色行为一致
+    assert 'html[data-theme="light"] .langTabs button{background:transparent;color:#5b6b7d}' in assets
+    # 浅色特异性修正：OTA 填充按钮保持青色（否则被浅色通用 button 白底规则压掉）
+    assert 'html[data-theme="light"] .otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff}' in assets
+    # 浅色下胶囊容器加深底色并强化描边，使激活胶囊与外容器的嵌套轮廓与深色一样清晰
+    assert 'html[data-theme="light"] .langTabs{background:#dde3ec;box-shadow:inset 0 0 0 1px #aeb9c7}' in assets
+
+    # JS：主题解析与应用（auto 经 matchMedia 跟随系统），切换时网格缓存失效并重绘
+    assert "function systemTheme(){try{return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){return 'dark'}}" in assets
+    assert "function resolvedTheme(){return uiTheme==='auto'?systemTheme():(uiTheme==='light'?'light':'dark')}" in assets
+    assert "function applyTheme(){document.documentElement.dataset.theme=resolvedTheme();gridReady=false;draw()}" in assets
+    assert "function setTheme(theme){uiTheme=theme;writeStoredTheme(uiTheme);renderThemeTabs();applyTheme()}" in assets
+    assert "function initTheme(){uiTheme=readStoredTheme();renderThemeTabs();applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
+
+    # 图表/toast 双主题色表：深浅的 grid 与 str 关键色
+    assert "grid:'#233041'" in assets
+    assert "grid:'#dbe2ea'" in assets
+    assert "str:'#5cc8ff'" in assets
+    assert "str:'#0c9bd6'" in assets
+    # JS 取色走色表而非硬编码
+    assert "gridCtx.strokeStyle=CHART_THEMES[resolvedTheme()].grid" in assets
+    assert "drawSeries('thr',ct.thr,-1,1,100)" in assets
+    assert "toast.style.borderColor=ok?CHART_THEMES[resolvedTheme()].toastOk:CHART_THEMES[resolvedTheme()].toastErr" in assets
+
+    # 原有主题骨架不回退
+    assert "const THEME_STORAGE_KEY='mus4.ui.theme'" in assets
+    assert "let uiTheme='auto'" in assets
+    assert "localStorage.getItem(THEME_STORAGE_KEY)||'auto'" in assets
+    assert "initTheme();" in assets
+    # 深色原文不动：激活胶囊两主题保持 #5cc8ff/#061019
+    assert '.langTabs button.active{background:#5cc8ff;color:#061019}' in assets

@@ -6,6 +6,13 @@
 - feat(WebConsole): RGB LED 灯色切换框按各自颜色着色
   - `libraries/mus4_web/src/WebConsoleAssets.h`：`#ledBlinkTabs` 三个选项的选中背景从统一蓝色 `#5cc8ff` 改为各自颜色——红 `#ff6b6b`、绿 `#39d98a`、蓝 `#5cc8ff`（与图表 gz/thr/str 曲线同色）；悬停提亮同步按各自颜色（红 `#ff9797`、绿 `#74e4ad`、蓝沿用 `#8bdcff`）；连体 `box-shadow` 与悬停垫底伪元素的延伸色也按按钮各自颜色（新增 `LED_BLINK_TAB_COLORS` 映射），语言切换等其他 `.langTabs` 保持原蓝色不变。
   - `tests/test_firmware_feature_flags.py`：断言同步更新（版本号升至 v1.7.64）。
+- feat(WebConsole): Drifter Console 新增浅色主题，头部主题切换按钮（浅色/跟随系统/深色）真正生效
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 Console 页区域，深色规则原文逐字不动，DRIFT/JUDGE/UPDATE 三页不受影响）：
+    - 新增第三个 `<style>` 块：85 条 `html[data-theme="light"]` 浅色覆盖规则 + `@keyframes pulseLight`。设计语言对标深色：青胶囊身份（`#5cc8ff` 底 + `#061019` 字）与青色辉光保留；文字/边框/状态语义色（成功/警告/错误/漂移紫）等比加深适配白底；日志终端改浅底深绿字；遮罩改浅。
+    - JS 新增 `CHART_THEMES` 双主题色表与 `systemTheme()`/`resolvedTheme()`/`applyTheme()`：`setTheme`/`initTheme` 把解析结果写入 `<html data-theme>` 并使 canvas 网格缓存失效重绘；canvas 网格/坐标轴/三条曲线/屏保文字与 toast 边框色改从色表取值。"跟随系统"（auto）经 `matchMedia('(prefers-color-scheme: light)')` 实时解析，并监听系统主题 change 自动跟随；`<head>` 内防闪烁内联脚本同样经 matchMedia 解析。
+    - 浅色特异性修正（浅色通用 `button` 白底规则特异性高于深色透明/填充规则导致的净效果）：`.langTabs button` 恢复 `background:transparent`（语言/主题/LED 三组胶囊未激活段与缝隙同色贴合）；`.otaButton`/`.rcSetBtn`/`.fabToggle` 保持青色填充；`.muteButton`/`.rcNum` 恢复透明；`.langTabs` 容器底色 `#dde3ec`、描边 `#aeb9c7`，使激活胶囊与外容器的嵌套轮廓在浅底下与深色同样清晰。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 扩展跟随系统 matchMedia 断言；新增 `test_web_console_light_theme_overrides`（浅色覆盖规则、`systemTheme`/`resolvedTheme`/`applyTheme` 接线、`CHART_THEMES` 色表、原主题骨架不回退等逐字断言）；版本号断言同步至 v1.7.64。全量 157 项测试通过。
+  - 已编译并 OTA 上传验证：车上 `/api/status` 确认新版本，实际服务页面含浅色覆盖规则。
 
 ## 2026-08-12 v1.7.63
 

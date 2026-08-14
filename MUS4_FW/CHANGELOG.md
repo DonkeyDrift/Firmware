@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-14 v1.7.70
+
+- 固件版本号从 `v1.7.69` 更新到 `v1.7.70`。
+- feat(WebConsole): 头部入口按钮"进入"改"打开"（英文 Enter→Open），并在"打开 DonkeyDrifter"右侧新增"打开 Kimi Code Web"占位按钮
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：headerRow 两个入口锚文本与 zh/en I18N 词典同步改名（打开 Donkey / 打开 DonkeyDrifter，Open Donkey / Open DonkeyDrifter）；`ghLink` 前插入 `openKimiCodeWebBtn` 占位 `<button type="button" class="otaButton">`（无 href/onclick，功能预留，zh"打开 Kimi Code Web"/en"Open Kimi Code Web"）；窄屏 `@media (max-width:820px)` 规则插入 `#openKimiCodeWebBtn{order:8}`，`.br2` 起后续元素 order 顺移 +1（桌面布局规则逐字不动）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.70。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_header_entry_buttons` 更新位置序断言（h1<donkey<drifter<kimi<gh）与中英词条断言、新增 kimi 词条断言；`test_web_console_mobile_header_layout` 第 2 行新增 kimi order:8、后续 order 顺移断言同步；版本号/日志一致性断言同步至 v1.7.70。全量测试通过。
+  - 已编译并 HTTP OTA 上传验证：车上 `/api/status` 返回 `version=v1.7.70`，首页返回 `openKimiCodeWebBtn` 与"打开 Kimi Code Web"文本。
+
 ## 2026-08-14 v1.7.69
 
 - 固件版本号从 `v1.7.68` 更新到 `v1.7.69`。

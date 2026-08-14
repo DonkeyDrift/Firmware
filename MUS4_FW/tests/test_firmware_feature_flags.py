@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.65"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.66"' in build_info
+    assert "v1.7.66" in changelog
     assert "v1.7.65" in changelog
-    assert "v1.7.64" in changelog
-    assert changelog.index("v1.7.65") < changelog.index("v1.7.64")
+    assert changelog.index("v1.7.66") < changelog.index("v1.7.65")
 
 
 def test_host_ip_report_channel():
@@ -4075,8 +4075,9 @@ def test_web_console_led_blink_color_selector():
 
 def test_web_console_theme_toggle():
     """v1.7.xx：头部红绿蓝切换键右边、中英文切换键左边新增深色/浅色模式切换键
-    （themeTabs，复用 langTabs 胶囊样式），三个选项：浅色（左）、跟随系统（中，默认）、深色（右）。
-    选择通过 localStorage（mus4.ui.theme）持久化，默认 'auto'。
+    （themeTabs，复用 langTabs 胶囊样式），三个选项：浅色（左）、跟随系统（中）、深色（右）。
+    选择通过 localStorage（mus4.ui.theme）持久化，默认 'dark'（无存储/非法值回退），
+    仅用户显式选择 'auto' 才跟随系统。
     跟随系统：'auto' 时经 matchMedia('(prefers-color-scheme: light)') 解析，
     并监听系统主题 change 实时跟随；<head> 内有防闪烁内联脚本避免首帧闪深色。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
@@ -4098,7 +4099,7 @@ def test_web_console_theme_toggle():
 
     # 前端逻辑：状态、渲染、初始化与切换，走 localStorage
     assert "const THEME_STORAGE_KEY='mus4.ui.theme'" in assets
-    assert "let uiTheme='auto'" in assets
+    assert "let uiTheme='dark'" in assets
     assert "function readStoredTheme()" in assets
     assert "function writeStoredTheme(theme)" in assets
     assert "function renderThemeTabs()" in assets
@@ -4106,8 +4107,8 @@ def test_web_console_theme_toggle():
     assert "function initTheme()" in assets
     assert "initTheme();" in assets
 
-    # 默认值：localStorage 无值时返回 'auto'
-    assert "localStorage.getItem(THEME_STORAGE_KEY)||'auto'" in assets
+    # 默认值：localStorage 无值时返回 'dark'
+    assert "localStorage.getItem(THEME_STORAGE_KEY)||'dark'" in assets
 
     # 跟随系统：'auto' 经 matchMedia 解析（matchMedia 不可用/异常时回退 dark），显式 light/dark 原样返回
     assert "function systemTheme(){try{return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){return 'dark'}}" in assets
@@ -4120,7 +4121,7 @@ def test_web_console_theme_toggle():
     assert "mq.addListener(onThemeChange)" in assets
 
     # 防闪烁：<head> 内第一个 <style> 之前的内联脚本，按存储值（'auto' 经 matchMedia 解析）预置 data-theme
-    assert "<script>try{let t=localStorage.getItem('mus4.ui.theme')||'auto';if(t==='auto')t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';if(t!=='light')t='dark';document.documentElement.dataset.theme=t}catch(e){}</script>" in assets
+    assert "<script>try{let t=localStorage.getItem('mus4.ui.theme');if(t==='auto')t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';if(t!=='light')t='dark';document.documentElement.dataset.theme=t}catch(e){}</script>" in assets
     assert assets.index("<title>Drifter Console</title>") < assets.index("localStorage.getItem('mus4.ui.theme')")
     assert assets.index("localStorage.getItem('mus4.ui.theme')") < assets.index("<style>")
 
@@ -4283,8 +4284,8 @@ def test_web_console_light_theme_overrides():
 
     # 原有主题骨架不回退
     assert "const THEME_STORAGE_KEY='mus4.ui.theme'" in assets
-    assert "let uiTheme='auto'" in assets
-    assert "localStorage.getItem(THEME_STORAGE_KEY)||'auto'" in assets
+    assert "let uiTheme='dark'" in assets
+    assert "localStorage.getItem(THEME_STORAGE_KEY)||'dark'" in assets
     assert "initTheme();" in assets
     # 深色原文不动：激活胶囊两主题保持 #5cc8ff/#061019
     assert '.langTabs button.active{background:#5cc8ff;color:#061019}' in assets

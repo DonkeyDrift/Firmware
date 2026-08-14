@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.63"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.64"' in build_info
+    assert "v1.7.64" in changelog
     assert "v1.7.63" in changelog
-    assert "v1.7.57" in changelog
-    assert changelog.index("v1.7.63") < changelog.index("v1.7.57")
+    assert changelog.index("v1.7.64") < changelog.index("v1.7.63")
 
 
 def test_host_ip_report_channel():
@@ -3998,11 +3998,27 @@ def test_web_console_led_blink_color_selector():
     assert "style.boxShadow" in assets
     # 悬停高亮框不受连体直角影响，始终为独立小椭圆；仅在悬停按钮本身也已勾选时，
     # 相邻已勾选按钮才用伪元素把背景延伸 12px 垫进悬停按钮底部（悬停按钮 z-index
-    # 更高），小椭圆与连体段蓝色严丝合缝；悬停未勾选按钮时不垫底，保持均匀细缝
+    # 更高），小椭圆与连体段严丝合缝；悬停未勾选按钮时不垫底，保持均匀细缝
     assert "#ledBlinkTabs button{position:relative;z-index:0}" in assets
     assert "#ledBlinkTabs button:hover{border-radius:999px!important;z-index:1}" in assets
-    assert "#ledBlinkTabs button.active:has(+button.active:hover)::after{content:\"\";position:absolute;top:0;bottom:0;left:12px;right:-12px;background:#5cc8ff;z-index:-1}" in assets
-    assert "#ledBlinkTabs button.active:hover+button.active::before{content:\"\";position:absolute;top:0;bottom:0;left:-12px;right:12px;background:#5cc8ff;z-index:-1}" in assets
+    assert "#ledBlinkTabs button.active:has(+button.active:hover)::after{content:\"\";position:absolute;top:0;bottom:0;left:12px;right:-12px;z-index:-1}" in assets
+    assert "#ledBlinkTabs button.active:hover+button.active::before{content:\"\";position:absolute;top:0;bottom:0;left:-12px;right:12px;z-index:-1}" in assets
+    # v1.7.64：三个选项的选中框各着各色（红 #ff6b6b、绿 #39d98a、蓝 #5cc8ff，与图表
+    # gz/thr/str 曲线同色）；悬停提亮（红 #ff9797、绿 #74e4ad、蓝沿用 #8bdcff）、连体
+    # box-shadow 与悬停垫底伪元素的延伸色均按按钮各自颜色（LED_BLINK_TAB_COLORS 映射），
+    # 语言切换等其他 .langTabs 保持统一蓝不变
+    assert "#ledBlinkTabs button[data-color=\"1\"].active{background:#ff6b6b}" in assets
+    assert "#ledBlinkTabs button[data-color=\"2\"].active{background:#39d98a}" in assets
+    assert "#ledBlinkTabs button[data-color=\"4\"].active{background:#5cc8ff}" in assets
+    assert "#ledBlinkTabs button[data-color=\"1\"].active:hover{background:#ff9797}" in assets
+    assert "#ledBlinkTabs button[data-color=\"2\"].active:hover{background:#74e4ad}" in assets
+    assert "#ledBlinkTabs button[data-color=\"4\"].active:hover{background:#8bdcff}" in assets
+    assert "#ledBlinkTabs button[data-color=\"1\"]::after,#ledBlinkTabs button[data-color=\"1\"]::before{background:#ff6b6b}" in assets
+    assert "#ledBlinkTabs button[data-color=\"2\"]::after,#ledBlinkTabs button[data-color=\"2\"]::before{background:#39d98a}" in assets
+    assert "#ledBlinkTabs button[data-color=\"4\"]::after,#ledBlinkTabs button[data-color=\"4\"]::before{background:#5cc8ff}" in assets
+    assert "const LED_BLINK_TAB_COLORS={1:'#ff6b6b',2:'#39d98a',4:'#5cc8ff'};" in assets
+    assert "const sh=[],c=LED_BLINK_TAB_COLORS[b.dataset.color]||'#5cc8ff'" in assets
+    assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in assets
     assert "async function initLedBlink()" in assets
     assert "async function toggleLedBlinkColor(bit)" in assets
     assert "uiLedBlinkMask^bit" in assets

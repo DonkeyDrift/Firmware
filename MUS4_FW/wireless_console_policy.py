@@ -24,26 +24,29 @@ def is_control_command(line):
     return True
 
 
-def is_wireless_command_allowed(line, authenticated, park_locked, *, dev_mode=False, origin="tcp"):
+def is_wireless_command_allowed(line, authenticated, park_locked, *, dev_mode=False, origin="tcp", auth_disabled=False):
     command = normalize_wireless_command(line)
     # DEV ON 仅对 Web 来源放权"OTA + Web 配置 + 显示/日志切换 + WIFI_STA_*"。
     # 控制命令与 Park 锁定诊断命令始终要求 authenticated；见
     # docs/Plan/DEV模式影响面与运行逻辑映射.md §3。
     web_dev_mode = dev_mode and origin == "web"
+    # 控制台密码为空时（auth_disabled）视为已认证，镜像固件
+    # isWirelessConsoleAuthDisabled()（WifiConsoleTypes.h）。
+    authed = authenticated or auth_disabled
     if command in PUBLIC_COMMANDS:
         return True
     if command in OTA_OPEN_COMMANDS:
-        return (web_dev_mode or authenticated) and park_locked
+        return (web_dev_mode or authed) and park_locked
     if command in OTA_STATUS_COMMANDS or command in OTA_CLOSE_COMMANDS:
-        return web_dev_mode or authenticated
+        return web_dev_mode or authed
     # DEV ON 显式白名单：显示/日志切换、Wi-Fi STA 配置类命令。
     if command in GENERAL_AUTHENTICATED_COMMANDS or command in WIFI_STA_CONFIG_COMMANDS:
-        return authenticated or web_dev_mode
+        return authed or web_dev_mode
     # DEV ON 允许校准命令免认证（但仍需 Park 锁定）。
     if web_dev_mode and command in CALIBRATION_COMMANDS:
         return park_locked
     # 其余命令（控制 / 诊断）不读 webDevMode，严格要求认证。
-    if not authenticated:
+    if not authed:
         return False
     if command in PARK_LOCKED_COMMANDS:
         return park_locked
@@ -60,8 +63,8 @@ def redact_wireless_console_line(line):
     return line
 
 
-def is_web_command_allowed(line, authenticated, park_locked, dev_mode=False):
-    return is_wireless_command_allowed(line, authenticated, park_locked, dev_mode=dev_mode, origin="web")
+def is_web_command_allowed(line, authenticated, park_locked, dev_mode=False, auth_disabled=False):
+    return is_wireless_command_allowed(line, authenticated, park_locked, dev_mode=dev_mode, origin="web", auth_disabled=auth_disabled)
 
 
 def is_local_ota_open_command_allowed(line, password, park_locked):

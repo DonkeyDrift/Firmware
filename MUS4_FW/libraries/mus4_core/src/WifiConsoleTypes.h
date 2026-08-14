@@ -8,6 +8,9 @@
 // multiple translation units.
 static const char* WIFI_CONSOLE_AP_DEFAULT_SSID = "MUS4-ESP";
 static const char* WIFI_CONSOLE_AP_PASSWORD = "";
+// v1.7.67 起：控制台密码为空时全通道免认证——开放热点下任何人发送 "AUTH:" 都必然
+// 成功，门禁只剩操作摩擦；一旦配置非空密码，各处认证门禁自动恢复原样。
+static inline bool isWirelessConsoleAuthDisabled() { return WIFI_CONSOLE_AP_PASSWORD[0] == '\0'; }
 static const char* WIFI_AP_SSID_SUFFIX = "-ESP";
 static const uint8_t WIFI_AP_SSID_PREFIX_MAX_LEN = 6;
 static const uint16_t WIFI_CONSOLE_PORT = 2323;

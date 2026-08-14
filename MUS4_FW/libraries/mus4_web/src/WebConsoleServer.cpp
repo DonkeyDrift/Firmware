@@ -394,7 +394,7 @@ static void handleWifiWebAp()
 
 static void handleWifiWebApSet()
 {
-    if (!ws.consoleAuthenticated && !ws.devModeEnabled) {
+    if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled()) {
         wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
         return;
     }
@@ -1004,7 +1004,7 @@ static void handleWifiWebDriftConfigReset()
 
 static void handleWifiWebStaPassword()
 {
-    if (!ws.consoleAuthenticated && !ws.devModeEnabled) {
+    if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled()) {
         wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
         return;
     }
@@ -1110,7 +1110,7 @@ static void handleWifiWebStaScan()
 
 static void handleWifiWebStaSet()
 {
-    if (!ws.consoleAuthenticated && !ws.devModeEnabled) {
+    if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled()) {
         wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
         return;
     }
@@ -1159,7 +1159,7 @@ static void handleWifiWebStaSet()
 
 static void handleWifiWebStaClear()
 {
-    if (!ws.consoleAuthenticated && !ws.devModeEnabled) {
+    if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled()) {
         wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
         return;
     }
@@ -1202,7 +1202,7 @@ static void handleWifiWebStaHistory()
 
 static void handleWifiWebStaHistoryDelete()
 {
-    if (!ws.consoleAuthenticated && !ws.devModeEnabled) {
+    if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled()) {
         wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
         return;
     }
@@ -1394,6 +1394,7 @@ static void handleWifiWebUpdateGet()
 
 static bool isWifiWebUpdateAuthOk()
 {
+    if (isWirelessConsoleAuthDisabled()) return true;
     if (ws.devModeEnabled) return true;
     if (ws.consoleAuthenticated) return true;
     // Allow one-shot auth via query parameter for scripted uploads

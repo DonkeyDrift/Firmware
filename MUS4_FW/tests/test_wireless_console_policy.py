@@ -509,5 +509,54 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         ))
 
 
+class TestWirelessConsoleAuthDisabled(unittest.TestCase):
+    """控制台密码为空（auth_disabled=True）时视为已认证，镜像固件
+    isWirelessConsoleAuthDisabled()（WifiConsoleTypes.h）。
+    Park 锁定等安全限制不受影响的场景也在这里锁定。"""
+
+    def test_auth_disabled_allows_control_command_without_authentication(self):
+        self.assertTrue(POLICY.is_wireless_command_allowed(
+            "10:20", authenticated=False, park_locked=False, auth_disabled=True))
+
+    def test_auth_disabled_allows_general_and_wifi_sta_config_commands(self):
+        for cmd in ["JOYSTICK_STATUS", "SERVO_MID:1500", "MOTOR_MID:1500", "LOG_WEB", "WIFI_STA_SSID:HomeWiFi", "WIFI_STA_APPLY"]:
+            with self.subTest(cmd=cmd):
+                self.assertTrue(POLICY.is_wireless_command_allowed(
+                    cmd, authenticated=False, park_locked=False, auth_disabled=True))
+
+    def test_auth_disabled_still_requires_park_locked_for_diagnostics(self):
+        self.assertFalse(POLICY.is_wireless_command_allowed(
+            "TEST", authenticated=False, park_locked=False, auth_disabled=True))
+        self.assertTrue(POLICY.is_wireless_command_allowed(
+            "TEST", authenticated=False, park_locked=True, auth_disabled=True))
+
+    def test_auth_disabled_still_requires_park_locked_for_calibration(self):
+        self.assertFalse(POLICY.is_wireless_command_allowed(
+            "JOYSTICK_CAL", authenticated=False, park_locked=False, auth_disabled=True))
+        self.assertTrue(POLICY.is_wireless_command_allowed(
+            "JOYSTICK_CAL", authenticated=False, park_locked=True, auth_disabled=True))
+
+    def test_auth_disabled_allows_ota_commands_with_park_rules_intact(self):
+        self.assertFalse(POLICY.is_wireless_command_allowed(
+            "ENABLE_OTA", authenticated=False, park_locked=False, auth_disabled=True))
+        self.assertTrue(POLICY.is_wireless_command_allowed(
+            "ENABLE_OTA", authenticated=False, park_locked=True, auth_disabled=True))
+        self.assertTrue(POLICY.is_wireless_command_allowed(
+            "OTA_STATUS", authenticated=False, park_locked=False, auth_disabled=True))
+        self.assertTrue(POLICY.is_wireless_command_allowed(
+            "DISABLE_OTA", authenticated=False, park_locked=False, auth_disabled=True))
+
+    def test_auth_disabled_applies_to_web_origin(self):
+        self.assertTrue(POLICY.is_web_command_allowed(
+            "10:20", authenticated=False, park_locked=False, auth_disabled=True))
+
+    def test_without_auth_disabled_unauthenticated_stays_blocked(self):
+        # 默认 auth_disabled=False：配置了真实密码时的原有门禁语义不变。
+        self.assertFalse(POLICY.is_wireless_command_allowed(
+            "10:20", authenticated=False, park_locked=True))
+        self.assertFalse(POLICY.is_wireless_command_allowed(
+            "WIFI_STA_SSID:HomeWiFi", authenticated=False, park_locked=False))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,23 +1,23 @@
 # CHANGELOG.md
 
-## 2026-08-14 v1.7.71
+## 2026-08-14 v1.7.72
 
-- 固件版本号从 `v1.7.70` 更新到 `v1.7.71`。（开发/首轮 OTA 期间曾用 v1.7.68，因 v1.7.67~v1.7.69 已被 Tony 上 #49/#50 占用，合入前统一改号）
+- 固件版本号从 `v1.7.71` 更新到 `v1.7.72`。（开发期间曾用 v1.7.68/70/71；因 v1.7.67~v1.7.69 已被 #49/#50 占用、v1.7.70 已被 #54 占用，合入前统一改号）
 - feat(WebConsole): cmdTarget 下拉框恢复 Serial 选项并升级为上位机终端（xterm.js），Serial 排第一且为默认目标，选择持久化到 localStorage
   - `libraries/mus4_web/src/WebConsoleAssets.h`：
     - `<select id="cmdTarget">` 恢复 `<option value="serial">Serial</option>`（排第一位），`<option value="web">Web</option>` 移至第二；不加 serial1 选项（后端 v1.7.29 起 serial/serial1 均转发 Serial2，重复暴露会误导）。
     - 选中 Serial 时日志区切换为 iframe 嵌入的上位机终端页（新增 `#terminalWrap`/`#terminalFrame`/`#terminalHint` 及对应 CSS），终端页 URL 为 `http://<host_ip>:8090/terminal`，由上位机 Launcher 服务提供 xterm.js + WebSocket↔PTY 桥，浏览器里得到上位机完整 bash 终端（kimi/claude/codex/donkey 等全屏 TUI 程序可用）。终端数据走局域网 WebSocket，**不走 115200 波特的 Serial2**（带宽不足以支撑全屏 TUI 重绘）；Serial2 链路维持 `WIFI|` 配网协议与既有 target=serial 转发不变。
     - 上位机地址复用既有 `_launcherIp` 机制（`/api/status` 的 `host_ip` 字段自动发现，缺省 192.168.3.41）；加载 iframe 前先 no-cors 探测上位机 8090 可达性，不可达时显示 i18n 提示（新增 `terminal.loading`/`terminal.unreachable` 中英词条）。
     - 新增 `applyCmdTarget()`/`startTerminal()`/`restoreCmdTarget()`：选中 Serial 时隐藏日志控件（暂停/清空/发送/输入框，清空按钮新增 `id="clearBtn"`）并显示终端，切回 Web 恢复日志视图；选择写入 localStorage 键 `donkeydrifter.ui.cmdTarget`，页面加载时恢复（无记录默认 Serial）。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.71。
-  - `tests/test_firmware_feature_flags.py`：serial 选项断言翻正并新增"Serial 排在 Web 之前"顺序断言；清空按钮行内 HTML 断言同步 `id="clearBtn"`；新增 `test_web_console_serial_option_is_host_terminal_with_persistent_default` 覆盖终端容器/URL 自动发现/选择持久化/切换逻辑/i18n 词条；版本号断言同步至 v1.7.71。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.72。
+  - `tests/test_firmware_feature_flags.py`：serial 选项断言翻正并新增"Serial 排在 Web 之前"顺序断言；清空按钮行内 HTML 断言同步 `id="clearBtn"`；新增 `test_web_console_serial_option_is_host_terminal_with_persistent_default` 覆盖终端容器/URL 自动发现/选择持久化/切换逻辑/i18n 词条；版本号断言同步至 v1.7.72。
   - 配套上位机改动在 DonkeyDrift 仓库 `Tony-serial-terminal` 分支（`donkeycar/launcher/terminal.py` WebSocket↔PTY 桥 + `terminal_static/` xterm.js 终端页 + Launcher `/terminal` 路由）。
   - 固件侧不新增后端代码，无 flash 压力（xterm.js 由上位机伺服）。
-  - 已编译并 OTA 上传验证：车上 `/api/status` 确认 `version=v1.7.71`、`host_ip=192.168.3.41`；首页 HTML 确认 Serial 选项（第一位）与 `#terminalWrap` 容器已生效；上位机侧 `ws://192.168.3.41:8090/terminal/ws` 实测命令回显/窗口缩放/Ctrl-C/shell 退出通知全通；Playwright 无头浏览器对车上真实页面端到端复测：默认选中 Serial、选项顺序 serial→web、终端 iframe 自动加载并挂载 xterm、键入命令真实执行回显、切换 Web 恢复日志视图、localStorage 记住选择且刷新后恢复。
+  - 已编译并 OTA 上传验证：车上 `/api/status` 确认 `version=v1.7.72`、`host_ip=192.168.3.41`；首页 HTML 确认 Serial 选项（第一位）与 `#terminalWrap` 容器已生效；上位机侧 `ws://192.168.3.41:8090/terminal/ws` 实测命令回显/窗口缩放/Ctrl-C/shell 退出通知全通；Playwright 无头浏览器对车上真实页面端到端复测：默认选中 Serial、选项顺序 serial→web、终端 iframe 自动加载并挂载 xterm、键入命令真实执行回显、切换 Web 恢复日志视图、localStorage 记住选择且刷新后恢复。
 
-## 2026-08-14 v1.7.70
+## 2026-08-14 v1.7.71
 
-- 固件版本号从 `v1.7.69` 更新到 `v1.7.70`。（开发/首轮 OTA 期间曾用 v1.7.67，因 v1.7.67~v1.7.69 已被 Tony 上 #49/#50 占用，合入前统一改号）
+- 固件版本号从 `v1.7.70` 更新到 `v1.7.71`。（开发/首轮 OTA 期间曾用 v1.7.67；因 v1.7.67~v1.7.69 已被 #49/#50 占用、v1.7.70 已被 #54 占用，合入前统一改号）
 - feat(WirelessConsole): 控制台密码为空时全通道免认证，任何工具发命令都不再需要 `AUTH:`
   - `libraries/mus4_core/src/WifiConsoleTypes.h`：新增编译期判定 `isWirelessConsoleAuthDisabled()`（`WIFI_CONSOLE_AP_PASSWORD[0]=='\0'`）。空密码 + 开放 AP 下任何人发 `AUTH:` 都必然成功，门禁只剩操作摩擦；一旦配置非空密码，所有门禁自动恢复原语义。
   - `libraries/mus4_command/src/WirelessConsole.cpp`：`isWirelessCommandAllowed` 新增 `authed = ws.consoleAuthenticated || isWirelessConsoleAuthDisabled()`，替代原 4 处 `ws.consoleAuthenticated` 判断；NACK 分流条件同步纳入免认证（Park 未锁时报 `NACK:PARK_REQUIRED`）。
@@ -26,8 +26,17 @@
   - 安全边界不变：Park 锁定要求（`TEST`/`BENCH`/校准/`ENABLE_OTA` 等）原样保留；`AUTH:` 命令行为不变（空密码返回 `AUTH_OK`）；前端 `error.authRequired` 弹窗与校准密码 prompt 保留为非空密码场景的兜底路径。
   - `wireless_console_policy.py`：`is_wireless_command_allowed` / `is_web_command_allowed` 新增 `auth_disabled=False` 关键字参数，镜像固件免认证判定。
   - `tests/test_wireless_console_policy.py`：新增 `TestWirelessConsoleAuthDisabled` 7 个用例（免认证放行控制/配置/校准/OTA 命令，Park 规则不变，默认 `auth_disabled=False` 语义不变）。
-  - `tests/test_firmware_feature_flags.py`：3 处门禁源码断言同步为新文本；`test_wifi_console_types_are_split_from_sketch` 新增 helper 存在性断言；版本号断言同步至 v1.7.70。
+  - `tests/test_firmware_feature_flags.py`：3 处门禁源码断言同步为新文本；`test_wifi_console_types_are_split_from_sketch` 新增 helper 存在性断言；版本号断言同步至 v1.7.71。
   - `docs/Plan/DEV模式影响面与运行逻辑映射.md`：新增 §3.2「控制台密码为空时全通道免认证」；`docs/Valid/无线串口调试验证指南.md`：认证说明补充空密码免认证口径。
+
+## 2026-08-14 v1.7.70
+
+- 固件版本号从 `v1.7.69` 更新到 `v1.7.70`。
+- feat(WebConsole): 头部入口按钮"进入"改"打开"（英文 Enter→Open），并在"打开 DonkeyDrifter"右侧新增"打开 Kimi Code Web"占位按钮
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：headerRow 两个入口锚文本与 zh/en I18N 词典同步改名（打开 Donkey / 打开 DonkeyDrifter，Open Donkey / Open DonkeyDrifter）；`ghLink` 前插入 `openKimiCodeWebBtn` 占位 `<button type="button" class="otaButton">`（无 href/onclick，功能预留，zh"打开 Kimi Code Web"/en"Open Kimi Code Web"）；窄屏 `@media (max-width:820px)` 规则插入 `#openKimiCodeWebBtn{order:8}`，`.br2` 起后续元素 order 顺移 +1（桌面布局规则逐字不动）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.70。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_header_entry_buttons` 更新位置序断言（h1<donkey<drifter<kimi<gh）与中英词条断言、新增 kimi 词条断言；`test_web_console_mobile_header_layout` 第 2 行新增 kimi order:8、后续 order 顺移断言同步；版本号/日志一致性断言同步至 v1.7.70。全量测试通过。
+  - 已编译并 HTTP OTA 上传验证：车上 `/api/status` 返回 `version=v1.7.70`，首页返回 `openKimiCodeWebBtn` 与"打开 Kimi Code Web"文本。
 
 ## 2026-08-14 v1.7.69
 

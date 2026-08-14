@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.71"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.72"' in build_info
+    assert "v1.7.72" in changelog
     assert "v1.7.71" in changelog
-    assert "v1.7.70" in changelog
-    assert changelog.index("v1.7.71") < changelog.index("v1.7.70")
+    assert changelog.index("v1.7.72") < changelog.index("v1.7.71")
 
 
 def test_host_ip_report_channel():
@@ -1449,12 +1449,13 @@ def test_web_console_header_logo_left_of_title():
 def test_web_console_mobile_header_layout():
     """窄屏（手机/平板竖屏，max-width:820px）头部重排为固定 4 行：
     第 1 行 logo + 标题 + GitHub + 版本号（紧跟 GitHub 右侧，整体左排）；
-    第 2 行 进入 Donkey / 进入 DonkeyDrifter；
+    第 2 行 打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web；
     第 3 行 红绿蓝（最左）+ OTA + 静音 + DEV（margin-left:auto 贴合最右端）；
     第 4 行 主题切换（左）+ 语言切换（右）。
     实现方式：headerRow 保持 flex-wrap，DOM 中三个 .rowBreak 分隔 span 桌面
     display:none，窄屏下 display:block + flex-basis:100% 强制换行，各元素用
-    order 重排。桌面布局规则不动，仅靠媒体查询覆盖。"""
+    order 重排。桌面布局规则不动，仅靠媒体查询覆盖。
+    v1.7.70 第 2 行新增"打开 Kimi Code Web"占位按钮，order 插入 8，后续顺移 +1。"""
 
     source = firmware_source_text()
 
@@ -1475,20 +1476,21 @@ def test_web_console_mobile_header_layout():
     assert "#versionLabel{order:4}" in source
     assert "#versionLabel{order:4;margin-left:auto}" not in source
     assert ".br1{order:5}" in source
-    # 第 2 行：进入 Donkey / 进入 DonkeyDrifter
+    # 第 2 行：打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web
     assert "#enterDonkeyBtn{order:6}" in source
     assert "#enterDonkeyDrifterBtn{order:7}" in source
-    assert ".br2{order:8}" in source
+    assert "#openKimiCodeWebBtn{order:8}" in source
+    assert ".br2{order:9}" in source
     # 第 3 行（倒数第二行）：红绿蓝（最左）+ OTA + 静音（桌面右推 margin-left:auto 复位）
     # + DEV（margin-left:auto 贴合页面最右端）
-    assert "#ledBlinkTabs{order:9}" in source
-    assert ".headerRow .otaLink{order:10}" in source
-    assert "#muteToggle{order:11;margin-left:0}" in source
-    assert "#devModeToggle{order:12;margin-left:auto}" in source
-    assert ".br3{order:13}" in source
+    assert "#ledBlinkTabs{order:10}" in source
+    assert ".headerRow .otaLink{order:11}" in source
+    assert "#muteToggle{order:12;margin-left:0}" in source
+    assert "#devModeToggle{order:13;margin-left:auto}" in source
+    assert ".br3{order:14}" in source
     # 第 4 行：主题切换（左）+ 语言切换（margin-left:auto 贴合最右端，不再隐藏）
-    assert "#themeTabs{order:14}" in source
-    assert ".headerRow .langTabs:not([id]){order:15;margin-left:auto}" in source
+    assert "#themeTabs{order:15}" in source
+    assert ".headerRow .langTabs:not([id]){order:16;margin-left:auto}" in source
     assert ".headerRow .langTabs:not([id]){display:none}" not in source
 
 
@@ -4303,21 +4305,25 @@ def test_web_console_header_entry_buttons():
     v1.7.59 "进入 Donkey"按钮 D 大写；enterDonkeyDrifter 改为 GET /launch/drive 新标签页打开。
     v1.7.60 修复 Safari 弹窗拦截：页面加载时预取 host_ip 缓存到 _launcherIp，
     按钮点击时同步调用 window.open，不再在 async 函数内 await 后开新标签。
-    v1.7.61 改用 <a target="_blank"> 原生链接替代 window.open，彻底解决 Safari 弹窗拦截。"""
+    v1.7.61 改用 <a target="_blank"> 原生链接替代 window.open，彻底解决 Safari 弹窗拦截。
+    v1.7.70 "进入"改名"打开"（en Enter→Open）；DonkeyDrifter 右侧新增"打开 Kimi Code Web"
+    占位按钮（功能预留，无 href/onclick）。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
 
-    # 位置：主标题 <h1> 之后、GitHub 链接之前，donkey 在左、DonkeyDrifter 在右
+    # 位置：主标题 <h1> 之后、GitHub 链接之前，Donkey 在左、DonkeyDrifter 居中、Kimi Code Web 在右
     h1_pos = assets.index('<h1 data-i18n="app.title">Drifter Console</h1>')
     donkey_pos = assets.index('data-i18n="button.enterDonkey"')
     drifter_pos = assets.index('data-i18n="button.enterDonkeyDrifter"')
+    kimi_pos = assets.index('data-i18n="button.openKimiCodeWeb"')
     gh_pos = assets.index('<a class="ghLink"')
-    assert h1_pos < donkey_pos < drifter_pos < gh_pos
+    assert h1_pos < donkey_pos < drifter_pos < kimi_pos < gh_pos
 
     # v1.7.61：改用 <a target="_blank"> 原生链接，不再使用 onclick + window.open
     assert 'id="enterDonkeyBtn"' in assets
     assert 'id="enterDonkeyDrifterBtn"' in assets
+    assert 'id="openKimiCodeWebBtn"' in assets
     assert 'target="_blank"' in assets
     assert 'rel="noopener"' in assets
 
@@ -4329,15 +4335,17 @@ def test_web_console_header_entry_buttons():
     assert '192.168.3.41' in assets  # fallback IP
     assert ':8090/' in assets  # launcher port
 
-    # i18n 中英词条齐全
-    assert "'button.enterDonkey':'进入 Donkey'" in assets
-    assert "'button.enterDonkeyDrifter':'进入 DonkeyDrifter'" in assets
-    assert "'button.enterDonkey':'Enter Donkey'" in assets
-    assert "'button.enterDonkeyDrifter':'Enter DonkeyDrifter'" in assets
+    # i18n 中英词条齐全（v1.7.70 "进入"→"打开" / Enter→Open）
+    assert "'button.enterDonkey':'打开 Donkey'" in assets
+    assert "'button.enterDonkeyDrifter':'打开 DonkeyDrifter'" in assets
+    assert "'button.enterDonkey':'Open Donkey'" in assets
+    assert "'button.enterDonkeyDrifter':'Open DonkeyDrifter'" in assets
+    assert "'button.openKimiCodeWeb':'打开 Kimi Code Web'" in assets
+    assert "'button.openKimiCodeWeb':'Open Kimi Code Web'" in assets
 
     # v1.7.59：enterDonkeyDrifter 指向 /launch/drive
     # v1.7.61：入口按钮改用 <a target="_blank">，不再使用 onclick + window.open
-    # v1.7.62：enterDonkeyDrifter 改用 #drive hash（与"进入 Donkey"同路径，避免 Safari 问题）
+    # v1.7.62：enterDonkeyDrifter 改用 #drive hash（与"打开 Donkey"同路径，避免 Safari 问题）
     assert '#drive' in assets
     assert 'enterDonkeyLauncher' not in assets
     assert 'enterDonkeyDrifter()' not in assets

@@ -19,6 +19,23 @@
   - `tests/test_firmware_feature_flags.py`：`test_web_console_language_api_persists_nvs_preference` 断言同步三态与缺省 auto；`test_web_console_sub_pages_follow_device_language` 新增三子页面 `detectBrowserLanguage`/auto 分支断言；新增 `test_web_console_language_auto_detects_browser_language`（四页检测函数与 auto 分支逐页计数断言、主控制台手动切换仍显式 POST 持久化）；版本号断言同步至 v1.7.68。全量 160 项测试通过。
   - 已编译并 OTA 上传验证：车上 `/api/status` 确认新构建，`GET /api/language` 缺省返回 `{"lang":"auto"}`。
 
+## 2026-08-14 v1.7.67
+
+- 固件版本号从 `v1.7.66` 更新到 `v1.7.67`。
+- feat(WebConsole): Drifter Console 默认主题由深色改回"跟随系统"，与 DonkeyDrifter `web_ui` / Donkey launcher 同口径
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：首屏防闪烁内联脚本改为 `if(t!=='light'&&t!=='dark')` 一律经 matchMedia 解析系统主题（无存储/`'auto'`/非法值均跟随系统）；`let uiTheme='dark'` 改回 `let uiTheme='auto'`；`readStoredTheme()` 无存储/异常时的回退值由 `'dark'` 改回 `'auto'`。用户显式点选浅色/深色后仍以存储值为准。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.67。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 断言同步（默认值 `'auto'`、首屏内联脚本新形式、docstring 更新）；浅色皮肤测试的"主题骨架"断言同步；版本号断言同步至 v1.7.67。
+
+## 2026-08-14 v1.7.66
+
+- 固件版本号从 `v1.7.65` 更新到 `v1.7.66`。
+- feat(WebConsole): Drifter Console 默认主题由"跟随系统"改为深色，仅用户显式点选"跟随系统"后才经 matchMedia 解析/监听系统主题
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：首屏防闪烁内联脚本去掉 `||'auto'` 默认值（无存储或存储值非法时直接预置 `data-theme="dark"`，仅存储值为 `'auto'` 时才 matchMedia 解析系统主题）；`let uiTheme='auto'` 改为 `let uiTheme='dark'`；`readStoredTheme()` 无存储/异常时的回退值由 `'auto'` 改为 `'dark'`。`'auto'` 仍是合法存储值，系统主题 change 监听本就只有 `uiTheme==='auto'` 时才生效，该逻辑不变。与 DonkeyDrifter `web_ui` / Donkey launcher（PR DonkeyDrift#85）同口径。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.66。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 断言同步（默认值 `'dark'`、首屏内联脚本不再带 `||'auto'`、docstring 更新）；浅色皮肤测试的"主题骨架"断言同步；版本号断言同步至 v1.7.66。
+  - 已编译并 OTA 上传验证：车上 `/api/status` 确认 `version=v1.7.66`。
+
 ## 2026-08-14 v1.7.65
 
 - 固件版本号从 `v1.7.64` 更新到 `v1.7.65`。

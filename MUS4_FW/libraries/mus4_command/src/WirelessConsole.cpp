@@ -156,16 +156,18 @@ bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, 
     // 校准命令免认证但仍需 Park 锁定；控制命令与其他诊断命令（TEST/BENCH 等）
     // 始终要求认证。详见 docs/Plan/DEV模式影响面与运行逻辑映射.md §2.8、§3。
     bool webDevMode = ws.devModeEnabled && origin == WIRELESS_ORIGIN_WEB;
+    // 控制台密码为空时视为已认证（isWirelessConsoleAuthDisabled）。
+    const bool authed = ws.consoleAuthenticated || isWirelessConsoleAuthDisabled();
     if (line.equalsIgnoreCase("PING") || line.equalsIgnoreCase("STATUS") || line.equalsIgnoreCase("WIFI_STA_STATUS")) return true;
     if (line.startsWith("AUTH:")) return true;
-    if (isWirelessOtaOpenCommand(line)) return (webDevMode || ws.consoleAuthenticated) && car_output.park == PARK_LOCKED;
-    if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || ws.consoleAuthenticated;
+    if (isWirelessOtaOpenCommand(line)) return (webDevMode || authed) && car_output.park == PARK_LOCKED;
+    if (isWirelessOtaStatusCommand(line) || isWirelessOtaCloseCommand(line)) return webDevMode || authed;
     // DEV ON 显式白名单：显示/日志切换、Wi-Fi STA 配置类命令。
-    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || line.equalsIgnoreCase("JOYSTICK_STATUS") || line.startsWith("SERVO_MID") || line.startsWith("MOTOR_MID") || line.startsWith("THROTTLE_MIN") || line.startsWith("THROTTLE_MAX") || isWifiStaConfigCommand(line)) return ws.consoleAuthenticated || webDevMode;
+    if (line.equalsIgnoreCase("ANSI") || line.equalsIgnoreCase("NOANSI") || line.equalsIgnoreCase("FILTER_DEBUG") || line.equalsIgnoreCase("LOG_WEB") || line.equalsIgnoreCase("LOG_SERIAL") || line.equalsIgnoreCase("JOYSTICK_STATUS") || line.startsWith("SERVO_MID") || line.startsWith("MOTOR_MID") || line.startsWith("THROTTLE_MIN") || line.startsWith("THROTTLE_MAX") || isWifiStaConfigCommand(line)) return authed || webDevMode;
     // DEV ON 允许校准命令免认证（但仍需 Park 锁定）。
     if (webDevMode && isCalibrationCommand(line)) return car_output.park == PARK_LOCKED;
     // 其余命令（控制 / 诊断）严格要求认证，不读 webDevMode。
-    if (!ws.consoleAuthenticated) return false;
+    if (!authed) return false;
     if (isParkLockedWirelessCommand(line)) return car_output.park == PARK_LOCKED;
     return isWirelessControlCommand(line);
 }
@@ -188,7 +190,7 @@ void processWirelessConsoleLine(const String& line, Print& out, WirelessCommandO
     if (!isWirelessCommandAllowed(line, origin, wifiRuntime)) {
         // NACK 错误码分流：已认证用户或 DEV ON Web 来源在 Park 未锁定时收到
         // PARK_REQUIRED；纯未认证用户收到 UNAUTHORIZED。
-        if (isParkLockedWirelessCommand(line) && car_output.park != PARK_LOCKED && (wifiRuntime.consoleAuthenticated || (wifiRuntime.devModeEnabled && origin == WIRELESS_ORIGIN_WEB))) {
+        if (isParkLockedWirelessCommand(line) && car_output.park != PARK_LOCKED && (wifiRuntime.consoleAuthenticated || isWirelessConsoleAuthDisabled() || (wifiRuntime.devModeEnabled && origin == WIRELESS_ORIGIN_WEB))) {
             out.println("NACK:PARK_REQUIRED");
         } else {
             out.println("NACK:UNAUTHORIZED");

@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.66"' in build_info
-    assert "v1.7.66" in changelog
-    assert "v1.7.65" in changelog
-    assert changelog.index("v1.7.66") < changelog.index("v1.7.65")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.71"' in build_info
+    assert "v1.7.71" in changelog
+    assert "v1.7.70" in changelog
+    assert changelog.index("v1.7.71") < changelog.index("v1.7.70")
 
 
 def test_host_ip_report_channel():
@@ -345,8 +345,11 @@ def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
     assert 'id="cmdTarget"' in source
     assert 'id="logSource"' not in source
     assert '<option value="web">Web</option>' in source
-    assert '<option value="serial">Serial</option>' not in source
+    assert '<option value="serial">Serial</option>' in source
     assert '<option value="serial1">Serial1</option>' not in source
+    # Serial（上位机终端）排第一位，是默认目标
+    assert source.index('<option value="serial">Serial</option>') < \
+        source.index('<option value="web">Web</option>')
     assert "const LOG_SOURCE_MAX_BYTES=1024*1024" in source
     assert "const LOG_DISPLAY_MAX_BYTES=16000" in source
     assert "sourceBuffers={web:'',serial:'',serial1:''}" in source
@@ -359,6 +362,39 @@ def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
     assert "typeof e.data==='string'" in source
     assert "j.type==='log'" in source
     assert "appendLogLine('['+j.t+']['+j.src+'] '+j.line,j.src)" in source
+
+
+def test_web_console_serial_option_is_host_terminal_with_persistent_default():
+    """cmdTarget 的 Serial 选项 = 上位机终端（xterm.js iframe）。
+
+    选择 Serial 时日志区切换为 iframe 嵌入的上位机终端页面
+    （http://<host_ip>:8090/terminal，由上位机 Launcher 服务提供）；
+    目标选择持久化到 localStorage，下次打开页面时恢复，默认 Serial。
+    终端数据走局域网 WebSocket（不走 115200 串口，带宽不足以跑 TUI）。
+    """
+    source = firmware_source_text()
+
+    # 终端视图容器与 iframe
+    assert 'id="terminalWrap"' in source
+    assert 'id="terminalFrame"' in source
+    assert 'id="terminalHint"' in source
+    # 终端 URL 由上位机 HOSTIP 上报自动发现（_launcherIp），不硬编码
+    assert "function terminalUrl(){return 'http://'+_launcherIp+':8090/terminal';}" in source
+    # 选择持久化：localStorage 键 + 写入/读取 + 默认 serial + 启动时恢复
+    assert "const CMD_TARGET_KEY='donkeydrifter.ui.cmdTarget'" in source
+    assert "localStorage.setItem(CMD_TARGET_KEY,src)" in source
+    assert "localStorage.getItem(CMD_TARGET_KEY)" in source
+    assert "applyCmdTarget(saved||'serial',false)" in source
+    assert "restoreCmdTarget();" in source
+    # 切换目标时隐藏日志控件、显示终端；切回 Web 恢复日志视图
+    assert "function applyCmdTarget(src,save)" in source
+    assert "if(term)startTerminal();else switchLogSource('web');" in source
+    assert "cmdTarget.addEventListener('change',e=>{applyCmdTarget(e.target.value)});" in source
+    # 上位机不可达时的加载/失败提示（i18n 中英双语）
+    assert "I18N.zh['terminal.loading']" in source
+    assert "I18N.en['terminal.loading']" in source
+    assert "I18N.zh['terminal.unreachable']" in source
+    assert "I18N.en['terminal.unreachable']" in source
 
 
 def test_web_console_screen_saver_activates_after_60_seconds():
@@ -852,6 +888,9 @@ def test_wifi_console_types_are_split_from_sketch():
     ]:
         assert symbol in wifi_types
 
+    # 密码为空时全通道免认证的 helper：空密码下 AUTH: 必然成功，门禁只剩摩擦。
+    assert "static inline bool isWirelessConsoleAuthDisabled() { return WIFI_CONSOLE_AP_PASSWORD[0] == '\\0'; }" in wifi_types
+
     assert "#include \"WifiConsoleTypes.h\"" in sketch_source
     assert "WebLogEntry s_webLogEntries[WIFI_WEB_LOG_CAPACITY];" in source
     assert "static WebLogEntry s_webLogEntries[WIFI_WEB_LOG_CAPACITY];" in source
@@ -1327,7 +1366,7 @@ def test_wifi_ota_status_helpers_are_split_from_sketch():
     assert "out.println(\"OTA_CLOSED\")" in ota_source
     assert "return false" in ota_source
     assert "ws.devModeEnabled && origin == WIRELESS_ORIGIN_WEB" in ota_source
-    assert "if (!webDevMode && !ws.consoleAuthenticated)" in ota_source
+    assert "if (!webDevMode && !ws.consoleAuthenticated && !isWirelessConsoleAuthDisabled())" in ota_source
     assert "out.println(\"NACK:AUTH_REQUIRED\")" in ota_source
     assert "if (car_output.park != PARK_LOCKED)" in ota_source
     assert "out.println(\"NACK:PARK_REQUIRED\")" in ota_source
@@ -1848,7 +1887,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
-    assert '<button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
+    assert '<button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" id="clearBtn" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
@@ -2063,7 +2102,7 @@ def test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_
 
     assert "static void handleWifiWebStaPassword()" in source
     assert 'wifiWebServer.on("/api/wifi-sta/password", HTTP_GET, handleWifiWebStaPassword)' in source
-    assert "if (!ws.consoleAuthenticated && !ws.devModeEnabled)" in source
+    assert "if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled())" in source
     assert "\\\"password_len\\\":" in source
     assert "appendJsonString(response, ws.staPassword)" in source
 
@@ -3747,13 +3786,13 @@ def test_web_console_wifi_sta_history_api():
     assert "appendJsonString(response, ssid.c_str())" in history_body
     assert "password.c_str()" not in history_body
 
-    # 删除需认证或 devMode；只移除历史记录，不动当前连接凭据
+    # 删除需认证或 devMode（控制台密码为空时免认证）；只移除历史记录，不动当前连接凭据
     delete_body = re.search(
         r"static void handleWifiWebStaHistoryDelete\(\)\s*\{(?P<body>.*?)\n\}",
         server_source,
         re.DOTALL,
     ).group("body")
-    assert "if (!ws.consoleAuthenticated && !ws.devModeEnabled)" in delete_body
+    assert "if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled())" in delete_body
     assert "403" in delete_body
     assert '\\"error\\":\\"auth_required\\"' in delete_body
     assert 'wifiWebServer.arg("ssid")' in delete_body

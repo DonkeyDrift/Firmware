@@ -192,6 +192,25 @@ bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, 
 `tests/test_wireless_console_policy.py::test_web_dev_mode_allows_calibration_without_auth_but_keeps_park_guard`
 锁定校准命令（`STEER_CAL` / `JOYSTICK_CAL` 等）在 DEV ON 下免认证但保留 Park 锁定的行为（v1.7.30）。
 
+## 3.2 控制台密码为空时全通道免认证（v1.7.67）
+
+`WIFI_CONSOLE_AP_PASSWORD` 为空字符串（当前配置）时，开放 AP 下任何人发送 `AUTH:`（冒号后留空）
+都必然得到 `AUTH_OK`，认证门禁只剩操作摩擦、不提供实际安全性。为此固件新增编译期判定
+`isWirelessConsoleAuthDisabled()`（`libraries/mus4_core/src/WifiConsoleTypes.h`）：密码为空时以下门禁
+一律把会话视为已认证，**任何工具、任何来源都无需先发 `AUTH:`**：
+
+- `WirelessConsole.cpp` `isWirelessCommandAllowed`（`authed = ws.consoleAuthenticated || isWirelessConsoleAuthDisabled()`），
+  覆盖 TCP:2323 与 `/api/cmd`、校准命令分发；NACK 分流同步把"Park 未锁"报为 `NACK:PARK_REQUIRED`；
+- `WifiOta.cpp` `openWifiOtaWindow` 的 `NACK:AUTH_REQUIRED` 检查；
+- `WebConsoleServer.cpp` 5 处 `/api/wifi-*` 配置端点的 403 检查与 `isWifiWebUpdateAuthOk()`（HTTP OTA）。
+
+**不受影响的安全维度**：Park 锁定要求（`TEST`/`BENCH`/校准/`ENABLE_OTA` 等）原样保留；`AUTH:` 命令
+行为不变（空密码返回 `AUTH_OK`）。一旦 `WIFI_CONSOLE_AP_PASSWORD` 配置为非空，所有门禁自动恢复
+原语义，无需改动任何判断点。
+
+测试锁定：`tests/test_wireless_console_policy.py::TestWirelessConsoleAuthDisabled`（免认证放行 +
+Park 规则不变 + 默认 `auth_disabled=False` 语义不变）。
+
 ## 4. AP 广播 SSID 派生（已退役 v1.7.22）
 
 历史 v1.7.7 / v1.7.8 引入过"STA 连接后，AP SSID 自动追加 STA 短码 + IP 尾段"（如 `MU04-ESP-DON-3.43`）的派生逻辑。**v1.7.22 起整体移除**：

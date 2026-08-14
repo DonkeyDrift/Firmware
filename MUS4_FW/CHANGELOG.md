@@ -3,6 +3,9 @@
 ## 2026-08-14 v1.7.64
 
 - 固件版本号从 `v1.7.63` 更新到 `v1.7.64`。
+- feat(WebConsole): RGB LED 灯色切换框按各自颜色着色
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`#ledBlinkTabs` 三个选项的选中背景从统一蓝色 `#5cc8ff` 改为各自颜色——红 `#ff6b6b`、绿 `#39d98a`、蓝 `#5cc8ff`（与图表 gz/thr/str 曲线同色）；悬停提亮同步按各自颜色（红 `#ff9797`、绿 `#74e4ad`、蓝沿用 `#8bdcff`）；连体 `box-shadow` 与悬停垫底伪元素的延伸色也按按钮各自颜色（新增 `LED_BLINK_TAB_COLORS` 映射），语言切换等其他 `.langTabs` 保持原蓝色不变。
+  - `tests/test_firmware_feature_flags.py`：断言同步更新（版本号升至 v1.7.64）。
 - feat(WebConsole): Drifter Console 新增浅色主题，头部主题切换按钮（浅色/跟随系统/深色）真正生效
   - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 Console 页区域，深色规则原文逐字不动，DRIFT/JUDGE/UPDATE 三页不受影响）：
     - 新增第三个 `<style>` 块：85 条 `html[data-theme="light"]` 浅色覆盖规则 + `@keyframes pulseLight`。设计语言对标深色：青胶囊身份（`#5cc8ff` 底 + `#061019` 字）与青色辉光保留；文字/边框/状态语义色（成功/警告/错误/漂移紫）等比加深适配白底；日志终端改浅底深绿字；遮罩改浅。

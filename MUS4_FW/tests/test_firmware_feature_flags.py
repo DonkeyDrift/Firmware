@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.64"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.65"' in build_info
+    assert "v1.7.65" in changelog
     assert "v1.7.64" in changelog
-    assert "v1.7.63" in changelog
-    assert changelog.index("v1.7.64") < changelog.index("v1.7.63")
+    assert changelog.index("v1.7.65") < changelog.index("v1.7.64")
 
 
 def test_host_ip_report_channel():
@@ -1389,6 +1389,22 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert "#networkCard{grid-area:network}" in source
     assert 'grid-template-areas:"mode park drift voltage network"' in source
     assert 'grid-template-areas:"mode park drift" "voltage network network"' in source
+
+
+def test_web_console_header_logo_left_of_title():
+    """顶栏主标题左侧 logo：与 Donkey 页面（launcher）同款 .headerLogo
+    （32x32、8px 圆角、1px 描边、align-self:center），直接复用固件内嵌的
+    /favicon.png（与 Projects/logo.png 同一头盔图），浅色主题描边同步切换。"""
+
+    source = firmware_source_text()
+
+    assert ".headerLogo{width:32px;height:32px;border-radius:8px;border:1px solid #2b3441;align-self:center}" in source
+    assert 'html[data-theme="light"] .headerLogo{border-color:#d5dce4}' in source
+    # 位置：logo 在 headerRow 内、主标题 <h1> 左边
+    header_pos = source.index('<div class="headerRow">')
+    logo_pos = source.index('<img class="headerLogo" src="/favicon.png" alt="Drifter Console">')
+    h1_pos = source.index('<h1 data-i18n="app.title">Drifter Console</h1>')
+    assert header_pos < logo_pos < h1_pos
 
 
 def test_web_console_language_tabs_wired_to_set_language():

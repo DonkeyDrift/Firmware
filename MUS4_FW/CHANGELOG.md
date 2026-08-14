@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-14 v1.7.73
+
+- 固件版本号从 `v1.7.72` 更新到 `v1.7.73`。
+- docs(repo): 重写仓库根 README.md
+  - 子项目表标注各子项目当前版本（MUS4_FW 固件版本与 BuildInfo.h 对齐）。
+  - 新增 MUS4_FW 功能速览（无线控制台/Web Console/OTA/校准等核心能力一览）。
+  - 新增构建、OTA、测试命令速查（`arduino-cli.py -c`、HTTP/ArduinoOTA 上传、`pytest` 入口）。
+  - 新增安全说明（控制台密码、DEV 模式、免认证边界等注意事项）。
+  - 补充与 DonkeyDrift 上位机仓库的配套链接。
+  - 纯文档 + 版本号改动，无固件逻辑变更。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.73。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.73。
+
 ## 2026-08-14 v1.7.72
 
 - 固件版本号从 `v1.7.71` 更新到 `v1.7.72`。（开发期间曾用 v1.7.68/70/71；因 v1.7.67~v1.7.69 已被 #49/#50 占用、v1.7.70 已被 #54 占用，合入前统一改号）

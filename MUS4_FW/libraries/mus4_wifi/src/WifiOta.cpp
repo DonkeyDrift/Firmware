@@ -52,7 +52,7 @@ bool shouldEmitSerial1Telemetry(OtaRuntimeState& os)
 void openWifiOtaWindow(Print& out, WirelessCommandOrigin origin, OtaRuntimeState& os, WifiRuntimeState& ws)
 {
     bool webDevMode = ws.devModeEnabled && origin == WIRELESS_ORIGIN_WEB;
-    if (!webDevMode && !ws.consoleAuthenticated) {
+    if (!webDevMode && !ws.consoleAuthenticated && !isWirelessConsoleAuthDisabled()) {
         out.println("NACK:AUTH_REQUIRED");
         wifiConsoleBuf.errors++;
         return;

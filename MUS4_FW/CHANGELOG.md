@@ -7,7 +7,7 @@
   - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `@media (max-width:820px)` 窄屏规则（桌面布局规则逐字不动）。DOM 新增 3 个 `.rowBreak` 分隔 span（桌面 `display:none` 无感）；窄屏下 headerRow 保持 flex-wrap，`.rowBreak` 以 `display:block;flex-basis:100%` 强制换行，各元素以 `order` 重排为 4 行：第 1 行 logo + 标题 + GitHub 图标 + 版本号（紧跟 GitHub 右侧）；第 2 行 进入 Donkey / 进入 DonkeyDrifter；第 3 行 红绿蓝（最左）+ OTA + 静音（桌面右推的 `margin-left:auto` 复位为 0）+ DEV（`margin-left:auto` 贴合页面最右端）；第 4 行 主题切换（最左）+ 语言切换（`margin-left:auto` 贴合最右端）。曾评估 grid 具名区域方案，因标题宽度耦合撑宽共享列导致手机横向溢出，改用 flex + order 分行方案。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.69。
   - `tests/test_firmware_feature_flags.py`：新增 `test_web_console_mobile_header_layout`（rowBreak DOM 位置、4 行 order 分配、静音/DEV/语言切换 margin 处理、版本号不再右推等逐字断言）；版本号断言同步至 v1.7.69。全量 160 项测试通过。
-  - 已编译并 OTA 上传验证：车上 `/api/status` 确认新构建，首页返回窄屏媒体查询与 3 个 rowBreak 标记。
+  - 已编译并 OTA 上传验证：车上 `/api/status` 确认 `version=v1.7.69`，首页返回窄屏媒体查询与 3 个 rowBreak 标记。
 
 ## 2026-08-14 v1.7.68
 
@@ -17,7 +17,7 @@
   - `libraries/mus4_web/src/WebConsoleAssets.h`：主控制台 + JUDGE/DRIFT/UPDATE 四个页面的自包含 i18n 核心各新增 `detectBrowserLanguage()`（`navigator.language` 小写后以 `zh` 开头→中文，其余一律→英文，异常兜底中文）；`initLanguage()` 新增 `j.lang==='auto'` 分支——设备偏好为 auto 时用检测结果并写入 localStorage（`mus4.ui.lang`）作离线兜底。手动切换语言仍走 `setLanguage()` POST 显式 zh/en，立即生效并持久化覆盖自动检测。
   - 行为变化：首次使用（NVS 无偏好）时界面语言跟随浏览器——中文浏览器=中文界面（与原默认一致），英文及其他语言浏览器=英文界面；用户一旦手动切换，选择跨关机重启保持，不再受浏览器语言影响。
   - `tests/test_firmware_feature_flags.py`：`test_web_console_language_api_persists_nvs_preference` 断言同步三态与缺省 auto；`test_web_console_sub_pages_follow_device_language` 新增三子页面 `detectBrowserLanguage`/auto 分支断言；新增 `test_web_console_language_auto_detects_browser_language`（四页检测函数与 auto 分支逐页计数断言、主控制台手动切换仍显式 POST 持久化）；版本号断言同步至 v1.7.68。全量 160 项测试通过。
-  - 已编译并 OTA 上传验证：车上 `/api/status` 确认新构建，`GET /api/language` 缺省返回 `{"lang":"auto"}`。
+  - 已编译并 OTA 上传验证：车上 `/api/status` 确认 `version=v1.7.69`；本机 NVS 存有显式中文偏好，`GET /api/language` 返回 `{"lang":"zh"}`——显式选择优先于自动检测，行为符合设计；缺省 `auto` 路径由测试断言覆盖。
 
 ## 2026-08-14 v1.7.67
 

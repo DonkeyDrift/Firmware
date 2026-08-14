@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-14 v1.7.65
+
+- 固件版本号从 `v1.7.64` 更新到 `v1.7.65`。
+- feat(WebConsole): Drifter Console 顶栏标题左侧新增头盔 logo 图标
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：主标题 `<h1>` 前新增 `<img class="headerLogo" src="/favicon.png" alt="Drifter Console">`；新增 `.headerLogo` 样式（32x32、8px 圆角、1px 描边 `#2b3441`、`align-self:center`），与 Donkey 页面（launcher）顶栏 logo 完全同款；浅色主题新增 `html[data-theme="light"] .headerLogo{border-color:#d5dce4}` 覆盖。图标直接复用固件已内嵌的 `/favicon.png`（与 `Projects/logo.png` 逐字节相同的头盔图，md5 一致），不新增二进制资源、固件体积零增长。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.65。
+  - `tests/test_firmware_feature_flags.py`：新增 `test_web_console_header_logo_left_of_title`（logo 标签、深色/浅色 `.headerLogo` 样式、位于 headerRow 内主标题左侧的位置断言）；版本号断言同步至 v1.7.65。全量 158 项测试通过。
+  - 已编译并 OTA 上传验证：车上 `/api/status` 确认新构建，首页返回含 headerLogo 标签，`/favicon.png` 正常服务 13782 字节。
+
 ## 2026-08-14 v1.7.64
 
 - 固件版本号从 `v1.7.63` 更新到 `v1.7.64`。

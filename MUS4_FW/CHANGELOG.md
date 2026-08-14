@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-14 v1.7.67
+
+- 固件版本号从 `v1.7.66` 更新到 `v1.7.67`。
+- feat(WebConsole): Drifter Console 默认主题由深色改回"跟随系统"，与 DonkeyDrifter `web_ui` / Donkey launcher 同口径
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：首屏防闪烁内联脚本改为 `if(t!=='light'&&t!=='dark')` 一律经 matchMedia 解析系统主题（无存储/`'auto'`/非法值均跟随系统）；`let uiTheme='dark'` 改回 `let uiTheme='auto'`；`readStoredTheme()` 无存储/异常时的回退值由 `'dark'` 改回 `'auto'`。用户显式点选浅色/深色后仍以存储值为准。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.67。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 断言同步（默认值 `'auto'`、首屏内联脚本新形式、docstring 更新）；浅色皮肤测试的"主题骨架"断言同步；版本号断言同步至 v1.7.67。
+
 ## 2026-08-14 v1.7.66
 
 - 固件版本号从 `v1.7.65` 更新到 `v1.7.66`。

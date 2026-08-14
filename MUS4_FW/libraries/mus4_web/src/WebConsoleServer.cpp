@@ -90,8 +90,8 @@ static uint32_t wifiWebDataMaxDtMs = 0;
 static uint32_t wifiWebCommandMaxDtMs = 0;
 
 // Web UI language preference (runtime mirror of NVS "webui"/"lang";
-// "zh" or "en", default "zh" so first boot shows the Chinese console)
-static String webUiLang = "zh";
+// "auto"/"zh"/"en", default "auto" so first boot follows the browser language)
+static String webUiLang = "auto";
 
 // 上位机配网状态（通过 Serial2 接收来自 Linux 上位机的响应）
 String hostWifiStatus = "IDLE";
@@ -689,27 +689,29 @@ static void handleWifiWebMuteSet()
 // ---------------------------------------------------------------------------
 // Web UI language preference
 //
-// Persisted in NVS namespace "webui", key "lang" (String "zh"/"en"), default
-// "zh" when the key is absent so a fresh device boots into the Chinese
-// console. Open endpoints like mute/judge-config: the wireless command
-// permission layering only applies to console commands.
+// Persisted in NVS namespace "webui", key "lang" (String "auto"/"zh"/"en"),
+// default "auto" when the key is absent so a fresh device follows the browser
+// language (web pages resolve "auto" via navigator.language). An explicit
+// zh/en choice overrides auto-detection and survives reboots. Open endpoints
+// like mute/judge-config: the wireless command permission layering only
+// applies to console commands.
 
 static bool isValidWebUiLang(const String& lang)
 {
-    return lang == "zh" || lang == "en";
+    return lang == "zh" || lang == "en" || lang == "auto";
 }
 
 static void loadWebUiLanguagePreference()
 {
     Preferences prefs;
     if (!prefs.begin("webui", true)) {
-        webUiLang = "zh";
-        mus4LogLine("web", "lang pref load failed, default zh");
+        webUiLang = "auto";
+        mus4LogLine("web", "lang pref load failed, default auto");
         return;
     }
-    String lang = prefs.getString("lang", "zh");
+    String lang = prefs.getString("lang", "auto");
     prefs.end();
-    webUiLang = isValidWebUiLang(lang) ? lang : "zh";
+    webUiLang = isValidWebUiLang(lang) ? lang : "auto";
 }
 
 static bool saveWebUiLanguagePreference(const String& lang)
@@ -1582,7 +1584,7 @@ void setupWebConsoleServer()
     wifiWebServer.on("/update", HTTP_GET, handleWifiWebUpdateGet);
     wifiWebServer.on("/update", HTTP_POST, handleWifiWebUpdatePost, handleWifiWebUpdateUpload);
     wifiWebServer.onNotFound(handleWifiWebCaptivePortalNotFound);
-    // Load the persisted Web UI language preference once at server init (default: zh)
+    // Load the persisted Web UI language preference once at server init (default: auto)
     loadWebUiLanguagePreference();
     wifiWebServer.begin();
 }

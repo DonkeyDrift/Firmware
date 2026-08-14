@@ -274,10 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.65"' in build_info
-    assert "v1.7.65" in changelog
-    assert "v1.7.64" in changelog
-    assert changelog.index("v1.7.65") < changelog.index("v1.7.64")
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.69"' in build_info
+    assert "v1.7.69" in changelog
+    assert "v1.7.68" in changelog
+    assert changelog.index("v1.7.69") < changelog.index("v1.7.68")
 
 
 def test_host_ip_report_channel():
@@ -1405,6 +1405,52 @@ def test_web_console_header_logo_left_of_title():
     logo_pos = source.index('<img class="headerLogo" src="/favicon.png" alt="Drifter Console">')
     h1_pos = source.index('<h1 data-i18n="app.title">Drifter Console</h1>')
     assert header_pos < logo_pos < h1_pos
+
+
+def test_web_console_mobile_header_layout():
+    """窄屏（手机/平板竖屏，max-width:820px）头部重排为固定 4 行：
+    第 1 行 logo + 标题 + GitHub + 版本号（紧跟 GitHub 右侧，整体左排）；
+    第 2 行 进入 Donkey / 进入 DonkeyDrifter；
+    第 3 行 红绿蓝（最左）+ OTA + 静音 + DEV（margin-left:auto 贴合最右端）；
+    第 4 行 主题切换（左）+ 语言切换（右）。
+    实现方式：headerRow 保持 flex-wrap，DOM 中三个 .rowBreak 分隔 span 桌面
+    display:none，窄屏下 display:block + flex-basis:100% 强制换行，各元素用
+    order 重排。桌面布局规则不动，仅靠媒体查询覆盖。"""
+
+    source = firmware_source_text()
+
+    assert ".rowBreak{display:none}" in source
+    assert '<span class="rowBreak br1"></span>' in source
+    assert '<span class="rowBreak br2"></span>' in source
+    assert '<span class="rowBreak br3"></span>' in source
+    # br1 紧跟版本号、br2 在语言切换与 OTA 之间、br3 在 DEV 开关后（headerRow 末尾）
+    assert '<span class="version" id="versionLabel">--</span><span class="rowBreak br1"></span>' in source
+    assert '>English</button></span><span class="rowBreak br2"></span><a href="/update" class="otaLink">' in source
+    assert '<span class="slider"></span></label><span class="rowBreak br3"></span></div>' in source
+    assert "@media (max-width:820px){.headerRow{align-items:center;gap:8px}" in source
+    assert ".rowBreak{display:block;flex-basis:100%;height:0}" in source
+    # 第 1 行：logo + 标题 + GitHub + 版本号（紧跟 GitHub 右侧，不再 margin-left:auto 右推）
+    assert ".headerLogo{order:1}" in source
+    assert ".headerRow h1{order:2}" in source
+    assert ".ghLink{order:3}" in source
+    assert "#versionLabel{order:4}" in source
+    assert "#versionLabel{order:4;margin-left:auto}" not in source
+    assert ".br1{order:5}" in source
+    # 第 2 行：进入 Donkey / 进入 DonkeyDrifter
+    assert "#enterDonkeyBtn{order:6}" in source
+    assert "#enterDonkeyDrifterBtn{order:7}" in source
+    assert ".br2{order:8}" in source
+    # 第 3 行（倒数第二行）：红绿蓝（最左）+ OTA + 静音（桌面右推 margin-left:auto 复位）
+    # + DEV（margin-left:auto 贴合页面最右端）
+    assert "#ledBlinkTabs{order:9}" in source
+    assert ".headerRow .otaLink{order:10}" in source
+    assert "#muteToggle{order:11;margin-left:0}" in source
+    assert "#devModeToggle{order:12;margin-left:auto}" in source
+    assert ".br3{order:13}" in source
+    # 第 4 行：主题切换（左）+ 语言切换（margin-left:auto 贴合最右端，不再隐藏）
+    assert "#themeTabs{order:14}" in source
+    assert ".headerRow .langTabs:not([id]){order:15;margin-left:auto}" in source
+    assert ".headerRow .langTabs:not([id]){display:none}" not in source
 
 
 def test_web_console_language_tabs_wired_to_set_language():
@@ -3849,25 +3895,44 @@ def test_web_console_mute_api_persists_nvs_preference():
 
 def test_web_console_language_api_persists_nvs_preference():
     """v1.7.46：/api/language GET/POST 端点读写界面语言，语言偏好经 Preferences
-    持久化到 NVS 命名空间 "webui"、键 "lang"（String "zh"/"en"），缺省 "zh"
-    （首次启动默认中文），非法值 400 invalid_value。"""
+    持久化到 NVS 命名空间 "webui"、键 "lang"（String），非法值 400 invalid_value。
+    v1.7.68：取值扩展为三态 "auto"/"zh"/"en"，缺省 "auto"（跟随浏览器语言，
+    由页面端 navigator.language 解析），显式 zh/en 覆盖自动检测并跨重启保持。"""
     server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
 
     # 路由注册：GET 查询、POST 设置
     assert 'wifiWebServer.on("/api/language", HTTP_GET, handleWifiWebLanguageGet);' in server
     assert 'wifiWebServer.on("/api/language", HTTP_POST, handleWifiWebLanguageSet);' in server
 
-    # NVS 持久化：Preferences 命名空间 "webui"、键 "lang"（String），缺省 zh
-    assert 'static String webUiLang = "zh";' in server
+    # NVS 持久化：Preferences 命名空间 "webui"、键 "lang"（String），缺省 auto
+    assert 'static String webUiLang = "auto";' in server
     assert "static void loadWebUiLanguagePreference()" in server
     assert "static bool saveWebUiLanguagePreference(const String& lang)" in server
-    assert 'prefs.getString("lang", "zh")' in server
+    assert 'prefs.getString("lang", "auto")' in server
     assert 'prefs.putString("lang", lang)' in server
     assert 'loadWebUiLanguagePreference();' in server
 
     # 非法值与错误路径与 mute 同款：缺参/非法 400 invalid_value、写失败 500
-    assert 'return lang == "zh" || lang == "en";' in server
+    assert 'return lang == "zh" || lang == "en" || lang == "auto";' in server
     assert server.count('\\"error\\":\\"invalid_value\\"') >= 4
+
+
+def test_web_console_language_auto_detects_browser_language():
+    """v1.7.68：设备语言偏好缺省 "auto" 时，四个页面启动后经 navigator.language
+    自动选择界面语言（zh 开头→中文，其余→英文），检测结果写入 localStorage 作
+    离线兜底；用户手动切换语言仍 POST 显式 zh/en 持久化，覆盖自动检测。"""
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+
+    detect = "function detectBrowserLanguage(){try{return String(navigator.language||'').toLowerCase().indexOf('zh')===0?'zh':'en'}catch(e){return 'zh'}}"
+    auto_branch = "else if(j&&j.lang==='auto'){lang=detectBrowserLanguage();writeStoredLanguage(lang)}"
+    # 主控制台 + JUDGE/DRIFT/UPDATE 四个页面均为自包含 i18n 核心，逐页断言
+    assert assets.count(detect) == 4
+    assert assets.count(auto_branch) == 4
+
+    # 主控制台：手动切换仍显式持久化 zh/en（覆盖 auto），不受自动检测影响
+    console = _page_region(assets, "WIFI_WEB_CONSOLE_HTML")
+    assert "fetch('/api/language?lang='+uiLang,{method:'POST'})" in console
+    assert "function setLanguage(lang)" in console
 
 
 def test_firmware_version_bumped_to_v1_7_47_for_help_modal_donkeydrifter_layout():
@@ -3951,6 +4016,8 @@ def test_web_console_sub_pages_follow_device_language():
         assert "async function initLanguage()" in page
         assert "fetch('/api/language'" in page
         assert "function applyLanguage(lang)" in page
+        assert "function detectBrowserLanguage()" in page
+        assert "j.lang==='auto'" in page
         assert page.count("initLanguage()") == 2, f"{marker} initLanguage 应恰好 1 定义 + 1 调用"
         assert "setLanguage" not in page, f"{marker} 不应带语言切换 UI（跟随设备偏好）"
 

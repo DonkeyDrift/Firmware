@@ -274,11 +274,11 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.74"' in build_info
-    # v1.7.74 的 CHANGELOG 条目由"收尾"流程补登，此处仍校验既有条目的顺序
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.75"' in build_info
+    assert "v1.7.75" in changelog
+    assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
-    assert "v1.7.72" in changelog
-    assert changelog.index("v1.7.73") < changelog.index("v1.7.72")
+    assert changelog.index("v1.7.75") < changelog.index("v1.7.73")
 
 
 def test_host_ip_report_channel():
@@ -387,7 +387,8 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "localStorage.getItem(CMD_TARGET_KEY)" in source
     assert "applyCmdTarget(saved||'serial',false)" in source
     assert "restoreCmdTarget();" in source
-    # 切换目标时隐藏日志控件、显示终端；切回 Web 恢复日志视图
+    # 切换目标时显示终端、隐藏日志区，工具行（暂停/清空/发送/输入框/下拉）保持显示；
+    # 切回 Web 恢复日志视图
     assert "function applyCmdTarget(src,save)" in source
     assert "if(term)startTerminal();else switchLogSource('web');" in source
     assert "cmdTarget.addEventListener('change',e=>{applyCmdTarget(e.target.value)});" in source

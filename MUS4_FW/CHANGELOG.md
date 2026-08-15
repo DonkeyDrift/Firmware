@@ -1,15 +1,24 @@
 # CHANGELOG.md
 
-## 2026-08-15 v1.7.89
+## 2026-08-15 v1.7.90
 
+- 固件版本号从 `v1.7.89` 更新到 `v1.7.90`（避让：并行会话 #77 RGB 切换键总高修正已占用 v1.7.89）。
 - feat(WebConsole): Serial 终端标签页名字跟随终端内输入的命令（首个词），由上位机终端页 postMessage 上报
   - `libraries/mus4_web/src/WebConsoleAssets.h`：
     - 新增 `window.addEventListener('message',...)`：校验 `type==='donkeydrifter.term.name'`，按 `e.source` 匹配 `termList` 里的 iframe（`x.f.contentWindow`），把该标签的 `.termTabLabel` 改为上报名（如输入 `kimi` 回车 → 标签显示 `kimi`；输入 `abc defg hijk` → 显示 `abc`），并同步 `b.title` 悬浮提示。
     - 连续重编号避让自定义名：杀标签后的重编号改为 `x.name||'终端 N'`——已命名的标签保持自定义名，未命名的维持位置编号；term 对象新增 `name` 字段（默认 null）。
   - 配套：DonkeyDrift 仓库 `terminal_static/terminal.html` 新增行捕获（回车提交首词、退格/转义处理、备用屏幕缓冲区 TUI 内不跟踪）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.90。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 message 监听/e.source 匹配/自定义名优先重编号断言；版本链延伸至 v1.7.90。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.90`。
+
+## 2026-08-15 v1.7.89
+
+- fix(WebConsole): DC 头部 RGB 闪烁颜色切换键（#ledBlinkTabs）总高修正为 34px，与 DD 语言/主题两个切换键完全一致
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：容器规则由 `#ledBlinkTabs{height:auto;padding:4px 2px}` 改为 `#ledBlinkTabs{height:34px;padding:4px 2px}`——DD 切换键总高 34px（按钮 24px + 容器上下各 4px 内边距 + 上下各 1px 边框），本容器继承 `.langTabs` 的 `box-sizing:border-box` 后以固定 34px 对齐（inset 投影描边不另占高度）；按钮 24px、连体椭圆机制与红绿蓝配色（#ff6b6b/#39d98a/#5cc8ff）均不变。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.89。
-  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 message 监听/e.source 匹配/自定义名优先重编号断言；版本链延伸至 v1.7.89。
-  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.89`。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新容器高度断言与注释，版本链延伸至 v1.7.89。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 确认。
 
 ## 2026-08-15 v1.7.88
 

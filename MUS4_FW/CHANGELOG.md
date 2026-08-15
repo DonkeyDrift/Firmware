@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.87
+
+- feat(WebConsole): Serial 终端标签页加独立关闭叉 ×、浅色皮肤；工具行按"Serial/Web 开关 → ➕ → 🗑 → 标签条"重排
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 工具行 DOM 重排：`#cmdTarget`（Serial/Web 切换）移到最左，右侧依次 ➕ `#newTermBtn`、🗑 `#clearBtn`、`#termTabs` 标签条；`#pauseBtn`/`#sendBtn`/`#cmd`（仅 Web 模式可见）排最后，Web 模式下开关同样最左。
+    - 每个终端标签左侧新增 × 关闭钮（`.termTabClose` 子元素 + `terminal.closeTab` 中英词条）：点击 × 调 `killTerminalTab(id)` 按 id 关闭对应终端——不再只能杀当前选中标签；× 点击 `stopPropagation`，不触发标签切换。`killActiveTerminalTab()` 改为 `killTerminalTab(termActive)` 包装，垃圾桶行为不变。
+    - 标签文字拆为 `.termTabLabel` 子 span（原 `b.textContent=` 赋值会抹掉 × 子元素），v1.7.80 的连续重编号改写 label span；× 关闭任意标签后同样触发重编号（杀掉终端1后终端2 自动改名终端1，以此类推）。
+    - 标签浅色皮肤：`html[data-theme="light"]` 下新增 `.termTab`（白底深字）、`.termTab.active`（蓝字浅蓝底 `#eaf3fb`/`#0b6bcb`）、`.termTabClose:hover`、`.terminalHint` 四条覆写；终端画布区域（`#terminalWrap`/`.termFrame`/iframe 内 xterm）保持深色不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.87。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新工具行 DOM 顺序断言、`.termTabLabel`/重编号断言，新增 × 关闭钮、`killTerminalTab(id)`、浅色覆写、`terminal.closeTab` 词条断言；版本链延伸至 v1.7.87。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.87`。
+
 ## 2026-08-15 v1.7.86
 
 - 固件版本号从 `v1.7.85` 更新到 `v1.7.86`（避让：并行会话已合入 #68/#69/#72/#73/#74 占用开发期间使用的号段，合入前统一改号）。

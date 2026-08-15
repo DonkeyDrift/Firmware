@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.92"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.93"' in build_info
+    assert "v1.7.93" in changelog
     assert "v1.7.92" in changelog
     assert "v1.7.91" in changelog
     assert "v1.7.90" in changelog
@@ -295,6 +296,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.93") < changelog.index("## 2026-08-15 v1.7.92")
     assert changelog.index("## 2026-08-15 v1.7.92") < changelog.index("## 2026-08-15 v1.7.91")
     assert changelog.index("## 2026-08-15 v1.7.91") < changelog.index("## 2026-08-15 v1.7.90")
     assert changelog.index("## 2026-08-15 v1.7.90") < changelog.index("## 2026-08-15 v1.7.89")
@@ -432,12 +434,12 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "pauseBtn.style.display=term?'none':'';" in source
     assert "sendBtn.style.display=term?'none':'';" in source
     assert "cmd.style.display=term?'none':'';" in source
-    assert "if(term){if(!termInited)addTerminalTab()}else switchLogSource('web');" in source
+    assert "if(term){if(!termInited)addTerminalTab();fitTermTabLabels()}else switchLogSource('web');" in source
     assert "cmdTarget.addEventListener('change',e=>{applyCmdTarget(e.target.value)});" in source
     # 标签页管理：动态 iframe（保留 #57 白边修复 scrolling="no"）+ 探活后设 src，
     # 每个 iframe 独立 PTY 会话；点标签只切换显示（其余 display:none 保活）；
     # v1.7.88 起垃圾桶按钮移除（Serial 用标签上的 × 关闭，Web 清空日志按钮一并移除）；
-    # v1.7.92 起 ➕ 移出标签滚动区、作为其右邻兄弟钉在行尾（始终靠右），新标签 appendChild 进滚动区
+    # v1.7.93 起 ➕ 移出标签滚动区、作为其右邻兄弟钉在行尾（始终靠右），新标签 appendChild 进滚动区
     assert 'id="newTermBtn"' in source
     assert 'id="clearBtn"' not in source
     assert "onClearBtn" not in source
@@ -448,9 +450,12 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "f.setAttribute('scrolling','no')" in source
     assert "function selectTerminalTab(id)" in source
     # 标签按位置连续编号（v1.7.80）：新建用 termList.length+1，杀标签后剩余标签重编号；
-    # 标签文字放在 .termTabLabel 子 span（v1.7.87 起）；v1.7.92 起默认名改为纯数字（原"终端 N"）
-    assert "l.textContent=''+(termList.length+1);" in source
-    assert "termList.forEach((x,j)=>{x.l.textContent=x.name||''+(j+1)});" in source
+    # 标签文字放在 .termTabLabel 子 span（v1.7.87 起）；v1.7.93 起默认名智能缩写（放得下显示"终端 N"、放不下缩写为 N）
+    assert "l.textContent=t('terminal.tab')+' '+(termList.length+1);" in source
+    assert "function fitTermTabLabels()" in source
+    assert "termTabs.scrollWidth>termTabs.clientWidth" in source
+    assert "packed?''+(j+1):t('terminal.tab')+' '+(j+1)" in source
+    assert "window.addEventListener('resize',fitTermTabLabels)" in source
     # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端，
     # 点击 stopPropagation 不触发标签切换
     assert "c.className='termTabClose'" in source
@@ -477,15 +482,16 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     # 标签条样式：横向滚动 + 选中态高亮
     assert "#termTabs{display:none;align-items:center;gap:4px;overflow-x:auto" in source
     assert ".termTab.active{" in source
-    # v1.7.92：标签条隐藏滚动条（溢出时行高与布局不变、窗口比例不被修改）；➕ 钉在行尾右端
+    # v1.7.93：标签条隐藏滚动条（溢出时行高与布局不变、窗口比例不被修改）；➕ 钉在行尾右端
     assert "scrollbar-width:none" in source
     assert "#termTabs::-webkit-scrollbar{display:none}" in source
     assert "#newTermBtn{width:22px;height:22px;flex:0 0 auto}" in source
     assert "#termTabs .iconButton" not in source
-    # i18n：新建/关闭/空态词条 + 加载/失败提示（中英双语）；v1.7.92 起默认名纯数字，terminal.tab 词条移除
+    # i18n：新建/标签/关闭/空态词条 + 加载/失败提示（中英双语）；terminal.tab 保留（放得下时默认名"终端 N"）
     assert "I18N.zh['terminal.new']" in source
     assert "I18N.en['terminal.new']" in source
-    assert "terminal.tab" not in source
+    assert "I18N.zh['terminal.tab']" in source
+    assert "I18N.en['terminal.tab']" in source
     # v1.7.88 起 terminal.kill 词条随垃圾桶按钮一并移除
     assert "terminal.kill" not in source
     assert "I18N.zh['terminal.empty']" in source

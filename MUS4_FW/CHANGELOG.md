@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.77
+
+- 固件版本号从 `v1.7.76` 更新到 `v1.7.77`。
+- fix(WebConsole): 主题切换键补浅色主题覆写，浅色页面下不再是突兀的深色胶囊
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：在 v1.7.76 新增的 5 条 `#themeTabs` 基础规则之后追加 5 条 `html[data-theme="light"]` 前缀覆写（优先级天然高于基础规则；`dataset.theme` 是 `applyTheme()` 写入的解析后主题，跟随系统时也会正确落到 light/dark）：
+    - 容器浅色化：`background:#dde3ec`、`border-color:#aeb9c7`（取自 DC 浅色主题既有 `.langTabs` 令牌）；
+    - 未选中按钮 `color:#5b6b7d`，hover 文字变 `#0b2536`（同样取自浅色 `.langTabs`）；
+    - 选中段两种主题都保持 `background:#0891b2`（cyan-600）白字不变。
+    - 深色主题外观与 v1.7.76 完全一致（zinc 深色胶囊），无回归；容器 34px 高度、圆角、按钮尺寸等结构不变；移动端 `#themeTabs{order:15}` 媒体查询不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.77。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 补 5 条浅色覆写规则断言，更新"颜色写死不随主题变化"过时描述为"深色写死 zinc 配色 + 浅色覆写 DC 浅色令牌，选中段两主题均 cyan-600"；版本号断言同步至 v1.7.77。
+  - 验证：编译通过；全量 pytest 通过；HTTP OTA 上传后车上 `/api/status` 确认 `version=v1.7.77`；Playwright 无头实测浅色模式容器 rgb(221,227,236)/边框 rgb(174,185,199)/未选中 rgb(91,107,125)、深色模式保持 rgb(39,39,42)/rgb(63,63,70)/rgb(161,161,170) 不回归，两种模式选中段均 cyan-600 白字、高度均 34px，深浅色截图确认。
+
 ## 2026-08-15 v1.7.76
 
 - 固件版本号从 `v1.7.75` 更新到 `v1.7.76`。

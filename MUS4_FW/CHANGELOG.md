@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.76
+
+- 固件版本号从 `v1.7.75` 更新到 `v1.7.76`。
+- feat(WebConsole): Serial 终端工具行精简——隐藏输入框/发送/暂停键，新增"➕新开终端窗口"按钮
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 工具行新增 `#newTermBtn`（加号图标，`onclick="openNewTerminal()"`，i18n `terminal.new` 中英词条）；`openNewTerminal()` 复用 `terminalUrl()` 的 `_launcherIp` 自动发现机制，`window.open(..., '_blank')` 新开浏览器标签页加载上位机终端页——每个标签页独立 PTY 会话，**不杀已有终端窗口**。
+    - `applyCmdTarget()`：Serial 模式显示加号按钮、隐藏暂停/发送/输入框（垃圾桶与目标下拉保持显示）；Web 模式反之，排版与既有行为不变。
+    - 元素常量表新增 `newTermBtn`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.76。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.76；serial 终端切换测试更新为"Serial 隐藏暂停/发送/输入框、显示加号按钮"新行为断言；工具行 HTML 断言同步加号按钮。
+  - 验证：全量 322 项 pytest 通过，内嵌 5 个 script 块 node --check 通过；编译通过并 HTTP OTA 上传，车上 `/api/status` 确认 `version=v1.7.76`。
+
 ## 2026-08-15 v1.7.75
 
 - 固件版本号从 `v1.7.73` 更新到 `v1.7.75`（跳过 v1.7.74：该号已被 #61 `Tony-kimi-code-web` 占用）。

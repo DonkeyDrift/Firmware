@@ -2,10 +2,21 @@
 
 ## 2026-08-15 v1.7.82
 
-- 固件版本号从 `v1.7.79` 更新到 `v1.7.82`（避让：v1.7.80 已被 open PR #71 `Tony-dc-header-center` 的 DC 头部对齐改动占用，v1.7.81 已被 `Tony-dc-theme-switch-dd` 分支占用）。
+- 固件版本号定版 `v1.7.82`（避让：v1.7.80 已被 #72 `Tony-serial-tab-renumber` 并入 Tony，v1.7.81 已被 `Tony-dc-theme-switch-dd` 分支占用），自 Tony 顶端 `v1.7.79` 更新而来。
 - fix(WebConsole): RGB 闪烁颜色切换键加高至与 DonkeyDrifter 深浅色/中英文切换键一致（总高 32px），连体椭圆与配色不变
   - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `#ledBlinkTabs{height:auto;padding:4px 2px}` 覆盖共享 `.langTabs` 容器（24px 按钮 + 上下各 4px 内边距 = 32px，对齐 DD `ThemeSwitcher`/`LanguageSwitcher` 的 p-1 + py-1 尺寸）。
   - `tests/test_firmware_feature_flags.py`：`test_web_console_led_blink_color_selector` 新增容器规则断言。
+
+## 2026-08-15 v1.7.80
+
+- 固件版本号从 `v1.7.79` 更新到 `v1.7.80`。
+- feat(WebConsole): Serial 终端标签按位置连续编号——杀掉某个标签后，其后的标签自动重编号（如杀"终端 1"后原"终端 2"变为"终端 1"，以此类推）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `addTerminalTab()`：新标签文字由内部自增 id 改为位次 `termList.length+1`（id 仍仅作选中标识内部使用）。
+    - `killActiveTerminalTab()`：`splice` 后对 `termList` 按位次重排全部标签文字（`终端 N`/`Term N` 随 i18n 词条语言）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.80。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.80；serial 终端测试新增连续编号两条断言（新建按位次、杀后重编号）。
+  - 验证：全量 pytest 通过；编译通过并 HTTP OTA 上传，车上 `/api/status` 确认 `version=v1.7.80`。
 
 ## 2026-08-15 v1.7.79
 

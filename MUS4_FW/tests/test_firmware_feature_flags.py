@@ -276,6 +276,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
 
     assert '#define MUS4_FIRMWARE_VERSION "v1.7.82"' in build_info
     assert "v1.7.82" in changelog
+    assert "v1.7.80" in changelog
     assert "v1.7.79" in changelog
     assert "v1.7.78" in changelog
     assert "v1.7.77" in changelog
@@ -283,7 +284,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.75" in changelog
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
-    assert changelog.index("v1.7.82") < changelog.index("v1.7.79")
+    assert changelog.index("v1.7.82") < changelog.index("v1.7.80")
+    assert changelog.index("v1.7.80") < changelog.index("v1.7.79")
     assert changelog.index("v1.7.79") < changelog.index("v1.7.78")
     assert changelog.index("v1.7.78") < changelog.index("v1.7.77")
     assert changelog.index("v1.7.77") < changelog.index("v1.7.76")
@@ -421,6 +423,9 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "function selectTerminalTab(id)" in source
     assert "function killActiveTerminalTab()" in source
     assert "function onClearBtn(){if(cmdTarget.value==='serial')killActiveTerminalTab();else clearLog()}" in source
+    # 标签按位置连续编号（v1.7.80）：新建用 termList.length+1，杀标签后剩余标签重编号
+    assert "b.textContent=t('terminal.tab')+' '+(termList.length+1);" in source
+    assert "termList.forEach((x,j)=>{x.b.textContent=t('terminal.tab')+' '+(j+1)});" in source
     # 新开浏览器标签的旧逻辑已删除
     assert "openNewTerminal" not in source
     assert "window.open(terminalUrl" not in source

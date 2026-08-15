@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.95
+
+- 固件版本号从 `v1.7.92` 更新到 `v1.7.95`（避让：并行会话 #80 入口按键去前缀占用 v1.7.92、#82 主题/语言切换键重设计与 RGB 粗框占用 v1.7.93/v1.7.94）。
+- fix(WebConsole): 终端标签过多时标签条内部滚动、不再改变窗口比例；➕ 钉在行尾右端；默认标签名智能缩写（标签条放不下时缩写为纯数字）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 标签条溢出不改布局：`#termTabs` 增加 `scrollbar-width:none` + `#termTabs::-webkit-scrollbar{display:none}`——溢出时横向滚动但不再出现滚动条（此前 6+ 标签时滚动条挤出额外行高、工具行比例被改变）；`flex:1 1 auto;min-width:0` 不变，条内滚动不撑宽页面。
+    - ➕ 始终靠右：`#newTermBtn` 从 `#termTabs` 滚动区内移出、作为其右邻兄弟元素钉在行尾（`#newTermBtn{width:22px;height:22px;flex:0 0 auto}`，替代原 `#termTabs .iconButton` 规则），无论多少个标签都固定可见；`addTerminalTab()` 改回 `termTabs.appendChild(b)`。
+    - 默认标签名智能缩写：新增 `fitTermTabLabels()`——标签条溢出（`termTabs.scrollWidth>termTabs.clientWidth`）时未命名标签缩写为纯数字 N，放得下时恢复 `t('terminal.tab')+' '+N`（“终端 N”/“Term N”）；新建、杀标签、窗口 resize（`window.addEventListener('resize',fitTermTabLabels)`）、切回 Serial（`applyCmdTarget`）时均重算；v1.7.90 的自定义改名标签（`x.name` 非空）跳过不受影响；i18n `terminal.tab` 中英词条保留。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.95。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新工具行 DOM、`appendChild`、`fitTermTabLabels` 智能缩写（`scrollWidth>clientWidth`、`packed` 三元、`resize` 监听）、`applyCmdTarget` 切回重算断言，新增隐藏滚动条与 `#newTermBtn` 钉右样式断言；`terminal.tab` 词条为存在断言；版本链延伸至 v1.7.95。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.95`。
+
 ## 2026-08-15 v1.7.94
 
 - feat(WebConsole): RGB 闪烁颜色开关（.langTabs）外框升级为 DC 粗框语言——外圈 1px border + 内圈 1px inset 描边，与主题/中英文切换键同款（避让：并行会话 #78/#79/#80 已占用 v1.7.88-v1.7.92，本分支两条目改号 v1.7.93/v1.7.94）

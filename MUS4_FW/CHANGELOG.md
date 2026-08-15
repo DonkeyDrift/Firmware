@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.82
+
+- 固件版本号定版 `v1.7.82`（避让：v1.7.80 已被 #72 `Tony-serial-tab-renumber` 并入 Tony，v1.7.81 已被 `Tony-dc-theme-switch-dd` 分支占用），自 Tony 顶端 `v1.7.79` 更新而来。
+- fix(WebConsole): RGB 闪烁颜色切换键加高至与 DonkeyDrifter 深浅色/中英文切换键一致（总高 32px），连体椭圆与配色不变
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `#ledBlinkTabs{height:auto;padding:4px 2px}` 覆盖共享 `.langTabs` 容器（24px 按钮 + 上下各 4px 内边距 = 32px，对齐 DD `ThemeSwitcher`/`LanguageSwitcher` 的 p-1 + py-1 尺寸）。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_led_blink_color_selector` 新增容器规则断言。
+
 ## 2026-08-15 v1.7.80
 
 - 固件版本号从 `v1.7.79` 更新到 `v1.7.80`。

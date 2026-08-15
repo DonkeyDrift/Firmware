@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.88"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.89"' in build_info
+    assert "v1.7.89" in changelog
     assert "v1.7.88" in changelog
     assert "v1.7.87" in changelog
     assert "v1.7.86" in changelog
@@ -291,6 +292,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.89") < changelog.index("## 2026-08-15 v1.7.88")
     assert changelog.index("## 2026-08-15 v1.7.88") < changelog.index("## 2026-08-15 v1.7.87")
     assert changelog.index("## 2026-08-15 v1.7.87") < changelog.index("## 2026-08-15 v1.7.86")
     assert changelog.index("## 2026-08-15 v1.7.86") < changelog.index("## 2026-08-15 v1.7.85")
@@ -442,12 +444,18 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     # 标签按位置连续编号（v1.7.80）：新建用 termList.length+1，杀标签后剩余标签重编号；
     # 标签文字放在 .termTabLabel 子 span（v1.7.87 起，避免 textContent 赋值抹掉 × 子元素）
     assert "l.textContent=t('terminal.tab')+' '+(termList.length+1);" in source
-    assert "termList.forEach((x,j)=>{x.l.textContent=t('terminal.tab')+' '+(j+1)});" in source
+    assert "termList.forEach((x,j)=>{x.l.textContent=x.name||t('terminal.tab')+' '+(j+1)});" in source
     # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端，
     # 点击 stopPropagation 不触发标签切换
     assert "c.className='termTabClose'" in source
     assert "c.onclick=e=>{e.stopPropagation();killTerminalTab(id)};" in source
     assert "function killTerminalTab(id)" in source
+    # 标签名跟随终端内输入命令（v1.7.89）：上位机终端页把每行输入的首词
+    # postMessage 给父页，父页按 e.source 匹配 iframe 改名；重编号时自定义名优先
+    assert "window.addEventListener('message',e=>{" in source
+    assert "d.type!=='donkeydrifter.term.name'" in source
+    assert "x.f.contentWindow===e.source" in source
+    assert "cur.name=d.name;cur.l.textContent=d.name;" in source
     assert ".termTabClose{" in source
     assert "I18N.zh['terminal.closeTab']" in source
     assert "I18N.en['terminal.closeTab']" in source

@@ -274,7 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.83"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.86"' in build_info
+    assert "v1.7.86" in changelog
+    assert "v1.7.85" in changelog
+    assert "v1.7.84" in changelog
     assert "v1.7.83" in changelog
     assert "v1.7.82" in changelog
     assert "v1.7.80" in changelog
@@ -286,6 +289,9 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.86") < changelog.index("## 2026-08-15 v1.7.85")
+    assert changelog.index("## 2026-08-15 v1.7.85") < changelog.index("## 2026-08-15 v1.7.84")
+    assert changelog.index("## 2026-08-15 v1.7.84") < changelog.index("## 2026-08-15 v1.7.83")
     assert changelog.index("## 2026-08-15 v1.7.83") < changelog.index("## 2026-08-15 v1.7.82")
     assert changelog.index("## 2026-08-15 v1.7.82") < changelog.index("## 2026-08-15 v1.7.80")
     assert changelog.index("## 2026-08-15 v1.7.80") < changelog.index("## 2026-08-15 v1.7.79")
@@ -1456,9 +1462,16 @@ def test_wireless_ota_and_control_safety_guards_remain_present():
 
 
 def test_web_console_uses_dev_label_for_development_switch():
+    """v1.7.80：开关旁 "DEV ON/OFF" 文字标签删除，"DEV" 直接写到开关滑珠上
+    （伪元素 content:"DEV" 随滑珠移动），devHint 提示气泡移到 label 上；
+    JS 不再引用 devModeSwitchText。"""
     source = firmware_source_text()
 
-    assert "DEV <b id=\"devModeSwitchText\">OFF</b>" in source
+    assert "DEV <b id=\"devModeSwitchText\">OFF</b>" not in source
+    assert "devModeSwitchText" not in source
+    assert '<label class="toggleSwitch devHint" id="devModeToggle"><input type="checkbox" id="devModeCheck"' in source
+    assert '#devModeToggle .slider:before{content:"DEV";' in source
+    assert '#devModeToggle.devHint:hover:after{top:36px}' in source
     assert "DEV MODE <b id=\"devModeSwitchText\">OFF</b>" not in source
     assert "DEBUG MODE <b id=\"devModeSwitchText\">OFF</b>" not in source
     assert "Auto OTA <b id=\"devModeSwitchText\">OFF</b>" not in source
@@ -1467,14 +1480,23 @@ def test_web_console_uses_dev_label_for_development_switch():
 def test_web_console_header_and_state_cards_keep_compact_layout():
     source = firmware_source_text()
 
-    assert ".headerRow{display:flex;align-items:flex-end;" in source
+    # v1.7.79/v1.7.80：OTA 按钮并入 34px 规则并按原比例放大字号/内边距；DEV 开关 62×34px 保持原宽高比，
+    # 滑珠 26px、边距 4px、位移 28px，"DEV" 写在滑珠上
+    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,.headerRow .otaLink .otaButton{height:34px}' in source
+    assert '.headerRow .otaLink .otaButton{font-size:16px;padding:0 14px}' in source
+    assert '#devModeToggle .slider{width:62px;height:34px}' in source
+    assert '#devModeToggle .slider:before{content:"DEV";display:flex;align-items:center;justify-content:center;height:26px;width:26px;left:4px;bottom:4px;font-size:9px;font-weight:800;color:#061019}' in source
+    assert '#devModeToggle input:checked+.slider:before{transform:translateX(28px)}' in source
+    # v1.7.78：标题行整行垂直居中（三个"打开"按键 34px 后不再底部对齐）
+    assert ".headerRow{display:flex;align-items:center;" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
     assert ".otaLink{text-decoration:none}" in source
     assert ".otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;line-height:1;text-decoration:none;display:inline-flex;align-items:center;cursor:pointer}" in source
     assert ".devHint{position:relative}" in source
     assert ".devHint:hover:after" in source
     assert "content:'开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。'" in source
-    assert ".version{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block;transform:translateY(-1px)}" in source
+    assert ".version{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block}" in source
+    assert ".ghLink{display:inline-flex;align-items:center;color:#8fa1b5;margin-left:6px}" in source
     assert ".stateGrid{display:grid;gap:10px;align-items:stretch;grid-template-columns:" in source
     assert "#modeCard{grid-area:mode}" in source
     assert "#parkCard{grid-area:park}" in source
@@ -2011,7 +2033,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'继续曲线'" not in source
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
-    assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
+    assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch devHint" id="devModeToggle">' in source
     assert '<button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="onClearBtn()" id="clearBtn" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><div id="termTabs"></div>' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
@@ -4415,7 +4437,11 @@ def test_web_console_header_entry_buttons():
     AbortController 120s 超时，同步上下文先开 about:blank 句柄，成功后导航、失败关闭。
     v1.7.76 三个入口按键高度由 24px 提至 34px（与 DD 侧"打开"按键对齐），
     通过专属规则 #enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}
-    覆盖，.otaButton 基础规则与其他 OTA 按钮保持 24px 不变。"""
+    覆盖，.otaButton 基础规则保持 24px。
+    v1.7.79 该规则扩展选择器追加 .headerRow .otaLink .otaButton（头部 OTA 按钮同高 34px），
+    并新增 #devModeToggle scoped 规则把 DEV 开关轨道加高至 34px。
+    v1.7.80 OTA 按钮与 DEV 开关按原比例加宽（OTA 字号 16px/内边距 14px；开关 62×34px、位移 28px），
+    开关旁 "DEV ON/OFF" 文字删除，"DEV" 写到滑珠上。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4476,8 +4502,8 @@ def test_web_console_header_entry_buttons():
     assert 'enterDonkeyDrifter()' not in assets
 
     # v1.7.76：三个入口按键 34px 高（对齐 DD 侧"打开"按键），专属规则覆盖，
-    # .otaButton 基础规则（含 OTA 按钮）仍是 24px
-    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}' in assets
+    # .otaButton 基础规则保持 24px；v1.7.79 规则扩展追加头部 OTA 按钮
+    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,.headerRow .otaLink .otaButton{height:34px}' in assets
     assert '.otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
 
 def test_web_console_light_theme_overrides():

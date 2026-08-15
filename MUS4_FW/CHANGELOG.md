@@ -1,5 +1,41 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.86
+
+- 固件版本号从 `v1.7.85` 更新到 `v1.7.86`（避让：并行会话已合入 #68/#69/#72/#73/#74 占用开发期间使用的号段，合入前统一改号）。
+- fix(WebConsole): DC 头部 OTA 按钮与 DEV 开关按原比例加宽（保持 34px 高），"DEV" 文字移到开关滑珠上
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页）：
+    - OTA 按钮：34px 高不变，新增 `.headerRow .otaLink .otaButton{font-size:16px;padding:0 14px}`——字号 11→16px、水平内边距 10→14px，按 24→34px 同比例（≈1.42）放大，不再窄高。
+    - DEV 开关：轨道 44×34px 改回原始宽高比 → `width:62px;height:34px`（24px 时的 44:24≈1.83）；滑珠 26px、边距 4px 不变，选中位移改 `translateX(28px)`（=62-26-4-4）。
+    - "DEV" 写在开关上：滑珠伪元素加 `content:"DEV"` + flex 居中（9px 粗体深色字，白珠上读感清晰），随滑珠左右移动。
+    - 删除开关旁文字标签 `<span class="toggleLabel devHint">DEV <b id="devModeSwitchText">OFF</b></span>`；`devHint` 提示气泡移到 `<label>` 上并调整弹出位置（`top:36px`）；JS 同步删除 `devModeSwitchText` 的 const 与两处 `textContent` 更新（否则空指针报错）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.86。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.86；DEV 标签断言改为新结构 + `devModeSwitchText` 不存在；开关规则断言更新为 62px 宽/28px 位移/滑珠文字版。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.86` 确认。
+- 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+
+## 2026-08-15 v1.7.85
+
+- 固件版本号从 `v1.7.84` 更新到 `v1.7.85`（同 v1.7.86 条目避让说明，合入前统一改号）。
+- fix(WebConsole): DC 头部 OTA 按钮与 DEV 开关高度提至 34px，与三个"打开"按键（及 DD 侧按键）同高
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页）：
+    - 34px 专属规则扩展为 `#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,.headerRow .otaLink .otaButton{height:34px}`，覆盖头部 OTA 按钮（无 id，经 `.otaLink` 容器定位，不动 `.otaButton` 基础规则）。
+    - DEV 开关按 `#devModeToggle`  scoped 加高：轨道 `height:34px`（宽度 44px 不变），滑珠等比放大至 26px、边距 4px（`bottom:4px` 保持垂直居中），选中位移相应改为 `translateX(10px)`（=44-26-4-4）。页面其它 `.toggleSwitch` 不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.85。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.85；34px 规则断言同步扩展选择器；补 DEV 开关加高规则断言。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 确认（开发期间用旧号段，合并版随 v1.7.86 复验）。
+- 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+
+## 2026-08-15 v1.7.84
+
+- 固件版本号自 Tony 顶端 `v1.7.83` 更新到 `v1.7.84`（同 v1.7.86 条目避让说明，合入前统一改号）。
+- fix(WebConsole): DC 标题行整行改为垂直居中——#65 把三个"打开"按键提至 34px 后，底部对齐（`align-items:flex-end`）让图标/标题/GitHub 图标/版本号/静音键沉底，现改为 `align-items:center`（手机版媒体查询本就是 center，桌面版对齐之）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页 `WIFI_WEB_CONSOLE_HTML`，DRIFT 页不动）：`.headerRow` 的 `align-items:flex-end` 改为 `center`；`.version` 与 `.ghLink` 去掉为底部对齐补偿用的 `transform:translateY(-1px)`；`.headerLogo` 本有 `align-self:center`、`.muteButton` 无偏移，随整行居中自然生效。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.84。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.84；头部布局断言更新为 `align-items:center` 及无 `translateY` 的 `.version`/`.ghLink` 规则。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 确认（开发期间用旧号段，合并版随 v1.7.86 复验）。
+- 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+
 ## 2026-08-15 v1.7.83
 
 - 固件版本号从 `v1.7.82` 更新到 `v1.7.83`（避让：v1.7.82 已被 #73 `Tony-dc-rgb-tabs-dd` 并入 Tony；更早避让历史：v1.7.78 曾被 #68 `Tony-dc-lang-switch-dd` 占用、v1.7.79/v1.7.80 曾被 #69 `Tony-serial-term-tabs`/#72 `Tony-serial-tab-renumber` 占用，本分支原 v1.7.76/v1.7.77/v1.7.81 条目随合入最新 Tony 合并为本条并定版 v1.7.83）。

@@ -1,30 +1,39 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.80
+
+- 固件版本号从 `v1.7.78` 更新到 `v1.7.80`（避让：v1.7.78 已被 #68 `Tony-dc-lang-switch-dd` 占用、v1.7.79 已被并行分支 `Tony-dc-header-center` 占用；本分支原 v1.7.76/v1.7.77 两条目合入最新 Tony 后合并为本条并定版 v1.7.80）。
+- feat(WebConsole): DC 主题切换键改为与 DonkeyDrifter 相同的分段控件样式，并补浅色模式浅色变体
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 头部主题切换 `<span id="themeTabs">` 的 class 从 `langTabs` 改为独立 `themeSwitch`，不再复用语言切换键的胶囊样式；按钮、`onclick`、`data-theme`、i18n 属性与 `renderThemeTabs()` 等 JS 逻辑全部保持不变。
+    - 新增 5 条 `#themeTabs` 基础 CSS（id 选择器压过浅色主题 `button` 覆写）：容器 `display:inline-flex` + `gap:4px` + `background:#27272a`（zinc-800）+ `border:1px solid #3f3f46`（zinc-700）+ `border-radius:999px` + `padding:4px` + `height:34px`；按钮 `padding:4px 12px`、`height:24px`、`font-size:12px`、`color:#a1a1aa`（zinc-400）、hover 仅文字变 `#e4e4e7`（zinc-200）；选中段 `background:#0891b2`（cyan-600）+ 白字实心圆角胶囊。总高 = 24px 按钮 + 8px padding + 2px border = 34px，与 DD ThemeSwitcher 一致。
+    - 追加 5 条 `html[data-theme="light"]` 浅色覆写（优先级天然高于基础规则；`dataset.theme` 是 `applyTheme()` 写入的解析后主题，跟随系统时也会正确落到 light/dark）：容器 `background:#dde3ec`、`border-color:#aeb9c7`，未选中按钮 `color:#5b6b7d`、hover 文字 `#0b2536`（均取自 DC 浅色 `.langTabs` 既有令牌）；选中段两种主题均保持 cyan-600 白字。浅色页面下不再是突兀的深色胶囊。
+    - 既有移动端媒体查询 `#themeTabs{order:15}` 保留不动，新规则为叠加；主题默认逻辑未动（首屏防闪烁脚本、`let uiTheme='auto'`、`readStoredTheme()` 回退 `'auto'`，默认仍跟随系统）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.80。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 更新描述并补 `class="themeSwitch"`、5 条基础 CSS 与 5 条浅色覆写断言；版本号断言同步至 v1.7.80。
+  - 验证：编译通过；全量 pytest 通过；HTTP OTA 上传后车上 `/api/status` 确认 `version=v1.7.80`；Playwright 无头实测浅色模式容器 rgb(221,227,236)/边框 rgb(174,185,199)/未选中 rgb(91,107,125)，深色模式 rgb(39,39,42)/rgb(63,63,70)/rgb(161,161,170) 不回归，两种模式选中段均 cyan-600 白字、高度均 34px，深浅色截图确认。
+
 ## 2026-08-15 v1.7.77
 
-- 固件版本号从 `v1.7.76` 更新到 `v1.7.77`。
-- fix(WebConsole): 主题切换键补浅色主题覆写，浅色页面下不再是突兀的深色胶囊
-  - `libraries/mus4_web/src/WebConsoleAssets.h`：在 v1.7.76 新增的 5 条 `#themeTabs` 基础规则之后追加 5 条 `html[data-theme="light"]` 前缀覆写（优先级天然高于基础规则；`dataset.theme` 是 `applyTheme()` 写入的解析后主题，跟随系统时也会正确落到 light/dark）：
-    - 容器浅色化：`background:#dde3ec`、`border-color:#aeb9c7`（取自 DC 浅色主题既有 `.langTabs` 令牌）；
-    - 未选中按钮 `color:#5b6b7d`，hover 文字变 `#0b2536`（同样取自浅色 `.langTabs`）；
-    - 选中段两种主题都保持 `background:#0891b2`（cyan-600）白字不变。
-    - 深色主题外观与 v1.7.76 完全一致（zinc 深色胶囊），无回归；容器 34px 高度、圆角、按钮尺寸等结构不变；移动端 `#themeTabs{order:15}` 媒体查询不受影响。
+- 固件版本号从 `v1.7.76` 更新到 `v1.7.77`（避让：v1.7.76 已被 #65 `Tony-kimi-code-web` 的 DC 头部按键高度改动占用）。
+- feat(WebConsole): Serial 终端工具行精简——隐藏输入框/发送/暂停键，新增"➕新开终端窗口"按钮
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 工具行新增 `#newTermBtn`（加号图标，`onclick="openNewTerminal()"`，i18n `terminal.new` 中英词条）；`openNewTerminal()` 复用 `terminalUrl()` 的 `_launcherIp` 自动发现机制，`window.open(..., '_blank')` 新开浏览器标签页加载上位机终端页——每个标签页独立 PTY 会话，**不杀已有终端窗口**。
+    - `applyCmdTarget()`：Serial 模式显示加号按钮、隐藏暂停/发送/输入框（垃圾桶与目标下拉保持显示）；Web 模式反之，排版与既有行为不变。
+    - 元素常量表新增 `newTermBtn`。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.77。
-  - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 补 5 条浅色覆写规则断言，更新"颜色写死不随主题变化"过时描述为"深色写死 zinc 配色 + 浅色覆写 DC 浅色令牌，选中段两主题均 cyan-600"；版本号断言同步至 v1.7.77。
-  - 验证：编译通过；全量 pytest 通过；HTTP OTA 上传后车上 `/api/status` 确认 `version=v1.7.77`；Playwright 无头实测浅色模式容器 rgb(221,227,236)/边框 rgb(174,185,199)/未选中 rgb(91,107,125)、深色模式保持 rgb(39,39,42)/rgb(63,63,70)/rgb(161,161,170) 不回归，两种模式选中段均 cyan-600 白字、高度均 34px，深浅色截图确认。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.77；serial 终端切换测试更新为"Serial 隐藏暂停/发送/输入框、显示加号按钮"新行为断言；工具行 HTML 断言同步加号按钮。
+  - 验证：全量 322 项 pytest 通过，内嵌 5 个 script 块 node --check 通过；编译通过并 HTTP OTA 上传，车上 `/api/status` 确认 `version=v1.7.77`。
 
 ## 2026-08-15 v1.7.76
 
 - 固件版本号从 `v1.7.75` 更新到 `v1.7.76`。
-- feat(WebConsole): DC 主题切换按键改为与 DonkeyDrifter ThemeSwitcher 一模一样的分段控件样式
-  - `libraries/mus4_web/src/WebConsoleAssets.h`：
-    - 头部主题切换 `<span id="themeTabs">` 的 class 从 `langTabs` 改为独立 `themeSwitch`，不再复用语言切换键的胶囊样式；按钮、`onclick`、`data-theme`、i18n 属性与 `renderThemeTabs()` 等 JS 逻辑全部保持不变。
-    - 新增 `#themeTabs` 系列 CSS（放在基础 `.langTabs` 规则之后，用 id 选择器保证优先级压过浅色主题 `button` 覆写）：容器 `display:inline-flex` + `gap:4px` + `background:#27272a`（zinc-800）+ `border:1px solid #3f3f46`（zinc-700）+ `border-radius:999px` + `padding:4px` + `height:34px`；按钮 `padding:4px 12px`、`height:24px`、`font-size:12px`、`color:#a1a1aa`（zinc-400）、hover 仅文字变 `#e4e4e7`（zinc-200）；选中段 `background:#0891b2`（cyan-600）+ 白字实心圆角胶囊。总高 = 24px 按钮 + 8px padding + 2px border = 34px，与 DD 一致。
-    - 颜色写死，浅色/深色主题下外观相同（不加任何浅色 `#themeTabs` 覆写）；既有移动端媒体查询 `#themeTabs{order:15}` 保留不动，新规则为叠加。
-    - 主题默认逻辑未动：首屏防闪烁脚本、`let uiTheme='auto'`、`readStoredTheme()` 回退 `'auto'` 保持原样，默认仍跟随系统。
+- fix(WebConsole): DC 头部三个"打开"入口按键高度由 24px 提至 34px，与 DonkeyDrifter 侧"打开"按键对齐（DonkeyDrift 仓库 PR #110 已把 DD 按键对齐到其中英文切换键的 34px，本侧跟随）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}` 规则（紧跟 `.otaButton` 基础规则之后），只覆盖头部三个入口按键，其余 `.otaButton`（如 OTA 按钮）保持 24px 不变。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.76。
-  - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 更新过时描述（不再"复用 langTabs"），补 `class="themeSwitch"` 与新 CSS（34px 容器 / 24px 按钮 / cyan-600 选中态 / zinc 配色）断言；版本号断言同步至 v1.7.76。
-  - 验证：编译通过；全量 pytest 通过；HTTP OTA 上传后车上 `/api/status` 确认 `version=v1.7.76`，首页 HTML 确认 `class="themeSwitch" id="themeTabs"` 与新 CSS 生效；Playwright 无头实测计算样式（容器 34px/zinc-800、按钮 24px、选中段 cyan-600 白字、未选中 zinc-400）与深浅色两种模式截图确认外观与 DD 一致。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.76；`test_web_console_header_entry_buttons` 补 34px 高度规则断言。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.76` 确认。
+- 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
 
 ## 2026-08-15 v1.7.75
 

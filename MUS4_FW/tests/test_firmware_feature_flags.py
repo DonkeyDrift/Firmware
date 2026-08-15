@@ -274,11 +274,17 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.77"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.80"' in build_info
+    assert "v1.7.80" in changelog
     assert "v1.7.77" in changelog
     assert "v1.7.76" in changelog
+    assert "v1.7.75" in changelog
+    assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
-    assert changelog.index("v1.7.77") < changelog.index("v1.7.73")
+    # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.80") < changelog.index("## 2026-08-15 v1.7.77")
+    assert changelog.index("## 2026-08-15 v1.7.77") < changelog.index("## 2026-08-15 v1.7.76")
+    assert changelog.index("## 2026-08-15 v1.7.76") < changelog.index("## 2026-08-15 v1.7.75")
 
 
 def test_host_ip_report_channel():
@@ -387,11 +393,22 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "localStorage.getItem(CMD_TARGET_KEY)" in source
     assert "applyCmdTarget(saved||'serial',false)" in source
     assert "restoreCmdTarget();" in source
-    # 切换目标时显示终端、隐藏日志区，工具行（暂停/清空/发送/输入框/下拉）保持显示；
-    # 切回 Web 恢复日志视图
+    # 切换目标时显示终端、隐藏日志区；Serial 模式隐藏暂停/发送/输入框，
+    # 显示"新开终端"加号按钮（垃圾桶与目标下拉保持显示）；切回 Web 恢复
+    # 日志视图与完整工具行
     assert "function applyCmdTarget(src,save)" in source
+    assert "newTermBtn.style.display=term?'':'none';" in source
+    assert "pauseBtn.style.display=term?'none':'';" in source
+    assert "sendBtn.style.display=term?'none':'';" in source
+    assert "cmd.style.display=term?'none':'';" in source
     assert "if(term)startTerminal();else switchLogSource('web');" in source
     assert "cmdTarget.addEventListener('change',e=>{applyCmdTarget(e.target.value)});" in source
+    # 加号按钮：新开浏览器标签页加载上位机终端页（每页独立 PTY 会话，
+    # 不杀已有终端）；URL 复用 terminalUrl() 自动发现机制
+    assert 'id="newTermBtn"' in source
+    assert "function openNewTerminal(){window.open(terminalUrl(),'_blank');}" in source
+    assert "I18N.zh['terminal.new']" in source
+    assert "I18N.en['terminal.new']" in source
     # 上位机不可达时的加载/失败提示（i18n 中英双语）
     assert "I18N.zh['terminal.loading']" in source
     assert "I18N.en['terminal.loading']" in source
@@ -1937,7 +1954,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
-    assert '<button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" id="clearBtn" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
+    assert '<button class="iconButton" onclick="openNewTerminal()" id="newTermBtn" title="新开终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" id="clearBtn" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
@@ -4186,11 +4203,11 @@ def test_web_console_led_blink_color_selector():
 def test_web_console_theme_toggle():
     """v1.7.xx：头部红绿蓝切换键右边、中英文切换键左边新增深色/浅色模式切换键
     （themeTabs），三个选项：浅色（左）、跟随系统（中）、深色（右）。
-    v1.7.76 起外观改为与 DonkeyDrifter ThemeSwitcher 相同的分段控件样式
+    v1.7.80 起外观改为与 DonkeyDrifter ThemeSwitcher 相同的分段控件样式
     （独立 themeSwitch class，不再复用 langTabs）：zinc-800 胶囊容器 + 边框，
-    选中段 cyan-600 实心圆角胶囊，总高 34px。
-    v1.7.77 补浅色主题覆写：深色主题保持写死的 zinc 配色，浅色主题覆写为
-    DC 浅色既有令牌（#dde3ec/#aeb9c7/#5b6b7d/#0b2536），选中段两主题均 cyan-600 白字。
+    选中段 cyan-600 实心圆角胶囊，总高 34px；并补浅色主题覆写：深色主题保持
+    写死的 zinc 配色，浅色主题覆写为 DC 浅色既有令牌（#dde3ec/#aeb9c7/#5b6b7d/#0b2536），
+    选中段两主题均 cyan-600 白字。
     选择通过 localStorage（mus4.ui.theme）持久化，默认 'auto'（无存储/非法值回退），
     即默认跟随系统；用户显式选择浅色/深色后以其为准。
     跟随系统：'auto' 时经 matchMedia('(prefers-color-scheme: light)') 解析，
@@ -4202,10 +4219,10 @@ def test_web_console_theme_toggle():
     assert assets.index('id="ledBlinkTabs"') < assets.index('id="themeTabs"')
     assert assets.index('id="themeTabs"') < assets.index('data-i18n-title="language.title"')
 
-    # v1.7.76：独立 themeSwitch class（与 DD ThemeSwitcher 同款，不再复用 langTabs）
+    # v1.7.80：独立 themeSwitch class（与 DD ThemeSwitcher 同款，不再复用 langTabs）
     assert '<span class="themeSwitch" id="themeTabs"' in assets
 
-    # v1.7.76 新增 CSS（用 id 选择器压过浅色主题 button 覆写）：
+    # v1.7.80 新增 CSS（用 id 选择器压过浅色主题 button 覆写）：
     # 容器 34px 高 zinc-800 胶囊 + zinc-700 边框；按钮 24px 高；选中段 cyan-600 实心胶囊
     assert "#themeTabs{display:inline-flex;align-items:center;gap:4px;background:#27272a;border:1px solid #3f3f46;border-radius:999px;padding:4px;height:34px;box-sizing:border-box}" in assets
     assert "#themeTabs button{padding:4px 12px;height:24px;" in assets
@@ -4213,7 +4230,7 @@ def test_web_console_theme_toggle():
     assert "#themeTabs button.active{background:#0891b2;color:#fff}" in assets
     assert "#themeTabs button.active:hover{background:#0891b2;color:#fff}" in assets
 
-    # v1.7.77 浅色主题覆写（html[data-theme="light"] 前缀，优先级高于基础规则）：
+    # v1.7.80 浅色主题覆写（html[data-theme="light"] 前缀，优先级高于基础规则）：
     # 容器/按钮换用 DC 浅色既有令牌，选中段仍 cyan-600 白字；深色主题保持 zinc 配色不回归
     assert 'html[data-theme="light"] #themeTabs{background:#dde3ec;border-color:#aeb9c7}' in assets
     assert 'html[data-theme="light"] #themeTabs button{color:#5b6b7d}' in assets
@@ -4335,7 +4352,10 @@ def test_web_console_header_entry_buttons():
     v1.7.70 "进入"改名"打开"（en Enter→Open）；DonkeyDrifter 右侧新增"打开 Kimi Code Web"
     占位按钮（功能预留，无 href/onclick）。
     v1.7.74 "打开 Kimi Code Web"接功能：沿用 _launcherIp，POST :8090/api/launch/kimi-code-web，
-    AbortController 120s 超时，同步上下文先开 about:blank 句柄，成功后导航、失败关闭。"""
+    AbortController 120s 超时，同步上下文先开 about:blank 句柄，成功后导航、失败关闭。
+    v1.7.76 三个入口按键高度由 24px 提至 34px（与 DD 侧"打开"按键对齐），
+    通过专属规则 #enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}
+    覆盖，.otaButton 基础规则与其他 OTA 按钮保持 24px 不变。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4394,6 +4414,11 @@ def test_web_console_header_entry_buttons():
     assert '#drive' in assets
     assert 'enterDonkeyLauncher' not in assets
     assert 'enterDonkeyDrifter()' not in assets
+
+    # v1.7.76：三个入口按键 34px 高（对齐 DD 侧"打开"按键），专属规则覆盖，
+    # .otaButton 基础规则（含 OTA 按钮）仍是 24px
+    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}' in assets
+    assert '.otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
 
 def test_web_console_light_theme_overrides():
     """浅色主题生效：setTheme/initTheme 通过 applyTheme 把解析结果写到

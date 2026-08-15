@@ -274,12 +274,18 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.77"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.82"' in build_info
+    assert "v1.7.82" in changelog
+    assert "v1.7.79" in changelog
+    assert "v1.7.78" in changelog
     assert "v1.7.77" in changelog
     assert "v1.7.76" in changelog
     assert "v1.7.75" in changelog
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
+    assert changelog.index("v1.7.82") < changelog.index("v1.7.79")
+    assert changelog.index("v1.7.79") < changelog.index("v1.7.78")
+    assert changelog.index("v1.7.78") < changelog.index("v1.7.77")
     assert changelog.index("v1.7.77") < changelog.index("v1.7.76")
     assert changelog.index("v1.7.76") < changelog.index("v1.7.73")
 
@@ -369,19 +375,21 @@ def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
 
 
 def test_web_console_serial_option_is_host_terminal_with_persistent_default():
-    """cmdTarget 的 Serial 选项 = 上位机终端（xterm.js iframe）。
+    """cmdTarget 的 Serial 选项 = 上位机终端（xterm.js iframe），浏览器式标签页。
 
     选择 Serial 时日志区切换为 iframe 嵌入的上位机终端页面
     （http://<host_ip>:8090/terminal，由上位机 Launcher 服务提供）；
     目标选择持久化到 localStorage，下次打开页面时恢复，默认 Serial。
     终端数据走局域网 WebSocket（不走 115200 串口，带宽不足以跑 TUI）。
+    ➕ 每点一次新增一个终端标签页（独立 iframe/PTY 会话），🗑 杀掉当前选中标签页。
     """
     source = firmware_source_text()
 
-    # 终端视图容器与 iframe
+    # 终端视图容器与标签条（iframe 改为动态创建，不再有静态 #terminalFrame）
     assert 'id="terminalWrap"' in source
-    assert 'id="terminalFrame"' in source
     assert 'id="terminalHint"' in source
+    assert 'id="termTabs"' in source
+    assert 'id="terminalFrame"' not in source
     # 终端 URL 由上位机 HOSTIP 上报自动发现（_launcherIp），不硬编码
     assert "function terminalUrl(){return 'http://'+_launcherIp+':8090/terminal';}" in source
     # 选择持久化：localStorage 键 + 写入/读取 + 默认 serial + 启动时恢复
@@ -390,23 +398,46 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "localStorage.getItem(CMD_TARGET_KEY)" in source
     assert "applyCmdTarget(saved||'serial',false)" in source
     assert "restoreCmdTarget();" in source
-    # 切换目标时显示终端、隐藏日志区；Serial 模式隐藏暂停/发送/输入框，
-    # 显示"新开终端"加号按钮（垃圾桶与目标下拉保持显示）；切回 Web 恢复
-    # 日志视图与完整工具行
+    # 切换目标时显示终端与标签条、隐藏日志区；Serial 模式隐藏暂停/发送/输入框，
+    # 显示"新建终端"加号按钮（垃圾桶与目标下拉保持显示）；切回 Web 恢复
+    # 日志视图与完整工具行；垃圾桶 title 随模式切换；首次进入 Serial 自动建第一个
+    # 标签（termInited），用户杀光后切回不自动重建
     assert "function applyCmdTarget(src,save)" in source
     assert "newTermBtn.style.display=term?'':'none';" in source
+    assert "termTabs.style.display=term?'flex':'none';" in source
     assert "pauseBtn.style.display=term?'none':'';" in source
     assert "sendBtn.style.display=term?'none':'';" in source
     assert "cmd.style.display=term?'none':'';" in source
-    assert "if(term)startTerminal();else switchLogSource('web');" in source
+    assert "clearBtn.title=t(term?'terminal.kill':'button.clear');" in source
+    assert "if(term){if(!termInited)addTerminalTab()}else switchLogSource('web');" in source
     assert "cmdTarget.addEventListener('change',e=>{applyCmdTarget(e.target.value)});" in source
-    # 加号按钮：新开浏览器标签页加载上位机终端页（每页独立 PTY 会话，
-    # 不杀已有终端）；URL 复用 terminalUrl() 自动发现机制
+    # 标签页管理：动态 iframe（保留 #57 白边修复 scrolling="no"）+ 探活后设 src，
+    # 每个 iframe 独立 PTY 会话；点标签只切换显示（其余 display:none 保活）；
+    # 垃圾桶在 Serial 模式杀当前标签、Web 模式仍清日志
     assert 'id="newTermBtn"' in source
-    assert "function openNewTerminal(){window.open(terminalUrl(),'_blank');}" in source
+    assert "function addTerminalTab()" in source
+    assert "document.createElement('iframe')" in source
+    assert "f.setAttribute('scrolling','no')" in source
+    assert "function selectTerminalTab(id)" in source
+    assert "function killActiveTerminalTab()" in source
+    assert "function onClearBtn(){if(cmdTarget.value==='serial')killActiveTerminalTab();else clearLog()}" in source
+    # 新开浏览器标签的旧逻辑已删除
+    assert "openNewTerminal" not in source
+    assert "window.open(terminalUrl" not in source
+    # .termFrame CSS 保留 #57 白边修复属性（标识符由 #terminalFrame 改为 .termFrame）
+    assert ".termFrame{display:block;flex:1 1 auto;width:100%;min-height:0;border:0;border-radius:6px;background:#101318}" in source
+    # 标签条样式：横向滚动 + 选中态高亮
+    assert "#termTabs{display:none;align-items:center;gap:4px;overflow-x:auto" in source
+    assert ".termTab.active{" in source
+    # i18n：新建/标签/关闭/空态四词条 + 加载/失败提示（中英双语）
     assert "I18N.zh['terminal.new']" in source
     assert "I18N.en['terminal.new']" in source
-    # 上位机不可达时的加载/失败提示（i18n 中英双语）
+    assert "I18N.zh['terminal.tab']" in source
+    assert "I18N.en['terminal.tab']" in source
+    assert "I18N.zh['terminal.kill']" in source
+    assert "I18N.en['terminal.kill']" in source
+    assert "I18N.zh['terminal.empty']" in source
+    assert "I18N.en['terminal.empty']" in source
     assert "I18N.zh['terminal.loading']" in source
     assert "I18N.en['terminal.loading']" in source
     assert "I18N.zh['terminal.unreachable']" in source
@@ -1506,35 +1537,57 @@ def test_web_console_mobile_header_layout():
     assert ".br3{order:14}" in source
     # 第 4 行：主题切换（左）+ 语言切换（margin-left:auto 贴合最右端，不再隐藏）
     assert "#themeTabs{order:15}" in source
-    assert ".headerRow .langTabs:not([id]){order:16;margin-left:auto}" in source
-    assert ".headerRow .langTabs:not([id]){display:none}" not in source
+    assert ".headerRow .langSwitch{order:16;margin-left:auto}" in source
+    assert ".headerRow .langSwitch{display:none}" not in source
 
 
 def test_web_console_language_tabs_wired_to_set_language():
-    """顶栏中文/English 分段控件：与 DonkeyDrift Web UI 顶栏切换器同款。
+    """顶栏中文/English 分段控件：v1.7.78 起与 DonkeyDrifter web_ui
+    LanguageSwitcher 完全一致（含 34px 总高）。
     v1.7.46 起正式接通语言切换（data-lang + onclick=setLanguage，不再是占位），
     默认中文选中态（首次启动默认中文界面）；title 走 data-i18n-title。
     位置在 OTA 按钮左边、右对齐组内（v1.7.45 起头部右推由 muteButton 承担，
-    langTabs 不再 margin-left:auto），选中态沿用 ESP32 填充语言（蓝底 #5cc8ff
-    + 黑字 #061019 + 800 粗）。"""
+    语言切换不再 margin-left:auto）。v1.7.78：语言 span 从共享类 .langTabs
+    拆分为独立类 .langSwitch；暗色激活态为 #0891b2 白字（DD 深色原色），
+    浅色按 DD theme-light.css 重映射——激活段恰好回到 ESP32 填充语言
+    （#5cc8ff 蓝底 + #061019 近黑字 + 800 粗）。"""
 
     source = firmware_source_text()
 
     assert ".langTabs{display:inline-flex;align-items:center;gap:2px;background:#171c24;border:none;border-radius:999px;padding:0 2px;height:24px;box-sizing:border-box;box-shadow:inset 0 0 0 1px #2b3441}" in source
     # 外大椭圆（box-sizing:border-box 固定总高 24px=OTA/DEV 同高，内嵌 box-shadow 描边
     # 不占布局）+ 内两个小椭圆分段（24px 满高，蓝色选中段与 OTA 按钮蓝对蓝同高），
-    # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言
+    # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言；
+    # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs/#themeTabs 复用，语言切换已拆分为 .langSwitch
     assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
-    assert '<span class="langTabs" title="语言" data-i18n-title="language.title">' in source
-    assert '<button type="button" data-lang="zh" onclick="setLanguage(\'zh\')" class="active">中文</button><button type="button" data-lang="en" onclick="setLanguage(\'en\')">English</button>' in source
-    # 位置：langTabs 在 OTA 按钮左边；右推由 muteButton 承担，langTabs/otaLink 均不再 margin-left:auto
-    assert source.index('<span class="langTabs"') < source.index('<a href="/update" class="otaLink">')
+    # v1.7.78：.langSwitch 样式 1:1 对齐 DD LanguageSwitcher——容器 #27272a +
+    # 1px solid #3f3f46 + 圆角 9999px + padding 4px，总高恰好 34px；按钮
+    # 12px/16px、padding 4px 12px，激活 background:#0891b2 白字、未激活 #a1a1aa、
+    # hover #e4e4e7，aria-pressed 随激活态同步（以上为暗色，即 DD 深色原色）
+    assert ".langSwitch{" in source
+    assert "height:34px" in source
+    assert "#0891b2" in source
+    assert "#27272a" in source
+    assert "aria-pressed" in source
+    # 浅色主题按 DD theme-light.css 的 zinc/cyan 重映射换算（bg-zinc-800→#f4f6f9、
+    # border-zinc-700→#ccd5df、bg-zinc-800 内描边→#d5dce4、bg-cyan-600→#5cc8ff、
+    # text-white→#061019 且选中胶囊 800 粗、text-zinc-400→#5b6b7d、hover text-zinc-200→#1a2330）
+    assert 'html[data-theme="light"] .langSwitch{background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in source
+    assert 'html[data-theme="light"] .langSwitch button{background:transparent;color:#5b6b7d}' in source
+    assert 'html[data-theme="light"] .langSwitch button.active{background:#5cc8ff;color:#061019;font-weight:800}' in source
+    assert '<span class="langSwitch" title="语言" data-i18n-title="language.title">' in source
+    # 按钮按属性片段断言（v1.7.78 起按钮带 aria-pressed 状态属性，不做全串精确匹配）
+    assert '<button type="button" data-lang="zh" onclick="setLanguage(\'zh\')" class="active"' in source
+    assert '>中文</button><button type="button" data-lang="en" onclick="setLanguage(\'en\')"' in source
+    assert '>English</button>' in source
+    # 位置：langSwitch 在 OTA 按钮左边；右推由 muteButton 承担，langSwitch/otaLink 均不再 margin-left:auto
+    assert source.index('<span class="langSwitch"') < source.index('<a href="/update" class="otaLink">')
     assert ".otaLink{margin-left:auto" not in source
-    # otaLink 改 flex 消除 inline-block 基线下沉，保证 OTA 按钮与 langTabs 容器顶/底对齐同高
+    # otaLink 改 flex 消除 inline-block 基线下沉，保证 OTA 按钮与 langSwitch 容器顶/底对齐同高
     assert ".headerRow .otaLink{display:flex;align-items:center}" in source
-    # v1.7.46：langTabs 已接线（onclick + data-lang + setLanguage），不再是惰性占位
-    lang_tabs = source[source.index('<span class="langTabs"'):source.index('<a href="/update" class="otaLink">')]
+    # v1.7.46：语言切换已接线（onclick + data-lang + setLanguage），不再是惰性占位
+    lang_tabs = source[source.index('<span class="langSwitch"'):source.index('<a href="/update" class="otaLink">')]
     assert "onclick" in lang_tabs
     assert "setLanguage" in lang_tabs
     assert 'data-lang="zh"' in lang_tabs
@@ -1563,8 +1616,8 @@ def test_web_console_header_github_link_replaces_version_label():
     assert '<a class="ghLink" href="https://github.com/DonkeyDrift/Firmware" target="_blank" rel="noopener"' in source
     assert 'aria-label="GitHub: DonkeyDrift/Firmware"' in source
     assert '<svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58' in source
-    # 位置：紧跟主标题 </h1>（原版本号位置）、在 langTabs 切换条左边
-    assert source.index('<h1 data-i18n="app.title">Drifter Console</h1>') < source.index('<a class="ghLink"') < source.index('<span class="langTabs"')
+    # 位置：紧跟主标题 </h1>（原版本号位置）、在 langSwitch 语言切换条左边
+    assert source.index('<h1 data-i18n="app.title">Drifter Console</h1>') < source.index('<a class="ghLink"') < source.index('<span class="langSwitch"')
     assert '.ghLink{display:inline-flex;align-items:center;color:#8fa1b5;' in source
     assert '.ghLink:hover{color:#5cc8ff}' in source
 
@@ -1951,7 +2004,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
-    assert '<button class="iconButton" onclick="openNewTerminal()" id="newTermBtn" title="新开终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" id="clearBtn" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
+    assert '<button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="onClearBtn()" id="clearBtn" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><div id="termTabs"></div>' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source

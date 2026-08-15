@@ -2,7 +2,7 @@
 
 ## 2026-08-15 v1.7.81
 
-- 固件版本号从 `v1.7.78` 更新到 `v1.7.81`（避让：v1.7.78 已被 #68 `Tony-dc-lang-switch-dd` 占用、v1.7.79/v1.7.80 已被并行分支 `Tony-dc-header-center` 占用；本分支原 v1.7.76/v1.7.77 两条目合入最新 Tony 后合并为本条并定版 v1.7.81）。
+- 固件版本号从 `v1.7.80` 更新到 `v1.7.81`（避让：v1.7.78 已被 #68 `Tony-dc-lang-switch-dd` 占用、v1.7.79/v1.7.80 已被 #69 `Tony-serial-term-tabs`/#72 `Tony-serial-tab-renumber` 占用（其间并行分支 `Tony-dc-header-center` 亦曾占用 v1.7.79/v1.7.80）；本分支原 v1.7.76/v1.7.77 两条目合入最新 Tony 后合并为本条并定版 v1.7.81）。
 - feat(WebConsole): DC 主题切换键改为与 DonkeyDrifter 相同的分段控件样式，并补浅色模式浅色变体
   - `libraries/mus4_web/src/WebConsoleAssets.h`：
     - 头部主题切换 `<span id="themeTabs">` 的 class 从 `langTabs` 改为独立 `themeSwitch`，不再复用语言切换键的胶囊样式；按钮、`onclick`、`data-theme`、i18n 属性与 `renderThemeTabs()` 等 JS 逻辑全部保持不变。
@@ -12,6 +12,32 @@
   - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.81。
   - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 更新描述并补 `class="themeSwitch"`、5 条基础 CSS 与 5 条浅色覆写断言；版本号断言同步至 v1.7.81。
   - 验证：编译通过；全量 pytest 通过；HTTP OTA 上传后车上 `/api/status` 确认 `version=v1.7.81`；Playwright 无头实测浅色模式容器 rgb(221,227,236)/边框 rgb(174,185,199)/未选中 rgb(91,107,125)，深色模式 rgb(39,39,42)/rgb(63,63,70)/rgb(161,161,170) 不回归，两种模式选中段均 cyan-600 白字、高度均 34px，深浅色截图确认。
+
+## 2026-08-15 v1.7.80
+
+- 固件版本号从 `v1.7.79` 更新到 `v1.7.80`。
+- feat(WebConsole): Serial 终端标签按位置连续编号——杀掉某个标签后，其后的标签自动重编号（如杀"终端 1"后原"终端 2"变为"终端 1"，以此类推）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `addTerminalTab()`：新标签文字由内部自增 id 改为位次 `termList.length+1`（id 仍仅作选中标识内部使用）。
+    - `killActiveTerminalTab()`：`splice` 后对 `termList` 按位次重排全部标签文字（`终端 N`/`Term N` 随 i18n 词条语言）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.80。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.80；serial 终端测试新增连续编号两条断言（新建按位次、杀后重编号）。
+  - 验证：全量 pytest 通过；编译通过并 HTTP OTA 上传，车上 `/api/status` 确认 `version=v1.7.80`。
+
+## 2026-08-15 v1.7.79
+
+- 固件版本号从 `v1.7.78` 更新到 `v1.7.79`（避让：v1.7.78 已被 #68 `Tony-dc-lang-switch-dd` 的中英文切换键分段胶囊改动占用）。
+- feat(WebConsole): Serial 终端改为浏览器式标签页——➕ 新建终端标签页（每标签独立 iframe/PTY 会话），🗑 在 Serial 模式关闭当前选中标签页
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 工具行 `#cmdTarget` 下拉后新增 `#termTabs` 标签条（`display:flex`+`overflow-x:auto`，仅 Serial 模式显示）；每个终端一个 `.termTab` 按钮（文字 `终端 N`/`Term N`，选中态 `.active` 高亮）。
+    - `#newTermBtn` 的 onclick 改为 `addTerminalTab()`：在 `#terminalWrap` 内动态创建 `.termFrame` iframe（保留 `scrolling="no"` 与 `display:block` 等 #57 白边修复属性，CSS 选择器由 `#terminalFrame` 改为 `.termFrame`），复用 `terminalUrl()` 与 launcher `/api/status` 探活逻辑（失败在 `#terminalHint` 显示 `terminal.unreachable`），创建后自动选中；删除 `openNewTerminal()` 与 `window.open` 新开浏览器标签逻辑，移除静态 `<iframe id="terminalFrame">`。
+    - 新增 `selectTerminalTab(id)`：只显示选中标签的 iframe（其余 `display:none` 但保持存活，PTY 不断），同步 `active` 样式与 hint；新增 `killActiveTerminalTab()`：移除当前选中 iframe（DOM 移除即关 WebSocket，launcher 自动杀 PTY 子进程），选中相邻标签，杀光后清空标签条并显示 `terminal.empty` 提示。
+    - `#clearBtn` 的 onclick 改为 `onClearBtn()` 分发：Serial 模式调 `killActiveTerminalTab()`，Web 模式仍调 `clearLog()`；按钮 title 随模式在 `applyCmdTarget()` 中切换（Serial 用 `terminal.kill`，Web 用 `button.clear`）。
+    - `applyCmdTarget()`：新增 `termTabs` display 切换；首次进入 Serial（`termInited` 标志）自动 `addTerminalTab()` 建第一个标签，用户杀光全部标签后切换模式回来不自动重建（保持空态+提示）。
+    - i18n：`terminal.new` 改为"新建终端标签页"/"New terminal tab"；新增 `terminal.tab`（终端/Term）、`terminal.kill`（关闭当前终端标签页）、`terminal.empty`（终端已关闭，点 ➕ 新建）中英词条。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.79。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.79；serial 终端测试同步标签页新结构（`termTabs`/`addTerminalTab`/`selectTerminalTab`/`killActiveTerminalTab`/`onClearBtn`、`termInited` 首次自动建标签、动态 iframe `scrolling="no"`、`.termFrame` CSS 白边回归、i18n 四词条中英、`openNewTerminal`/`window.open(terminalUrl` 不复存在）；工具行 HTML 断言同步。
+  - 验证：全量 pytest 通过，内嵌 script 块 node --check 通过；编译通过并 HTTP OTA 上传，车上 `/api/status` 确认 `version=v1.7.79`。
 
 ## 2026-08-15 v1.7.78
 

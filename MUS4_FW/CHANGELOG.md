@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.90
+
+- feat(WebConsole): DC 头部三个入口按键显示文案去掉"打开 "/"Open "前缀（zh/en 同步），与 DD 侧同步精简
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：headerRow 静态 HTML `>打开 Donkey</a>`→`>Donkey</a>`、`>打开 DonkeyDrifter</a>`→`>DonkeyDrifter</a>`、`>打开 Kimi Code Web</button>`→`>Kimi Code Web</button>`；I18N zh 词典 `'button.enterDonkey':'打开 Donkey'`→`'Donkey'`、`'button.enterDonkeyDrifter':'打开 DonkeyDrifter'`→`'DonkeyDrifter'`、`'button.openKimiCodeWeb':'打开 Kimi Code Web'`→`'Kimi Code Web'`，en 词典 `'Open Donkey'`/`'Open DonkeyDrifter'`/`'Open Kimi Code Web'` 三值同步去前缀。按钮 id、data-i18n 键名、href/onclick 跳转与其它词条（toast、"打开新地址"等）一律不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.90。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 入口按键 i18n 断言改为去前缀文案（zh/en 词条值相同后断言各出现 2 次），版本链延伸至 v1.7.90。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 与首页 HTML 确认。
+
 ## 2026-08-15 v1.7.89
 
 - fix(WebConsole): DC 头部 RGB 闪烁颜色切换键（#ledBlinkTabs）总高修正为 34px，与 DD 语言/主题两个切换键完全一致

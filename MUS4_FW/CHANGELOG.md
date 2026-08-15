@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.76
+
+- 固件版本号从 `v1.7.75` 更新到 `v1.7.76`。
+- fix(WebConsole): DC 头部三个"打开"入口按键高度由 24px 提至 34px，与 DonkeyDrifter 侧"打开"按键对齐（DonkeyDrift 仓库 PR #110 已把 DD 按键对齐到其中英文切换键的 34px，本侧跟随）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}` 规则（紧跟 `.otaButton` 基础规则之后），只覆盖头部三个入口按键，其余 `.otaButton`（如 OTA 按钮）保持 24px 不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.76。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.76；`test_web_console_header_entry_buttons` 补 34px 高度规则断言。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.76` 确认。
+- 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+
 ## 2026-08-15 v1.7.75
 
 - 固件版本号从 `v1.7.73` 更新到 `v1.7.75`（跳过 v1.7.74：该号已被 #61 `Tony-kimi-code-web` 占用）。

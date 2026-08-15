@@ -274,7 +274,12 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.89"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.94"' in build_info
+    assert "v1.7.94" in changelog
+    assert "v1.7.93" in changelog
+    assert "v1.7.92" in changelog
+    assert "v1.7.91" in changelog
+    assert "v1.7.90" in changelog
     assert "v1.7.89" in changelog
     assert "v1.7.88" in changelog
     assert "v1.7.87" in changelog
@@ -292,6 +297,11 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.94") < changelog.index("## 2026-08-15 v1.7.93")
+    assert changelog.index("## 2026-08-15 v1.7.93") < changelog.index("## 2026-08-15 v1.7.92")
+    assert changelog.index("## 2026-08-15 v1.7.92") < changelog.index("## 2026-08-15 v1.7.91")
+    assert changelog.index("## 2026-08-15 v1.7.91") < changelog.index("## 2026-08-15 v1.7.90")
+    assert changelog.index("## 2026-08-15 v1.7.90") < changelog.index("## 2026-08-15 v1.7.89")
     assert changelog.index("## 2026-08-15 v1.7.89") < changelog.index("## 2026-08-15 v1.7.88")
     assert changelog.index("## 2026-08-15 v1.7.88") < changelog.index("## 2026-08-15 v1.7.87")
     assert changelog.index("## 2026-08-15 v1.7.87") < changelog.index("## 2026-08-15 v1.7.86")
@@ -398,8 +408,8 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     （http://<host_ip>:8090/terminal，由上位机 Launcher 服务提供）；
     目标选择持久化到 localStorage，下次打开页面时恢复，默认 Serial。
     终端数据走局域网 WebSocket（不走 115200 串口，带宽不足以跑 TUI）。
-    ➕ 每点一次新增一个终端标签页（独立 iframe/PTY 会话），🗑 杀掉当前选中标签页；
-    每个标签左侧的 × 可单独关闭对应终端（v1.7.87）。
+    ➕ 位于标签条右端（v1.7.88 起，垃圾桶按钮移除），每点一次新增一个终端标签页
+    （独立 iframe/PTY 会话）；每个标签左侧的 × 关闭对应终端（v1.7.87）。
     """
     source = firmware_source_text()
 
@@ -417,8 +427,8 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "applyCmdTarget(saved||'serial',false)" in source
     assert "restoreCmdTarget();" in source
     # 切换目标时显示终端与标签条、隐藏日志区；Serial 模式隐藏暂停/发送/输入框，
-    # 显示"新建终端"加号按钮（垃圾桶与目标下拉保持显示）；切回 Web 恢复
-    # 日志视图与完整工具行；垃圾桶 title 随模式切换；首次进入 Serial 自动建第一个
+    # 显示"新建终端"加号按钮（v1.7.88 起位于标签条右端）；切回 Web 恢复
+    # 日志视图与完整工具行；首次进入 Serial 自动建第一个
     # 标签（termInited），用户杀光后切回不自动重建
     assert "function applyCmdTarget(src,save)" in source
     assert "newTermBtn.style.display=term?'':'none';" in source
@@ -426,29 +436,36 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "pauseBtn.style.display=term?'none':'';" in source
     assert "sendBtn.style.display=term?'none':'';" in source
     assert "cmd.style.display=term?'none':'';" in source
-    assert "clearBtn.title=t(term?'terminal.kill':'button.clear');" in source
     assert "if(term){if(!termInited)addTerminalTab()}else switchLogSource('web');" in source
     assert "cmdTarget.addEventListener('change',e=>{applyCmdTarget(e.target.value)});" in source
     # 标签页管理：动态 iframe（保留 #57 白边修复 scrolling="no"）+ 探活后设 src，
     # 每个 iframe 独立 PTY 会话；点标签只切换显示（其余 display:none 保活）；
-    # 垃圾桶在 Serial 模式杀当前标签、Web 模式仍清日志
+    # v1.7.88 起垃圾桶按钮移除（Serial 用标签上的 × 关闭，Web 清空日志按钮一并移除），
+    # ➕ 移入标签条作为末位子元素，新标签 insertBefore 插到 ➕ 左边、➕ 始终位于最新标签右边
     assert 'id="newTermBtn"' in source
+    assert 'id="clearBtn"' not in source
+    assert "onClearBtn" not in source
+    assert "killActiveTerminalTab" not in source
     assert "function addTerminalTab()" in source
+    assert "termTabs.insertBefore(b,newTermBtn);" in source
     assert "document.createElement('iframe')" in source
     assert "f.setAttribute('scrolling','no')" in source
     assert "function selectTerminalTab(id)" in source
-    assert "function killActiveTerminalTab()" in source
-    assert "function onClearBtn(){if(cmdTarget.value==='serial')killActiveTerminalTab();else clearLog()}" in source
     # 标签按位置连续编号（v1.7.80）：新建用 termList.length+1，杀标签后剩余标签重编号；
     # 标签文字放在 .termTabLabel 子 span（v1.7.87 起，避免 textContent 赋值抹掉 × 子元素）
     assert "l.textContent=t('terminal.tab')+' '+(termList.length+1);" in source
-    assert "termList.forEach((x,j)=>{x.l.textContent=t('terminal.tab')+' '+(j+1)});" in source
-    # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端（不再只能杀选中标签），
-    # 点击 stopPropagation 不触发标签切换；垃圾桶仍杀当前选中标签（killActiveTerminalTab 包装）
+    assert "termList.forEach((x,j)=>{x.l.textContent=x.name||t('terminal.tab')+' '+(j+1)});" in source
+    # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端，
+    # 点击 stopPropagation 不触发标签切换
     assert "c.className='termTabClose'" in source
     assert "c.onclick=e=>{e.stopPropagation();killTerminalTab(id)};" in source
     assert "function killTerminalTab(id)" in source
-    assert "function killActiveTerminalTab(){killTerminalTab(termActive)}" in source
+    # 标签名跟随终端内输入命令（v1.7.90）：上位机终端页把每行输入的首词
+    # postMessage 给父页，父页按 e.source 匹配 iframe 改名；重编号时自定义名优先
+    assert "window.addEventListener('message',e=>{" in source
+    assert "d.type!=='donkeydrifter.term.name'" in source
+    assert "x.f.contentWindow===e.source" in source
+    assert "cur.name=d.name;cur.l.textContent=d.name;" in source
     assert ".termTabClose{" in source
     assert "I18N.zh['terminal.closeTab']" in source
     assert "I18N.en['terminal.closeTab']" in source
@@ -469,8 +486,8 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "I18N.en['terminal.new']" in source
     assert "I18N.zh['terminal.tab']" in source
     assert "I18N.en['terminal.tab']" in source
-    assert "I18N.zh['terminal.kill']" in source
-    assert "I18N.en['terminal.kill']" in source
+    # v1.7.88 起 terminal.kill 词条随垃圾桶按钮一并移除
+    assert "terminal.kill" not in source
     assert "I18N.zh['terminal.empty']" in source
     assert "I18N.en['terminal.empty']" in source
     assert "I18N.zh['terminal.loading']" in source
@@ -1607,16 +1624,17 @@ def test_web_console_language_tabs_wired_to_set_language():
     source = firmware_source_text()
 
     assert ".langTabs{display:inline-flex;align-items:center;gap:2px;background:#171c24;border:1px solid #344154;border-radius:999px;padding:0 2px;height:24px;box-sizing:border-box;box-shadow:inset 0 0 0 1px #2b3441}" in source
-    # 外大椭圆（box-sizing:border-box 固定总高 24px=OTA/DEV 同高；v1.7.89 起外圈
-    # border 1px #344154 + 内嵌 box-shadow 1px #2b3441 = DC 粗框语言，描边均不占布局）
-    # + 内两个小椭圆分段（border 占去 2px，分段 22px 满高，蓝色选中段与 OTA 按钮蓝对蓝），
+    # 外大椭圆（box-sizing:border-box；v1.7.94 起外圈 border 1px #344154 +
+    # 内嵌 box-shadow 1px #2b3441 = DC 粗框语言，inset 描边不占布局）
+    # + 内连体分段（#ledBlinkTabs 覆写容器 34px 高 + 4px 纵向 padding，border 占 2px，
+    # 分段保持 24px 满高，蓝色选中段与 OTA 按钮蓝对蓝），
     # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言；
     # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs 使用，语言切换已拆分为 .langSwitch
-    assert ".langTabs button{padding:0 10px;height:22px;min-width:0;border:none;border-radius:999px;" in source
+    assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
     # v1.7.78：.langSwitch 样式 1:1 对齐 DD LanguageSwitcher——圆角 9999px 胶囊容器 +
     # padding 4px，总高恰好 34px；按钮 12px/16px、padding 4px 12px，aria-pressed 随激活态同步。
-    # v1.7.88：深色从 Tailwind 原值（#27272a/#3f3f46/#a1a1aa/#0891b2）改为 DD
+    # v1.7.93：深色从 Tailwind 原值（#27272a/#3f3f46/#a1a1aa/#0891b2）改为 DD
     # theme-mus4.css 皮肤实际渲染值（#111820/#344154/#2b3441/#8fa1b5/#e8edf2，
     # 选中 #5cc8ff+#061019+800 粗），与 #themeTabs、DD ThemeSwitcher 双主题逐值一致
     assert ".langSwitch{display:inline-flex;align-items:center;gap:4px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;border-radius:9999px;padding:4px;height:34px;box-sizing:border-box}" in source
@@ -2059,7 +2077,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch devHint" id="devModeToggle">' in source
-    assert '<select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="onClearBtn()" id="clearBtn" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><div id="termTabs"></div><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
+    assert '<select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><div id="termTabs"><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button></div><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
@@ -4244,18 +4262,18 @@ def test_web_console_led_blink_color_selector():
     assert "#ledBlinkTabs{gap:0}" not in assets
     assert "style.borderRadius" in assets
     assert "style.boxShadow" in assets
-    # 容器高度加大到与 DD 语言切换键一致：上下各 4px 内边距 + 按钮 24px = 总高 32px
-    assert "#ledBlinkTabs{height:auto;padding:4px 2px}" in assets
-    # 悬停高亮框不受连体直角影响，始终为独立小椭圆；仅在悬停按钮本身也已勾选时，
-    # 相邻已勾选按钮才用伪元素把背景延伸 12px 垫进悬停按钮底部（悬停按钮 z-index
-    # 更高），小椭圆与连体段严丝合缝；悬停未勾选按钮时不垫底，保持均匀细缝
+    # 容器总高与 DD 两个切换键（语言/主题，34px = 按钮 24px + 上下各 4px 内边距
+    # + 1px 边框）一致：本容器用 box-sizing:border-box 固定 34px，内边距上下各 4px
+    assert "#ledBlinkTabs{height:34px;padding:4px 2px}" in assets
+    # 悬停只提亮背景、不改变形状（v1.7.91 起）：移除悬停强制独立椭圆及为垫椭圆圆角
+    # 缝隙而生的桥接伪元素，按钮悬停时保持 renderLedBlinkTabs 计算的连体圆角不变
     assert "#ledBlinkTabs button{position:relative;z-index:0}" in assets
-    assert "#ledBlinkTabs button:hover{border-radius:999px!important;z-index:1}" in assets
-    assert "#ledBlinkTabs button.active:has(+button.active:hover)::after{content:\"\";position:absolute;top:0;bottom:0;left:12px;right:-12px;z-index:-1}" in assets
-    assert "#ledBlinkTabs button.active:hover+button.active::before{content:\"\";position:absolute;top:0;bottom:0;left:-12px;right:12px;z-index:-1}" in assets
+    assert "#ledBlinkTabs button:hover{border-radius:999px!important;z-index:1}" not in assets
+    assert "#ledBlinkTabs button.active:has(+button.active:hover)::after" not in assets
+    assert "#ledBlinkTabs button.active:hover+button.active::before" not in assets
     # v1.7.64：三个选项的选中框各着各色（红 #ff6b6b、绿 #39d98a、蓝 #5cc8ff，与图表
     # gz/thr/str 曲线同色）；悬停提亮（红 #ff9797、绿 #74e4ad、蓝沿用 #8bdcff）、连体
-    # box-shadow 与悬停垫底伪元素的延伸色均按按钮各自颜色（LED_BLINK_TAB_COLORS 映射），
+    # box-shadow 延伸色按按钮各自颜色（LED_BLINK_TAB_COLORS 映射），
     # 语言切换等其他 .langTabs 保持统一蓝不变
     assert "#ledBlinkTabs button[data-color=\"1\"].active{background:#ff6b6b}" in assets
     assert "#ledBlinkTabs button[data-color=\"2\"].active{background:#39d98a}" in assets
@@ -4263,9 +4281,9 @@ def test_web_console_led_blink_color_selector():
     assert "#ledBlinkTabs button[data-color=\"1\"].active:hover{background:#ff9797}" in assets
     assert "#ledBlinkTabs button[data-color=\"2\"].active:hover{background:#74e4ad}" in assets
     assert "#ledBlinkTabs button[data-color=\"4\"].active:hover{background:#8bdcff}" in assets
-    assert "#ledBlinkTabs button[data-color=\"1\"]::after,#ledBlinkTabs button[data-color=\"1\"]::before{background:#ff6b6b}" in assets
-    assert "#ledBlinkTabs button[data-color=\"2\"]::after,#ledBlinkTabs button[data-color=\"2\"]::before{background:#39d98a}" in assets
-    assert "#ledBlinkTabs button[data-color=\"4\"]::after,#ledBlinkTabs button[data-color=\"4\"]::before{background:#5cc8ff}" in assets
+    assert "::after,#ledBlinkTabs button[data-color=\"1\"]::before{background:#ff6b6b}" not in assets
+    assert "::after,#ledBlinkTabs button[data-color=\"2\"]::before{background:#39d98a}" not in assets
+    assert "::after,#ledBlinkTabs button[data-color=\"4\"]::before{background:#5cc8ff}" not in assets
     assert "const LED_BLINK_TAB_COLORS={1:'#ff6b6b',2:'#39d98a',4:'#5cc8ff'};" in assets
     assert "const sh=[],c=LED_BLINK_TAB_COLORS[b.dataset.color]||'#5cc8ff'" in assets
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in assets
@@ -4311,7 +4329,7 @@ def test_web_console_theme_toggle():
     """v1.7.xx：头部红绿蓝切换键右边、中英文切换键左边新增深色/浅色模式切换键
     （themeTabs），三个选项：浅色（左）、跟随系统（中）、深色（右）。
     v1.7.81 起外观改为与 DonkeyDrifter ThemeSwitcher 相同的分段控件样式
-    （独立 themeSwitch class，不再复用 langTabs），总高 34px；v1.7.88 起配色从
+    （独立 themeSwitch class，不再复用 langTabs），总高 34px；v1.7.93 起配色从
     Tailwind 原值改为 DD 皮肤 CSS（theme-mus4.css/theme-light.css）实际渲染值——
     深色容器 #111820 + 边框 #344154 + 内描边 #2b3441、未选中 #8fa1b5/hover #e8edf2，
     浅色容器 #f4f6f9 + 边框 #ccd5df + 内描边 #d5dce4、未选中 #5b6b7d/hover #1a2330，
@@ -4470,7 +4488,9 @@ def test_web_console_header_entry_buttons():
     v1.7.79 该规则扩展选择器追加 .headerRow .otaLink .otaButton（头部 OTA 按钮同高 34px），
     并新增 #devModeToggle scoped 规则把 DEV 开关轨道加高至 34px。
     v1.7.80 OTA 按钮与 DEV 开关按原比例加宽（OTA 字号 16px/内边距 14px；开关 62×34px、位移 28px），
-    开关旁 "DEV ON/OFF" 文字删除，"DEV" 写到滑珠上。"""
+    开关旁 "DEV ON/OFF" 文字删除，"DEV" 写到滑珠上。
+    v1.7.90 三个入口按键显示文案去掉"打开 "/"Open "前缀（zh/en 同步），
+    按钮 id、href/onclick 跳转与其它词条均不变。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4499,12 +4519,10 @@ def test_web_console_header_entry_buttons():
     assert ':8090/' in assets  # launcher port
 
     # i18n 中英词条齐全（v1.7.70 "进入"→"打开" / Enter→Open）
-    assert "'button.enterDonkey':'打开 Donkey'" in assets
-    assert "'button.enterDonkeyDrifter':'打开 DonkeyDrifter'" in assets
-    assert "'button.enterDonkey':'Open Donkey'" in assets
-    assert "'button.enterDonkeyDrifter':'Open DonkeyDrifter'" in assets
-    assert "'button.openKimiCodeWeb':'打开 Kimi Code Web'" in assets
-    assert "'button.openKimiCodeWeb':'Open Kimi Code Web'" in assets
+    # v1.7.90：入口按键文案去掉"打开 "/"Open "前缀，zh/en 词条值相同，各出现 2 次
+    assert assets.count("'button.enterDonkey':'Donkey'") == 2
+    assert assets.count("'button.enterDonkeyDrifter':'DonkeyDrifter'") == 2
+    assert assets.count("'button.openKimiCodeWeb':'Kimi Code Web'") == 2
 
     # v1.7.74："打开 Kimi Code Web"接功能：沿用 _launcherIp（/api/status 的 host_ip），
     # 点击 POST http://<host>:8090/api/launch/kimi-code-web（空体 POST，免 CORS 预检），

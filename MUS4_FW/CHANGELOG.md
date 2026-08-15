@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.91
+
+- fix(WebConsole): 终端标签过多时标签条内部滚动、不再改变窗口比例；➕ 钉在行尾右端；默认标签名改纯数字
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 标签条溢出不改布局：`#termTabs` 增加 `scrollbar-width:none` + `#termTabs::-webkit-scrollbar{display:none}`——溢出时横向滚动但不再出现滚动条（此前 6+ 标签时滚动条挤出额外行高、工具行比例被改变）；`flex:1 1 auto;min-width:0` 不变，条内滚动不撑宽页面。
+    - ➕ 始终靠右：`#newTermBtn` 从 `#termTabs` 滚动区内移出、作为其右邻兄弟元素钉在行尾（`#newTermBtn{width:22px;height:22px;flex:0 0 auto}`，替代原 `#termTabs .iconButton` 规则），无论多少个标签都固定可见；`addTerminalTab()` 改回 `termTabs.appendChild(b)`。
+    - 默认标签名纯数字：新建/重编号由 `t('terminal.tab')+' '+N`（"终端 N"）改为 `''+N`；i18n 移除 `terminal.tab` 中英词条（自定义名改名逻辑不受影响，重编号时自定义名仍优先）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.91。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新工具行 DOM、`appendChild`、纯数字默认名、`terminal.tab` 词条不存在断言，新增隐藏滚动条与 `#newTermBtn` 钉右样式断言；版本链延伸至 v1.7.91。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.91`。
+
 ## 2026-08-15 v1.7.90
 
 - 固件版本号从 `v1.7.89` 更新到 `v1.7.90`（避让：并行会话 #77 RGB 切换键总高修正已占用 v1.7.89）。

@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.90"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.91"' in build_info
+    assert "v1.7.91" in changelog
     assert "v1.7.90" in changelog
     assert "v1.7.89" in changelog
     assert "v1.7.88" in changelog
@@ -293,6 +294,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.91") < changelog.index("## 2026-08-15 v1.7.90")
     assert changelog.index("## 2026-08-15 v1.7.90") < changelog.index("## 2026-08-15 v1.7.89")
     assert changelog.index("## 2026-08-15 v1.7.89") < changelog.index("## 2026-08-15 v1.7.88")
     assert changelog.index("## 2026-08-15 v1.7.88") < changelog.index("## 2026-08-15 v1.7.87")
@@ -432,21 +434,21 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "cmdTarget.addEventListener('change',e=>{applyCmdTarget(e.target.value)});" in source
     # 标签页管理：动态 iframe（保留 #57 白边修复 scrolling="no"）+ 探活后设 src，
     # 每个 iframe 独立 PTY 会话；点标签只切换显示（其余 display:none 保活）；
-    # v1.7.88 起垃圾桶按钮移除（Serial 用标签上的 × 关闭，Web 清空日志按钮一并移除），
-    # ➕ 移入标签条作为末位子元素，新标签 insertBefore 插到 ➕ 左边、➕ 始终位于最新标签右边
+    # v1.7.88 起垃圾桶按钮移除（Serial 用标签上的 × 关闭，Web 清空日志按钮一并移除）；
+    # v1.7.91 起 ➕ 移出标签滚动区、作为其右邻兄弟钉在行尾（始终靠右），新标签 appendChild 进滚动区
     assert 'id="newTermBtn"' in source
     assert 'id="clearBtn"' not in source
     assert "onClearBtn" not in source
     assert "killActiveTerminalTab" not in source
     assert "function addTerminalTab()" in source
-    assert "termTabs.insertBefore(b,newTermBtn);" in source
+    assert "termTabs.appendChild(b);" in source
     assert "document.createElement('iframe')" in source
     assert "f.setAttribute('scrolling','no')" in source
     assert "function selectTerminalTab(id)" in source
     # 标签按位置连续编号（v1.7.80）：新建用 termList.length+1，杀标签后剩余标签重编号；
-    # 标签文字放在 .termTabLabel 子 span（v1.7.87 起，避免 textContent 赋值抹掉 × 子元素）
-    assert "l.textContent=t('terminal.tab')+' '+(termList.length+1);" in source
-    assert "termList.forEach((x,j)=>{x.l.textContent=x.name||t('terminal.tab')+' '+(j+1)});" in source
+    # 标签文字放在 .termTabLabel 子 span（v1.7.87 起）；v1.7.91 起默认名改为纯数字（原"终端 N"）
+    assert "l.textContent=''+(termList.length+1);" in source
+    assert "termList.forEach((x,j)=>{x.l.textContent=x.name||''+(j+1)});" in source
     # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端，
     # 点击 stopPropagation 不触发标签切换
     assert "c.className='termTabClose'" in source
@@ -473,11 +475,15 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     # 标签条样式：横向滚动 + 选中态高亮
     assert "#termTabs{display:none;align-items:center;gap:4px;overflow-x:auto" in source
     assert ".termTab.active{" in source
-    # i18n：新建/标签/关闭/空态四词条 + 加载/失败提示（中英双语）
+    # v1.7.91：标签条隐藏滚动条（溢出时行高与布局不变、窗口比例不被修改）；➕ 钉在行尾右端
+    assert "scrollbar-width:none" in source
+    assert "#termTabs::-webkit-scrollbar{display:none}" in source
+    assert "#newTermBtn{width:22px;height:22px;flex:0 0 auto}" in source
+    assert "#termTabs .iconButton" not in source
+    # i18n：新建/关闭/空态词条 + 加载/失败提示（中英双语）；v1.7.91 起默认名纯数字，terminal.tab 词条移除
     assert "I18N.zh['terminal.new']" in source
     assert "I18N.en['terminal.new']" in source
-    assert "I18N.zh['terminal.tab']" in source
-    assert "I18N.en['terminal.tab']" in source
+    assert "terminal.tab" not in source
     # v1.7.88 起 terminal.kill 词条随垃圾桶按钮一并移除
     assert "terminal.kill" not in source
     assert "I18N.zh['terminal.empty']" in source
@@ -2064,7 +2070,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch devHint" id="devModeToggle">' in source
-    assert '<select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><div id="termTabs"><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button></div><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
+    assert '<select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><div id="termTabs"></div><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source

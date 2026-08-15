@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.87"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.88"' in build_info
+    assert "v1.7.88" in changelog
     assert "v1.7.87" in changelog
     assert "v1.7.86" in changelog
     assert "v1.7.85" in changelog
@@ -290,6 +291,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.88") < changelog.index("## 2026-08-15 v1.7.87")
     assert changelog.index("## 2026-08-15 v1.7.87") < changelog.index("## 2026-08-15 v1.7.86")
     assert changelog.index("## 2026-08-15 v1.7.86") < changelog.index("## 2026-08-15 v1.7.85")
     assert changelog.index("## 2026-08-15 v1.7.85") < changelog.index("## 2026-08-15 v1.7.84")
@@ -1595,9 +1597,10 @@ def test_web_console_language_tabs_wired_to_set_language():
     默认中文选中态（首次启动默认中文界面）；title 走 data-i18n-title。
     位置在 OTA 按钮左边、右对齐组内（v1.7.45 起头部右推由 muteButton 承担，
     语言切换不再 margin-left:auto）。v1.7.78：语言 span 从共享类 .langTabs
-    拆分为独立类 .langSwitch；暗色激活态为 #0891b2 白字（DD 深色原色），
-    浅色按 DD theme-light.css 重映射——激活段恰好回到 ESP32 填充语言
-    （#5cc8ff 蓝底 + #061019 近黑字 + 800 粗）。"""
+    拆分为独立类 .langSwitch；v1.7.88 起深浅两色均按 DD 皮肤 CSS 实际渲染值
+    （theme-mus4.css / theme-light.css）复刻——深色容器 #111820 + 边框 #344154 +
+    内描边 #2b3441，选中段两主题统一为 ESP32 填充语言（#5cc8ff 蓝底 +
+    #061019 近黑字 + 800 粗），与 #themeTabs、DD ThemeSwitcher 逐值一致。"""
 
     source = firmware_source_text()
 
@@ -1608,14 +1611,16 @@ def test_web_console_language_tabs_wired_to_set_language():
     # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs/#themeTabs 复用，语言切换已拆分为 .langSwitch
     assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
-    # v1.7.78：.langSwitch 样式 1:1 对齐 DD LanguageSwitcher——容器 #27272a +
-    # 1px solid #3f3f46 + 圆角 9999px + padding 4px，总高恰好 34px；按钮
-    # 12px/16px、padding 4px 12px，激活 background:#0891b2 白字、未激活 #a1a1aa、
-    # hover #e4e4e7，aria-pressed 随激活态同步（以上为暗色，即 DD 深色原色）
-    assert ".langSwitch{" in source
-    assert "height:34px" in source
-    assert "#0891b2" in source
-    assert "#27272a" in source
+    # v1.7.78：.langSwitch 样式 1:1 对齐 DD LanguageSwitcher——圆角 9999px 胶囊容器 +
+    # padding 4px，总高恰好 34px；按钮 12px/16px、padding 4px 12px，aria-pressed 随激活态同步。
+    # v1.7.88：深色从 Tailwind 原值（#27272a/#3f3f46/#a1a1aa/#0891b2）改为 DD
+    # theme-mus4.css 皮肤实际渲染值（#111820/#344154/#2b3441/#8fa1b5/#e8edf2，
+    # 选中 #5cc8ff+#061019+800 粗），与 #themeTabs、DD ThemeSwitcher 双主题逐值一致
+    assert ".langSwitch{display:inline-flex;align-items:center;gap:4px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;border-radius:9999px;padding:4px;height:34px;box-sizing:border-box}" in source
+    assert ".langSwitch button{padding:4px 12px;height:24px;min-width:0;margin:0;border:none;background:transparent;border-radius:9999px;color:#8fa1b5;font-size:12px;line-height:16px;font-weight:400;cursor:pointer;transition:color .15s,background-color .15s}" in source
+    assert ".langSwitch button:hover{color:#e8edf2;background:transparent}" in source
+    assert ".langSwitch button.active{background:#5cc8ff;color:#061019;font-weight:800}" in source
+    assert ".langSwitch button.active:hover{background:#5cc8ff;color:#061019}" in source
     assert "aria-pressed" in source
     # 浅色主题按 DD theme-light.css 的 zinc/cyan 重映射换算（bg-zinc-800→#f4f6f9、
     # border-zinc-700→#ccd5df、bg-zinc-800 内描边→#d5dce4、bg-cyan-600→#5cc8ff、
@@ -4303,10 +4308,12 @@ def test_web_console_theme_toggle():
     """v1.7.xx：头部红绿蓝切换键右边、中英文切换键左边新增深色/浅色模式切换键
     （themeTabs），三个选项：浅色（左）、跟随系统（中）、深色（右）。
     v1.7.81 起外观改为与 DonkeyDrifter ThemeSwitcher 相同的分段控件样式
-    （独立 themeSwitch class，不再复用 langTabs）：zinc-800 胶囊容器 + 边框，
-    选中段 cyan-600 实心圆角胶囊，总高 34px；并补浅色主题覆写：深色主题保持
-    写死的 zinc 配色，浅色主题覆写为 DC 浅色既有令牌（#dde3ec/#aeb9c7/#5b6b7d/#0b2536），
-    选中段两主题均 cyan-600 白字。
+    （独立 themeSwitch class，不再复用 langTabs），总高 34px；v1.7.88 起配色从
+    Tailwind 原值改为 DD 皮肤 CSS（theme-mus4.css/theme-light.css）实际渲染值——
+    深色容器 #111820 + 边框 #344154 + 内描边 #2b3441、未选中 #8fa1b5/hover #e8edf2，
+    浅色容器 #f4f6f9 + 边框 #ccd5df + 内描边 #d5dce4、未选中 #5b6b7d/hover #1a2330，
+    选中段两主题统一 #5cc8ff 蓝底 + #061019 近黑字 + 800 粗，与 .langSwitch、
+    DD ThemeSwitcher/LanguageSwitcher 逐值一致。
     选择通过 localStorage（mus4.ui.theme）持久化，默认 'auto'（无存储/非法值回退），
     即默认跟随系统；用户显式选择浅色/深色后以其为准。
     跟随系统：'auto' 时经 matchMedia('(prefers-color-scheme: light)') 解析，
@@ -4321,21 +4328,23 @@ def test_web_console_theme_toggle():
     # v1.7.81：独立 themeSwitch class（与 DD ThemeSwitcher 同款，不再复用 langTabs）
     assert '<span class="themeSwitch" id="themeTabs"' in assets
 
-    # v1.7.81 新增 CSS（用 id 选择器压过浅色主题 button 覆写）：
-    # 容器 34px 高 zinc-800 胶囊 + zinc-700 边框；按钮 24px 高；选中段 cyan-600 实心胶囊
-    assert "#themeTabs{display:inline-flex;align-items:center;gap:4px;background:#27272a;border:1px solid #3f3f46;border-radius:999px;padding:4px;height:34px;box-sizing:border-box}" in assets
+    # v1.7.88 CSS（用 id 选择器压过浅色主题 button 覆写；配色 = DD theme-mus4.css 渲染值）：
+    # 容器 34px 高胶囊 #111820 + 边框 #344154 + 内描边 #2b3441；按钮 24px 高、未选中
+    # #8fa1b5、hover #e8edf2；选中段 #5cc8ff 实心胶囊 + #061019 近黑字 + 800 粗
+    assert "#themeTabs{display:inline-flex;align-items:center;gap:4px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;border-radius:999px;padding:4px;height:34px;box-sizing:border-box}" in assets
     assert "#themeTabs button{padding:4px 12px;height:24px;" in assets
-    assert "#themeTabs button:hover{color:#e4e4e7}" in assets
-    assert "#themeTabs button.active{background:#0891b2;color:#fff}" in assets
-    assert "#themeTabs button.active:hover{background:#0891b2;color:#fff}" in assets
+    assert "#themeTabs button:hover{color:#e8edf2}" in assets
+    assert "#themeTabs button.active{background:#5cc8ff;color:#061019;font-weight:800}" in assets
+    assert "#themeTabs button.active:hover{background:#5cc8ff;color:#061019}" in assets
 
-    # v1.7.81 浅色主题覆写（html[data-theme="light"] 前缀，优先级高于基础规则）：
-    # 容器/按钮换用 DC 浅色既有令牌，选中段仍 cyan-600 白字；深色主题保持 zinc 配色不回归
-    assert 'html[data-theme="light"] #themeTabs{background:#dde3ec;border-color:#aeb9c7}' in assets
+    # v1.7.88 浅色主题覆写（= DD theme-light.css 渲染值，与 .langSwitch 浅色逐值一致）：
+    # 容器 #f4f6f9 + 边框 #ccd5df + 内描边 #d5dce4；未选中 #5b6b7d、hover #1a2330；
+    # 选中段同为 #5cc8ff+#061019（800 粗继承深色基础规则）
+    assert 'html[data-theme="light"] #themeTabs{background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in assets
     assert 'html[data-theme="light"] #themeTabs button{color:#5b6b7d}' in assets
-    assert 'html[data-theme="light"] #themeTabs button:hover{color:#0b2536}' in assets
-    assert 'html[data-theme="light"] #themeTabs button.active{background:#0891b2;color:#fff}' in assets
-    assert 'html[data-theme="light"] #themeTabs button.active:hover{background:#0891b2;color:#fff}' in assets
+    assert 'html[data-theme="light"] #themeTabs button:hover{color:#1a2330}' in assets
+    assert 'html[data-theme="light"] #themeTabs button.active{background:#5cc8ff;color:#061019}' in assets
+    assert 'html[data-theme="light"] #themeTabs button.active:hover{background:#5cc8ff;color:#061019}' in assets
 
     # 三个选项：跟随系统、浅色、深色，文案走 i18n
     assert 'data-theme="auto" onclick="setTheme(\'auto\')" data-i18n="theme.auto"' in assets

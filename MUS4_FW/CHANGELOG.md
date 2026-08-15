@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.88
+
+- feat(WebConsole): 主题/语言切换键重设计——深色配色改用 DD 皮肤实际渲染值，与 DonkeyDrifter ThemeSwitcher/LanguageSwitcher 双主题完全同款
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页）：
+    - 背景：v1.7.78/v1.7.81 初版照搬的是 Tailwind 默认色板原值（zinc-800 `#27272a` / cyan-600 `#0891b2`），而 DD 实际运行时被皮肤 CSS（theme-mus4.css/theme-light.css）整体覆盖，真实渲染是另一组色；本次改为按 DD 皮肤渲染值 1:1 复刻。
+    - `#themeTabs`（深色基础）：容器 `#27272a`→`#111820`、边框 `#3f3f46`→`#344154` 并新增内描边 `box-shadow:inset 0 0 0 1px #2b3441`；按钮未选中 `#a1a1aa`→`#8fa1b5`、hover `#e4e4e7`→`#e8edf2`；选中段 `#0891b2` 白字 → `#5cc8ff` 蓝底 + `#061019` 近黑字 + 800 粗（hover 不变色，同 DD）。
+    - `#themeTabs` 浅色覆写：容器 `#dde3ec`/`#aeb9c7` → `#f4f6f9`/`#ccd5df` + 内描边 `#d5dce4`，hover 文字 `#0b2536`→`#1a2330`，选中段同步改为 `#5cc8ff`+`#061019`（800 粗继承深色基础规则）——浅色下与旁边 `.langSwitch` 现有浅色样式逐值一致。
+    - `.langSwitch`（深色基础）同步换成同一组皮肤渲染值（容器/边框/内描边/文字/hover/选中段全部与 `#themeTabs` 相同），修正 v1.7.78 深色沿用 Tailwind 原值导致的「双切换键深色选中色不一致」；浅色覆写不动（已是 DD 皮肤值）。
+    - 结果：深/浅两种模式下，主题切换键 = 中英文切换键 = DD 的 ThemeSwitcher = DD 的 LanguageSwitcher，四个控件同一视觉语言；几何不变（容器 34px、按钮 24px、12px 字、胶囊圆角）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.88。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新 `#themeTabs`/`.langSwitch` 深浅色断言为新皮肤值，版本链延伸至 v1.7.88。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.88`，Playwright 深/浅截图复核两组切换键视觉一致。
+
 ## 2026-08-15 v1.7.87
 
 - feat(WebConsole): Serial 终端标签页加独立关闭叉 ×、浅色皮肤；工具行按"Serial/Web 开关 → ➕ → 🗑 → 标签条"重排

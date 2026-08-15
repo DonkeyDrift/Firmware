@@ -274,13 +274,15 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.78"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.79"' in build_info
+    assert "v1.7.79" in changelog
     assert "v1.7.78" in changelog
     assert "v1.7.77" in changelog
     assert "v1.7.76" in changelog
     assert "v1.7.75" in changelog
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
+    assert changelog.index("v1.7.79") < changelog.index("v1.7.78")
     assert changelog.index("v1.7.78") < changelog.index("v1.7.77")
     assert changelog.index("v1.7.77") < changelog.index("v1.7.76")
     assert changelog.index("v1.7.76") < changelog.index("v1.7.73")
@@ -1430,6 +1432,11 @@ def test_web_console_uses_dev_label_for_development_switch():
 def test_web_console_header_and_state_cards_keep_compact_layout():
     source = firmware_source_text()
 
+    # v1.7.79：OTA 按钮并入 34px 规则；DEV 开关轨道加高 34px（滑珠 26px、边距 4px、位移 10px）
+    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,.headerRow .otaLink .otaButton{height:34px}' in source
+    assert '#devModeToggle .slider{height:34px}' in source
+    assert '#devModeToggle .slider:before{height:26px;width:26px;left:4px;bottom:4px}' in source
+    assert '#devModeToggle input:checked+.slider:before{transform:translateX(10px)}' in source
     # v1.7.78：标题行整行垂直居中（三个"打开"按键 34px 后不再底部对齐）
     assert ".headerRow{display:flex;align-items:center;" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
@@ -4332,7 +4339,9 @@ def test_web_console_header_entry_buttons():
     AbortController 120s 超时，同步上下文先开 about:blank 句柄，成功后导航、失败关闭。
     v1.7.76 三个入口按键高度由 24px 提至 34px（与 DD 侧"打开"按键对齐），
     通过专属规则 #enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}
-    覆盖，.otaButton 基础规则与其他 OTA 按钮保持 24px 不变。"""
+    覆盖，.otaButton 基础规则保持 24px。
+    v1.7.79 该规则扩展选择器追加 .headerRow .otaLink .otaButton（头部 OTA 按钮同高 34px），
+    并新增 #devModeToggle scoped 规则把 DEV 开关轨道加高至 34px（滑珠 26px、位移 10px）。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4393,8 +4402,8 @@ def test_web_console_header_entry_buttons():
     assert 'enterDonkeyDrifter()' not in assets
 
     # v1.7.76：三个入口按键 34px 高（对齐 DD 侧"打开"按键），专属规则覆盖，
-    # .otaButton 基础规则（含 OTA 按钮）仍是 24px
-    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}' in assets
+    # .otaButton 基础规则保持 24px；v1.7.79 规则扩展追加头部 OTA 按钮
+    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,.headerRow .otaLink .otaButton{height:34px}' in assets
     assert '.otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
 
 def test_web_console_light_theme_overrides():

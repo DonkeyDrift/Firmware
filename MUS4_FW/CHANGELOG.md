@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.79
+
+- 固件版本号从 `v1.7.78` 更新到 `v1.7.79`。
+- fix(WebConsole): DC 头部 OTA 按钮与 DEV 开关高度提至 34px，与三个"打开"按键（及 DD 侧按键）同高
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页）：
+    - 34px 专属规则扩展为 `#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,.headerRow .otaLink .otaButton{height:34px}`，覆盖头部 OTA 按钮（无 id，经 `.otaLink` 容器定位，不动 `.otaButton` 基础规则）。
+    - DEV 开关按 `#devModeToggle`  scoped 加高：轨道 `height:34px`（宽度 44px 不变），滑珠等比放大至 26px、边距 4px（`bottom:4px` 保持垂直居中），选中位移相应改为 `translateX(10px)`（=44-26-4-4）。页面其它 `.toggleSwitch` 不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.79。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.79；34px 规则断言同步扩展选择器；补 DEV 开关加高规则断言。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.79` 确认。
+- 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+
 ## 2026-08-15 v1.7.78
 
 - 固件版本号从 `v1.7.77` 更新到 `v1.7.78`。

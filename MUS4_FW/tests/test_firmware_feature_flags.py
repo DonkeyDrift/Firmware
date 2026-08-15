@@ -276,13 +276,15 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
 
     assert '#define MUS4_FIRMWARE_VERSION "v1.7.80"' in build_info
     assert "v1.7.80" in changelog
+    assert "v1.7.78" in changelog
     assert "v1.7.77" in changelog
     assert "v1.7.76" in changelog
     assert "v1.7.75" in changelog
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
-    assert changelog.index("## 2026-08-15 v1.7.80") < changelog.index("## 2026-08-15 v1.7.77")
+    assert changelog.index("## 2026-08-15 v1.7.80") < changelog.index("## 2026-08-15 v1.7.78")
+    assert changelog.index("## 2026-08-15 v1.7.78") < changelog.index("## 2026-08-15 v1.7.77")
     assert changelog.index("## 2026-08-15 v1.7.77") < changelog.index("## 2026-08-15 v1.7.76")
     assert changelog.index("## 2026-08-15 v1.7.76") < changelog.index("## 2026-08-15 v1.7.75")
 
@@ -1509,35 +1511,57 @@ def test_web_console_mobile_header_layout():
     assert ".br3{order:14}" in source
     # 第 4 行：主题切换（左）+ 语言切换（margin-left:auto 贴合最右端，不再隐藏）
     assert "#themeTabs{order:15}" in source
-    assert ".headerRow .langTabs:not([id]){order:16;margin-left:auto}" in source
-    assert ".headerRow .langTabs:not([id]){display:none}" not in source
+    assert ".headerRow .langSwitch{order:16;margin-left:auto}" in source
+    assert ".headerRow .langSwitch{display:none}" not in source
 
 
 def test_web_console_language_tabs_wired_to_set_language():
-    """顶栏中文/English 分段控件：与 DonkeyDrift Web UI 顶栏切换器同款。
+    """顶栏中文/English 分段控件：v1.7.78 起与 DonkeyDrifter web_ui
+    LanguageSwitcher 完全一致（含 34px 总高）。
     v1.7.46 起正式接通语言切换（data-lang + onclick=setLanguage，不再是占位），
     默认中文选中态（首次启动默认中文界面）；title 走 data-i18n-title。
     位置在 OTA 按钮左边、右对齐组内（v1.7.45 起头部右推由 muteButton 承担，
-    langTabs 不再 margin-left:auto），选中态沿用 ESP32 填充语言（蓝底 #5cc8ff
-    + 黑字 #061019 + 800 粗）。"""
+    语言切换不再 margin-left:auto）。v1.7.78：语言 span 从共享类 .langTabs
+    拆分为独立类 .langSwitch；暗色激活态为 #0891b2 白字（DD 深色原色），
+    浅色按 DD theme-light.css 重映射——激活段恰好回到 ESP32 填充语言
+    （#5cc8ff 蓝底 + #061019 近黑字 + 800 粗）。"""
 
     source = firmware_source_text()
 
     assert ".langTabs{display:inline-flex;align-items:center;gap:2px;background:#171c24;border:none;border-radius:999px;padding:0 2px;height:24px;box-sizing:border-box;box-shadow:inset 0 0 0 1px #2b3441}" in source
     # 外大椭圆（box-sizing:border-box 固定总高 24px=OTA/DEV 同高，内嵌 box-shadow 描边
     # 不占布局）+ 内两个小椭圆分段（24px 满高，蓝色选中段与 OTA 按钮蓝对蓝同高），
-    # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言
+    # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言；
+    # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs/#themeTabs 复用，语言切换已拆分为 .langSwitch
     assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
-    assert '<span class="langTabs" title="语言" data-i18n-title="language.title">' in source
-    assert '<button type="button" data-lang="zh" onclick="setLanguage(\'zh\')" class="active">中文</button><button type="button" data-lang="en" onclick="setLanguage(\'en\')">English</button>' in source
-    # 位置：langTabs 在 OTA 按钮左边；右推由 muteButton 承担，langTabs/otaLink 均不再 margin-left:auto
-    assert source.index('<span class="langTabs"') < source.index('<a href="/update" class="otaLink">')
+    # v1.7.78：.langSwitch 样式 1:1 对齐 DD LanguageSwitcher——容器 #27272a +
+    # 1px solid #3f3f46 + 圆角 9999px + padding 4px，总高恰好 34px；按钮
+    # 12px/16px、padding 4px 12px，激活 background:#0891b2 白字、未激活 #a1a1aa、
+    # hover #e4e4e7，aria-pressed 随激活态同步（以上为暗色，即 DD 深色原色）
+    assert ".langSwitch{" in source
+    assert "height:34px" in source
+    assert "#0891b2" in source
+    assert "#27272a" in source
+    assert "aria-pressed" in source
+    # 浅色主题按 DD theme-light.css 的 zinc/cyan 重映射换算（bg-zinc-800→#f4f6f9、
+    # border-zinc-700→#ccd5df、bg-zinc-800 内描边→#d5dce4、bg-cyan-600→#5cc8ff、
+    # text-white→#061019 且选中胶囊 800 粗、text-zinc-400→#5b6b7d、hover text-zinc-200→#1a2330）
+    assert 'html[data-theme="light"] .langSwitch{background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in source
+    assert 'html[data-theme="light"] .langSwitch button{background:transparent;color:#5b6b7d}' in source
+    assert 'html[data-theme="light"] .langSwitch button.active{background:#5cc8ff;color:#061019;font-weight:800}' in source
+    assert '<span class="langSwitch" title="语言" data-i18n-title="language.title">' in source
+    # 按钮按属性片段断言（v1.7.78 起按钮带 aria-pressed 状态属性，不做全串精确匹配）
+    assert '<button type="button" data-lang="zh" onclick="setLanguage(\'zh\')" class="active"' in source
+    assert '>中文</button><button type="button" data-lang="en" onclick="setLanguage(\'en\')"' in source
+    assert '>English</button>' in source
+    # 位置：langSwitch 在 OTA 按钮左边；右推由 muteButton 承担，langSwitch/otaLink 均不再 margin-left:auto
+    assert source.index('<span class="langSwitch"') < source.index('<a href="/update" class="otaLink">')
     assert ".otaLink{margin-left:auto" not in source
-    # otaLink 改 flex 消除 inline-block 基线下沉，保证 OTA 按钮与 langTabs 容器顶/底对齐同高
+    # otaLink 改 flex 消除 inline-block 基线下沉，保证 OTA 按钮与 langSwitch 容器顶/底对齐同高
     assert ".headerRow .otaLink{display:flex;align-items:center}" in source
-    # v1.7.46：langTabs 已接线（onclick + data-lang + setLanguage），不再是惰性占位
-    lang_tabs = source[source.index('<span class="langTabs"'):source.index('<a href="/update" class="otaLink">')]
+    # v1.7.46：语言切换已接线（onclick + data-lang + setLanguage），不再是惰性占位
+    lang_tabs = source[source.index('<span class="langSwitch"'):source.index('<a href="/update" class="otaLink">')]
     assert "onclick" in lang_tabs
     assert "setLanguage" in lang_tabs
     assert 'data-lang="zh"' in lang_tabs
@@ -1566,8 +1590,8 @@ def test_web_console_header_github_link_replaces_version_label():
     assert '<a class="ghLink" href="https://github.com/DonkeyDrift/Firmware" target="_blank" rel="noopener"' in source
     assert 'aria-label="GitHub: DonkeyDrift/Firmware"' in source
     assert '<svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58' in source
-    # 位置：紧跟主标题 </h1>（原版本号位置）、在 langTabs 切换条左边
-    assert source.index('<h1 data-i18n="app.title">Drifter Console</h1>') < source.index('<a class="ghLink"') < source.index('<span class="langTabs"')
+    # 位置：紧跟主标题 </h1>（原版本号位置）、在 langSwitch 语言切换条左边
+    assert source.index('<h1 data-i18n="app.title">Drifter Console</h1>') < source.index('<a class="ghLink"') < source.index('<span class="langSwitch"')
     assert '.ghLink{display:inline-flex;align-items:center;color:#8fa1b5;' in source
     assert '.ghLink:hover{color:#5cc8ff}' in source
 

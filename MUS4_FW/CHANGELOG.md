@@ -13,6 +13,21 @@
   - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 更新描述并补 `class="themeSwitch"`、5 条基础 CSS 与 5 条浅色覆写断言；版本号断言同步至 v1.7.80。
   - 验证：编译通过；全量 pytest 通过；HTTP OTA 上传后车上 `/api/status` 确认 `version=v1.7.80`；Playwright 无头实测浅色模式容器 rgb(221,227,236)/边框 rgb(174,185,199)/未选中 rgb(91,107,125)，深色模式 rgb(39,39,42)/rgb(63,63,70)/rgb(161,161,170) 不回归，两种模式选中段均 cyan-600 白字、高度均 34px，深浅色截图确认。
 
+## 2026-08-15 v1.7.78
+
+- 固件版本号从 `v1.7.77` 更新到 `v1.7.78`（开发期间曾用 v1.7.76/v1.7.77；两号已分别被 #65/#66 占用，合入前统一改号 v1.7.78）。
+- feat(WebConsole): 中英文切换按键改为与 DonkeyDrifter web_ui LanguageSwitcher 完全一致的分段胶囊控件（含高度）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 头部语言 span 从共享类 `.langTabs` 拆分为独立类 `.langSwitch`（`#ledBlinkTabs`/`#themeTabs` 仍复用 `.langTabs`，样式与逻辑不受影响）；原指向"无 id langTabs"的窄屏定位规则（820px 媒体查询内 `.headerRow .langTabs:not([id]){order:16;margin-left:auto}`）改指向 `.langSwitch`。
+    - 容器样式对齐 DD LanguageSwitcher：`background:#27272a`、`border:1px solid #3f3f46`、`border-radius:9999px`、`padding:4px`，总高恰好 34px（1px 边框+4px padding+24px 按钮+4px padding+1px 边框）。
+    - 按钮：`font-size:12px`/`line-height:16px`、`padding:4px 12px`、透明背景无边框；激活 `background:#0891b2` 白字（hover 不变），未激活 `#a1a1aa`、hover `#e4e4e7` 且背景保持透明；`aria-pressed` 随激活态同步（`applyLanguage` 激活态同步逻辑顺带带上）。
+    - 浅色主题按 DD `theme-light.css` 的 zinc/cyan 重映射逐色换算（容器 `#f4f6f9` + 边框 `#ccd5df` + 内描边 `#d5dce4`，激活段 `#5cc8ff` + 近黑字 `#061019` + 800 粗，未激活 `#5b6b7d`/hover `#1a2330`），与 DD 浅色表现一致；暗色保持 DD 深色原色不变。修正首版误把深色配色钉死到浅色主题导致的"浅色页面深色按钮"问题。
+    - 右下角 fab 悬浮簇（fabToggle 光点/langFab 🌐/helpFab ?/langMenu 下拉）与 DD FabActions 本为 1:1 镜像，一律未动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.78。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.78；`test_web_console_language_tabs_wired_to_set_language` 语言 span 断言从 `.langTabs` 改为 `.langSwitch`，并新增关键样式断言（`.langSwitch{`/`height:34px`/`#0891b2`/`#27272a`/`aria-pressed`，及浅色主题重映射色值三条）；窄屏头部布局断言 `.headerRow .langTabs:not([id])` 同步改指 `.langSwitch`；`#ledBlinkTabs`/`#themeTabs` 及右下角 fab/langFab/langMenu 相关断言一律不动。
+  - 验证：编译通过；全量 322 项 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.78` 确认，首页 HTML 实测返回 `.langSwitch` 新样式（`height:34px`、`#27272a`/`#0891b2` 深色配色、`html[data-theme="light"]` 浅色重映射 `#f4f6f9`/`#5cc8ff` 系列）与按钮 `aria-pressed` 属性，旧 `langTabs:not([id])` 选择器已清除，#66 的 `#newTermBtn` 等新功能在同基上完整保留。
+  - 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+
 ## 2026-08-15 v1.7.77
 
 - 固件版本号从 `v1.7.76` 更新到 `v1.7.77`（避让：v1.7.76 已被 #65 `Tony-kimi-code-web` 的 DC 头部按键高度改动占用）。

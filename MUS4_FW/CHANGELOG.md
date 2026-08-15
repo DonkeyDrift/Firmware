@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.90
+
+- fix(WebConsole): RGB 闪烁颜色切换键悬停不再变形——去掉悬停强制独立椭圆，按钮保持连体段形状，仅背景提亮
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：删除 `#ledBlinkTabs button:hover{border-radius:999px!important;z-index:1}`（悬停时 `!important` 圆角覆盖 JS 连体圆角，导致悬停按钮鼓成独立椭圆）；随之删除专为垫椭圆圆角缝隙而生的两条桥接伪元素规则（`:has(+button.active:hover)::after` / `.active:hover+button.active::before`）及三条对应配色规则；悬停背景提亮（#ff9797/#74e4ad/#8bdcff）与连体 box-shadow 机制不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.90。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 相关断言改为不存在断言，版本链延伸至 v1.7.90。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 确认。
+
 ## 2026-08-15 v1.7.89
 
 - fix(WebConsole): DC 头部 RGB 闪烁颜色切换键（#ledBlinkTabs）总高修正为 34px，与 DD 语言/主题两个切换键完全一致

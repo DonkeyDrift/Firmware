@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.89"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.90"' in build_info
+    assert "v1.7.90" in changelog
     assert "v1.7.89" in changelog
     assert "v1.7.88" in changelog
     assert "v1.7.87" in changelog
@@ -292,6 +293,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.90") < changelog.index("## 2026-08-15 v1.7.89")
     assert changelog.index("## 2026-08-15 v1.7.89") < changelog.index("## 2026-08-15 v1.7.88")
     assert changelog.index("## 2026-08-15 v1.7.88") < changelog.index("## 2026-08-15 v1.7.87")
     assert changelog.index("## 2026-08-15 v1.7.87") < changelog.index("## 2026-08-15 v1.7.86")
@@ -4244,16 +4246,15 @@ def test_web_console_led_blink_color_selector():
     # 容器总高与 DD 两个切换键（语言/主题，34px = 按钮 24px + 上下各 4px 内边距
     # + 1px 边框）一致：本容器用 box-sizing:border-box 固定 34px，内边距上下各 4px
     assert "#ledBlinkTabs{height:34px;padding:4px 2px}" in assets
-    # 悬停高亮框不受连体直角影响，始终为独立小椭圆；仅在悬停按钮本身也已勾选时，
-    # 相邻已勾选按钮才用伪元素把背景延伸 12px 垫进悬停按钮底部（悬停按钮 z-index
-    # 更高），小椭圆与连体段严丝合缝；悬停未勾选按钮时不垫底，保持均匀细缝
+    # 悬停只提亮背景、不改变形状（v1.7.90 起）：移除悬停强制独立椭圆及为垫椭圆圆角
+    # 缝隙而生的桥接伪元素，按钮悬停时保持 renderLedBlinkTabs 计算的连体圆角不变
     assert "#ledBlinkTabs button{position:relative;z-index:0}" in assets
-    assert "#ledBlinkTabs button:hover{border-radius:999px!important;z-index:1}" in assets
-    assert "#ledBlinkTabs button.active:has(+button.active:hover)::after{content:\"\";position:absolute;top:0;bottom:0;left:12px;right:-12px;z-index:-1}" in assets
-    assert "#ledBlinkTabs button.active:hover+button.active::before{content:\"\";position:absolute;top:0;bottom:0;left:-12px;right:12px;z-index:-1}" in assets
+    assert "#ledBlinkTabs button:hover{border-radius:999px!important;z-index:1}" not in assets
+    assert "#ledBlinkTabs button.active:has(+button.active:hover)::after" not in assets
+    assert "#ledBlinkTabs button.active:hover+button.active::before" not in assets
     # v1.7.64：三个选项的选中框各着各色（红 #ff6b6b、绿 #39d98a、蓝 #5cc8ff，与图表
     # gz/thr/str 曲线同色）；悬停提亮（红 #ff9797、绿 #74e4ad、蓝沿用 #8bdcff）、连体
-    # box-shadow 与悬停垫底伪元素的延伸色均按按钮各自颜色（LED_BLINK_TAB_COLORS 映射），
+    # box-shadow 延伸色按按钮各自颜色（LED_BLINK_TAB_COLORS 映射），
     # 语言切换等其他 .langTabs 保持统一蓝不变
     assert "#ledBlinkTabs button[data-color=\"1\"].active{background:#ff6b6b}" in assets
     assert "#ledBlinkTabs button[data-color=\"2\"].active{background:#39d98a}" in assets
@@ -4261,9 +4262,9 @@ def test_web_console_led_blink_color_selector():
     assert "#ledBlinkTabs button[data-color=\"1\"].active:hover{background:#ff9797}" in assets
     assert "#ledBlinkTabs button[data-color=\"2\"].active:hover{background:#74e4ad}" in assets
     assert "#ledBlinkTabs button[data-color=\"4\"].active:hover{background:#8bdcff}" in assets
-    assert "#ledBlinkTabs button[data-color=\"1\"]::after,#ledBlinkTabs button[data-color=\"1\"]::before{background:#ff6b6b}" in assets
-    assert "#ledBlinkTabs button[data-color=\"2\"]::after,#ledBlinkTabs button[data-color=\"2\"]::before{background:#39d98a}" in assets
-    assert "#ledBlinkTabs button[data-color=\"4\"]::after,#ledBlinkTabs button[data-color=\"4\"]::before{background:#5cc8ff}" in assets
+    assert "::after,#ledBlinkTabs button[data-color=\"1\"]::before{background:#ff6b6b}" not in assets
+    assert "::after,#ledBlinkTabs button[data-color=\"2\"]::before{background:#39d98a}" not in assets
+    assert "::after,#ledBlinkTabs button[data-color=\"4\"]::before{background:#5cc8ff}" not in assets
     assert "const LED_BLINK_TAB_COLORS={1:'#ff6b6b',2:'#39d98a',4:'#5cc8ff'};" in assets
     assert "const sh=[],c=LED_BLINK_TAB_COLORS[b.dataset.color]||'#5cc8ff'" in assets
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in assets

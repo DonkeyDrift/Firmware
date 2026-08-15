@@ -274,11 +274,12 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.75"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.76"' in build_info
+    assert "v1.7.76" in changelog
     assert "v1.7.75" in changelog
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
-    assert changelog.index("v1.7.75") < changelog.index("v1.7.73")
+    assert changelog.index("v1.7.76") < changelog.index("v1.7.73")
 
 
 def test_host_ip_report_channel():
@@ -4311,7 +4312,10 @@ def test_web_console_header_entry_buttons():
     v1.7.70 "进入"改名"打开"（en Enter→Open）；DonkeyDrifter 右侧新增"打开 Kimi Code Web"
     占位按钮（功能预留，无 href/onclick）。
     v1.7.74 "打开 Kimi Code Web"接功能：沿用 _launcherIp，POST :8090/api/launch/kimi-code-web，
-    AbortController 120s 超时，同步上下文先开 about:blank 句柄，成功后导航、失败关闭。"""
+    AbortController 120s 超时，同步上下文先开 about:blank 句柄，成功后导航、失败关闭。
+    v1.7.76 三个入口按键高度由 24px 提至 34px（与 DD 侧"打开"按键对齐），
+    通过专属规则 #enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}
+    覆盖，.otaButton 基础规则与其他 OTA 按钮保持 24px 不变。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4370,6 +4374,11 @@ def test_web_console_header_entry_buttons():
     assert '#drive' in assets
     assert 'enterDonkeyLauncher' not in assets
     assert 'enterDonkeyDrifter()' not in assets
+
+    # v1.7.76：三个入口按键 34px 高（对齐 DD 侧"打开"按键），专属规则覆盖，
+    # .otaButton 基础规则（含 OTA 按钮）仍是 24px
+    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}' in assets
+    assert '.otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
 
 def test_web_console_light_theme_overrides():
     """浅色主题生效：setTheme/initTheme 通过 applyTheme 把解析结果写到

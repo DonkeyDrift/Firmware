@@ -1,12 +1,24 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.83
+
+- 固件版本号从 `v1.7.82` 更新到 `v1.7.83`（避让：v1.7.82 已被 #73 `Tony-dc-rgb-tabs-dd` 并入 Tony；更早避让历史：v1.7.78 曾被 #68 `Tony-dc-lang-switch-dd` 占用、v1.7.79/v1.7.80 曾被 #69 `Tony-serial-term-tabs`/#72 `Tony-serial-tab-renumber` 占用，本分支原 v1.7.76/v1.7.77/v1.7.81 条目随合入最新 Tony 合并为本条并定版 v1.7.83）。
+- feat(WebConsole): DC 主题切换键改为与 DonkeyDrifter 相同的分段控件样式，并补浅色模式浅色变体
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 头部主题切换 `<span id="themeTabs">` 的 class 从 `langTabs` 改为独立 `themeSwitch`，不再复用语言切换键的胶囊样式；按钮、`onclick`、`data-theme`、i18n 属性与 `renderThemeTabs()` 等 JS 逻辑全部保持不变。
+    - 新增 5 条 `#themeTabs` 基础 CSS（id 选择器压过浅色主题 `button` 覆写）：容器 `display:inline-flex` + `gap:4px` + `background:#27272a`（zinc-800）+ `border:1px solid #3f3f46`（zinc-700）+ `border-radius:999px` + `padding:4px` + `height:34px`；按钮 `padding:4px 12px`、`height:24px`、`font-size:12px`、`color:#a1a1aa`（zinc-400）、hover 仅文字变 `#e4e4e7`（zinc-200）；选中段 `background:#0891b2`（cyan-600）+ 白字实心圆角胶囊。总高 = 24px 按钮 + 8px padding + 2px border = 34px，与 DD ThemeSwitcher 一致。
+    - 追加 5 条 `html[data-theme="light"]` 浅色覆写（优先级天然高于基础规则；`dataset.theme` 是 `applyTheme()` 写入的解析后主题，跟随系统时也会正确落到 light/dark）：容器 `background:#dde3ec`、`border-color:#aeb9c7`，未选中按钮 `color:#5b6b7d`、hover 文字 `#0b2536`（均取自 DC 浅色 `.langTabs` 既有令牌）；选中段两种主题均保持 cyan-600 白字。浅色页面下不再是突兀的深色胶囊。
+    - 既有移动端媒体查询 `#themeTabs{order:15}` 保留不动，新规则为叠加；主题默认逻辑未动（首屏防闪烁脚本、`let uiTheme='auto'`、`readStoredTheme()` 回退 `'auto'`，默认仍跟随系统）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.83。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 更新描述并补 `class="themeSwitch"`、5 条基础 CSS 与 5 条浅色覆写断言；版本号断言同步至 v1.7.83。
+  - 验证：编译通过；全量 pytest 通过；HTTP OTA 上传后车上 `/api/status` 确认 `version=v1.7.83`；Playwright 无头实测浅色模式容器 rgb(221,227,236)/边框 rgb(174,185,199)/未选中 rgb(91,107,125)，深色模式 rgb(39,39,42)/rgb(63,63,70)/rgb(161,161,170) 不回归，两种模式选中段均 cyan-600 白字、高度均 34px，深浅色截图确认。
+
 ## 2026-08-15 v1.7.82
 
 - 固件版本号定版 `v1.7.82`（避让：v1.7.80 已被 #72 `Tony-serial-tab-renumber` 并入 Tony，v1.7.81 已被 `Tony-dc-theme-switch-dd` 分支占用），自 Tony 顶端 `v1.7.79` 更新而来。
 - fix(WebConsole): RGB 闪烁颜色切换键加高至与 DonkeyDrifter 深浅色/中英文切换键一致（总高 32px），连体椭圆与配色不变
   - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `#ledBlinkTabs{height:auto;padding:4px 2px}` 覆盖共享 `.langTabs` 容器（24px 按钮 + 上下各 4px 内边距 = 32px，对齐 DD `ThemeSwitcher`/`LanguageSwitcher` 的 p-1 + py-1 尺寸）。
   - `tests/test_firmware_feature_flags.py`：`test_web_console_led_blink_color_selector` 新增容器规则断言。
-
 ## 2026-08-15 v1.7.80
 
 - 固件版本号从 `v1.7.79` 更新到 `v1.7.80`。

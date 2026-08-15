@@ -1,12 +1,23 @@
 # CHANGELOG.md
 
-## 2026-08-15 v1.7.88
+## 2026-08-15 v1.7.89
 
 - fix(WebConsole): DC 头部 RGB 闪烁颜色切换键（#ledBlinkTabs）总高修正为 34px，与 DD 语言/主题两个切换键完全一致
-  - `libraries/mus4_web/src/WebConsoleAssets.h`：容器规则由 `#ledBlinkTabs{height:auto;padding:4px 2px}` 改为 `#ledBlinkTabs{height:34px;padding:4px 2px}`——DD 切换键总高 34px（按钮 24px + 容器上下各 4px 内边距 + 上下各 1px 边框），本容器继承 `.langTabs` 的 `box-sizing:border-box` 后以固定 34px 对齐（ inset 投影描边不另占高度）；按钮 24px、连体椭圆机制与红绿蓝配色（#ff6b6b/#39d98a/#5cc8ff）均不变。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.88。
-  - 测试同步：`tests/test_firmware_feature_flags.py` 更新容器高度断言与注释，版本链延伸至 v1.7.88。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：容器规则由 `#ledBlinkTabs{height:auto;padding:4px 2px}` 改为 `#ledBlinkTabs{height:34px;padding:4px 2px}`——DD 切换键总高 34px（按钮 24px + 容器上下各 4px 内边距 + 上下各 1px 边框），本容器继承 `.langTabs` 的 `box-sizing:border-box` 后以固定 34px 对齐（inset 投影描边不另占高度）；按钮 24px、连体椭圆机制与红绿蓝配色（#ff6b6b/#39d98a/#5cc8ff）均不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.89。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新容器高度断言与注释，版本链延伸至 v1.7.89。
   - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 确认。
+
+## 2026-08-15 v1.7.88
+
+- feat(WebConsole): 工具行垃圾桶按钮移除；➕ 新建终端按钮移入标签条右端（始终位于最新标签右边）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 删除工具行 `#clearBtn` 垃圾桶按钮及 `onClearBtn()`/`killActiveTerminalTab()` 包装（Serial 模式关终端统一用标签上的 ×，v1.7.87 已支持按 id 关任意标签）；Web 模式的"清空日志"按钮随之一并移除（`clearLog()` 函数保留未删）。
+    - `#newTermBtn`（➕）从工具行移入 `#termTabs` 作为其末位子元素；`addTerminalTab()` 改用 `termTabs.insertBefore(b,newTermBtn)`，新标签插到 ➕ 左边，➕ 始终位于最新标签右边；新增 `#termTabs .iconButton{width:22px;height:22px}` 与 22px 标签等高对齐。
+    - `applyCmdTarget()` 删除 `clearBtn.title` 随模式切换逻辑；i18n 移除 `terminal.kill` 中英词条（`button.clear` 词条保留，图表工具条清空按钮仍在用）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.88。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新工具行 DOM 断言（➕ 在 `#termTabs` 内、无 `#clearBtn`），新增 `termTabs.insertBefore(b,newTermBtn)` 及 `onClearBtn`/`killActiveTerminalTab`/`terminal.kill` 不存在断言；版本链延伸至 v1.7.88。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.88`。
 
 ## 2026-08-15 v1.7.87
 

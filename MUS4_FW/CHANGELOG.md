@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.80
+
+- 固件版本号从 `v1.7.79` 更新到 `v1.7.80`。
+- fix(WebConsole): DC 头部 OTA 按钮与 DEV 开关按原比例加宽（保持 34px 高），"DEV" 文字移到开关滑珠上
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页）：
+    - OTA 按钮：34px 高不变，新增 `.headerRow .otaLink .otaButton{font-size:16px;padding:0 14px}`——字号 11→16px、水平内边距 10→14px，按 24→34px 同比例（≈1.42）放大，不再窄高。
+    - DEV 开关：轨道 44×34px 改回原始宽高比 → `width:62px;height:34px`（24px 时的 44:24≈1.83）；滑珠 26px、边距 4px 不变，选中位移改 `translateX(28px)`（=62-26-4-4）。
+    - "DEV" 写在开关上：滑珠伪元素加 `content:"DEV"` + flex 居中（9px 粗体深色字，白珠上读感清晰），随滑珠左右移动。
+    - 删除开关旁文字标签 `<span class="toggleLabel devHint">DEV <b id="devModeSwitchText">OFF</b></span>`；`devHint` 提示气泡移到 `<label>` 上并调整弹出位置（`top:36px`）；JS 同步删除 `devModeSwitchText` 的 const 与两处 `textContent` 更新（否则空指针报错）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.80。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.80；DEV 标签断言改为新结构 + `devModeSwitchText` 不存在；开关规则断言更新为 62px 宽/28px 位移/滑珠文字版。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.80` 确认。
+- 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+
 ## 2026-08-15 v1.7.79
 
 - 固件版本号从 `v1.7.78` 更新到 `v1.7.79`。

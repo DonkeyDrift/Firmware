@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.76
+
+- 固件版本号从 `v1.7.75` 更新到 `v1.7.76`。
+- feat(WebConsole): DC 主题切换按键改为与 DonkeyDrifter ThemeSwitcher 一模一样的分段控件样式
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 头部主题切换 `<span id="themeTabs">` 的 class 从 `langTabs` 改为独立 `themeSwitch`，不再复用语言切换键的胶囊样式；按钮、`onclick`、`data-theme`、i18n 属性与 `renderThemeTabs()` 等 JS 逻辑全部保持不变。
+    - 新增 `#themeTabs` 系列 CSS（放在基础 `.langTabs` 规则之后，用 id 选择器保证优先级压过浅色主题 `button` 覆写）：容器 `display:inline-flex` + `gap:4px` + `background:#27272a`（zinc-800）+ `border:1px solid #3f3f46`（zinc-700）+ `border-radius:999px` + `padding:4px` + `height:34px`；按钮 `padding:4px 12px`、`height:24px`、`font-size:12px`、`color:#a1a1aa`（zinc-400）、hover 仅文字变 `#e4e4e7`（zinc-200）；选中段 `background:#0891b2`（cyan-600）+ 白字实心圆角胶囊。总高 = 24px 按钮 + 8px padding + 2px border = 34px，与 DD 一致。
+    - 颜色写死，浅色/深色主题下外观相同（不加任何浅色 `#themeTabs` 覆写）；既有移动端媒体查询 `#themeTabs{order:15}` 保留不动，新规则为叠加。
+    - 主题默认逻辑未动：首屏防闪烁脚本、`let uiTheme='auto'`、`readStoredTheme()` 回退 `'auto'` 保持原样，默认仍跟随系统。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.76。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_theme_toggle` 更新过时描述（不再"复用 langTabs"），补 `class="themeSwitch"` 与新 CSS（34px 容器 / 24px 按钮 / cyan-600 选中态 / zinc 配色）断言；版本号断言同步至 v1.7.76。
+  - 验证：编译通过；全量 pytest 通过；HTTP OTA 上传后车上 `/api/status` 确认 `version=v1.7.76`，首页 HTML 确认 `class="themeSwitch" id="themeTabs"` 与新 CSS 生效；Playwright 无头实测计算样式（容器 34px/zinc-800、按钮 24px、选中段 cyan-600 白字、未选中 zinc-400）与深浅色两种模式截图确认外观与 DD 一致。
+
 ## 2026-08-15 v1.7.75
 
 - 固件版本号从 `v1.7.73` 更新到 `v1.7.75`（跳过 v1.7.74：该号已被 #61 `Tony-kimi-code-web` 占用）。

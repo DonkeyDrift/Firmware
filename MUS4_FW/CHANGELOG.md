@@ -2,7 +2,7 @@
 
 ## 2026-08-15 v1.7.75
 
-- 固件版本号从 `v1.7.73` 更新到 `v1.7.75`（跳过 v1.7.74：该号已被在制的 `Tony-kimi-code-web` 分支占用，合入时避让）。
+- 固件版本号从 `v1.7.73` 更新到 `v1.7.75`（跳过 v1.7.74：该号已被 #61 `Tony-kimi-code-web` 占用）。
 - fix(WebConsole): DC 终端板块 Serial 页面排版对齐 Web 模式，并删除 Serial 模式右侧白色竖条（Closes #57）
   - `libraries/mus4_web/src/WebConsoleAssets.h`：
     - `applyCmdTarget()` 不再隐藏工具行：Serial 模式下暂停/清空(垃圾桶)/发送按钮与 `#cmd` 输入框保持显示，排版与 Web 模式一致（仅排版对齐，未新增功能）。
@@ -10,7 +10,21 @@
     - 白色竖条三处联防：`#terminalFrame` iframe 加 `scrolling="no"` 与 `display:block`，`#terminalWrap` 加 `overflow:hidden` + 深色背景 + 圆角，消除 iframe 原生浅色滚动条与边缘缝隙两条白条路径。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.75。
   - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.75；serial 切换相关过时中文注释同步（不再隐藏日志控件），未改测试断言逻辑。
-  - 验证：编译通过；全量 322 项 pytest 通过，内嵌 5 个 script 块 node --check 通过；开发期间已 HTTP OTA 上传并在设备端确认新 CSS/`scrolling="no"`/新 `applyCmdTarget` 三处生效（当时沿用 v1.7.73 号段，以 build 时间戳确认）。注：此后车上固件被在制的 `Tony-kimi-code-web` 分支 v1.7.74 试刷覆盖，本次合并不重复 OTA，待该分支合并时一并重新 OTA。
+  - 验证：编译通过；全量 322 项 pytest 通过，内嵌 5 个 script 块 node --check 通过；开发期间已 HTTP OTA 上传并在设备端确认新 CSS/`scrolling="no"`/新 `applyCmdTarget` 三处生效（当时沿用 v1.7.73 号段，以 build 时间戳确认）。注：开发验证后车上固件被 #61 的 v1.7.74 试刷覆盖，本条目合入时将 v1.7.75 完整固件（含 #61 按钮功能）重新 OTA 并以车上 `/api/status` 的 `version=v1.7.75` 确认。
+
+## 2026-08-15 v1.7.74
+
+- 固件版本号从 `v1.7.73` 更新到 `v1.7.74`。
+- feat(WebConsole): "打开 Kimi Code Web" 按钮接上 launcher 启动端点（issue #59；配套 DonkeyDrift 侧 #103/#104）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#openKimiCodeWebBtn` 从纯占位改为 `onclick="openKimiCodeWeb()"`；新增 `openKimiCodeWeb()` JS（插在 `_fetchLauncherIp()` 之后）：防重复点击守卫 → 点击同步上下文先 `window.open('about:blank','_blank')` 拿句柄（规避弹窗拦截）→ 按钮禁用并切"正在启动 Kimi Code Web..."文案 → `fetch` POST `http://<host_ip>:8090/api/launch/kimi-code-web`（空体 simple request 免 CORS 预检；`AbortController` 120s 超时，匹配服务端整体超时）→ 成功校验 `{status:'ok',url}` 后 `newTab.location.href=url`；失败/超时关句柄并 `showToast` 提示（超时单独文案）、`line()` 落日志；`finally` 恢复按钮。
+    - 上位机地址沿用既有 `_launcherIp` 机制（`/api/status` 的 `host_ip` 字段自动发现，与"打开 DD"按钮同源），不发明新通道。
+    - i18n 新增 zh/en 各 3 条：`button.openKimiCodeWebLaunching`、`toast.kimiCodeWebFailed`、`toast.kimiCodeWebTimeout`。
+    - 跨域依赖：launcher 端点响应须带 `Access-Control-Allow-Origin`（DonkeyDrift 侧已在本端点放行，仅此端点），否则浏览器拦截响应。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.74。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_header_entry_buttons` 补按钮行为断言；版本号断言同步至 v1.7.74（161 项全过）。
+  - 已编译并 HTTP OTA 上传验证：车上 `/api/status` 确认 `version=v1.7.74`，首页 HTML 确认 `onclick="openKimiCodeWeb()"`、`/api/launch/kimi-code-web` 与新词条已生效。
+  - 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
 
 ## 2026-08-14 v1.7.73
 

@@ -1,16 +1,26 @@
 # CHANGELOG.md
 
-## 2026-08-15 v1.7.76
+## 2026-08-15 v1.7.77
 
-- 固件版本号从 `v1.7.75` 更新到 `v1.7.76`。
+- 固件版本号从 `v1.7.76` 更新到 `v1.7.77`（避让：v1.7.76 已被 #65 `Tony-kimi-code-web` 的 DC 头部按键高度改动占用）。
 - feat(WebConsole): Serial 终端工具行精简——隐藏输入框/发送/暂停键，新增"➕新开终端窗口"按钮
   - `libraries/mus4_web/src/WebConsoleAssets.h`：
     - 工具行新增 `#newTermBtn`（加号图标，`onclick="openNewTerminal()"`，i18n `terminal.new` 中英词条）；`openNewTerminal()` 复用 `terminalUrl()` 的 `_launcherIp` 自动发现机制，`window.open(..., '_blank')` 新开浏览器标签页加载上位机终端页——每个标签页独立 PTY 会话，**不杀已有终端窗口**。
     - `applyCmdTarget()`：Serial 模式显示加号按钮、隐藏暂停/发送/输入框（垃圾桶与目标下拉保持显示）；Web 模式反之，排版与既有行为不变。
     - 元素常量表新增 `newTermBtn`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.77。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.77；serial 终端切换测试更新为"Serial 隐藏暂停/发送/输入框、显示加号按钮"新行为断言；工具行 HTML 断言同步加号按钮。
+  - 验证：全量 322 项 pytest 通过，内嵌 5 个 script 块 node --check 通过；编译通过并 HTTP OTA 上传，车上 `/api/status` 确认 `version=v1.7.77`。
+
+## 2026-08-15 v1.7.76
+
+- 固件版本号从 `v1.7.75` 更新到 `v1.7.76`。
+- fix(WebConsole): DC 头部三个"打开"入口按键高度由 24px 提至 34px，与 DonkeyDrifter 侧"打开"按键对齐（DonkeyDrift 仓库 PR #110 已把 DD 按键对齐到其中英文切换键的 34px，本侧跟随）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}` 规则（紧跟 `.otaButton` 基础规则之后），只覆盖头部三个入口按键，其余 `.otaButton`（如 OTA 按钮）保持 24px 不变。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.76。
-  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.76；serial 终端切换测试更新为"Serial 隐藏暂停/发送/输入框、显示加号按钮"新行为断言；工具行 HTML 断言同步加号按钮。
-  - 验证：全量 322 项 pytest 通过，内嵌 5 个 script 块 node --check 通过；编译通过并 HTTP OTA 上传，车上 `/api/status` 确认 `version=v1.7.76`。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.76；`test_web_console_header_entry_buttons` 补 34px 高度规则断言。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.76` 确认。
+- 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
 
 ## 2026-08-15 v1.7.75
 

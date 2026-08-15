@@ -1,16 +1,24 @@
 # CHANGELOG.md
 
-## 2026-08-15 v1.7.92
+## 2026-08-15 v1.7.93
 
-- 固件版本号从 `v1.7.91` 更新到 `v1.7.92`（避让：并行会话 #79 RGB 悬停修正已占用 v1.7.91）；顺带清理 #79 合入时误入 CHANGELOG 的一行残留冲突标记 `>>>>>>> origin/Tony`。
+- 固件版本号从 `v1.7.92` 更新到 `v1.7.93`（避让：并行会话 #80 入口按键去前缀已占用 v1.7.92）。
 - fix(WebConsole): 终端标签过多时标签条内部滚动、不再改变窗口比例；➕ 钉在行尾右端；默认标签名改纯数字
   - `libraries/mus4_web/src/WebConsoleAssets.h`：
     - 标签条溢出不改布局：`#termTabs` 增加 `scrollbar-width:none` + `#termTabs::-webkit-scrollbar{display:none}`——溢出时横向滚动但不再出现滚动条（此前 6+ 标签时滚动条挤出额外行高、工具行比例被改变）；`flex:1 1 auto;min-width:0` 不变，条内滚动不撑宽页面。
     - ➕ 始终靠右：`#newTermBtn` 从 `#termTabs` 滚动区内移出、作为其右邻兄弟元素钉在行尾（`#newTermBtn{width:22px;height:22px;flex:0 0 auto}`，替代原 `#termTabs .iconButton` 规则），无论多少个标签都固定可见；`addTerminalTab()` 改回 `termTabs.appendChild(b)`。
     - 默认标签名纯数字：新建/重编号由 `t('terminal.tab')+' '+N`（"终端 N"）改为 `''+N`；i18n 移除 `terminal.tab` 中英词条（自定义名改名逻辑不受影响，重编号时自定义名仍优先）。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.92。
-  - 测试同步：`tests/test_firmware_feature_flags.py` 更新工具行 DOM、`appendChild`、纯数字默认名、`terminal.tab` 词条不存在断言，新增隐藏滚动条与 `#newTermBtn` 钉右样式断言；版本链延伸至 v1.7.92。
-  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.92`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.93。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新工具行 DOM、`appendChild`、纯数字默认名、`terminal.tab` 词条不存在断言，新增隐藏滚动条与 `#newTermBtn` 钉右样式断言；版本链延伸至 v1.7.93。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.93`。
+
+## 2026-08-15 v1.7.92
+
+- feat(WebConsole): DC 头部三个入口按键显示文案去掉"打开 "/"Open "前缀（zh/en 同步），与 DD 侧同步精简
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：headerRow 静态 HTML `>打开 Donkey</a>`→`>Donkey</a>`、`>打开 DonkeyDrifter</a>`→`>DonkeyDrifter</a>`、`>打开 Kimi Code Web</button>`→`>Kimi Code Web</button>`；I18N zh 词典 `'button.enterDonkey':'打开 Donkey'`→`'Donkey'`、`'button.enterDonkeyDrifter':'打开 DonkeyDrifter'`→`'DonkeyDrifter'`、`'button.openKimiCodeWeb':'打开 Kimi Code Web'`→`'Kimi Code Web'`，en 词典 `'Open Donkey'`/`'Open DonkeyDrifter'`/`'Open Kimi Code Web'` 三值同步去前缀。按钮 id、data-i18n 键名、href/onclick 跳转与其它词条（toast、"打开新地址"等）一律不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.92（避让：并行会话 #78/#79 已占用 v1.7.90/v1.7.91）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 入口按键 i18n 断言改为去前缀文案（zh/en 词条值相同后断言各出现 2 次），版本链延伸至 v1.7.92。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 与首页 HTML 确认。
 
 ## 2026-08-15 v1.7.91
 

@@ -4479,7 +4479,9 @@ def test_web_console_header_entry_buttons():
     v1.7.79 该规则扩展选择器追加 .headerRow .otaLink .otaButton（头部 OTA 按钮同高 34px），
     并新增 #devModeToggle scoped 规则把 DEV 开关轨道加高至 34px。
     v1.7.80 OTA 按钮与 DEV 开关按原比例加宽（OTA 字号 16px/内边距 14px；开关 62×34px、位移 28px），
-    开关旁 "DEV ON/OFF" 文字删除，"DEV" 写到滑珠上。"""
+    开关旁 "DEV ON/OFF" 文字删除，"DEV" 写到滑珠上。
+    v1.7.90 三个入口按键显示文案去掉"打开 "/"Open "前缀（zh/en 同步），
+    按钮 id、href/onclick 跳转与其它词条均不变。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4508,12 +4510,10 @@ def test_web_console_header_entry_buttons():
     assert ':8090/' in assets  # launcher port
 
     # i18n 中英词条齐全（v1.7.70 "进入"→"打开" / Enter→Open）
-    assert "'button.enterDonkey':'打开 Donkey'" in assets
-    assert "'button.enterDonkeyDrifter':'打开 DonkeyDrifter'" in assets
-    assert "'button.enterDonkey':'Open Donkey'" in assets
-    assert "'button.enterDonkeyDrifter':'Open DonkeyDrifter'" in assets
-    assert "'button.openKimiCodeWeb':'打开 Kimi Code Web'" in assets
-    assert "'button.openKimiCodeWeb':'Open Kimi Code Web'" in assets
+    # v1.7.90：入口按键文案去掉"打开 "/"Open "前缀，zh/en 词条值相同，各出现 2 次
+    assert assets.count("'button.enterDonkey':'Donkey'") == 2
+    assert assets.count("'button.enterDonkeyDrifter':'DonkeyDrifter'") == 2
+    assert assets.count("'button.openKimiCodeWeb':'Kimi Code Web'") == 2
 
     # v1.7.74："打开 Kimi Code Web"接功能：沿用 _launcherIp（/api/status 的 host_ip），
     # 点击 POST http://<host>:8090/api/launch/kimi-code-web（空体 POST，免 CORS 预检），

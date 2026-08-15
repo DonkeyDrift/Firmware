@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.91"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.92"' in build_info
+    assert "v1.7.92" in changelog
     assert "v1.7.91" in changelog
     assert "v1.7.90" in changelog
     assert "v1.7.89" in changelog
@@ -294,6 +295,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.92") < changelog.index("## 2026-08-15 v1.7.91")
     assert changelog.index("## 2026-08-15 v1.7.91") < changelog.index("## 2026-08-15 v1.7.90")
     assert changelog.index("## 2026-08-15 v1.7.90") < changelog.index("## 2026-08-15 v1.7.89")
     assert changelog.index("## 2026-08-15 v1.7.89") < changelog.index("## 2026-08-15 v1.7.88")
@@ -435,7 +437,7 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     # 标签页管理：动态 iframe（保留 #57 白边修复 scrolling="no"）+ 探活后设 src，
     # 每个 iframe 独立 PTY 会话；点标签只切换显示（其余 display:none 保活）；
     # v1.7.88 起垃圾桶按钮移除（Serial 用标签上的 × 关闭，Web 清空日志按钮一并移除）；
-    # v1.7.91 起 ➕ 移出标签滚动区、作为其右邻兄弟钉在行尾（始终靠右），新标签 appendChild 进滚动区
+    # v1.7.92 起 ➕ 移出标签滚动区、作为其右邻兄弟钉在行尾（始终靠右），新标签 appendChild 进滚动区
     assert 'id="newTermBtn"' in source
     assert 'id="clearBtn"' not in source
     assert "onClearBtn" not in source
@@ -446,7 +448,7 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "f.setAttribute('scrolling','no')" in source
     assert "function selectTerminalTab(id)" in source
     # 标签按位置连续编号（v1.7.80）：新建用 termList.length+1，杀标签后剩余标签重编号；
-    # 标签文字放在 .termTabLabel 子 span（v1.7.87 起）；v1.7.91 起默认名改为纯数字（原"终端 N"）
+    # 标签文字放在 .termTabLabel 子 span（v1.7.87 起）；v1.7.92 起默认名改为纯数字（原"终端 N"）
     assert "l.textContent=''+(termList.length+1);" in source
     assert "termList.forEach((x,j)=>{x.l.textContent=x.name||''+(j+1)});" in source
     # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端，
@@ -475,12 +477,12 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     # 标签条样式：横向滚动 + 选中态高亮
     assert "#termTabs{display:none;align-items:center;gap:4px;overflow-x:auto" in source
     assert ".termTab.active{" in source
-    # v1.7.91：标签条隐藏滚动条（溢出时行高与布局不变、窗口比例不被修改）；➕ 钉在行尾右端
+    # v1.7.92：标签条隐藏滚动条（溢出时行高与布局不变、窗口比例不被修改）；➕ 钉在行尾右端
     assert "scrollbar-width:none" in source
     assert "#termTabs::-webkit-scrollbar{display:none}" in source
     assert "#newTermBtn{width:22px;height:22px;flex:0 0 auto}" in source
     assert "#termTabs .iconButton" not in source
-    # i18n：新建/关闭/空态词条 + 加载/失败提示（中英双语）；v1.7.91 起默认名纯数字，terminal.tab 词条移除
+    # i18n：新建/关闭/空态词条 + 加载/失败提示（中英双语）；v1.7.92 起默认名纯数字，terminal.tab 词条移除
     assert "I18N.zh['terminal.new']" in source
     assert "I18N.en['terminal.new']" in source
     assert "terminal.tab" not in source
@@ -4258,16 +4260,15 @@ def test_web_console_led_blink_color_selector():
     # 容器总高与 DD 两个切换键（语言/主题，34px = 按钮 24px + 上下各 4px 内边距
     # + 1px 边框）一致：本容器用 box-sizing:border-box 固定 34px，内边距上下各 4px
     assert "#ledBlinkTabs{height:34px;padding:4px 2px}" in assets
-    # 悬停高亮框不受连体直角影响，始终为独立小椭圆；仅在悬停按钮本身也已勾选时，
-    # 相邻已勾选按钮才用伪元素把背景延伸 12px 垫进悬停按钮底部（悬停按钮 z-index
-    # 更高），小椭圆与连体段严丝合缝；悬停未勾选按钮时不垫底，保持均匀细缝
+    # 悬停只提亮背景、不改变形状（v1.7.91 起）：移除悬停强制独立椭圆及为垫椭圆圆角
+    # 缝隙而生的桥接伪元素，按钮悬停时保持 renderLedBlinkTabs 计算的连体圆角不变
     assert "#ledBlinkTabs button{position:relative;z-index:0}" in assets
-    assert "#ledBlinkTabs button:hover{border-radius:999px!important;z-index:1}" in assets
-    assert "#ledBlinkTabs button.active:has(+button.active:hover)::after{content:\"\";position:absolute;top:0;bottom:0;left:12px;right:-12px;z-index:-1}" in assets
-    assert "#ledBlinkTabs button.active:hover+button.active::before{content:\"\";position:absolute;top:0;bottom:0;left:-12px;right:12px;z-index:-1}" in assets
+    assert "#ledBlinkTabs button:hover{border-radius:999px!important;z-index:1}" not in assets
+    assert "#ledBlinkTabs button.active:has(+button.active:hover)::after" not in assets
+    assert "#ledBlinkTabs button.active:hover+button.active::before" not in assets
     # v1.7.64：三个选项的选中框各着各色（红 #ff6b6b、绿 #39d98a、蓝 #5cc8ff，与图表
     # gz/thr/str 曲线同色）；悬停提亮（红 #ff9797、绿 #74e4ad、蓝沿用 #8bdcff）、连体
-    # box-shadow 与悬停垫底伪元素的延伸色均按按钮各自颜色（LED_BLINK_TAB_COLORS 映射），
+    # box-shadow 延伸色按按钮各自颜色（LED_BLINK_TAB_COLORS 映射），
     # 语言切换等其他 .langTabs 保持统一蓝不变
     assert "#ledBlinkTabs button[data-color=\"1\"].active{background:#ff6b6b}" in assets
     assert "#ledBlinkTabs button[data-color=\"2\"].active{background:#39d98a}" in assets
@@ -4275,9 +4276,9 @@ def test_web_console_led_blink_color_selector():
     assert "#ledBlinkTabs button[data-color=\"1\"].active:hover{background:#ff9797}" in assets
     assert "#ledBlinkTabs button[data-color=\"2\"].active:hover{background:#74e4ad}" in assets
     assert "#ledBlinkTabs button[data-color=\"4\"].active:hover{background:#8bdcff}" in assets
-    assert "#ledBlinkTabs button[data-color=\"1\"]::after,#ledBlinkTabs button[data-color=\"1\"]::before{background:#ff6b6b}" in assets
-    assert "#ledBlinkTabs button[data-color=\"2\"]::after,#ledBlinkTabs button[data-color=\"2\"]::before{background:#39d98a}" in assets
-    assert "#ledBlinkTabs button[data-color=\"4\"]::after,#ledBlinkTabs button[data-color=\"4\"]::before{background:#5cc8ff}" in assets
+    assert "::after,#ledBlinkTabs button[data-color=\"1\"]::before{background:#ff6b6b}" not in assets
+    assert "::after,#ledBlinkTabs button[data-color=\"2\"]::before{background:#39d98a}" not in assets
+    assert "::after,#ledBlinkTabs button[data-color=\"4\"]::before{background:#5cc8ff}" not in assets
     assert "const LED_BLINK_TAB_COLORS={1:'#ff6b6b',2:'#39d98a',4:'#5cc8ff'};" in assets
     assert "const sh=[],c=LED_BLINK_TAB_COLORS[b.dataset.color]||'#5cc8ff'" in assets
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in assets

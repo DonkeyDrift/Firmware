@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.89
+
+- feat(WebConsole): RGB 闪烁颜色开关（.langTabs）外框升级为 DC 粗框语言——外圈 1px border + 内圈 1px inset 描边，与主题/中英文切换键同款
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页）：
+    - 深色基础：容器 `border:none` → `border:1px solid #344154`，保留 `box-shadow:inset 0 0 0 1px #2b3441` 内描边——两条 1px 相加，视觉 2px 粗框（此前只有单圈内描边）；容器总高仍 24px（border-box），分段按钮 24px→22px 吸收 border 占位。
+    - 浅色覆写：`html[data-theme="light"] .langTabs` 增加 `border-color:#ccd5df`，内描边 `#aeb9c7`→`#d5dce4`——与 `#themeTabs`/`.langSwitch` 浅色框色逐值一致（外 #ccd5df + 内 #d5dce4）。
+    - 选中段连体拼接 JS（`renderLedBlinkTabs`，只动按钮圆角/阴影）不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.89。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新 `.langTabs` 深色容器/按钮高度/浅色覆写三条断言；版本链延伸至 v1.7.89。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.89`，Playwright 深/浅截图复核 RGB 开关粗框生效。
+
 ## 2026-08-15 v1.7.88
 
 - feat(WebConsole): 主题/语言切换键重设计——深色配色改用 DD 皮肤实际渲染值，与 DonkeyDrifter ThemeSwitcher/LanguageSwitcher 双主题完全同款

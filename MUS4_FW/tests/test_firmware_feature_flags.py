@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.88"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.89"' in build_info
+    assert "v1.7.89" in changelog
     assert "v1.7.88" in changelog
     assert "v1.7.87" in changelog
     assert "v1.7.86" in changelog
@@ -291,6 +292,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.89") < changelog.index("## 2026-08-15 v1.7.88")
     assert changelog.index("## 2026-08-15 v1.7.88") < changelog.index("## 2026-08-15 v1.7.87")
     assert changelog.index("## 2026-08-15 v1.7.87") < changelog.index("## 2026-08-15 v1.7.86")
     assert changelog.index("## 2026-08-15 v1.7.86") < changelog.index("## 2026-08-15 v1.7.85")
@@ -1604,12 +1606,13 @@ def test_web_console_language_tabs_wired_to_set_language():
 
     source = firmware_source_text()
 
-    assert ".langTabs{display:inline-flex;align-items:center;gap:2px;background:#171c24;border:none;border-radius:999px;padding:0 2px;height:24px;box-sizing:border-box;box-shadow:inset 0 0 0 1px #2b3441}" in source
-    # 外大椭圆（box-sizing:border-box 固定总高 24px=OTA/DEV 同高，内嵌 box-shadow 描边
-    # 不占布局）+ 内两个小椭圆分段（24px 满高，蓝色选中段与 OTA 按钮蓝对蓝同高），
+    assert ".langTabs{display:inline-flex;align-items:center;gap:2px;background:#171c24;border:1px solid #344154;border-radius:999px;padding:0 2px;height:24px;box-sizing:border-box;box-shadow:inset 0 0 0 1px #2b3441}" in source
+    # 外大椭圆（box-sizing:border-box 固定总高 24px=OTA/DEV 同高；v1.7.89 起外圈
+    # border 1px #344154 + 内嵌 box-shadow 1px #2b3441 = DC 粗框语言，描边均不占布局）
+    # + 内两个小椭圆分段（border 占去 2px，分段 22px 满高，蓝色选中段与 OTA 按钮蓝对蓝），
     # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言；
-    # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs/#themeTabs 复用，语言切换已拆分为 .langSwitch
-    assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
+    # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs 使用，语言切换已拆分为 .langSwitch
+    assert ".langTabs button{padding:0 10px;height:22px;min-width:0;border:none;border-radius:999px;" in source
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
     # v1.7.78：.langSwitch 样式 1:1 对齐 DD LanguageSwitcher——圆角 9999px 胶囊容器 +
     # padding 4px，总高恰好 34px；按钮 12px/16px、padding 4px 12px，aria-pressed 随激活态同步。
@@ -4559,7 +4562,7 @@ def test_web_console_light_theme_overrides():
     # 浅色特异性修正：OTA 填充按钮保持青色（否则被浅色通用 button 白底规则压掉）
     assert 'html[data-theme="light"] .otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff}' in assets
     # 浅色下胶囊容器加深底色并强化描边，使激活胶囊与外容器的嵌套轮廓与深色一样清晰
-    assert 'html[data-theme="light"] .langTabs{background:#dde3ec;box-shadow:inset 0 0 0 1px #aeb9c7}' in assets
+    assert 'html[data-theme="light"] .langTabs{background:#dde3ec;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in assets
 
     # JS：主题解析与应用（auto 经 matchMedia 跟随系统），切换时网格缓存失效并重绘
     assert "function systemTheme(){try{return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){return 'dark'}}" in assets

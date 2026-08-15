@@ -1,40 +1,88 @@
 # CHANGELOG.md
 
-## 2026-08-15 v1.7.80
+## 2026-08-15 v1.7.85
 
-- 固件版本号从 `v1.7.79` 更新到 `v1.7.80`。
+- 固件版本号从 `v1.7.84` 更新到 `v1.7.85`（避让：并行会话已合入 #68/#69/#72/#73 占用了开发期间使用的号段，且下一号段已被在制分支 `Tony-dc-theme-switch-dd` 预留，合入前统一改号）。
 - fix(WebConsole): DC 头部 OTA 按钮与 DEV 开关按原比例加宽（保持 34px 高），"DEV" 文字移到开关滑珠上
   - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页）：
     - OTA 按钮：34px 高不变，新增 `.headerRow .otaLink .otaButton{font-size:16px;padding:0 14px}`——字号 11→16px、水平内边距 10→14px，按 24→34px 同比例（≈1.42）放大，不再窄高。
     - DEV 开关：轨道 44×34px 改回原始宽高比 → `width:62px;height:34px`（24px 时的 44:24≈1.83）；滑珠 26px、边距 4px 不变，选中位移改 `translateX(28px)`（=62-26-4-4）。
     - "DEV" 写在开关上：滑珠伪元素加 `content:"DEV"` + flex 居中（9px 粗体深色字，白珠上读感清晰），随滑珠左右移动。
     - 删除开关旁文字标签 `<span class="toggleLabel devHint">DEV <b id="devModeSwitchText">OFF</b></span>`；`devHint` 提示气泡移到 `<label>` 上并调整弹出位置（`top:36px`）；JS 同步删除 `devModeSwitchText` 的 const 与两处 `textContent` 更新（否则空指针报错）。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.80。
-  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.80；DEV 标签断言改为新结构 + `devModeSwitchText` 不存在；开关规则断言更新为 62px 宽/28px 位移/滑珠文字版。
-  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.80` 确认。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.85。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.85；DEV 标签断言改为新结构 + `devModeSwitchText` 不存在；开关规则断言更新为 62px 宽/28px 位移/滑珠文字版。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.85` 确认。
 - 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
 
-## 2026-08-15 v1.7.79
+## 2026-08-15 v1.7.84
 
-- 固件版本号从 `v1.7.78` 更新到 `v1.7.79`。
+- 固件版本号从 `v1.7.83` 更新到 `v1.7.84`（同 v1.7.85 条目避让说明，合入前统一改号）。
 - fix(WebConsole): DC 头部 OTA 按钮与 DEV 开关高度提至 34px，与三个"打开"按键（及 DD 侧按键）同高
   - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页）：
     - 34px 专属规则扩展为 `#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,.headerRow .otaLink .otaButton{height:34px}`，覆盖头部 OTA 按钮（无 id，经 `.otaLink` 容器定位，不动 `.otaButton` 基础规则）。
     - DEV 开关按 `#devModeToggle`  scoped 加高：轨道 `height:34px`（宽度 44px 不变），滑珠等比放大至 26px、边距 4px（`bottom:4px` 保持垂直居中），选中位移相应改为 `translateX(10px)`（=44-26-4-4）。页面其它 `.toggleSwitch` 不受影响。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.79。
-  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.79；34px 规则断言同步扩展选择器；补 DEV 开关加高规则断言。
-  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.79` 确认。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.84。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.84；34px 规则断言同步扩展选择器；补 DEV 开关加高规则断言。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 确认（开发期间用旧号段，合并版随 v1.7.85 复验）。
 - 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+
+## 2026-08-15 v1.7.83
+
+- 固件版本号自 Tony 顶端 `v1.7.82` 更新到 `v1.7.83`（同 v1.7.85 条目避让说明，合入前统一改号）。
+- fix(WebConsole): DC 标题行整行改为垂直居中——#65 把三个"打开"按键提至 34px 后，底部对齐（`align-items:flex-end`）让图标/标题/GitHub 图标/版本号/静音键沉底，现改为 `align-items:center`（手机版媒体查询本就是 center，桌面版对齐之）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页 `WIFI_WEB_CONSOLE_HTML`，DRIFT 页不动）：`.headerRow` 的 `align-items:flex-end` 改为 `center`；`.version` 与 `.ghLink` 去掉为底部对齐补偿用的 `transform:translateY(-1px)`；`.headerLogo` 本有 `align-self:center`、`.muteButton` 无偏移，随整行居中自然生效。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.83。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.83；头部布局断言更新为 `align-items:center` 及无 `translateY` 的 `.version`/`.ghLink` 规则。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 确认（开发期间用旧号段，合并版随 v1.7.85 复验）。
+- 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+
+## 2026-08-15 v1.7.82
+
+- 固件版本号定版 `v1.7.82`（避让：v1.7.80 已被 #72 `Tony-serial-tab-renumber` 并入 Tony，v1.7.81 已被 `Tony-dc-theme-switch-dd` 分支占用），自 Tony 顶端 `v1.7.79` 更新而来。
+- fix(WebConsole): RGB 闪烁颜色切换键加高至与 DonkeyDrifter 深浅色/中英文切换键一致（总高 32px），连体椭圆与配色不变
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `#ledBlinkTabs{height:auto;padding:4px 2px}` 覆盖共享 `.langTabs` 容器（24px 按钮 + 上下各 4px 内边距 = 32px，对齐 DD `ThemeSwitcher`/`LanguageSwitcher` 的 p-1 + py-1 尺寸）。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_led_blink_color_selector` 新增容器规则断言。
+
+## 2026-08-15 v1.7.80
+
+- 固件版本号从 `v1.7.79` 更新到 `v1.7.80`。
+- feat(WebConsole): Serial 终端标签按位置连续编号——杀掉某个标签后，其后的标签自动重编号（如杀"终端 1"后原"终端 2"变为"终端 1"，以此类推）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `addTerminalTab()`：新标签文字由内部自增 id 改为位次 `termList.length+1`（id 仍仅作选中标识内部使用）。
+    - `killActiveTerminalTab()`：`splice` 后对 `termList` 按位次重排全部标签文字（`终端 N`/`Term N` 随 i18n 词条语言）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.80。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.80；serial 终端测试新增连续编号两条断言（新建按位次、杀后重编号）。
+  - 验证：全量 pytest 通过；编译通过并 HTTP OTA 上传，车上 `/api/status` 确认 `version=v1.7.80`。
+
+## 2026-08-15 v1.7.79
+
+- 固件版本号从 `v1.7.78` 更新到 `v1.7.79`（避让：v1.7.78 已被 #68 `Tony-dc-lang-switch-dd` 的中英文切换键分段胶囊改动占用）。
+- feat(WebConsole): Serial 终端改为浏览器式标签页——➕ 新建终端标签页（每标签独立 iframe/PTY 会话），🗑 在 Serial 模式关闭当前选中标签页
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 工具行 `#cmdTarget` 下拉后新增 `#termTabs` 标签条（`display:flex`+`overflow-x:auto`，仅 Serial 模式显示）；每个终端一个 `.termTab` 按钮（文字 `终端 N`/`Term N`，选中态 `.active` 高亮）。
+    - `#newTermBtn` 的 onclick 改为 `addTerminalTab()`：在 `#terminalWrap` 内动态创建 `.termFrame` iframe（保留 `scrolling="no"` 与 `display:block` 等 #57 白边修复属性，CSS 选择器由 `#terminalFrame` 改为 `.termFrame`），复用 `terminalUrl()` 与 launcher `/api/status` 探活逻辑（失败在 `#terminalHint` 显示 `terminal.unreachable`），创建后自动选中；删除 `openNewTerminal()` 与 `window.open` 新开浏览器标签逻辑，移除静态 `<iframe id="terminalFrame">`。
+    - 新增 `selectTerminalTab(id)`：只显示选中标签的 iframe（其余 `display:none` 但保持存活，PTY 不断），同步 `active` 样式与 hint；新增 `killActiveTerminalTab()`：移除当前选中 iframe（DOM 移除即关 WebSocket，launcher 自动杀 PTY 子进程），选中相邻标签，杀光后清空标签条并显示 `terminal.empty` 提示。
+    - `#clearBtn` 的 onclick 改为 `onClearBtn()` 分发：Serial 模式调 `killActiveTerminalTab()`，Web 模式仍调 `clearLog()`；按钮 title 随模式在 `applyCmdTarget()` 中切换（Serial 用 `terminal.kill`，Web 用 `button.clear`）。
+    - `applyCmdTarget()`：新增 `termTabs` display 切换；首次进入 Serial（`termInited` 标志）自动 `addTerminalTab()` 建第一个标签，用户杀光全部标签后切换模式回来不自动重建（保持空态+提示）。
+    - i18n：`terminal.new` 改为"新建终端标签页"/"New terminal tab"；新增 `terminal.tab`（终端/Term）、`terminal.kill`（关闭当前终端标签页）、`terminal.empty`（终端已关闭，点 ➕ 新建）中英词条。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.79。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.79；serial 终端测试同步标签页新结构（`termTabs`/`addTerminalTab`/`selectTerminalTab`/`killActiveTerminalTab`/`onClearBtn`、`termInited` 首次自动建标签、动态 iframe `scrolling="no"`、`.termFrame` CSS 白边回归、i18n 四词条中英、`openNewTerminal`/`window.open(terminalUrl` 不复存在）；工具行 HTML 断言同步。
+  - 验证：全量 pytest 通过，内嵌 script 块 node --check 通过；编译通过并 HTTP OTA 上传，车上 `/api/status` 确认 `version=v1.7.79`。
 
 ## 2026-08-15 v1.7.78
 
-- 固件版本号从 `v1.7.77` 更新到 `v1.7.78`。
-- fix(WebConsole): DC 标题行整行改为垂直居中——v1.7.76 把三个"打开"按键提至 34px 后，底部对齐（`align-items:flex-end`）让图标/标题/GitHub 图标/版本号/静音键沉底，现改为 `align-items:center`（手机版媒体查询本就是 center，桌面版对齐之）
-  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页 `WIFI_WEB_CONSOLE_HTML`，DRIFT 页不动）：`.headerRow` 的 `align-items:flex-end` 改为 `center`；`.version` 与 `.ghLink` 去掉为底部对齐补偿用的 `transform:translateY(-1px)`；`.headerLogo` 本有 `align-self:center`、`.muteButton` 无偏移，随整行居中自然生效。
+- 固件版本号从 `v1.7.77` 更新到 `v1.7.78`（开发期间曾用 v1.7.76/v1.7.77；两号已分别被 #65/#66 占用，合入前统一改号 v1.7.78）。
+- feat(WebConsole): 中英文切换按键改为与 DonkeyDrifter web_ui LanguageSwitcher 完全一致的分段胶囊控件（含高度）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 头部语言 span 从共享类 `.langTabs` 拆分为独立类 `.langSwitch`（`#ledBlinkTabs`/`#themeTabs` 仍复用 `.langTabs`，样式与逻辑不受影响）；原指向"无 id langTabs"的窄屏定位规则（820px 媒体查询内 `.headerRow .langTabs:not([id]){order:16;margin-left:auto}`）改指向 `.langSwitch`。
+    - 容器样式对齐 DD LanguageSwitcher：`background:#27272a`、`border:1px solid #3f3f46`、`border-radius:9999px`、`padding:4px`，总高恰好 34px（1px 边框+4px padding+24px 按钮+4px padding+1px 边框）。
+    - 按钮：`font-size:12px`/`line-height:16px`、`padding:4px 12px`、透明背景无边框；激活 `background:#0891b2` 白字（hover 不变），未激活 `#a1a1aa`、hover `#e4e4e7` 且背景保持透明；`aria-pressed` 随激活态同步（`applyLanguage` 激活态同步逻辑顺带带上）。
+    - 浅色主题按 DD `theme-light.css` 的 zinc/cyan 重映射逐色换算（容器 `#f4f6f9` + 边框 `#ccd5df` + 内描边 `#d5dce4`，激活段 `#5cc8ff` + 近黑字 `#061019` + 800 粗，未激活 `#5b6b7d`/hover `#1a2330`），与 DD 浅色表现一致；暗色保持 DD 深色原色不变。修正首版误把深色配色钉死到浅色主题导致的"浅色页面深色按钮"问题。
+    - 右下角 fab 悬浮簇（fabToggle 光点/langFab 🌐/helpFab ?/langMenu 下拉）与 DD FabActions 本为 1:1 镜像，一律未动。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.78。
-  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.78；头部布局断言更新为 `align-items:center` 及无 `translateY` 的 `.version`/`.ghLink` 规则。
-  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.78` 确认。
-- 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.78；`test_web_console_language_tabs_wired_to_set_language` 语言 span 断言从 `.langTabs` 改为 `.langSwitch`，并新增关键样式断言（`.langSwitch{`/`height:34px`/`#0891b2`/`#27272a`/`aria-pressed`，及浅色主题重映射色值三条）；窄屏头部布局断言 `.headerRow .langTabs:not([id])` 同步改指 `.langSwitch`；`#ledBlinkTabs`/`#themeTabs` 及右下角 fab/langFab/langMenu 相关断言一律不动。
+  - 验证：编译通过；全量 322 项 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.78` 确认，首页 HTML 实测返回 `.langSwitch` 新样式（`height:34px`、`#27272a`/`#0891b2` 深色配色、`html[data-theme="light"]` 浅色重映射 `#f4f6f9`/`#5cc8ff` 系列）与按钮 `aria-pressed` 属性，旧 `langTabs:not([id])` 选择器已清除，#66 的 `#newTermBtn` 等新功能在同基上完整保留。
+  - 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
 
 ## 2026-08-15 v1.7.77
 

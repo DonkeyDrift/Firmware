@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.85"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.86"' in build_info
+    assert "v1.7.86" in changelog
     assert "v1.7.85" in changelog
     assert "v1.7.84" in changelog
     assert "v1.7.83" in changelog
@@ -287,15 +288,17 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.75" in changelog
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
-    assert changelog.index("v1.7.85") < changelog.index("v1.7.84")
-    assert changelog.index("v1.7.84") < changelog.index("v1.7.83")
-    assert changelog.index("v1.7.83") < changelog.index("v1.7.82")
-    assert changelog.index("v1.7.82") < changelog.index("v1.7.80")
-    assert changelog.index("v1.7.80") < changelog.index("v1.7.79")
-    assert changelog.index("v1.7.79") < changelog.index("v1.7.78")
-    assert changelog.index("v1.7.78") < changelog.index("v1.7.77")
-    assert changelog.index("v1.7.77") < changelog.index("v1.7.76")
-    assert changelog.index("v1.7.76") < changelog.index("v1.7.73")
+    # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.86") < changelog.index("## 2026-08-15 v1.7.85")
+    assert changelog.index("## 2026-08-15 v1.7.85") < changelog.index("## 2026-08-15 v1.7.84")
+    assert changelog.index("## 2026-08-15 v1.7.84") < changelog.index("## 2026-08-15 v1.7.83")
+    assert changelog.index("## 2026-08-15 v1.7.83") < changelog.index("## 2026-08-15 v1.7.82")
+    assert changelog.index("## 2026-08-15 v1.7.82") < changelog.index("## 2026-08-15 v1.7.80")
+    assert changelog.index("## 2026-08-15 v1.7.80") < changelog.index("## 2026-08-15 v1.7.79")
+    assert changelog.index("## 2026-08-15 v1.7.79") < changelog.index("## 2026-08-15 v1.7.78")
+    assert changelog.index("## 2026-08-15 v1.7.78") < changelog.index("## 2026-08-15 v1.7.77")
+    assert changelog.index("## 2026-08-15 v1.7.77") < changelog.index("## 2026-08-15 v1.7.76")
+    assert changelog.index("## 2026-08-15 v1.7.76") < changelog.index("## 2026-08-15 v1.7.75")
 
 
 def test_host_ip_report_channel():
@@ -4281,7 +4284,12 @@ def test_web_console_led_blink_color_selector():
 
 def test_web_console_theme_toggle():
     """v1.7.xx：头部红绿蓝切换键右边、中英文切换键左边新增深色/浅色模式切换键
-    （themeTabs，复用 langTabs 胶囊样式），三个选项：浅色（左）、跟随系统（中）、深色（右）。
+    （themeTabs），三个选项：浅色（左）、跟随系统（中）、深色（右）。
+    v1.7.81 起外观改为与 DonkeyDrifter ThemeSwitcher 相同的分段控件样式
+    （独立 themeSwitch class，不再复用 langTabs）：zinc-800 胶囊容器 + 边框，
+    选中段 cyan-600 实心圆角胶囊，总高 34px；并补浅色主题覆写：深色主题保持
+    写死的 zinc 配色，浅色主题覆写为 DC 浅色既有令牌（#dde3ec/#aeb9c7/#5b6b7d/#0b2536），
+    选中段两主题均 cyan-600 白字。
     选择通过 localStorage（mus4.ui.theme）持久化，默认 'auto'（无存储/非法值回退），
     即默认跟随系统；用户显式选择浅色/深色后以其为准。
     跟随系统：'auto' 时经 matchMedia('(prefers-color-scheme: light)') 解析，
@@ -4292,6 +4300,25 @@ def test_web_console_theme_toggle():
     assert assets.count('id="themeTabs"') == 1
     assert assets.index('id="ledBlinkTabs"') < assets.index('id="themeTabs"')
     assert assets.index('id="themeTabs"') < assets.index('data-i18n-title="language.title"')
+
+    # v1.7.81：独立 themeSwitch class（与 DD ThemeSwitcher 同款，不再复用 langTabs）
+    assert '<span class="themeSwitch" id="themeTabs"' in assets
+
+    # v1.7.81 新增 CSS（用 id 选择器压过浅色主题 button 覆写）：
+    # 容器 34px 高 zinc-800 胶囊 + zinc-700 边框；按钮 24px 高；选中段 cyan-600 实心胶囊
+    assert "#themeTabs{display:inline-flex;align-items:center;gap:4px;background:#27272a;border:1px solid #3f3f46;border-radius:999px;padding:4px;height:34px;box-sizing:border-box}" in assets
+    assert "#themeTabs button{padding:4px 12px;height:24px;" in assets
+    assert "#themeTabs button:hover{color:#e4e4e7}" in assets
+    assert "#themeTabs button.active{background:#0891b2;color:#fff}" in assets
+    assert "#themeTabs button.active:hover{background:#0891b2;color:#fff}" in assets
+
+    # v1.7.81 浅色主题覆写（html[data-theme="light"] 前缀，优先级高于基础规则）：
+    # 容器/按钮换用 DC 浅色既有令牌，选中段仍 cyan-600 白字；深色主题保持 zinc 配色不回归
+    assert 'html[data-theme="light"] #themeTabs{background:#dde3ec;border-color:#aeb9c7}' in assets
+    assert 'html[data-theme="light"] #themeTabs button{color:#5b6b7d}' in assets
+    assert 'html[data-theme="light"] #themeTabs button:hover{color:#0b2536}' in assets
+    assert 'html[data-theme="light"] #themeTabs button.active{background:#0891b2;color:#fff}' in assets
+    assert 'html[data-theme="light"] #themeTabs button.active:hover{background:#0891b2;color:#fff}' in assets
 
     # 三个选项：跟随系统、浅色、深色，文案走 i18n
     assert 'data-theme="auto" onclick="setTheme(\'auto\')" data-i18n="theme.auto"' in assets

@@ -1,5 +1,28 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.94
+
+- feat(WebConsole): RGB 闪烁颜色开关（.langTabs）外框升级为 DC 粗框语言——外圈 1px border + 内圈 1px inset 描边，与主题/中英文切换键同款（避让：并行会话 #78/#79/#80 已占用 v1.7.88-v1.7.92，本分支两条目改号 v1.7.93/v1.7.94）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页）：
+    - 深色基础：容器 `border:none` → `border:1px solid #344154`，保留 `box-shadow:inset 0 0 0 1px #2b3441` 内描边——两条 1px 相加，视觉 2px 粗框（此前只有单圈内描边）；容器沿用 v1.7.89 的 34px 总高 + 4px 纵向 padding（border-box），内容区高 24px，分段按钮保持 24px 不变。
+    - 浅色覆写：`html[data-theme="light"] .langTabs` 增加 `border-color:#ccd5df`，内描边 `#aeb9c7`→`#d5dce4`——与 `#themeTabs`/`.langSwitch` 浅色框色逐值一致（外 #ccd5df + 内 #d5dce4）。
+    - 选中段连体拼接 JS（`renderLedBlinkTabs`，只动按钮圆角/阴影）不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.94。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新 `.langTabs` 深色容器/浅色覆写断言；版本链延伸至 v1.7.94。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.94`，Playwright 深/浅截图复核 RGB 开关粗框生效。
+
+## 2026-08-15 v1.7.93
+
+- feat(WebConsole): 主题/语言切换键重设计——深色配色改用 DD 皮肤实际渲染值，与 DonkeyDrifter ThemeSwitcher/LanguageSwitcher 双主题完全同款
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页）：
+    - 背景：v1.7.78/v1.7.81 初版照搬的是 Tailwind 默认色板原值（zinc-800 `#27272a` / cyan-600 `#0891b2`），而 DD 实际运行时被皮肤 CSS（theme-mus4.css/theme-light.css）整体覆盖，真实渲染是另一组色；本次改为按 DD 皮肤渲染值 1:1 复刻。
+    - `#themeTabs`（深色基础）：容器 `#27272a`→`#111820`、边框 `#3f3f46`→`#344154` 并新增内描边 `box-shadow:inset 0 0 0 1px #2b3441`；按钮未选中 `#a1a1aa`→`#8fa1b5`、hover `#e4e4e7`→`#e8edf2`；选中段 `#0891b2` 白字 → `#5cc8ff` 蓝底 + `#061019` 近黑字 + 800 粗（hover 不变色，同 DD）。
+    - `#themeTabs` 浅色覆写：容器 `#dde3ec`/`#aeb9c7` → `#f4f6f9`/`#ccd5df` + 内描边 `#d5dce4`，hover 文字 `#0b2536`→`#1a2330`，选中段同步改为 `#5cc8ff`+`#061019`（800 粗继承深色基础规则）——浅色下与旁边 `.langSwitch` 现有浅色样式逐值一致。
+    - `.langSwitch`（深色基础）同步换成同一组皮肤渲染值（容器/边框/内描边/文字/hover/选中段全部与 `#themeTabs` 相同），修正 v1.7.78 深色沿用 Tailwind 原值导致的「双切换键深色选中色不一致」；浅色覆写不动（已是 DD 皮肤值）。
+    - 结果：深/浅两种模式下，主题切换键 = 中英文切换键 = DD 的 ThemeSwitcher = DD 的 LanguageSwitcher，四个控件同一视觉语言；几何不变（容器 34px、按钮 24px、12px 字、胶囊圆角）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.93。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新 `#themeTabs`/`.langSwitch` 深浅色断言为新皮肤值。
+  - 已 OTA 刷至车辆（192.168.3.46）验证，Playwright 深/浅截图复核两组切换键视觉一致。
 ## 2026-08-15 v1.7.92
 
 - feat(WebConsole): DC 头部三个入口按键显示文案去掉"打开 "/"Open "前缀（zh/en 同步），与 DD 侧同步精简

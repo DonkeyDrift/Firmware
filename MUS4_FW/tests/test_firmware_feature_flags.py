@@ -274,12 +274,14 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.77"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.78"' in build_info
+    assert "v1.7.78" in changelog
     assert "v1.7.77" in changelog
     assert "v1.7.76" in changelog
     assert "v1.7.75" in changelog
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
+    assert changelog.index("v1.7.78") < changelog.index("v1.7.77")
     assert changelog.index("v1.7.77") < changelog.index("v1.7.76")
     assert changelog.index("v1.7.76") < changelog.index("v1.7.73")
 
@@ -1428,14 +1430,16 @@ def test_web_console_uses_dev_label_for_development_switch():
 def test_web_console_header_and_state_cards_keep_compact_layout():
     source = firmware_source_text()
 
-    assert ".headerRow{display:flex;align-items:flex-end;" in source
+    # v1.7.78：标题行整行垂直居中（三个"打开"按键 34px 后不再底部对齐）
+    assert ".headerRow{display:flex;align-items:center;" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
     assert ".otaLink{text-decoration:none}" in source
     assert ".otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;line-height:1;text-decoration:none;display:inline-flex;align-items:center;cursor:pointer}" in source
     assert ".devHint{position:relative}" in source
     assert ".devHint:hover:after" in source
     assert "content:'开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。'" in source
-    assert ".version{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block;transform:translateY(-1px)}" in source
+    assert ".version{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block}" in source
+    assert ".ghLink{display:inline-flex;align-items:center;color:#8fa1b5;margin-left:6px}" in source
     assert ".stateGrid{display:grid;gap:10px;align-items:stretch;grid-template-columns:" in source
     assert "#modeCard{grid-area:mode}" in source
     assert "#parkCard{grid-area:park}" in source

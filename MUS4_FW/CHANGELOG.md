@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.78
+
+- 固件版本号从 `v1.7.77` 更新到 `v1.7.78`。
+- fix(WebConsole): DC 标题行整行改为垂直居中——v1.7.76 把三个"打开"按键提至 34px 后，底部对齐（`align-items:flex-end`）让图标/标题/GitHub 图标/版本号/静音键沉底，现改为 `align-items:center`（手机版媒体查询本就是 center，桌面版对齐之）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页 `WIFI_WEB_CONSOLE_HTML`，DRIFT 页不动）：`.headerRow` 的 `align-items:flex-end` 改为 `center`；`.version` 与 `.ghLink` 去掉为底部对齐补偿用的 `transform:translateY(-1px)`；`.headerLogo` 本有 `align-self:center`、`.muteButton` 无偏移，随整行居中自然生效。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.78。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.78；头部布局断言更新为 `align-items:center` 及无 `translateY` 的 `.version`/`.ghLink` 规则。
+  - 验证：编译通过；全量 pytest 通过；已 HTTP OTA 上传并以车上 `/api/status` 的 `version=v1.7.78` 确认。
+- 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+
 ## 2026-08-15 v1.7.77
 
 - 固件版本号从 `v1.7.76` 更新到 `v1.7.77`（避让：v1.7.76 已被 #65 `Tony-kimi-code-web` 的 DC 头部按键高度改动占用）。

@@ -274,11 +274,14 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.75"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.77"' in build_info
+    assert "v1.7.77" in changelog
+    assert "v1.7.76" in changelog
     assert "v1.7.75" in changelog
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
-    assert changelog.index("v1.7.75") < changelog.index("v1.7.73")
+    assert changelog.index("v1.7.77") < changelog.index("v1.7.76")
+    assert changelog.index("v1.7.76") < changelog.index("v1.7.73")
 
 
 def test_host_ip_report_channel():
@@ -387,11 +390,22 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "localStorage.getItem(CMD_TARGET_KEY)" in source
     assert "applyCmdTarget(saved||'serial',false)" in source
     assert "restoreCmdTarget();" in source
-    # 切换目标时显示终端、隐藏日志区，工具行（暂停/清空/发送/输入框/下拉）保持显示；
-    # 切回 Web 恢复日志视图
+    # 切换目标时显示终端、隐藏日志区；Serial 模式隐藏暂停/发送/输入框，
+    # 显示"新开终端"加号按钮（垃圾桶与目标下拉保持显示）；切回 Web 恢复
+    # 日志视图与完整工具行
     assert "function applyCmdTarget(src,save)" in source
+    assert "newTermBtn.style.display=term?'':'none';" in source
+    assert "pauseBtn.style.display=term?'none':'';" in source
+    assert "sendBtn.style.display=term?'none':'';" in source
+    assert "cmd.style.display=term?'none':'';" in source
     assert "if(term)startTerminal();else switchLogSource('web');" in source
     assert "cmdTarget.addEventListener('change',e=>{applyCmdTarget(e.target.value)});" in source
+    # 加号按钮：新开浏览器标签页加载上位机终端页（每页独立 PTY 会话，
+    # 不杀已有终端）；URL 复用 terminalUrl() 自动发现机制
+    assert 'id="newTermBtn"' in source
+    assert "function openNewTerminal(){window.open(terminalUrl(),'_blank');}" in source
+    assert "I18N.zh['terminal.new']" in source
+    assert "I18N.en['terminal.new']" in source
     # 上位机不可达时的加载/失败提示（i18n 中英双语）
     assert "I18N.zh['terminal.loading']" in source
     assert "I18N.en['terminal.loading']" in source
@@ -1937,7 +1951,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch"' in source
-    assert '<button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" id="clearBtn" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
+    assert '<button class="iconButton" onclick="openNewTerminal()" id="newTermBtn" title="新开终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="clearLog()" id="clearBtn" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd"><select id="cmdTarget">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
@@ -4311,7 +4325,10 @@ def test_web_console_header_entry_buttons():
     v1.7.70 "进入"改名"打开"（en Enter→Open）；DonkeyDrifter 右侧新增"打开 Kimi Code Web"
     占位按钮（功能预留，无 href/onclick）。
     v1.7.74 "打开 Kimi Code Web"接功能：沿用 _launcherIp，POST :8090/api/launch/kimi-code-web，
-    AbortController 120s 超时，同步上下文先开 about:blank 句柄，成功后导航、失败关闭。"""
+    AbortController 120s 超时，同步上下文先开 about:blank 句柄，成功后导航、失败关闭。
+    v1.7.76 三个入口按键高度由 24px 提至 34px（与 DD 侧"打开"按键对齐），
+    通过专属规则 #enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}
+    覆盖，.otaButton 基础规则与其他 OTA 按钮保持 24px 不变。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4370,6 +4387,11 @@ def test_web_console_header_entry_buttons():
     assert '#drive' in assets
     assert 'enterDonkeyLauncher' not in assets
     assert 'enterDonkeyDrifter()' not in assets
+
+    # v1.7.76：三个入口按键 34px 高（对齐 DD 侧"打开"按键），专属规则覆盖，
+    # .otaButton 基础规则（含 OTA 按钮）仍是 24px
+    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn{height:34px}' in assets
+    assert '.otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
 
 def test_web_console_light_theme_overrides():
     """浅色主题生效：setTheme/initTheme 通过 applyTheme 把解析结果写到

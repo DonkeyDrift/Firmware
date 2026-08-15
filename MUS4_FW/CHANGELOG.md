@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.88
+
+- feat(WebConsole): 工具行垃圾桶按钮移除；➕ 新建终端按钮移入标签条右端（始终位于最新标签右边）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 删除工具行 `#clearBtn` 垃圾桶按钮及 `onClearBtn()`/`killActiveTerminalTab()` 包装（Serial 模式关终端统一用标签上的 ×，v1.7.87 已支持按 id 关任意标签）；Web 模式的"清空日志"按钮随之一并移除（`clearLog()` 函数保留未删）。
+    - `#newTermBtn`（➕）从工具行移入 `#termTabs` 作为其末位子元素；`addTerminalTab()` 改用 `termTabs.insertBefore(b,newTermBtn)`，新标签插到 ➕ 左边，➕ 始终位于最新标签右边；新增 `#termTabs .iconButton{width:22px;height:22px}` 与 22px 标签等高对齐。
+    - `applyCmdTarget()` 删除 `clearBtn.title` 随模式切换逻辑；i18n 移除 `terminal.kill` 中英词条（`button.clear` 词条保留，图表工具条清空按钮仍在用）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.88。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 更新工具行 DOM 断言（➕ 在 `#termTabs` 内、无 `#clearBtn`），新增 `termTabs.insertBefore(b,newTermBtn)` 及 `onClearBtn`/`killActiveTerminalTab`/`terminal.kill` 不存在断言；版本链延伸至 v1.7.88。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.88`。
+
 ## 2026-08-15 v1.7.87
 
 - feat(WebConsole): Serial 终端标签页加独立关闭叉 ×、浅色皮肤；工具行按"Serial/Web 开关 → ➕ → 🗑 → 标签条"重排

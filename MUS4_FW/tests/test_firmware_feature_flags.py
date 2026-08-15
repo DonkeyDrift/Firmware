@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.87"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.88"' in build_info
+    assert "v1.7.88" in changelog
     assert "v1.7.87" in changelog
     assert "v1.7.86" in changelog
     assert "v1.7.85" in changelog
@@ -290,6 +291,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-15 v1.7.88") < changelog.index("## 2026-08-15 v1.7.87")
     assert changelog.index("## 2026-08-15 v1.7.87") < changelog.index("## 2026-08-15 v1.7.86")
     assert changelog.index("## 2026-08-15 v1.7.86") < changelog.index("## 2026-08-15 v1.7.85")
     assert changelog.index("## 2026-08-15 v1.7.85") < changelog.index("## 2026-08-15 v1.7.84")
@@ -394,8 +396,8 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     （http://<host_ip>:8090/terminal，由上位机 Launcher 服务提供）；
     目标选择持久化到 localStorage，下次打开页面时恢复，默认 Serial。
     终端数据走局域网 WebSocket（不走 115200 串口，带宽不足以跑 TUI）。
-    ➕ 每点一次新增一个终端标签页（独立 iframe/PTY 会话），🗑 杀掉当前选中标签页；
-    每个标签左侧的 × 可单独关闭对应终端（v1.7.87）。
+    ➕ 位于标签条右端（v1.7.88 起，垃圾桶按钮移除），每点一次新增一个终端标签页
+    （独立 iframe/PTY 会话）；每个标签左侧的 × 关闭对应终端（v1.7.87）。
     """
     source = firmware_source_text()
 
@@ -413,8 +415,8 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "applyCmdTarget(saved||'serial',false)" in source
     assert "restoreCmdTarget();" in source
     # 切换目标时显示终端与标签条、隐藏日志区；Serial 模式隐藏暂停/发送/输入框，
-    # 显示"新建终端"加号按钮（垃圾桶与目标下拉保持显示）；切回 Web 恢复
-    # 日志视图与完整工具行；垃圾桶 title 随模式切换；首次进入 Serial 自动建第一个
+    # 显示"新建终端"加号按钮（v1.7.88 起位于标签条右端）；切回 Web 恢复
+    # 日志视图与完整工具行；首次进入 Serial 自动建第一个
     # 标签（termInited），用户杀光后切回不自动重建
     assert "function applyCmdTarget(src,save)" in source
     assert "newTermBtn.style.display=term?'':'none';" in source
@@ -422,29 +424,30 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "pauseBtn.style.display=term?'none':'';" in source
     assert "sendBtn.style.display=term?'none':'';" in source
     assert "cmd.style.display=term?'none':'';" in source
-    assert "clearBtn.title=t(term?'terminal.kill':'button.clear');" in source
     assert "if(term){if(!termInited)addTerminalTab()}else switchLogSource('web');" in source
     assert "cmdTarget.addEventListener('change',e=>{applyCmdTarget(e.target.value)});" in source
     # 标签页管理：动态 iframe（保留 #57 白边修复 scrolling="no"）+ 探活后设 src，
     # 每个 iframe 独立 PTY 会话；点标签只切换显示（其余 display:none 保活）；
-    # 垃圾桶在 Serial 模式杀当前标签、Web 模式仍清日志
+    # v1.7.88 起垃圾桶按钮移除（Serial 用标签上的 × 关闭，Web 清空日志按钮一并移除），
+    # ➕ 移入标签条作为末位子元素，新标签 insertBefore 插到 ➕ 左边、➕ 始终位于最新标签右边
     assert 'id="newTermBtn"' in source
+    assert 'id="clearBtn"' not in source
+    assert "onClearBtn" not in source
+    assert "killActiveTerminalTab" not in source
     assert "function addTerminalTab()" in source
+    assert "termTabs.insertBefore(b,newTermBtn);" in source
     assert "document.createElement('iframe')" in source
     assert "f.setAttribute('scrolling','no')" in source
     assert "function selectTerminalTab(id)" in source
-    assert "function killActiveTerminalTab()" in source
-    assert "function onClearBtn(){if(cmdTarget.value==='serial')killActiveTerminalTab();else clearLog()}" in source
     # 标签按位置连续编号（v1.7.80）：新建用 termList.length+1，杀标签后剩余标签重编号；
     # 标签文字放在 .termTabLabel 子 span（v1.7.87 起，避免 textContent 赋值抹掉 × 子元素）
     assert "l.textContent=t('terminal.tab')+' '+(termList.length+1);" in source
     assert "termList.forEach((x,j)=>{x.l.textContent=t('terminal.tab')+' '+(j+1)});" in source
-    # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端（不再只能杀选中标签），
-    # 点击 stopPropagation 不触发标签切换；垃圾桶仍杀当前选中标签（killActiveTerminalTab 包装）
+    # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端，
+    # 点击 stopPropagation 不触发标签切换
     assert "c.className='termTabClose'" in source
     assert "c.onclick=e=>{e.stopPropagation();killTerminalTab(id)};" in source
     assert "function killTerminalTab(id)" in source
-    assert "function killActiveTerminalTab(){killTerminalTab(termActive)}" in source
     assert ".termTabClose{" in source
     assert "I18N.zh['terminal.closeTab']" in source
     assert "I18N.en['terminal.closeTab']" in source
@@ -465,8 +468,8 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "I18N.en['terminal.new']" in source
     assert "I18N.zh['terminal.tab']" in source
     assert "I18N.en['terminal.tab']" in source
-    assert "I18N.zh['terminal.kill']" in source
-    assert "I18N.en['terminal.kill']" in source
+    # v1.7.88 起 terminal.kill 词条随垃圾桶按钮一并移除
+    assert "terminal.kill" not in source
     assert "I18N.zh['terminal.empty']" in source
     assert "I18N.en['terminal.empty']" in source
     assert "I18N.zh['terminal.loading']" in source
@@ -2051,7 +2054,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
     assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch devHint" id="devModeToggle">' in source
-    assert '<select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="onClearBtn()" id="clearBtn" title="清空" data-i18n-title="button.clear"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button><div id="termTabs"></div><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
+    assert '<select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><div id="termTabs"><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button></div><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source

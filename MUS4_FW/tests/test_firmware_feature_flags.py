@@ -274,10 +274,11 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.72"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.74"' in build_info
+    # v1.7.74 的 CHANGELOG 条目由"收尾"流程补登，此处仍校验既有条目的顺序
+    assert "v1.7.73" in changelog
     assert "v1.7.72" in changelog
-    assert "v1.7.71" in changelog
-    assert changelog.index("v1.7.72") < changelog.index("v1.7.71")
+    assert changelog.index("v1.7.73") < changelog.index("v1.7.72")
 
 
 def test_host_ip_report_channel():
@@ -4307,7 +4308,9 @@ def test_web_console_header_entry_buttons():
     按钮点击时同步调用 window.open，不再在 async 函数内 await 后开新标签。
     v1.7.61 改用 <a target="_blank"> 原生链接替代 window.open，彻底解决 Safari 弹窗拦截。
     v1.7.70 "进入"改名"打开"（en Enter→Open）；DonkeyDrifter 右侧新增"打开 Kimi Code Web"
-    占位按钮（功能预留，无 href/onclick）。"""
+    占位按钮（功能预留，无 href/onclick）。
+    v1.7.74 "打开 Kimi Code Web"接功能：沿用 _launcherIp，POST :8090/api/launch/kimi-code-web，
+    AbortController 120s 超时，同步上下文先开 about:blank 句柄，成功后导航、失败关闭。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -4342,6 +4345,23 @@ def test_web_console_header_entry_buttons():
     assert "'button.enterDonkeyDrifter':'Open DonkeyDrifter'" in assets
     assert "'button.openKimiCodeWeb':'打开 Kimi Code Web'" in assets
     assert "'button.openKimiCodeWeb':'Open Kimi Code Web'" in assets
+
+    # v1.7.74："打开 Kimi Code Web"接功能：沿用 _launcherIp（/api/status 的 host_ip），
+    # 点击 POST http://<host>:8090/api/launch/kimi-code-web（空体 POST，免 CORS 预检），
+    # AbortController 120s 超时；点击同步上下文先开 about:blank 句柄，成功后导航、失败关闭；
+    # 等待态禁用按钮并切换启动中文案，失败/超时走 toast 提示
+    assert 'onclick="openKimiCodeWeb()"' in assets
+    assert 'async function openKimiCodeWeb()' in assets
+    assert "window.open('about:blank','_blank')" in assets
+    assert ':8090/api/launch/kimi-code-web' in assets
+    assert 'AbortController' in assets
+    assert '120000' in assets
+    assert "'button.openKimiCodeWebLaunching':'正在启动 Kimi Code Web...'" in assets
+    assert "'button.openKimiCodeWebLaunching':'Launching Kimi Code Web...'" in assets
+    assert "'toast.kimiCodeWebFailed':'Kimi Code Web 启动失败'" in assets
+    assert "'toast.kimiCodeWebFailed':'Failed to launch Kimi Code Web'" in assets
+    assert "'toast.kimiCodeWebTimeout':'Kimi Code Web 启动超时'" in assets
+    assert "'toast.kimiCodeWebTimeout':'Kimi Code Web launch timed out'" in assets
 
     # v1.7.59：enterDonkeyDrifter 指向 /launch/drive
     # v1.7.61：入口按钮改用 <a target="_blank">，不再使用 onclick + window.open

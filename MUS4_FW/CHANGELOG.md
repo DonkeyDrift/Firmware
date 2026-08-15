@@ -1,5 +1,32 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.74
+
+- 固件版本号从 `v1.7.73` 更新到 `v1.7.74`。
+- feat(WebConsole): "打开 Kimi Code Web" 按钮接上 launcher 启动端点（issue #59；配套 DonkeyDrift 侧 #103/#104）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#openKimiCodeWebBtn` 从纯占位改为 `onclick="openKimiCodeWeb()"`；新增 `openKimiCodeWeb()` JS（插在 `_fetchLauncherIp()` 之后）：防重复点击守卫 → 点击同步上下文先 `window.open('about:blank','_blank')` 拿句柄（规避弹窗拦截）→ 按钮禁用并切"正在启动 Kimi Code Web..."文案 → `fetch` POST `http://<host_ip>:8090/api/launch/kimi-code-web`（空体 simple request 免 CORS 预检；`AbortController` 120s 超时，匹配服务端整体超时）→ 成功校验 `{status:'ok',url}` 后 `newTab.location.href=url`；失败/超时关句柄并 `showToast` 提示（超时单独文案）、`line()` 落日志；`finally` 恢复按钮。
+    - 上位机地址沿用既有 `_launcherIp` 机制（`/api/status` 的 `host_ip` 字段自动发现，与"打开 DD"按钮同源），不发明新通道。
+    - i18n 新增 zh/en 各 3 条：`button.openKimiCodeWebLaunching`、`toast.kimiCodeWebFailed`、`toast.kimiCodeWebTimeout`。
+    - 跨域依赖：launcher 端点响应须带 `Access-Control-Allow-Origin`（DonkeyDrift 侧已在本端点放行，仅此端点），否则浏览器拦截响应。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.74。
+  - `tests/test_firmware_feature_flags.py`：`test_web_console_header_entry_buttons` 补按钮行为断言；版本号断言同步至 v1.7.74（161 项全过）。
+  - 已编译并 HTTP OTA 上传验证：车上 `/api/status` 确认 `version=v1.7.74`，首页 HTML 确认 `onclick="openKimiCodeWeb()"`、`/api/launch/kimi-code-web` 与新词条已生效。
+  - 涉及文件：`MUS4_FW/libraries/mus4_web/src/WebConsoleAssets.h`、`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`、`MUS4_FW/tests/test_firmware_feature_flags.py`
+
+## 2026-08-14 v1.7.73
+
+- 固件版本号从 `v1.7.72` 更新到 `v1.7.73`。
+- docs(repo): 重写仓库根 README.md
+  - 子项目表标注各子项目当前版本（MUS4_FW 固件版本与 BuildInfo.h 对齐）。
+  - 新增 MUS4_FW 功能速览（无线控制台/Web Console/OTA/校准等核心能力一览）。
+  - 新增构建、OTA、测试命令速查（`arduino-cli.py -c`、HTTP/ArduinoOTA 上传、`pytest` 入口）。
+  - 新增安全说明（控制台密码、DEV 模式、免认证边界等注意事项）。
+  - 补充与 DonkeyDrift 上位机仓库的配套链接。
+  - 纯文档 + 版本号改动，无固件逻辑变更。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.73。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.73。
+
 ## 2026-08-14 v1.7.72
 
 - 固件版本号从 `v1.7.71` 更新到 `v1.7.72`。（开发期间曾用 v1.7.68/70/71；因 v1.7.67~v1.7.69 已被 #49/#50 占用、v1.7.70 已被 #54 占用，合入前统一改号）

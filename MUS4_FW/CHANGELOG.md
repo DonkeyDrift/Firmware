@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-08-15 v1.7.75
+
+- 固件版本号从 `v1.7.73` 更新到 `v1.7.75`（跳过 v1.7.74：该号已被 #61 `Tony-kimi-code-web` 占用）。
+- fix(WebConsole): DC 终端板块 Serial 页面排版对齐 Web 模式，并删除 Serial 模式右侧白色竖条（Closes #57）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `applyCmdTarget()` 不再隐藏工具行：Serial 模式下暂停/清空(垃圾桶)/发送按钮与 `#cmd` 输入框保持显示，排版与 Web 模式一致（仅排版对齐，未新增功能）。
+    - `#terminalWrap` 尺寸约束改为与 `#log` 完全相同（flex basis 与 min/max-height、padding 逐项对齐），serial↔web 切换时整个 `#serialPanel` 尺寸不再跳动。
+    - 白色竖条三处联防：`#terminalFrame` iframe 加 `scrolling="no"` 与 `display:block`，`#terminalWrap` 加 `overflow:hidden` + 深色背景 + 圆角，消除 iframe 原生浅色滚动条与边缘缝隙两条白条路径。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.75。
+  - `tests/test_firmware_feature_flags.py`：版本号断言同步至 v1.7.75；serial 切换相关过时中文注释同步（不再隐藏日志控件），未改测试断言逻辑。
+  - 验证：编译通过；全量 322 项 pytest 通过，内嵌 5 个 script 块 node --check 通过；开发期间已 HTTP OTA 上传并在设备端确认新 CSS/`scrolling="no"`/新 `applyCmdTarget` 三处生效（当时沿用 v1.7.73 号段，以 build 时间戳确认）。注：开发验证后车上固件被 #61 的 v1.7.74 试刷覆盖，本条目合入时将 v1.7.75 完整固件（含 #61 按钮功能）重新 OTA 并以车上 `/api/status` 的 `version=v1.7.75` 确认。
+
 ## 2026-08-15 v1.7.74
 
 - 固件版本号从 `v1.7.73` 更新到 `v1.7.74`。

@@ -4136,6 +4136,8 @@ def test_web_console_led_blink_color_selector():
     assert "#ledBlinkTabs{gap:0}" not in assets
     assert "style.borderRadius" in assets
     assert "style.boxShadow" in assets
+    # 容器高度加大到与 DD 语言切换键一致：上下各 4px 内边距 + 按钮 24px = 总高 32px
+    assert "#ledBlinkTabs{height:auto;padding:4px 2px}" in assets
     # 悬停高亮框不受连体直角影响，始终为独立小椭圆；仅在悬停按钮本身也已勾选时，
     # 相邻已勾选按钮才用伪元素把背景延伸 12px 垫进悬停按钮底部（悬停按钮 z-index
     # 更高），小椭圆与连体段严丝合缝；悬停未勾选按钮时不垫底，保持均匀细缝

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-08-16 v1.8.2
+
+- fix(WebConsole): 修复终端标签智能缩写在真实设备上始终不触发（GitHub Issue #90 复盘：v1.8.1 的振荡修复正确但溢出检测根本没机会触发）
+  - 根因（无头浏览器在车上 v1.8.1 实测复现）：`.grid` 的 `grid-template-columns:1fr` / `@media(min-width:900px)` 下 `2fr 1fr` 均未加 `minmax(0,…)`，grid 列最小宽度默认取内容宽度——多标签时 `#termTabs` 的内容宽度沿 `.row`→`.panel`→grid 列一路顶住最小宽度，`clientWidth` 恒等于 `scrollWidth`，页面转而出现横向滚动；`fitTermTabLabels()` 的 `scrollWidth>clientWidth` 永远为 false，缩写永不触发（此前推测的"车上固件落后/振荡缺陷"都不是主因，振荡缺陷已在 v1.8.1 修复）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：两处 grid 列定义加 `minmax(0,…)`（`minmax(0,1fr)`；`minmax(0,2fr) minmax(0,1fr)`），列可收缩到内容以下，标签条真正溢出，智能缩写/恢复长名按预期工作，页面不再横向滚动。
+  - 验证：Playwright Chromium 对车上真实页面回归——单列 850px 下 4 标签显示「终端 1…4」、12 标签缩写为「1…12」、临界宽度 500↔1280 来回 10 轮无振荡残留、`documentElement.scrollWidth` 不再超出视口。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.1 → v1.8.2。
+  - 测试同步：`tests/test_firmware_feature_flags.py` grid 断言更新为 `minmax(0,…)` 并新增"无裸 `2fr 1fr` 残留"断言；版本断言升至 v1.8.2，CHANGELOG 顺序链延伸至 v1.8.2。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.2 build="Aug 16 2026 21:18:03"`，页面含 `minmax(0,2fr) minmax(0,1fr)`。
+
 ## 2026-08-16 v1.8.1
 
 - fix(WebConsole): 修复 DC 终端偶发"无法连接上位机终端服务"后不恢复（GitHub Issue #89）与终端标签智能缩写临界宽度振荡"未生效"（GitHub Issue #90）

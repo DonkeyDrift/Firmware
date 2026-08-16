@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.1"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.2"' in build_info
+    assert "v1.8.2" in changelog
     assert "v1.8.1" in changelog
     assert "v1.8.0" in changelog
     assert "v1.7.99" in changelog
@@ -304,6 +305,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-16 v1.8.2") < changelog.index("## 2026-08-16 v1.8.1")
     assert changelog.index("## 2026-08-16 v1.8.1") < changelog.index("## 2026-08-16 v1.8.0")
     assert changelog.index("## 2026-08-16 v1.8.0") < changelog.index("## 2026-08-16 v1.7.99")
     assert changelog.index("## 2026-08-16 v1.7.99") < changelog.index("## 2026-08-16 v1.7.98")
@@ -2102,7 +2104,10 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert '<section class="panel" id="serialPanel">' in source
     assert "#serialPanel{display:flex;flex-direction:column;gap:8px;padding-bottom:6px}" in source
     assert "#serialPanel .log{flex:1 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
-    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}" in source
+    assert "@media(min-width:900px){.grid{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}" in source
+    # Issue #90：grid 列必须 minmax(0,…) 可收缩，否则终端标签条永远不会溢出、智能缩写不触发
+    assert ".grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}" in source
+    assert "grid-template-columns:2fr 1fr}" not in source
     assert "canvas{width:100%;height:auto;aspect-ratio:38/13;" in source
     assert "#chartPanel:fullscreen .chartCanvasWrap{width:min(100%,calc((100vh - 118px) * 38 / 13))}" in source
     assert "#chartPanel:fullscreen canvas{width:100%;height:auto;max-height:calc(100vh - 118px);aspect-ratio:38/13}" in source
@@ -2213,7 +2218,7 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
     assert source.index(serial_panel) < source.index(diagnostics_panel)
     assert source.index(diagnostics_panel) < source.index('id="rcFold" class="fold"')
     assert source.index('id="rcFold" class="fold"') < source.index('id="statusFold" class="fold"')
-    assert '@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}' in source
+    assert '@media(min-width:900px){.grid{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}' in source
     assert "function toggleFold(id)" in source
     assert "function renderStatus(t)" in source
     assert "function parseStatusPairs(t)" in source

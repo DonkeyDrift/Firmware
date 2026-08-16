@@ -276,6 +276,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
 
     assert '#define MUS4_FIRMWARE_VERSION "v1.7.98"' in build_info
     assert "v1.7.98" in changelog
+    assert "v1.7.97" in changelog
     assert "v1.7.96" in changelog
     assert "v1.7.95" in changelog
     assert "v1.7.94" in changelog
@@ -300,7 +301,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
-    assert changelog.index("## 2026-08-16 v1.7.98") < changelog.index("## 2026-08-16 v1.7.96")
+    assert changelog.index("## 2026-08-16 v1.7.98") < changelog.index("## 2026-08-16 v1.7.97")
+    assert changelog.index("## 2026-08-16 v1.7.97") < changelog.index("## 2026-08-16 v1.7.96")
     assert changelog.index("## 2026-08-16 v1.7.96") < changelog.index("## 2026-08-15 v1.7.95")
     assert changelog.index("## 2026-08-15 v1.7.95") < changelog.index("## 2026-08-15 v1.7.94")
     assert changelog.index("## 2026-08-15 v1.7.94") < changelog.index("## 2026-08-15 v1.7.93")
@@ -469,6 +471,13 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "c.className='termTabClose'" in source
     assert "c.onclick=e=>{e.stopPropagation();killTerminalTab(id)};" in source
     assert "function killTerminalTab(id)" in source
+    # 保底一个终端（v1.7.97）：仅剩一个标签时 × 关闭钮隐藏（updateTermTabClose），
+    # killTerminalTab 入口守卫拒绝关闭最后一个；term 对象持 × 元素引用 c 以控制显隐
+    assert "const term={id:id,f:f,b:b,l:l,c:c,name:null,state:'loading'}" in source
+    assert "function updateTermTabClose(){const hide=termList.length<=1;" in source
+    assert "x.c.style.display=hide?'none':''" in source
+    assert "function killTerminalTab(id){if(termList.length<=1)return;" in source
+    assert "fitTermTabLabels();updateTermTabClose();if(termList.length===0)" in source
     # 标签名跟随终端内输入命令（v1.7.90）：上位机终端页把每行输入的首词
     # postMessage 给父页，父页按 e.source 匹配 iframe 改名；重编号时自定义名优先；
     # v1.7.96 起首次命名后锁定：cur.name 非空即忽略后续上报

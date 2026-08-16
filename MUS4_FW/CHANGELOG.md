@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-08-16 v1.7.96
+
+- fix(WebConsole): 终端标签页名字首次命名后锁定——终端内输入首条命令命名（如 `kimi`）后，后续命令（如 `/web`）上报的名字被忽略，标签始终保持 `kimi` 不变
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`donkeydrifter.term.name` message 监听由 `if(!cur)return;` 改为 `if(!cur||cur.name)return;`——`cur.name` 非空（已自定义命名）的标签不再接受后续上报改名；未命名标签（`name` 为 null）仍按输入首词命名，`fitTermTabLabels()` 跳过自定义名的逻辑不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.96。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 命名断言注释更新为"首次命名后锁定"语义，新增 `if(!cur||cur.name)return;` 断言；版本链延伸至 v1.7.96。
+
 ## 2026-08-15 v1.7.95
 
 - 固件版本号从 `v1.7.92` 更新到 `v1.7.95`（避让：并行会话 #80 入口按键去前缀占用 v1.7.92、#82 主题/语言切换键重设计与 RGB 粗框占用 v1.7.93/v1.7.94）。

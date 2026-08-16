@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.99"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.0"' in build_info
+    assert "v1.8.0" in changelog
     assert "v1.7.99" in changelog
     assert "v1.7.98" in changelog
     assert "v1.7.97" in changelog
@@ -302,6 +303,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-16 v1.8.0") < changelog.index("## 2026-08-16 v1.7.99")
     assert changelog.index("## 2026-08-16 v1.7.99") < changelog.index("## 2026-08-16 v1.7.98")
     assert changelog.index("## 2026-08-16 v1.7.98") < changelog.index("## 2026-08-16 v1.7.97")
     assert changelog.index("## 2026-08-16 v1.7.97") < changelog.index("## 2026-08-16 v1.7.96")
@@ -4647,3 +4649,50 @@ def test_web_console_light_theme_overrides():
     assert "initTheme();" in assets
     # 深色原文不动：激活胶囊两主题保持 #5cc8ff/#061019
     assert '.langTabs button.active{background:#5cc8ff;color:#061019}' in assets
+
+
+def test_wifi_sta_history_retry_rescans_after_exhaustion():
+    """Issue #88：一轮历史候选试完后不再终局——冷却 WIFI_STA_HISTORY_RESCAN_INTERVAL_MS
+    后清掩码重开新一轮，覆盖「小车先开机、历史 Wi-Fi 后出现（或暂时不在覆盖范围）」
+    的场景，否则该 Wi-Fi 之后出现时小车永远不会再尝试连接。"""
+
+    manager_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
+    runtime_state = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "RuntimeState.h").read_text(encoding="utf-8")
+
+    # 冷却常量紧邻既有重试节流常量；运行态字段承载重扫描截止时刻
+    assert "static const unsigned long WIFI_STA_HISTORY_RESCAN_INTERVAL_MS = 15000;" in manager_source
+    assert "unsigned long staHistRescanDeadlineMs = 0;" in runtime_state
+
+    retry_body = re.search(
+        r"(?:static )?void updateWifiStaHistoryRetry\(\)\s*\{(?P<body>.*?)\n\}",
+        manager_source,
+        re.DOTALL,
+    ).group("body")
+
+    # 候选耗尽：记录冷却截止并打 rescan 日志，不再直接终局
+    assert "wifiRuntime.staHistRescanDeadlineMs = millis() + WIFI_STA_HISTORY_RESCAN_INTERVAL_MS;" in retry_body
+    assert "STA history retry: candidates exhausted, rescan in %lus" in retry_body
+    # 冷却期满：未到冷却期直接返回（统一 (long)(millis() - deadline) < 0 回绕比较）
+    assert "(long)(millis() - wifiRuntime.staHistRescanDeadlineMs) < 0" in retry_body
+    # 冷却期满清掩码重开新一轮，connected 上升沿同步清零冷却截止
+    assert "wifiRuntime.staHistTriedMask = 0;" in retry_body
+    assert "STA history retry: starting new round" in retry_body
+    assert "wifiRuntime.staHistRescanDeadlineMs = 0;" in retry_body
+
+
+def test_wifi_sta_history_retry_window_accepts_unconfigured_sta():
+    """Issue #88：STA 从未配置（NVS sta_en=false 或从未配网）但历史记录非空时
+    也要进入重试窗口——否则只能靠开机那一刻的扫描，运行中永不重试。"""
+
+    manager_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
+
+    retry_body = re.search(
+        r"(?:static )?void updateWifiStaHistoryRetry\(\)\s*\{(?P<body>.*?)\n\}",
+        manager_source,
+        re.DOTALL,
+    ).group("body")
+
+    window = re.search(r"bool inRetryWindow.*?\n.*?;", retry_body, re.DOTALL).group(0)
+    assert "wifiStaHistoryCount() > 0" in window
+    # 历史为空时仍由函数体内既有兜底分支拦截，不会空转扫描
+    assert "if (wifiStaHistoryCount() == 0)" in retry_body

@@ -103,6 +103,10 @@ static String g_staIpApSsidOverride = "";
 // STA 连接历史重试节奏：两次扫描/尝试之间的最小间隔，避免 AP-only 下空转扫频。
 static const unsigned long WIFI_STA_HISTORY_RETRY_INTERVAL_MS = 3000;
 
+// 一轮历史候选试完后，等待该冷却时间再重开新一轮扫描，覆盖「小车先开机、
+// 历史 Wi-Fi 后出现（或暂时不在覆盖范围）」的场景；15s 是扫描频率与空转功耗的折中。
+static const unsigned long WIFI_STA_HISTORY_RESCAN_INTERVAL_MS = 15000;
+
 #ifdef ENABLE_WIFI_LLMNR_DISCOVERY
 static WiFiUDP wifiLlmnrUdp;
 static bool wifiLlmnrStarted = false;
@@ -1210,6 +1214,7 @@ void updateWifiStaHistoryRetry()
         wifiRuntime.staHistTriedMask = 0;
         wifiRuntime.staHistRetryActive = false;
         wifiRuntime.staHistRetryDeadlineMs = 0;
+        wifiRuntime.staHistRescanDeadlineMs = 0;
     }
     lastStaConnected = connected;
 
@@ -1230,8 +1235,11 @@ void updateWifiStaHistoryRetry()
         }
     }
 
+    // 历史非空即进入重试窗口——覆盖 STA 从未配置（NVS sta_en=false 或从未配网）
+    // 但历史记录非空的场景（Issue #88）：否则只能靠开机那一刻的扫描，运行中
+    // 永不进入重试。历史为空时下方 wifiStaHistoryCount()==0 分支兜底，不会空转。
     bool inRetryWindow = !wifiStaConnected && !wifiStaConnecting && !wifiStaApplyPending &&
-        (wifiStaConfigured || wifiStaLastError[0] != 0);
+        (wifiStaConfigured || wifiStaLastError[0] != 0 || wifiStaHistoryCount() > 0);
 
     if (staHistScanPending) {
         int16_t scanResult = WiFi.scanComplete();
@@ -1275,14 +1283,18 @@ void updateWifiStaHistoryRetry()
                 return;
             }
         }
-        // 扫描失败或无可见的未试候选：把当前槽位全部标记为已试，结束本轮周期。
+        // 扫描失败或无可见的未试候选：把当前槽位全部标记为已试，本轮结束；
+        // 记录重扫描冷却截止，冷却期满后由下方分支清掩码重开新一轮，
+        // 覆盖「小车先开机、历史 Wi-Fi 后出现」的场景（Issue #88）。
         WiFi.scanDelete();
         wifiRuntime.staHistTriedMask = 0;
         for (uint8_t rank = 0; rank < wifiStaHistoryCount(); rank++) {
             wifiRuntime.staHistTriedMask |= (uint8_t)(1u << rank);
         }
         wifiRuntime.staHistRetryActive = false;
-        mus4LogLine("wifi", "STA history retry: candidates exhausted");
+        wifiRuntime.staHistRescanDeadlineMs = millis() + WIFI_STA_HISTORY_RESCAN_INTERVAL_MS;
+        mus4Logf("wifi", "STA history retry: candidates exhausted, rescan in %lus",
+                 WIFI_STA_HISTORY_RESCAN_INTERVAL_MS / 1000);
         return;
     }
 
@@ -1300,7 +1312,11 @@ void updateWifiStaHistoryRetry()
     }
     if (!anyUntried) {
         wifiRuntime.staHistRetryActive = false;
-        return;
+        // 候选已全部试过：未到重扫描冷却期则等待，期满清掩码重开新一轮。
+        if ((long)(millis() - wifiRuntime.staHistRescanDeadlineMs) < 0) return;
+        wifiRuntime.staHistTriedMask = 0;
+        wifiRuntime.staHistRetryActive = true;
+        mus4LogLine("wifi", "STA history retry: starting new round");
     }
     wifiRuntime.staHistRetryActive = true;
     if ((long)(millis() - wifiRuntime.staHistRetryDeadlineMs) < 0) return;

@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-16 v1.8.0
+
+- fix(wifi): 修复 STA 连接历史重试"一轮耗尽后不再扫描"与"STA 未配置时不进重试窗口"两个缺口（GitHub Issue #88：之前连接过的 Wi-Fi 出现后小车不自动连接）
+  - `libraries/mus4_wifi/src/WifiManager.cpp`：
+    - 新增常量 `WIFI_STA_HISTORY_RESCAN_INTERVAL_MS = 15000`（紧邻既有 `WIFI_STA_HISTORY_RETRY_INTERVAL_MS`）：一轮历史候选试完后等待 15s 冷却再重开新一轮扫描，覆盖"小车先开机、Wi-Fi 后出现"场景；时长为扫描频率与空转功耗折中。
+    - `updateWifiStaHistoryRetry()` "candidates exhausted" 分支不再终局：记录 `staHistRescanDeadlineMs = millis() + 15000`，日志改为 `candidates exhausted, rescan in 15s`；原实现把 `staHistTriedMask` 全槽位置位后永久停止扫描，历史 Wi-Fi 之后出现时小车永不重连。
+    - `anyUntried==false` 分支改为冷却判定：未到 `staHistRescanDeadlineMs` 保持 `staHistRetryActive=false` 直接返回；冷却期满清 `staHistTriedMask`、打日志 `starting new round`，落入既有扫描启动逻辑重开新一轮（时间回绕比较沿用 `(long)(millis() - deadline) < 0` 风格）。
+    - 重试窗口条件 `inRetryWindow` 追加 `|| wifiStaHistoryCount() > 0`：STA 从未配置（NVS `sta_en=false`）但历史记录非空时运行期也进入重试，不再只能靠开机那一刻的扫描；函数既有 `wifiStaHistoryCount() == 0` 兜底保证历史为空时不空转。
+    - connected 上升沿同步清 `staHistRescanDeadlineMs = 0`。
+  - `libraries/mus4_core/src/RuntimeState.h`：`WifiRuntimeState` 新增 `unsigned long staHistRescanDeadlineMs = 0;`（候选耗尽后重开新一轮扫描的最早时刻），注释块同步补充。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.8.0（行为修复含状态机语义扩展，进 minor）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_wifi_sta_history_retry_rescans_after_exhaustion`（冷却常量、重扫字段与 connected 边沿清零、exhausted/rescan 日志、回绕比较写法断言）与 `test_wifi_sta_history_retry_window_accepts_unconfigured_sta`（窗口条件含 `wifiStaHistoryCount() > 0`、空历史兜底仍在断言）；版本断言升至 v1.8.0，CHANGELOG 逐版本断言与顺序链延伸至 v1.8.0。
+
 ## 2026-08-16 v1.7.99
 
 - feat(WebConsole): Serial 终端窗口右下角新增全屏按钮，UI 与行为完全对齐遥测曲线面板 `#chartPanel` 的全屏按钮

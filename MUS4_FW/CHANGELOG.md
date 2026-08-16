@@ -1,5 +1,53 @@
 # CHANGELOG.md
 
+## 2026-08-16 v1.8.2
+
+- fix(WebConsole): 修复终端标签智能缩写在真实设备上始终不触发（GitHub Issue #90 复盘：v1.8.1 的振荡修复正确但溢出检测根本没机会触发）
+  - 根因（无头浏览器在车上 v1.8.1 实测复现）：`.grid` 的 `grid-template-columns:1fr` / `@media(min-width:900px)` 下 `2fr 1fr` 均未加 `minmax(0,…)`，grid 列最小宽度默认取内容宽度——多标签时 `#termTabs` 的内容宽度沿 `.row`→`.panel`→grid 列一路顶住最小宽度，`clientWidth` 恒等于 `scrollWidth`，页面转而出现横向滚动；`fitTermTabLabels()` 的 `scrollWidth>clientWidth` 永远为 false，缩写永不触发（此前推测的"车上固件落后/振荡缺陷"都不是主因，振荡缺陷已在 v1.8.1 修复）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：两处 grid 列定义加 `minmax(0,…)`（`minmax(0,1fr)`；`minmax(0,2fr) minmax(0,1fr)`），列可收缩到内容以下，标签条真正溢出，智能缩写/恢复长名按预期工作，页面不再横向滚动。
+  - 验证：Playwright Chromium 对车上真实页面回归——单列 850px 下 4 标签显示「终端 1…4」、12 标签缩写为「1…12」、临界宽度 500↔1280 来回 10 轮无振荡残留、`documentElement.scrollWidth` 不再超出视口。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.1 → v1.8.2。
+  - 测试同步：`tests/test_firmware_feature_flags.py` grid 断言更新为 `minmax(0,…)` 并新增"无裸 `2fr 1fr` 残留"断言；版本断言升至 v1.8.2，CHANGELOG 顺序链延伸至 v1.8.2。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.2 build="Aug 16 2026 21:18:03"`，页面含 `minmax(0,2fr) minmax(0,1fr)`。
+
+## 2026-08-16 v1.8.1
+
+- fix(WebConsole): 修复 DC 终端偶发"无法连接上位机终端服务"后不恢复（GitHub Issue #89）与终端标签智能缩写临界宽度振荡"未生效"（GitHub Issue #90）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（Issue #89）：
+    - 终端探活从 `addTerminalTab()` 内联的一次性 fetch 抽为可重入的 `probeTerminal(term)`；探测失败后 `scheduleTermRetry()` 启动 4s 周期重试定时器（全局唯一 `_termRetryTimer`），每轮先 `_fetchLauncherIp()` 刷新 host_ip（DHCP 变更后拿新 IP），再对所有 `state==='fail'` 的标签重探；任一标签成功或失败标签全部消失（关闭）即停止定时器；成功后设置 iframe `src`（已设置则不重设，避免整页刷新丢会话）并清掉提示——上位机恢复在线后终端自动加载，不再停留在失败提示。
+    - `_fetchLauncherIp()` 的解析逻辑抽为 `_applyLauncherStatus(txt)`，除 `host_ip=` 外新增解析 `host_ip_age_s=` 存入 `_launcherIpAge`（无数据为 -1）。
+    - 失败提示抽为 `termFailHint()`：年龄 >90s（上位机正常 30s 上报一次，3 个周期未更新视为过期）时在提示尾部追加「上位机 IP 已 N 秒未上报，可能已过期」，辅助区分"上位机离线"与"ESP32 里的 host_ip 已过期"。
+    - i18n 新增 `terminal.staleIp` 中英词条（带 `{n}` 占位）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（Issue #90）：
+    - `fitTermTabLabels()` 改为每次先统一恢复长名「终端 N」测量，`scrollWidth>clientWidth` 才缩写为 N；原实现按改名前布局判定 `packed`，改名后不复查，临界宽度下长名↔短名来回振荡，稳态停在"长名+溢出"，用户看到的就是"功能没生效"；改后判定结果确定、可收敛，关标签/缩窗口恢复长名。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.0 → v1.8.1。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 终端断言更新——`fitTermTabLabels` 先长名测量断言 + `packed?` 不再存在断言；新增 `probeTerminal`/`scheduleTermRetry`/`_applyLauncherStatus`/`host_ip_age_s` 解析/`termFailHint`/`terminal.staleIp` 词条断言；版本断言升至 v1.8.1，CHANGELOG 顺序链延伸至 v1.8.1。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.1`。
+
+## 2026-08-16 v1.8.0
+
+- fix(wifi): 修复 STA 连接历史重试"一轮耗尽后不再扫描"与"STA 未配置时不进重试窗口"两个缺口（GitHub Issue #88：之前连接过的 Wi-Fi 出现后小车不自动连接）
+  - `libraries/mus4_wifi/src/WifiManager.cpp`：
+    - 新增常量 `WIFI_STA_HISTORY_RESCAN_INTERVAL_MS = 15000`（紧邻既有 `WIFI_STA_HISTORY_RETRY_INTERVAL_MS`）：一轮历史候选试完后等待 15s 冷却再重开新一轮扫描，覆盖"小车先开机、Wi-Fi 后出现"场景；时长为扫描频率与空转功耗折中。
+    - `updateWifiStaHistoryRetry()` "candidates exhausted" 分支不再终局：记录 `staHistRescanDeadlineMs = millis() + 15000`，日志改为 `candidates exhausted, rescan in 15s`；原实现把 `staHistTriedMask` 全槽位置位后永久停止扫描，历史 Wi-Fi 之后出现时小车永不重连。
+    - `anyUntried==false` 分支改为冷却判定：未到 `staHistRescanDeadlineMs` 保持 `staHistRetryActive=false` 直接返回；冷却期满清 `staHistTriedMask`、打日志 `starting new round`，落入既有扫描启动逻辑重开新一轮（时间回绕比较沿用 `(long)(millis() - deadline) < 0` 风格）。
+    - 重试窗口条件 `inRetryWindow` 追加 `|| wifiStaHistoryCount() > 0`：STA 从未配置（NVS `sta_en=false`）但历史记录非空时运行期也进入重试，不再只能靠开机那一刻的扫描；函数既有 `wifiStaHistoryCount() == 0` 兜底保证历史为空时不空转。
+    - connected 上升沿同步清 `staHistRescanDeadlineMs = 0`。
+  - `libraries/mus4_core/src/RuntimeState.h`：`WifiRuntimeState` 新增 `unsigned long staHistRescanDeadlineMs = 0;`（候选耗尽后重开新一轮扫描的最早时刻），注释块同步补充。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.8.0（行为修复含状态机语义扩展，进 minor）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_wifi_sta_history_retry_rescans_after_exhaustion`（冷却常量、重扫字段与 connected 边沿清零、exhausted/rescan 日志、回绕比较写法断言）与 `test_wifi_sta_history_retry_window_accepts_unconfigured_sta`（窗口条件含 `wifiStaHistoryCount() > 0`、空历史兜底仍在断言）；版本断言升至 v1.8.0，CHANGELOG 逐版本断言与顺序链延伸至 v1.8.0。
+
+## 2026-08-16 v1.7.99
+
+- feat(WebConsole): Serial 终端窗口右下角新增全屏按钮，UI 与行为完全对齐遥测曲线面板 `#chartPanel` 的全屏按钮
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - HTML：`#terminalWrap` 内末尾（`#terminalHint` 之后）新增 `#termFullscreenBtn`（`class="iconButton"`，`onclick="toggleTerminalFullscreen()"`，SVG 与 chartFullscreenBtn 完全相同）；按钮居 DOM 末尾，`addTerminalTab()` 用 `terminalWrap.insertBefore(f,terminalHint)` 插入的 iframe 始终位于按钮之下，按钮可压在 iframe 上。
+    - CSS：`#terminalWrap` 规则内追加 `position:relative`（`.termFrame` 规则不动）；紧跟 `#chartFullscreenBtn` 规则新增 `#termFullscreenBtn{position:absolute;right:8px;bottom:8px;z-index:2}`；新增 `#terminalWrap:fullscreen{background:#101318;height:auto;min-height:0;max-height:none}`——抵消原规则的 height/min-height/max-height，否则全屏被 calc 钳住；浅色主题在 `html[data-theme="light"] #chartPanel:fullscreen` 旁新增 `html[data-theme="light"] #terminalWrap:fullscreen{background:#eef1f5}`。
+    - JS：`toggleChartFullscreen()` 旁新增同构的 `toggleTerminalFullscreen()`；`refreshDynamicLabels()` const 链仿照 `f` 新增 `tf=document.getElementById('termFullscreenBtn')`，函数体内加 `if(tf)` 守卫的图标/标题切换（复用 `button.fullscreen`/`button.split` i18n 键，未新增键）；复用已有 fullscreenchange 监听（会调 `refreshDynamicLabels()`），未新增监听；`applyCmdTarget` 未改（按钮随 `#terminalWrap` 显示/隐藏）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.99。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言升至 v1.7.99，CHANGELOG 逐版本断言新增 v1.7.99，日期顺序链延伸至 v1.7.99；图表全屏断言附近新增 `#termFullscreenBtn` 按钮 HTML、CSS 规则与 `toggleTerminalFullscreen()`/`tf` 图标切换断言。
+  - 已 OTA 刷至车辆（192.168.3.52，DHCP 由 .46 变为 .52）验证：`/api/status` 返回 `version=v1.7.99`。
+
 ## 2026-08-16 v1.7.98
 
 - feat(WebConsole): 点击 DC 主页左上角 logo 在新标签页打开 https://www.donkeydrift.com

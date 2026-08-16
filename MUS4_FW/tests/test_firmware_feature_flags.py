@@ -274,7 +274,11 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.98"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.2"' in build_info
+    assert "v1.8.2" in changelog
+    assert "v1.8.1" in changelog
+    assert "v1.8.0" in changelog
+    assert "v1.7.99" in changelog
     assert "v1.7.98" in changelog
     assert "v1.7.97" in changelog
     assert "v1.7.96" in changelog
@@ -301,6 +305,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-16 v1.8.2") < changelog.index("## 2026-08-16 v1.8.1")
+    assert changelog.index("## 2026-08-16 v1.8.1") < changelog.index("## 2026-08-16 v1.8.0")
+    assert changelog.index("## 2026-08-16 v1.8.0") < changelog.index("## 2026-08-16 v1.7.99")
+    assert changelog.index("## 2026-08-16 v1.7.99") < changelog.index("## 2026-08-16 v1.7.98")
     assert changelog.index("## 2026-08-16 v1.7.98") < changelog.index("## 2026-08-16 v1.7.97")
     assert changelog.index("## 2026-08-16 v1.7.97") < changelog.index("## 2026-08-16 v1.7.96")
     assert changelog.index("## 2026-08-16 v1.7.96") < changelog.index("## 2026-08-15 v1.7.95")
@@ -460,11 +468,15 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "f.setAttribute('scrolling','no')" in source
     assert "function selectTerminalTab(id)" in source
     # 标签按位置连续编号（v1.7.80）：新建用 termList.length+1，杀标签后剩余标签重编号；
-    # 标签文字放在 .termTabLabel 子 span（v1.7.87 起）；v1.7.93 起默认名智能缩写（放得下显示"终端 N"、放不下缩写为 N）
+    # 标签文字放在 .termTabLabel 子 span（v1.7.87 起）；v1.7.93 起默认名智能缩写（放得下显示"终端 N"、放不下缩写为 N）；
+    # #90 修复：fitTermTabLabels 每次先按长名统一测量、溢出才缩写（原按改名前布局判 packed，
+    # 临界宽度下长名↔短名振荡，用户看到长名+溢出"没生效"）
     assert "l.textContent=t('terminal.tab')+' '+(termList.length+1);" in source
     assert "function fitTermTabLabels()" in source
     assert "termTabs.scrollWidth>termTabs.clientWidth" in source
-    assert "packed?''+(j+1):t('terminal.tab')+' '+(j+1)" in source
+    assert "if(!x.name)x.l.textContent=t('terminal.tab')+' '+(j+1)" in source
+    assert "if(termTabs.scrollWidth>termTabs.clientWidth)termList.forEach((x,j)=>{if(!x.name)x.l.textContent=''+(j+1)})" in source
+    assert "packed?" not in source
     assert "window.addEventListener('resize',fitTermTabLabels)" in source
     # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端，
     # 点击 stopPropagation 不触发标签切换
@@ -499,6 +511,16 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "window.open(terminalUrl" not in source
     # .termFrame CSS 保留 #57 白边修复属性（标识符由 #terminalFrame 改为 .termFrame）
     assert ".termFrame{display:block;flex:1 1 auto;width:100%;min-height:0;border:0;border-radius:6px;background:#101318}" in source
+    # 终端窗口全屏按钮（v1.7.99）：右下角图标按钮，UI/行为完全对齐 chartFullscreenBtn；
+    # 按钮居 #terminalWrap DOM 末尾（#terminalHint 之后），压在 insertBefore 插入的 iframe 上；
+    # #terminalWrap 加 position:relative 作定位父级；:fullscreen 抵消原 height/min-height/max-height 的 calc 钳制
+    assert 'id="termFullscreenBtn"' in source
+    assert 'onclick="toggleTerminalFullscreen()"' in source
+    assert '#termFullscreenBtn{position:absolute;right:8px;bottom:8px;z-index:2}' in source
+    assert '#terminalWrap:fullscreen{background:#101318;height:auto;min-height:0;max-height:none}' in source
+    assert 'html[data-theme="light"] #terminalWrap:fullscreen{background:#eef1f5}' in source
+    assert 'function toggleTerminalFullscreen(){if(document.fullscreenElement===terminalWrap)document.exitFullscreen();else terminalWrap.requestFullscreen()}' in source
+    assert "tf.innerHTML=document.fullscreenElement===terminalWrap?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     # 标签条样式：横向滚动 + 选中态高亮
     assert "#termTabs{display:none;align-items:center;gap:4px;overflow-x:auto" in source
     assert ".termTab.active{" in source
@@ -520,6 +542,22 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "I18N.en['terminal.loading']" in source
     assert "I18N.zh['terminal.unreachable']" in source
     assert "I18N.en['terminal.unreachable']" in source
+    # #89 修复：终端探测失败后周期重试（scheduleTermRetry 每 4s 刷新 _launcherIp 再重探），
+    # host_ip 年龄>90s 视为过期并在提示中标注；探测逻辑抽为可重入的 probeTerminal
+    assert "function probeTerminal(term)" in source
+    assert "probeTerminal(term);selectTerminalTab(id);fitTermTabLabels();updateTermTabClose();" in source
+    assert "function scheduleTermRetry()" in source
+    assert "_termRetryTimer=setInterval" in source
+    assert "if(!termList.some(x=>x.state==='fail')){clearInterval(_termRetryTimer)" in source
+    assert "await _fetchLauncherIp();termList.forEach(x=>{if(x.state==='fail')probeTerminal(x)})" in source
+    assert "_applyLauncherStatus" in source
+    assert "host_ip_age_s=(\\d+)" in source
+    assert "_launcherIpAge" in source
+    assert "function termFailHint()" in source
+    assert "_launcherIpAge>90" in source
+    assert "t('terminal.staleIp')" in source
+    assert "I18N.zh['terminal.staleIp']" in source
+    assert "I18N.en['terminal.staleIp']" in source
 
 
 def test_web_console_screen_saver_activates_after_60_seconds():
@@ -2066,7 +2104,10 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert '<section class="panel" id="serialPanel">' in source
     assert "#serialPanel{display:flex;flex-direction:column;gap:8px;padding-bottom:6px}" in source
     assert "#serialPanel .log{flex:1 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
-    assert "@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}" in source
+    assert "@media(min-width:900px){.grid{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}" in source
+    # Issue #90：grid 列必须 minmax(0,…) 可收缩，否则终端标签条永远不会溢出、智能缩写不触发
+    assert ".grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}" in source
+    assert "grid-template-columns:2fr 1fr}" not in source
     assert "canvas{width:100%;height:auto;aspect-ratio:38/13;" in source
     assert "#chartPanel:fullscreen .chartCanvasWrap{width:min(100%,calc((100vh - 118px) * 38 / 13))}" in source
     assert "#chartPanel:fullscreen canvas{width:100%;height:auto;max-height:calc(100vh - 118px);aspect-ratio:38/13}" in source
@@ -2177,7 +2218,7 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
     assert source.index(serial_panel) < source.index(diagnostics_panel)
     assert source.index(diagnostics_panel) < source.index('id="rcFold" class="fold"')
     assert source.index('id="rcFold" class="fold"') < source.index('id="statusFold" class="fold"')
-    assert '@media(min-width:900px){.grid{grid-template-columns:2fr 1fr}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}' in source
+    assert '@media(min-width:900px){.grid{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}' in source
     assert "function toggleFold(id)" in source
     assert "function renderStatus(t)" in source
     assert "function parseStatusPairs(t)" in source
@@ -4635,3 +4676,50 @@ def test_web_console_light_theme_overrides():
     assert "initTheme();" in assets
     # 深色原文不动：激活胶囊两主题保持 #5cc8ff/#061019
     assert '.langTabs button.active{background:#5cc8ff;color:#061019}' in assets
+
+
+def test_wifi_sta_history_retry_rescans_after_exhaustion():
+    """Issue #88：一轮历史候选试完后不再终局——冷却 WIFI_STA_HISTORY_RESCAN_INTERVAL_MS
+    后清掩码重开新一轮，覆盖「小车先开机、历史 Wi-Fi 后出现（或暂时不在覆盖范围）」
+    的场景，否则该 Wi-Fi 之后出现时小车永远不会再尝试连接。"""
+
+    manager_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
+    runtime_state = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "RuntimeState.h").read_text(encoding="utf-8")
+
+    # 冷却常量紧邻既有重试节流常量；运行态字段承载重扫描截止时刻
+    assert "static const unsigned long WIFI_STA_HISTORY_RESCAN_INTERVAL_MS = 15000;" in manager_source
+    assert "unsigned long staHistRescanDeadlineMs = 0;" in runtime_state
+
+    retry_body = re.search(
+        r"(?:static )?void updateWifiStaHistoryRetry\(\)\s*\{(?P<body>.*?)\n\}",
+        manager_source,
+        re.DOTALL,
+    ).group("body")
+
+    # 候选耗尽：记录冷却截止并打 rescan 日志，不再直接终局
+    assert "wifiRuntime.staHistRescanDeadlineMs = millis() + WIFI_STA_HISTORY_RESCAN_INTERVAL_MS;" in retry_body
+    assert "STA history retry: candidates exhausted, rescan in %lus" in retry_body
+    # 冷却期满：未到冷却期直接返回（统一 (long)(millis() - deadline) < 0 回绕比较）
+    assert "(long)(millis() - wifiRuntime.staHistRescanDeadlineMs) < 0" in retry_body
+    # 冷却期满清掩码重开新一轮，connected 上升沿同步清零冷却截止
+    assert "wifiRuntime.staHistTriedMask = 0;" in retry_body
+    assert "STA history retry: starting new round" in retry_body
+    assert "wifiRuntime.staHistRescanDeadlineMs = 0;" in retry_body
+
+
+def test_wifi_sta_history_retry_window_accepts_unconfigured_sta():
+    """Issue #88：STA 从未配置（NVS sta_en=false 或从未配网）但历史记录非空时
+    也要进入重试窗口——否则只能靠开机那一刻的扫描，运行中永不重试。"""
+
+    manager_source = (PROJECT_ROOT / "libraries" / "mus4_wifi" / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
+
+    retry_body = re.search(
+        r"(?:static )?void updateWifiStaHistoryRetry\(\)\s*\{(?P<body>.*?)\n\}",
+        manager_source,
+        re.DOTALL,
+    ).group("body")
+
+    window = re.search(r"bool inRetryWindow.*?\n.*?;", retry_body, re.DOTALL).group(0)
+    assert "wifiStaHistoryCount() > 0" in window
+    # 历史为空时仍由函数体内既有兜底分支拦截，不会空转扫描
+    assert "if (wifiStaHistoryCount() == 0)" in retry_body

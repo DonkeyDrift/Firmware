@@ -35,10 +35,12 @@ struct WifiRuntimeState {
     // staHistRetryActive     - 历史重试周期是否进行中；
     // staHistRetryDeadlineMs - 下一次允许启动扫描/重试的最早时刻；
     // staHistTriedMask       - 本轮周期已试过的历史槽位掩码（bit i = 槽 i）；
-    //                          STA 连接成功边沿清零，新断线后据此重新武装。
+    //                          STA 连接成功边沿清零，新断线后据此重新武装；
+    // staHistRescanDeadlineMs - 候选耗尽后重开新一轮扫描的最早时刻，冷却期满清掩码重试。
     bool staHistRetryActive = false;
     unsigned long staHistRetryDeadlineMs = 0;
     uint8_t staHistTriedMask = 0;
+    unsigned long staHistRescanDeadlineMs = 0;
 
     // AP / mDNS / handoff
     bool apRestartPending = false;

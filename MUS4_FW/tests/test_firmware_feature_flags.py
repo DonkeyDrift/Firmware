@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.95"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.96"' in build_info
+    assert "v1.7.96" in changelog
     assert "v1.7.95" in changelog
     assert "v1.7.94" in changelog
     assert "v1.7.93" in changelog
@@ -298,6 +299,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-16 v1.7.96") < changelog.index("## 2026-08-15 v1.7.95")
     assert changelog.index("## 2026-08-15 v1.7.95") < changelog.index("## 2026-08-15 v1.7.94")
     assert changelog.index("## 2026-08-15 v1.7.94") < changelog.index("## 2026-08-15 v1.7.93")
     assert changelog.index("## 2026-08-15 v1.7.93") < changelog.index("## 2026-08-15 v1.7.92")
@@ -466,10 +468,13 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "c.onclick=e=>{e.stopPropagation();killTerminalTab(id)};" in source
     assert "function killTerminalTab(id)" in source
     # 标签名跟随终端内输入命令（v1.7.90）：上位机终端页把每行输入的首词
-    # postMessage 给父页，父页按 e.source 匹配 iframe 改名；重编号时自定义名优先
+    # postMessage 给父页，父页按 e.source 匹配 iframe 改名；重编号时自定义名优先；
+    # v1.7.96 起首次命名后锁定：cur.name 非空即忽略后续上报
+    #（如已命名 kimi，再输入 /web 标签仍保持 kimi 不变）
     assert "window.addEventListener('message',e=>{" in source
     assert "d.type!=='donkeydrifter.term.name'" in source
     assert "x.f.contentWindow===e.source" in source
+    assert "if(!cur||cur.name)return;" in source
     assert "cur.name=d.name;cur.l.textContent=d.name;" in source
     assert ".termTabClose{" in source
     assert "I18N.zh['terminal.closeTab']" in source

@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-08-16 v1.8.1
+
+- fix(WebConsole): 修复 DC 终端偶发"无法连接上位机终端服务"后不恢复（GitHub Issue #89）与终端标签智能缩写临界宽度振荡"未生效"（GitHub Issue #90）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（Issue #89）：
+    - 终端探活从 `addTerminalTab()` 内联的一次性 fetch 抽为可重入的 `probeTerminal(term)`；探测失败后 `scheduleTermRetry()` 启动 4s 周期重试定时器（全局唯一 `_termRetryTimer`），每轮先 `_fetchLauncherIp()` 刷新 host_ip（DHCP 变更后拿新 IP），再对所有 `state==='fail'` 的标签重探；任一标签成功或失败标签全部消失（关闭）即停止定时器；成功后设置 iframe `src`（已设置则不重设，避免整页刷新丢会话）并清掉提示——上位机恢复在线后终端自动加载，不再停留在失败提示。
+    - `_fetchLauncherIp()` 的解析逻辑抽为 `_applyLauncherStatus(txt)`，除 `host_ip=` 外新增解析 `host_ip_age_s=` 存入 `_launcherIpAge`（无数据为 -1）。
+    - 失败提示抽为 `termFailHint()`：年龄 >90s（上位机正常 30s 上报一次，3 个周期未更新视为过期）时在提示尾部追加「上位机 IP 已 N 秒未上报，可能已过期」，辅助区分"上位机离线"与"ESP32 里的 host_ip 已过期"。
+    - i18n 新增 `terminal.staleIp` 中英词条（带 `{n}` 占位）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（Issue #90）：
+    - `fitTermTabLabels()` 改为每次先统一恢复长名「终端 N」测量，`scrollWidth>clientWidth` 才缩写为 N；原实现按改名前布局判定 `packed`，改名后不复查，临界宽度下长名↔短名来回振荡，稳态停在"长名+溢出"，用户看到的就是"功能没生效"；改后判定结果确定、可收敛，关标签/缩窗口恢复长名。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.0 → v1.8.1。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 终端断言更新——`fitTermTabLabels` 先长名测量断言 + `packed?` 不再存在断言；新增 `probeTerminal`/`scheduleTermRetry`/`_applyLauncherStatus`/`host_ip_age_s` 解析/`termFailHint`/`terminal.staleIp` 词条断言；版本断言升至 v1.8.1，CHANGELOG 顺序链延伸至 v1.8.1。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.1`。
+
 ## 2026-08-16 v1.8.0
 
 - fix(wifi): 修复 STA 连接历史重试"一轮耗尽后不再扫描"与"STA 未配置时不进重试窗口"两个缺口（GitHub Issue #88：之前连接过的 Wi-Fi 出现后小车不自动连接）

@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.0"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.1"' in build_info
+    assert "v1.8.1" in changelog
     assert "v1.8.0" in changelog
     assert "v1.7.99" in changelog
     assert "v1.7.98" in changelog
@@ -303,6 +304,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-16 v1.8.1") < changelog.index("## 2026-08-16 v1.8.0")
     assert changelog.index("## 2026-08-16 v1.8.0") < changelog.index("## 2026-08-16 v1.7.99")
     assert changelog.index("## 2026-08-16 v1.7.99") < changelog.index("## 2026-08-16 v1.7.98")
     assert changelog.index("## 2026-08-16 v1.7.98") < changelog.index("## 2026-08-16 v1.7.97")
@@ -464,11 +466,15 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "f.setAttribute('scrolling','no')" in source
     assert "function selectTerminalTab(id)" in source
     # 标签按位置连续编号（v1.7.80）：新建用 termList.length+1，杀标签后剩余标签重编号；
-    # 标签文字放在 .termTabLabel 子 span（v1.7.87 起）；v1.7.93 起默认名智能缩写（放得下显示"终端 N"、放不下缩写为 N）
+    # 标签文字放在 .termTabLabel 子 span（v1.7.87 起）；v1.7.93 起默认名智能缩写（放得下显示"终端 N"、放不下缩写为 N）；
+    # #90 修复：fitTermTabLabels 每次先按长名统一测量、溢出才缩写（原按改名前布局判 packed，
+    # 临界宽度下长名↔短名振荡，用户看到长名+溢出"没生效"）
     assert "l.textContent=t('terminal.tab')+' '+(termList.length+1);" in source
     assert "function fitTermTabLabels()" in source
     assert "termTabs.scrollWidth>termTabs.clientWidth" in source
-    assert "packed?''+(j+1):t('terminal.tab')+' '+(j+1)" in source
+    assert "if(!x.name)x.l.textContent=t('terminal.tab')+' '+(j+1)" in source
+    assert "if(termTabs.scrollWidth>termTabs.clientWidth)termList.forEach((x,j)=>{if(!x.name)x.l.textContent=''+(j+1)})" in source
+    assert "packed?" not in source
     assert "window.addEventListener('resize',fitTermTabLabels)" in source
     # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端，
     # 点击 stopPropagation 不触发标签切换
@@ -534,6 +540,22 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "I18N.en['terminal.loading']" in source
     assert "I18N.zh['terminal.unreachable']" in source
     assert "I18N.en['terminal.unreachable']" in source
+    # #89 修复：终端探测失败后周期重试（scheduleTermRetry 每 4s 刷新 _launcherIp 再重探），
+    # host_ip 年龄>90s 视为过期并在提示中标注；探测逻辑抽为可重入的 probeTerminal
+    assert "function probeTerminal(term)" in source
+    assert "probeTerminal(term);selectTerminalTab(id);fitTermTabLabels();updateTermTabClose();" in source
+    assert "function scheduleTermRetry()" in source
+    assert "_termRetryTimer=setInterval" in source
+    assert "if(!termList.some(x=>x.state==='fail')){clearInterval(_termRetryTimer)" in source
+    assert "await _fetchLauncherIp();termList.forEach(x=>{if(x.state==='fail')probeTerminal(x)})" in source
+    assert "_applyLauncherStatus" in source
+    assert "host_ip_age_s=(\\d+)" in source
+    assert "_launcherIpAge" in source
+    assert "function termFailHint()" in source
+    assert "_launcherIpAge>90" in source
+    assert "t('terminal.staleIp')" in source
+    assert "I18N.zh['terminal.staleIp']" in source
+    assert "I18N.en['terminal.staleIp']" in source
 
 
 def test_web_console_screen_saver_activates_after_60_seconds():

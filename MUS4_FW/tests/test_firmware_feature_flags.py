@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.97"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.98"' in build_info
+    assert "v1.7.98" in changelog
     assert "v1.7.97" in changelog
     assert "v1.7.96" in changelog
     assert "v1.7.95" in changelog
@@ -300,6 +301,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-16 v1.7.98") < changelog.index("## 2026-08-16 v1.7.97")
     assert changelog.index("## 2026-08-16 v1.7.97") < changelog.index("## 2026-08-16 v1.7.96")
     assert changelog.index("## 2026-08-16 v1.7.96") < changelog.index("## 2026-08-15 v1.7.95")
     assert changelog.index("## 2026-08-15 v1.7.95") < changelog.index("## 2026-08-15 v1.7.94")
@@ -1583,6 +1585,9 @@ def test_web_console_header_logo_left_of_title():
     logo_pos = source.index('<img class="headerLogo" src="/favicon.png" alt="Drifter Console">')
     h1_pos = source.index('<h1 data-i18n="app.title">Drifter Console</h1>')
     assert header_pos < logo_pos < h1_pos
+    # v1.7.97 起 logo 包锚点：点击在新标签页打开 donkeydrift.com，布局不变
+    assert '<a class="logoLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener"><img class="headerLogo" src="/favicon.png" alt="Drifter Console"></a>' in source
+    assert ".logoLink{display:inline-flex}" in source
 
 
 def test_web_console_mobile_header_layout():

@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-08-16 v1.7.98
+
+- feat(WebConsole): 点击 DC 主页左上角 logo 在新标签页打开 https://www.donkeydrift.com
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 DC 主页）：页头 `<img class="headerLogo" src="/favicon.png" alt="Drifter Console">` 包进 `<a class="logoLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener">`；CSS 在 `.headerLogo` 规则旁新增 `.logoLink{display:inline-flex}`——锚点以 inline-flex 包裹，`.headerRow` 原有 flex 布局、`gap:12px` 与 logo 尺寸完全不变；light 主题的 `.headerLogo` 描边覆盖不受影响。Drift Assist Tuning 子页面页头无 logo，未改动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.98（避让：并行会话 #85 终端保底一个已占用 v1.7.97）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言升至 v1.7.98，`test_web_console_header_logo_left_of_title` 新增 logoLink 锚点包裹与 `.logoLink{display:inline-flex}` 断言；版本链延伸至 v1.7.98。
+
 ## 2026-08-16 v1.7.97
 
 - feat(WebConsole): 终端标签页保底一个——仅剩一个终端窗口时不允许关闭，防止终端被全部关空

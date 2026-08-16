@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.7.98"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.7.99"' in build_info
+    assert "v1.7.99" in changelog
     assert "v1.7.98" in changelog
     assert "v1.7.97" in changelog
     assert "v1.7.96" in changelog
@@ -301,6 +302,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-16 v1.7.99") < changelog.index("## 2026-08-16 v1.7.98")
     assert changelog.index("## 2026-08-16 v1.7.98") < changelog.index("## 2026-08-16 v1.7.97")
     assert changelog.index("## 2026-08-16 v1.7.97") < changelog.index("## 2026-08-16 v1.7.96")
     assert changelog.index("## 2026-08-16 v1.7.96") < changelog.index("## 2026-08-15 v1.7.95")
@@ -499,6 +501,16 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "window.open(terminalUrl" not in source
     # .termFrame CSS 保留 #57 白边修复属性（标识符由 #terminalFrame 改为 .termFrame）
     assert ".termFrame{display:block;flex:1 1 auto;width:100%;min-height:0;border:0;border-radius:6px;background:#101318}" in source
+    # 终端窗口全屏按钮（v1.7.99）：右下角图标按钮，UI/行为完全对齐 chartFullscreenBtn；
+    # 按钮居 #terminalWrap DOM 末尾（#terminalHint 之后），压在 insertBefore 插入的 iframe 上；
+    # #terminalWrap 加 position:relative 作定位父级；:fullscreen 抵消原 height/min-height/max-height 的 calc 钳制
+    assert 'id="termFullscreenBtn"' in source
+    assert 'onclick="toggleTerminalFullscreen()"' in source
+    assert '#termFullscreenBtn{position:absolute;right:8px;bottom:8px;z-index:2}' in source
+    assert '#terminalWrap:fullscreen{background:#101318;height:auto;min-height:0;max-height:none}' in source
+    assert 'html[data-theme="light"] #terminalWrap:fullscreen{background:#eef1f5}' in source
+    assert 'function toggleTerminalFullscreen(){if(document.fullscreenElement===terminalWrap)document.exitFullscreen();else terminalWrap.requestFullscreen()}' in source
+    assert "tf.innerHTML=document.fullscreenElement===terminalWrap?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     # 标签条样式：横向滚动 + 选中态高亮
     assert "#termTabs{display:none;align-items:center;gap:4px;overflow-x:auto" in source
     assert ".termTab.active{" in source

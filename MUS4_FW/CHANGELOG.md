@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-16 v1.7.97
+
+- feat(WebConsole): 终端标签页保底一个——仅剩一个终端窗口时不允许关闭，防止终端被全部关空
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 新增 `updateTermTabClose()`：`termList.length<=1` 时隐藏所有标签的 × 关闭钮（`display:none`），多于一个时恢复显示；`addTerminalTab()` 末尾与 `killTerminalTab()` 杀标签后均调用刷新。
+    - `killTerminalTab()` 入口新增守卫 `if(termList.length<=1)return;`——逻辑层双保险，最后一个终端永远关不掉；term 对象新增 `c` 字段引用 × 元素以便控制显隐。
+    - `termList.length===0` 的空态分支保留作兜底（新逻辑下不可达）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.97。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `updateTermTabClose`、term 对象 `c:c` 引用、`killTerminalTab` 入口守卫断言；版本链延伸至 v1.7.97。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.7.97`。
+
 ## 2026-08-16 v1.7.96
 
 - fix(WebConsole): 终端标签页名字首次命名后锁定——终端内输入首条命令命名（如 `kimi`）后，后续命令（如 `/web`）上报的名字被忽略，标签始终保持 `kimi` 不变

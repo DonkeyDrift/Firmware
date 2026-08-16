@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-16 v1.7.99
+
+- feat(WebConsole): Serial 终端窗口右下角新增全屏按钮，UI 与行为完全对齐遥测曲线面板 `#chartPanel` 的全屏按钮
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - HTML：`#terminalWrap` 内末尾（`#terminalHint` 之后）新增 `#termFullscreenBtn`（`class="iconButton"`，`onclick="toggleTerminalFullscreen()"`，SVG 与 chartFullscreenBtn 完全相同）；按钮居 DOM 末尾，`addTerminalTab()` 用 `terminalWrap.insertBefore(f,terminalHint)` 插入的 iframe 始终位于按钮之下，按钮可压在 iframe 上。
+    - CSS：`#terminalWrap` 规则内追加 `position:relative`（`.termFrame` 规则不动）；紧跟 `#chartFullscreenBtn` 规则新增 `#termFullscreenBtn{position:absolute;right:8px;bottom:8px;z-index:2}`；新增 `#terminalWrap:fullscreen{background:#101318;height:auto;min-height:0;max-height:none}`——抵消原规则的 height/min-height/max-height，否则全屏被 calc 钳住；浅色主题在 `html[data-theme="light"] #chartPanel:fullscreen` 旁新增 `html[data-theme="light"] #terminalWrap:fullscreen{background:#eef1f5}`。
+    - JS：`toggleChartFullscreen()` 旁新增同构的 `toggleTerminalFullscreen()`；`refreshDynamicLabels()` const 链仿照 `f` 新增 `tf=document.getElementById('termFullscreenBtn')`，函数体内加 `if(tf)` 守卫的图标/标题切换（复用 `button.fullscreen`/`button.split` i18n 键，未新增键）；复用已有 fullscreenchange 监听（会调 `refreshDynamicLabels()`），未新增监听；`applyCmdTarget` 未改（按钮随 `#terminalWrap` 显示/隐藏）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.99。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言升至 v1.7.99，CHANGELOG 逐版本断言新增 v1.7.99，日期顺序链延伸至 v1.7.99；图表全屏断言附近新增 `#termFullscreenBtn` 按钮 HTML、CSS 规则与 `toggleTerminalFullscreen()`/`tf` 图标切换断言。
+  - 已 OTA 刷至车辆（192.168.3.52，DHCP 由 .46 变为 .52）验证：`/api/status` 返回 `version=v1.7.99`。
+
 ## 2026-08-16 v1.7.98
 
 - feat(WebConsole): 点击 DC 主页左上角 logo 在新标签页打开 https://www.donkeydrift.com

@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.5"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.6"' in build_info
+    assert "v1.8.6" in changelog
     assert "v1.8.5" in changelog
     assert "v1.8.4" in changelog
     assert "v1.8.3" in changelog
@@ -308,6 +309,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-17 v1.8.6") < changelog.index("## 2026-08-17 v1.8.5")
     assert changelog.index("## 2026-08-17 v1.8.5") < changelog.index("## 2026-08-17 v1.8.4")
     assert changelog.index("## 2026-08-17 v1.8.4") < changelog.index("## 2026-08-17 v1.8.3")
     assert changelog.index("## 2026-08-17 v1.8.3") < changelog.index("## 2026-08-16 v1.8.2")
@@ -564,6 +566,14 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "t('terminal.staleIp')" in source
     assert "I18N.zh['terminal.staleIp']" in source
     assert "I18N.en['terminal.staleIp']" in source
+    # #101 修复：loading 态加超时兜底——no-cors fetch 因 IP 不可达长时间挂起时，
+    # 10s 未落定一律按 fail 处理（复用失败提示与 4s 自动重试），不再无限期停在「正在连接」；
+    # AbortController 主动中止；探测序号防旧探测迟到结果覆盖新探测状态
+    assert "term._probe=(term._probe||0)+1" in source
+    assert "const seq=term._probe,ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000)" in source
+    assert "signal:ctrl.signal" in source
+    assert "if(seq!==term._probe)return" in source
+    assert ".then(()=>done('ok')).catch(()=>done('fail'))" in source
 
 
 def test_web_console_screen_saver_activates_after_60_seconds():

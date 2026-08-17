@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-17 v1.8.6
+
+- fix(WebConsole): DC 终端 loading 态加 10s 超时兜底，不再无限期停留在「正在连接上位机终端…」（Issue #101）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`probeTerminal()` 改为带超时的探测——`AbortController` + `setTimeout(...,10000)`，`no-cors` fetch 因上位机 IP 不可达长时间挂起（TCP 无响应、reject 也不来）时 10s 未落定一律按 fail 处理，复用既有的失败提示（含 staleIp 年龄标注）与 `scheduleTermRetry()` 每 4s 自动重试；引入探测序号 `term._probe` 防止旧探测的迟到结果覆盖新探测的状态（超时转 fail 后，迟到的成功也不会误把标签置回 ok）。
+  - 上位机终端页内层 WS 连接超时在 DonkeyDrift 仓库同步修复（DonkeyDrift `donkeycar/launcher/terminal_static/terminal.html`，Issue #101 补充线索第 2 层）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.5 → v1.8.6。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 终端测试新增 #101 断言（探测序号/AbortController 超时/signal/序号守卫/done 分发）；版本断言升至 v1.8.6、CHANGELOG 顺序链延伸至 v1.8.6。全量 163 passed。
+
 ## 2026-08-17 v1.8.5
 
 - style(WebConsole): 三页面（DC/D/DD）语言按钮配色统一为 DC/D 主题按钮（深浅切换）样式（Issue #92 后续）

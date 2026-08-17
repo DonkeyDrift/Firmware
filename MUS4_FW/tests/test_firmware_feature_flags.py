@@ -1705,9 +1705,10 @@ def test_web_console_language_tabs_wired_to_set_language():
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
     # Issue #92 后续样式统一：三页面（DC/D/DD）语言按钮统一为 DD 原生样式——
     # 32×32 圆形、#27272a 底、#3f3f46 边框、12px/600、#d4d4d8 字色、hover #f4f4f5；
+    # 字体逐值复刻 DD index.css :root 字体栈（含 font-synthesis/text-rendering/font-smoothing）；
     # hover 补 background 锁定，抵消 DC 通用 button:hover 的背景覆盖；
     # 浅色主题用同族 zinc 值（zinc-100/200/500/900）
-    assert ".langButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border:1px solid #3f3f46;border-radius:9999px;background:#27272a;color:#d4d4d8;font-size:12px;font-weight:600;line-height:1;cursor:pointer;transition:color .15s cubic-bezier(.4,0,.2,1),background-color .15s cubic-bezier(.4,0,.2,1),border-color .15s cubic-bezier(.4,0,.2,1)}" in source
+    assert ".langButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border:1px solid #3f3f46;border-radius:9999px;background:#27272a;color:#d4d4d8;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans\",Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\";font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-size:12px;font-weight:600;line-height:1;cursor:pointer;transition:color .15s cubic-bezier(.4,0,.2,1),background-color .15s cubic-bezier(.4,0,.2,1),border-color .15s cubic-bezier(.4,0,.2,1)}" in source
     assert ".langButton:hover,.langButton:focus-visible{color:#f4f4f5;background:#27272a}" in source
     assert 'html[data-theme="light"] .langButton{background:#f4f4f5;border-color:#d4d4d8;color:#52525b}' in source
     assert 'html[data-theme="light"] .langButton:hover,html[data-theme="light"] .langButton:focus-visible{color:#18181b;background:#f4f4f5}' in source

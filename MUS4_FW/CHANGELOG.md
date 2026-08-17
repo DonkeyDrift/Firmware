@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-08-17 v1.8.4
+
+- fix(WebConsole): DC 深浅主题切换按钮与 DD 主题按钮逐值统一——三处（DC / D 启动页 / DD）按钮一模一样（DD Issue #140 后续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#themeToggle`（`.themeButton`）视觉从透明幽灵胶囊（24px 高、无背景无边框、图标色 `#8fa1b5`、hover 青 `#5cc8ff`）改为 DD 主题按钮的实际渲染规格（DD 的 Tailwind 类经 `theme-mus4.css`/`theme-light.css` 重映射后的值）：32×32 圆形（`border-radius:9999px`），深色 `background:#111820` + `border:1px solid #344154` + `box-shadow:inset 0 0 0 1px #2b3441` 内描边，图标色 `#b9c5d3`、hover `#e8edf2`；浅色 `background:#f4f6f9` + `border-color:#ccd5df` + 内描边 `#d5dce4`，图标色 `#3f4f63`、hover `#1a2330`。
+    - 图标从 feather 路径换为 lucide Moon/Sun（与 DD `ThemeSwitcher.tsx`、D 启动页 `server.py` 完全相同的路径数据）：月亮 `M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z`，太阳 circle r=4 + 8 条独立射线 path；16px、stroke-width 2、`stroke="currentColor"` 不变。
+    - 逻辑不动：单击深/浅互切、`mus4.ui.theme` 持久化、默认跟随浏览器 `prefers-color-scheme`、深色显月亮/浅色显太阳均保持 v1.8.3 行为。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.3 → v1.8.4。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_theme_toggle` 的 CSS 断言更新为 DD 规格逐值串（含浅色 `color:#3f4f63`、hover `#1a2330`），新增 lucide 图标路径断言；`test_firmware_version_is_current_and_changelog_is_ordered` 版本断言升至 v1.8.4，CHANGELOG 顺序链延伸至 v1.8.4。
+
 ## 2026-08-17 v1.8.3
 
 - style(WebConsole): 语言按钮字体逐值复刻 DD（#92 返工：字体栈补齐 + 车上旧样式根因修复）

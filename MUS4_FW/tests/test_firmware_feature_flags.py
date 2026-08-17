@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.3"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.4"' in build_info
+    assert "v1.8.4" in changelog
     assert "v1.8.3" in changelog
     assert "v1.8.2" in changelog
     assert "v1.8.1" in changelog
@@ -306,6 +307,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-17 v1.8.4") < changelog.index("## 2026-08-17 v1.8.3")
     assert changelog.index("## 2026-08-17 v1.8.3") < changelog.index("## 2026-08-16 v1.8.2")
     assert changelog.index("## 2026-08-16 v1.8.2") < changelog.index("## 2026-08-16 v1.8.1")
     assert changelog.index("## 2026-08-16 v1.8.1") < changelog.index("## 2026-08-16 v1.8.0")
@@ -4416,15 +4418,21 @@ def test_web_console_theme_toggle():
     assert 'class="icoMoon"' in assets
     assert 'class="icoSun"' in assets
 
-    # CSS：与 .muteButton 同款透明胶囊图标按钮；图标由 html[data-theme] 驱动
-    # （深色默认显月亮、浅色覆写切换为太阳）
-    assert ".themeButton{display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:28px;padding:0 6px;border:none;border-radius:999px;background:transparent;color:#8fa1b5;cursor:pointer}" in assets
-    assert ".themeButton:hover{color:#5cc8ff}" in assets
+    # CSS：v1.8.4 起与 DD 主题按钮逐值一致（DD Tailwind 类经 theme-mus4.css /
+    # theme-light.css 重映射后的实际渲染值）：32×32 圆形、深色 #111820 背景 +
+    # #344154 边框 + #2b3441 内描边、浅色 #f4f6f9/#ccd5df/#d5dce4；
+    # 图标色深色 #b9c5d3（hover #e8edf2）、浅色 #3f4f63（hover #1a2330）
+    assert ".themeButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3;cursor:pointer}" in assets
+    assert ".themeButton:hover{color:#e8edf2}" in assets
     assert ".themeButton .icoSun{display:none}" in assets
     assert 'html[data-theme="light"] .themeButton .icoSun{display:block}' in assets
     assert 'html[data-theme="light"] .themeButton .icoMoon{display:none}' in assets
-    assert 'html[data-theme="light"] .themeButton{background:transparent}' in assets
-    assert 'html[data-theme="light"] .themeButton:hover{color:#0c9bd6}' in assets
+    assert 'html[data-theme="light"] .themeButton{background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in assets
+    assert 'html[data-theme="light"] .themeButton{color:#3f4f63}' in assets
+    assert 'html[data-theme="light"] .themeButton:hover{color:#1a2330}' in assets
+    # 图标换 lucide Moon/Sun（与 DD/D 启动页相同路径数据）
+    assert '<g class="icoMoon"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></g>' in assets
+    assert '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/>' in assets
 
     # 三态按钮组及其代码彻底移除，无死代码残留
     assert "themeTabs" not in assets

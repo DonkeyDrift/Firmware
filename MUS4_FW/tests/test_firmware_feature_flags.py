@@ -1703,12 +1703,14 @@ def test_web_console_language_tabs_wired_to_set_language():
     # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs 使用
     assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
-    # Issue #92：单按钮样式参照 .muteButton/.themeButton——24px 高、999px 圆角、
-    # 透明底、#8fa1b5 字色，hover #5cc8ff；浅色主题 hover #0c9bd6
-    assert ".langButton{display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:28px;padding:0 6px;border:none;border-radius:999px;background:transparent;color:#8fa1b5;font-size:12px;font-weight:800;line-height:1;cursor:pointer}" in source
-    assert ".langButton:hover,.langButton:focus-visible{color:#5cc8ff}" in source
-    assert 'html[data-theme="light"] .langButton{background:transparent}' in source
-    assert 'html[data-theme="light"] .langButton:hover,html[data-theme="light"] .langButton:focus-visible{color:#0c9bd6}' in source
+    # Issue #92 后续样式统一：三页面（DC/D/DD）语言按钮统一为 DD 原生样式——
+    # 32×32 圆形、#27272a 底、#3f3f46 边框、12px/600、#d4d4d8 字色、hover #f4f4f5；
+    # hover 补 background 锁定，抵消 DC 通用 button:hover 的背景覆盖；
+    # 浅色主题用同族 zinc 值（zinc-100/200/500/900）
+    assert ".langButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border:1px solid #3f3f46;border-radius:9999px;background:#27272a;color:#d4d4d8;font-size:12px;font-weight:600;line-height:1;cursor:pointer;transition:color .15s cubic-bezier(.4,0,.2,1),background-color .15s cubic-bezier(.4,0,.2,1),border-color .15s cubic-bezier(.4,0,.2,1)}" in source
+    assert ".langButton:hover,.langButton:focus-visible{color:#f4f4f5;background:#27272a}" in source
+    assert 'html[data-theme="light"] .langButton{background:#f4f4f5;border-color:#d4d4d8;color:#52525b}' in source
+    assert 'html[data-theme="light"] .langButton:hover,html[data-theme="light"] .langButton:focus-visible{color:#18181b;background:#f4f4f5}' in source
     # DOM：单按钮 + 单击切换 + aria 标题走 i18n（沿用 language.title 词条）
     assert '<button type="button" id="langToggle" class="langButton" onclick="toggleLanguage()" aria-label="语言" data-i18n-aria="language.title">中</button>' in source
     # 分段控件死代码不残留（.langSwitch、data-lang 双按钮已随 Issue #92 移除）

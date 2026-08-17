@@ -2,6 +2,10 @@
 
 ## 2026-08-17 v1.8.3
 
+- style(WebConsole): 语言按钮字体逐值复刻 DD（#92 返工：字体栈补齐 + 车上旧样式根因修复）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.langButton` 补 DD `index.css` :root 完整字体栈（`-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji"`）及 `font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale`，抵消 DC 页面级 `system-ui,sans-serif` 与基础 `button` 规则的字体继承，按钮渲染字体与 DD 完全一致。
+  - 车上"无边框/24px/透明底"假象根因：另一并行工作区分支于 08:46 用未合入新样式的中间固件 OTA 覆盖了车辆（此前 08:36 已刷入正确样式），源码与 specificity 均无问题；本轮重编译 v1.8.3（build 09:06:41）OTA 刷回，无头浏览器实测计算样式确认 32×32、1px #3f3f46 边框、#27272a 底、#d4d4d8 字色、600 字重、DD 字体栈（深浅两主题分别验证）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `.langButton` CSS 精确串断言更新为含字体栈的新串，全量 163 passed。
 - style(WebConsole): 三页面（DC/D/DD）语言切换按钮样式统一为 DD 原生样式（GitHub Issue #92 后续统一）
   - `libraries/mus4_web/src/WebConsoleAssets.h`：`.langButton` 从 DC 自有样式（24px 高、透明底、无边框、#8fa1b5 字色、12px/800）改为逐值复刻 DD `LanguageSwitcher` 原生渲染——32×32 圆形（border-radius:9999px）、#27272a 底、1px #3f3f46 边框、12px/600、#d4d4d8 字色、hover #f4f4f5，transition 覆盖 color/background-color/border-color；hover 规则补 background 锁定（#27272a），抵消 DC 通用 `button:hover` 的背景覆盖，保证与 DD"hover 只变色"一致；浅色主题用同族 zinc 值（底 #f4f4f5、边框 #d4d4d8、字色 #52525b、hover #18181b）。
   - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_language_tabs_wired_to_set_language` 的 `.langButton` CSS 精确串断言更新为 DD 样式串（深/浅两套），全量 163 passed。

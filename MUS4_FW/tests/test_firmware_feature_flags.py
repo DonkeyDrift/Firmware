@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.4"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.5"' in build_info
+    assert "v1.8.5" in changelog
     assert "v1.8.4" in changelog
     assert "v1.8.3" in changelog
     assert "v1.8.2" in changelog
@@ -307,6 +308,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-17 v1.8.5") < changelog.index("## 2026-08-17 v1.8.4")
     assert changelog.index("## 2026-08-17 v1.8.4") < changelog.index("## 2026-08-17 v1.8.3")
     assert changelog.index("## 2026-08-17 v1.8.3") < changelog.index("## 2026-08-16 v1.8.2")
     assert changelog.index("## 2026-08-16 v1.8.2") < changelog.index("## 2026-08-16 v1.8.1")
@@ -1703,15 +1705,16 @@ def test_web_console_language_tabs_wired_to_set_language():
     # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs 使用
     assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
-    # Issue #92 后续样式统一：三页面（DC/D/DD）语言按钮统一为 DD 原生样式——
-    # 32×32 圆形、#27272a 底、#3f3f46 边框、12px/600、#d4d4d8 字色、hover #f4f4f5；
-    # 字体逐值复刻 DD index.css :root 字体栈（含 font-synthesis/text-rendering/font-smoothing）；
-    # hover 补 background 锁定，抵消 DC 通用 button:hover 的背景覆盖；
-    # 浅色主题用同族 zinc 值（zinc-100/200/500/900）
-    assert ".langButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border:1px solid #3f3f46;border-radius:9999px;background:#27272a;color:#d4d4d8;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans\",Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\";font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-size:12px;font-weight:600;line-height:1;cursor:pointer;transition:color .15s cubic-bezier(.4,0,.2,1),background-color .15s cubic-bezier(.4,0,.2,1),border-color .15s cubic-bezier(.4,0,.2,1)}" in source
-    assert ".langButton:hover,.langButton:focus-visible{color:#f4f4f5;background:#27272a}" in source
-    assert 'html[data-theme="light"] .langButton{background:#f4f4f5;border-color:#d4d4d8;color:#52525b}' in source
-    assert 'html[data-theme="light"] .langButton:hover,html[data-theme="light"] .langButton:focus-visible{color:#18181b;background:#f4f4f5}' in source
+    # Issue #92 后续样式统一：三页面（DC/D/DD）语言按钮配色对齐 DC/D 深浅切换
+    # （themeButton）——32×32 圆形、深色 #111820 底 + #344154 边框 + inset 1px
+    # #2b3441 内圈、字色 #b9c5d3、hover #e8edf2；浅色 #f4f6f9/#ccd5df/#d5dce4/
+    # #3f4f63、hover #1a2330；字体栈沿用 DD index.css :root（含 font-synthesis/
+    # text-rendering/font-smoothing）；hover 补 background 锁定，抵消 DC 通用
+    # button:hover 的背景覆盖
+    assert ".langButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border:1px solid #344154;border-radius:9999px;background:#111820;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans\",Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\";font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-size:12px;font-weight:600;line-height:1;cursor:pointer;transition:color .15s cubic-bezier(.4,0,.2,1),background-color .15s cubic-bezier(.4,0,.2,1),border-color .15s cubic-bezier(.4,0,.2,1)}" in source
+    assert ".langButton:hover,.langButton:focus-visible{color:#e8edf2;background:#111820}" in source
+    assert 'html[data-theme="light"] .langButton{background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4;color:#3f4f63}' in source
+    assert 'html[data-theme="light"] .langButton:hover,html[data-theme="light"] .langButton:focus-visible{color:#1a2330;background:#f4f6f9}' in source
     # DOM：单按钮 + 单击切换 + aria 标题走 i18n（沿用 language.title 词条）
     assert '<button type="button" id="langToggle" class="langButton" onclick="toggleLanguage()" aria-label="语言" data-i18n-aria="language.title">中</button>' in source
     # 分段控件死代码不残留（.langSwitch、data-lang 双按钮已随 Issue #92 移除）

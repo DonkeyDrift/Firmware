@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-17 v1.8.5
+
+- style(WebConsole): 三页面（DC/D/DD）语言按钮配色统一为 DC/D 主题按钮（深浅切换）样式（Issue #92 后续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.langButton` 从 DD 原生 zinc 配色（#27272a 底、#3f3f46 边框、#d4d4d8 字色、hover #f4f4f5；浅色 #f4f4f5/#d4d4d8/#52525b/#18181b）改为 DC/D 主题按钮（`.themeButton`）配色——深色 `background:#111820` + `border:1px solid #344154` + `box-shadow:inset 0 0 0 1px #2b3441` 内圈、字色 `#b9c5d3`、hover `#e8edf2`；浅色 `background:#f4f6f9` + `border-color:#ccd5df` + 内圈 `#d5dce4`、字色 `#3f4f63`、hover `#1a2330`；32×32 圆形、字体栈、字号/字重与切换逻辑均保持不变，仅换配色；hover 规则的 background 锁定同步换为 #111820/#f4f6f9。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.4 → v1.8.5。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `.langButton` CSS 精确串断言（深/浅四条）更新为主题按钮配色串；`test_firmware_version_is_current_and_changelog_is_ordered` 版本断言升至 v1.8.5、CHANGELOG 顺序链延伸至 v1.8.5。全量 163 passed。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.5 build="Aug 17 2026 09:52:02"`；无头浏览器实测深浅两主题下 `#langToggle` 与 `#themeToggle` 计算样式逐值一致（bg/border/inset 内圈/字色/32×32）。
+
 ## 2026-08-17 v1.8.4
 
 - fix(WebConsole): DC 深浅主题切换按钮与 DD 主题按钮逐值统一——三处（DC / D 启动页 / DD）按钮一模一样（DD Issue #140 后续）

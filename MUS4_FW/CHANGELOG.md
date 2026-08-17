@@ -1,5 +1,25 @@
 # CHANGELOG.md
 
+## 2026-08-17 v1.8.3
+
+- feat(WebConsole): DC 语言切换改为静音式单按钮——单击中/英互切，未手动选过语言时默认跟随浏览器语言（GitHub Issue #92）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主页面切换入口从折叠 FAB + 弹出菜单（🌐 `langFab` → `langMenu` 中/英两项）改为顶栏单按钮 `#langToggle`（`.langButton`）：透明胶囊文字按钮，中文态显「中」、英文态显「EN」，位于静音按钮右边、主题切换按钮左边（窄屏 order:16）。
+    - 单击 `toggleLanguage()` 在中/英间互切（`setLanguage(uiLang==='zh'?'en':'zh')`）并持久化到 `mus4.ui.lang`；`renderLangButton()` 随语言切换刷新按钮文字，aria 标题复用 `language.title` 词条。
+    - 默认跟随浏览器语言：四个页面（主页面/Donkey 页/Joystick 校准页/关于页）的 `readStoredLanguage()` 在 localStorage 无有效值时回退 `detectBrowserLanguage()`（`navigator.language` 以 `zh` 开头即中文）；服务端 `/api/language` 返回 `auto` 时同样按浏览器语言解析后写入本地存储。
+    - 移除弹出菜单全部代码：`langFab`/`langMenu` 的 HTML、CSS 与 FAB 径向动作排序链、`toggleLanguageMenu()`/`closeLanguageMenu()`/`renderLangMenu()`、🌐 图标；三页面既有 `langTabs`（诊断/关于/Joystick 简化页的双页签）保持不动。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_language_tabs_wired_to_set_language` 重写为单按钮断言（按钮 HTML/CSS/`toggleLanguage`/`renderLangButton`/`readStoredLanguage` 浏览器回退/`detectBrowserLanguage` 精确串，`langSwitch`/`data-lang`/English/`langFab`/`langMenu` 无残留断言）；FAB 径向动作断言去掉语言入口并加无残留检查；移动端顶栏断言改 `#langToggle` 与窄屏 order:16；`data-i18n-title="language.title"` 断言改 `data-i18n-aria`。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.3 build="Aug 17 2026 08:16:58"`。
+- feat(WebConsole): DC 深浅主题切换改为静音式单按钮——单击深/浅互切，默认跟随浏览器深浅（GitHub Issue #93）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 切换入口从 `#themeTabs` 三态按钮组（浅色/跟随系统/深色）改为单图标按钮 `#themeToggle`（`.themeButton`），形态与位置参照同顶栏静音按钮 `#muteToggle`：透明胶囊图标按钮，位于红绿蓝切换键右边、语言切换键左边（窄屏 order:15 不变）。
+    - 单击 `toggleTheme()` 在当前生效主题的深/浅反向间来回切换（`setTheme(resolvedTheme()==='light'?'dark':'light')`）并持久化到 `mus4.ui.theme`；图标反映当前主题——深色显月亮（`icoMoon`）、浅色显太阳（`icoSun`），由 `html[data-theme]` CSS 驱动，无需 JS 改图标。
+    - 默认跟随浏览器 `prefers-color-scheme`：`uiTheme='auto'`（localStorage 无值）时 `resolvedTheme()` 经 matchMedia 解析并监听系统 change 实时跟随；用户手动单击后选择持久化，此后不再跟随浏览器，刷新后保持。auto 态由"未手动切换 = 跟随浏览器"等效替代。
+    - 移除三态按钮组全部代码：`#themeTabs` 容器与按钮 HTML、`renderThemeTabs()`、`setTheme()/initTheme()` 中的渲染调用、深浅两套 `#themeTabs` 分段控件 CSS；i18n 删去 `theme.auto/light/dark` 词条（仅保留 `theme.title` 作 aria 标题，中英各一条）。
+    - 首屏防闪烁内联脚本、`systemTheme()/resolvedTheme()/applyTheme()` 主题解析应用链路保持不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.2 → v1.8.3。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_theme_toggle` 重写为单按钮断言（按钮 HTML/双图标/CSS/`toggleTheme` 一键互切、`themeTabs`/`themeSwitch`/`renderThemeTabs`/`theme.auto|light|dark` 无残留断言）；窄屏 order 断言改 `#themeToggle{order:15}`；`test_web_console_light_theme_overrides` 的 `setTheme/initTheme` 断言去渲染调用；版本断言升至 v1.8.3，CHANGELOG 顺序链延伸至 v1.8.3。
+
 ## 2026-08-16 v1.8.2
 
 - fix(WebConsole): 修复终端标签智能缩写在真实设备上始终不触发（GitHub Issue #90 复盘：v1.8.1 的振荡修复正确但溢出检测根本没机会触发）

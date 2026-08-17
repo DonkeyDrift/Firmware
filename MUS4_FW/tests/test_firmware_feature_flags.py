@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.2"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.3"' in build_info
+    assert "v1.8.3" in changelog
     assert "v1.8.2" in changelog
     assert "v1.8.1" in changelog
     assert "v1.8.0" in changelog
@@ -305,6 +306,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-17 v1.8.3") < changelog.index("## 2026-08-16 v1.8.2")
     assert changelog.index("## 2026-08-16 v1.8.2") < changelog.index("## 2026-08-16 v1.8.1")
     assert changelog.index("## 2026-08-16 v1.8.1") < changelog.index("## 2026-08-16 v1.8.0")
     assert changelog.index("## 2026-08-16 v1.8.0") < changelog.index("## 2026-08-16 v1.7.99")
@@ -648,18 +650,17 @@ def test_web_console_help_modal_mirrors_donkeydrifter_layout():
 
 
 def test_web_console_has_collapsed_glow_fab_with_radial_actions():
+    """FAB 展开组（v1.8.3，Issue #92）：语言入口移到顶栏单按钮 #langToggle 后，
+    langFab/langMenu 弹出菜单入口及其 CSS/JS 一并移除，展开组只剩 helpFab；
+    fabActions 容器与全局滚动/触摸收起监听保留。"""
+
     source = firmware_source_text()
 
     assert 'id="fabToggle"' in source
     assert 'class="fabToggle"' in source
     assert 'id="fabActions"' in source
     assert 'class="fabActions"' in source
-    assert 'id="langFab"' in source
-    assert 'class="langFab"' in source
-    assert 'id="langMenu"' in source
-    assert 'class="langMenu"' in source
     assert 'id="helpFab"' in source
-    assert "🌐" in source
     assert "?" in source
     assert "toggleFabActions" in source
     assert "collapseFabActions" in source
@@ -670,9 +671,14 @@ def test_web_console_has_collapsed_glow_fab_with_radial_actions():
     assert ".fabToggle{position:fixed;right:24px;bottom:24px;width:18px;height:18px" in source
     assert "box-shadow:0 0 18px #5cc8ff,0 0 36px rgba(92,200,255,.55)" in source
     assert ".fabToggle:hover,.fabToggle:focus-visible,.fabToggle:active{background:#8bdcff;border-color:#8bdcff;" in source
-    assert ".fabActions.show .langFab" in source
     assert ".fabActions.show .helpFab" in source
-    assert source.index('id="fabToggle"') < source.index('id="fabActions"') < source.index('id="langFab"') < source.index('id="helpFab"')
+    assert source.index('id="fabToggle"') < source.index('id="fabActions"') < source.index('id="helpFab"')
+    # Issue #92：语言 FAB/弹出菜单死代码不残留
+    assert "langFab" not in source
+    assert "langMenu" not in source
+    assert "🌐" not in source
+    assert "toggleLanguageMenu" not in source
+    assert "closeLanguageMenu" not in source
 
 
 def test_web_console_language_selection_uses_local_storage_and_i18n_dictionary():
@@ -1645,9 +1651,9 @@ def test_web_console_mobile_header_layout():
     assert '<span class="rowBreak br1"></span>' in source
     assert '<span class="rowBreak br2"></span>' in source
     assert '<span class="rowBreak br3"></span>' in source
-    # br1 紧跟版本号、br2 在语言切换与 OTA 之间、br3 在 DEV 开关后（headerRow 末尾）
+    # br1 紧跟版本号、br2 在语言单按钮与 OTA 之间、br3 在 DEV 开关后（headerRow 末尾）
     assert '<span class="version" id="versionLabel">--</span><span class="rowBreak br1"></span>' in source
-    assert '>English</button></span><span class="rowBreak br2"></span><a href="/update" class="otaLink">' in source
+    assert '>中</button><span class="rowBreak br2"></span><a href="/update" class="otaLink">' in source
     assert '<span class="slider"></span></label><span class="rowBreak br3"></span></div>' in source
     assert "@media (max-width:820px){.headerRow{align-items:center;gap:8px}" in source
     assert ".rowBreak{display:block;flex-basis:100%;height:0}" in source
@@ -1670,23 +1676,19 @@ def test_web_console_mobile_header_layout():
     assert "#muteToggle{order:12;margin-left:0}" in source
     assert "#devModeToggle{order:13;margin-left:auto}" in source
     assert ".br3{order:14}" in source
-    # 第 4 行：主题切换（左）+ 语言切换（margin-left:auto 贴合最右端，不再隐藏）
-    assert "#themeTabs{order:15}" in source
-    assert ".headerRow .langSwitch{order:16;margin-left:auto}" in source
-    assert ".headerRow .langSwitch{display:none}" not in source
+    # 第 4 行：主题单按钮（左）+ 语言单按钮（margin-left:auto 贴合最右端，不再隐藏）
+    assert "#themeToggle{order:15}" in source
+    assert "#langToggle{order:16;margin-left:auto}" in source
 
 
 def test_web_console_language_tabs_wired_to_set_language():
-    """顶栏中文/English 分段控件：v1.7.78 起与 DonkeyDrifter web_ui
-    LanguageSwitcher 完全一致（含 34px 总高）。
-    v1.7.46 起正式接通语言切换（data-lang + onclick=setLanguage，不再是占位），
-    默认中文选中态（首次启动默认中文界面）；title 走 data-i18n-title。
-    位置在 OTA 按钮左边、右对齐组内（v1.7.45 起头部右推由 muteButton 承担，
-    语言切换不再 margin-left:auto）。v1.7.78：语言 span 从共享类 .langTabs
-    拆分为独立类 .langSwitch；v1.7.88 起深浅两色均按 DD 皮肤 CSS 实际渲染值
-    （theme-mus4.css / theme-light.css）复刻——深色容器 #111820 + 边框 #344154 +
-    内描边 #2b3441，选中段两主题统一为 ESP32 填充语言（#5cc8ff 蓝底 +
-    #061019 近黑字 + 800 粗），与 #themeTabs、DD ThemeSwitcher 逐值一致。"""
+    """Issue #92（v1.8.3）：顶栏语言切换改为静音式单按钮 #langToggle
+    （形态参照 #muteToggle/.muteButton），单击即在中↔英间来回切换，不弹菜单；
+    按钮文字反映当前语言（中文态显"中"、英文态显"EN"，由 renderLangButton 渲染）。
+    默认语言跟随浏览器：readStoredLanguage 对非 zh/en 存值回退
+    detectBrowserLanguage()（navigator.language zh* → zh，其余 → en）；
+    手动选择仍经 setLanguage 持久化 localStorage（mus4.ui.lang）。
+    原 .langSwitch 中文/English 分段控件移除；.langTabs 仅供 #ledBlinkTabs 使用。"""
 
     source = firmware_source_text()
 
@@ -1696,42 +1698,35 @@ def test_web_console_language_tabs_wired_to_set_language():
     # + 内连体分段（#ledBlinkTabs 覆写容器 34px 高 + 4px 纵向 padding，border 占 2px，
     # 分段保持 24px 满高，蓝色选中段与 OTA 按钮蓝对蓝），
     # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言；
-    # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs 使用，语言切换已拆分为 .langSwitch
+    # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs 使用
     assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
     assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
-    # v1.7.78：.langSwitch 样式 1:1 对齐 DD LanguageSwitcher——圆角 9999px 胶囊容器 +
-    # padding 4px，总高恰好 34px；按钮 12px/16px、padding 4px 12px，aria-pressed 随激活态同步。
-    # v1.7.93：深色从 Tailwind 原值（#27272a/#3f3f46/#a1a1aa/#0891b2）改为 DD
-    # theme-mus4.css 皮肤实际渲染值（#111820/#344154/#2b3441/#8fa1b5/#e8edf2，
-    # 选中 #5cc8ff+#061019+800 粗），与 #themeTabs、DD ThemeSwitcher 双主题逐值一致
-    assert ".langSwitch{display:inline-flex;align-items:center;gap:4px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;border-radius:9999px;padding:4px;height:34px;box-sizing:border-box}" in source
-    assert ".langSwitch button{padding:4px 12px;height:24px;min-width:0;margin:0;border:none;background:transparent;border-radius:9999px;color:#8fa1b5;font-size:12px;line-height:16px;font-weight:400;cursor:pointer;transition:color .15s,background-color .15s}" in source
-    assert ".langSwitch button:hover{color:#e8edf2;background:transparent}" in source
-    assert ".langSwitch button.active{background:#5cc8ff;color:#061019;font-weight:800}" in source
-    assert ".langSwitch button.active:hover{background:#5cc8ff;color:#061019}" in source
-    assert "aria-pressed" in source
-    # 浅色主题按 DD theme-light.css 的 zinc/cyan 重映射换算（bg-zinc-800→#f4f6f9、
-    # border-zinc-700→#ccd5df、bg-zinc-800 内描边→#d5dce4、bg-cyan-600→#5cc8ff、
-    # text-white→#061019 且选中胶囊 800 粗、text-zinc-400→#5b6b7d、hover text-zinc-200→#1a2330）
-    assert 'html[data-theme="light"] .langSwitch{background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in source
-    assert 'html[data-theme="light"] .langSwitch button{background:transparent;color:#5b6b7d}' in source
-    assert 'html[data-theme="light"] .langSwitch button.active{background:#5cc8ff;color:#061019;font-weight:800}' in source
-    assert '<span class="langSwitch" title="语言" data-i18n-title="language.title">' in source
-    # 按钮按属性片段断言（v1.7.78 起按钮带 aria-pressed 状态属性，不做全串精确匹配）
-    assert '<button type="button" data-lang="zh" onclick="setLanguage(\'zh\')" class="active"' in source
-    assert '>中文</button><button type="button" data-lang="en" onclick="setLanguage(\'en\')"' in source
-    assert '>English</button>' in source
-    # 位置：langSwitch 在 OTA 按钮左边；右推由 muteButton 承担，langSwitch/otaLink 均不再 margin-left:auto
-    assert source.index('<span class="langSwitch"') < source.index('<a href="/update" class="otaLink">')
+    # Issue #92：单按钮样式参照 .muteButton/.themeButton——24px 高、999px 圆角、
+    # 透明底、#8fa1b5 字色，hover #5cc8ff；浅色主题 hover #0c9bd6
+    assert ".langButton{display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:28px;padding:0 6px;border:none;border-radius:999px;background:transparent;color:#8fa1b5;font-size:12px;font-weight:800;line-height:1;cursor:pointer}" in source
+    assert ".langButton:hover,.langButton:focus-visible{color:#5cc8ff}" in source
+    assert 'html[data-theme="light"] .langButton{background:transparent}' in source
+    assert 'html[data-theme="light"] .langButton:hover,html[data-theme="light"] .langButton:focus-visible{color:#0c9bd6}' in source
+    # DOM：单按钮 + 单击切换 + aria 标题走 i18n（沿用 language.title 词条）
+    assert '<button type="button" id="langToggle" class="langButton" onclick="toggleLanguage()" aria-label="语言" data-i18n-aria="language.title">中</button>' in source
+    # 分段控件死代码不残留（.langSwitch、data-lang 双按钮已随 Issue #92 移除）
+    assert "langSwitch" not in source
+    assert 'data-lang="zh"' not in source
+    assert 'data-lang="en"' not in source
+    assert ">English</button>" not in source
+    # 位置：langToggle 在 OTA 按钮左边；右推由 muteButton 承担，otaLink 不再 margin-left:auto
+    assert source.index('id="langToggle"') < source.index('<a href="/update" class="otaLink">')
     assert ".otaLink{margin-left:auto" not in source
-    # otaLink 改 flex 消除 inline-block 基线下沉，保证 OTA 按钮与 langSwitch 容器顶/底对齐同高
+    # otaLink 改 flex 消除 inline-block 基线下沉，保证 OTA 按钮与顶栏控件顶/底对齐同高
     assert ".headerRow .otaLink{display:flex;align-items:center}" in source
-    # v1.7.46：语言切换已接线（onclick + data-lang + setLanguage），不再是惰性占位
-    lang_tabs = source[source.index('<span class="langSwitch"'):source.index('<a href="/update" class="otaLink">')]
-    assert "onclick" in lang_tabs
-    assert "setLanguage" in lang_tabs
-    assert 'data-lang="zh"' in lang_tabs
-    assert 'data-lang="en"' in lang_tabs
+    # v1.8.3：单击切换 + 按钮文字渲染（applyLanguage 内调用 renderLangButton）
+    assert "function toggleLanguage(){setLanguage(uiLang==='zh'?'en':'zh')}" in source
+    assert "function renderLangButton(){const b=document.getElementById('langToggle');if(b)b.textContent=uiLang==='zh'?'中':'EN'}" in source
+    assert "renderLangButton();refreshDynamicLabels()" in source
+    # 默认语言跟随浏览器：存值非法/缺失时回退 detectBrowserLanguage（zh* → zh，其余 → en）
+    assert "function readStoredLanguage(){try{const v=localStorage.getItem(LANG_STORAGE_KEY);return v==='zh'||v==='en'?v:detectBrowserLanguage()}catch(e){return detectBrowserLanguage()}}" in source
+    assert "function detectBrowserLanguage(){try{return String(navigator.language||'').toLowerCase().indexOf('zh')===0?'zh':'en'}catch(e){return 'zh'}}" in source
+    assert "function setLanguage(lang){uiLang=normalizeLanguage(lang);writeStoredLanguage(uiLang);applyLanguage(uiLang);fetch('/api/language?lang='+uiLang,{method:'POST'}).catch(()=>{})}" in source
     assert 'grid-template-areas:"mode park voltage" "drift drift drift" "network network network"' in source
     assert "minmax(160px,.56fr)" in source
     assert "grid-template-columns:84px 154px 100px" in source
@@ -1756,8 +1751,8 @@ def test_web_console_header_github_link_replaces_version_label():
     assert '<a class="ghLink" href="https://github.com/DonkeyDrift/Firmware" target="_blank" rel="noopener"' in source
     assert 'aria-label="GitHub: DonkeyDrift/Firmware"' in source
     assert '<svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58' in source
-    # 位置：紧跟主标题 </h1>（原版本号位置）、在 langSwitch 语言切换条左边
-    assert source.index('<h1 data-i18n="app.title">Drifter Console</h1>') < source.index('<a class="ghLink"') < source.index('<span class="langSwitch"')
+    # 位置：紧跟主标题 </h1>（原版本号位置）、在语言单按钮 langToggle 左边
+    assert source.index('<h1 data-i18n="app.title">Drifter Console</h1>') < source.index('<a class="ghLink"') < source.index('id="langToggle"')
     assert '.ghLink{display:inline-flex;align-items:center;color:#8fa1b5;' in source
     assert '.ghLink:hover{color:#5cc8ff}' in source
 
@@ -4309,10 +4304,10 @@ def test_web_console_led_blink_color_selector():
     led = (PROJECT_ROOT / "libraries" / "mus4_ui" / "src" / "LedStatus.cpp").read_text(encoding="utf-8")
     sketch = (PROJECT_ROOT / "MUS4_FW.ino").read_text(encoding="utf-8")
 
-    # 头部多选按钮：全页面仅一处，位于静音键右边、语言切换键左边
+    # 头部多选按钮：全页面仅一处，位于静音键右边、语言单按钮左边（v1.8.3 起 langToggle 用 aria 词条）
     assert assets.count('id="ledBlinkTabs"') == 1
     assert assets.index('id="muteToggle"') < assets.index('id="ledBlinkTabs"')
-    assert assets.index('id="ledBlinkTabs"') < assets.index('data-i18n-title="language.title"')
+    assert assets.index('id="ledBlinkTabs"') < assets.index('data-i18n-aria="language.title"')
 
     # 三个颜色选项：位掩码 data-color 1/2/4，点击取反勾选，文案走 i18n
     assert 'data-color="1" onclick="toggleLedBlinkColor(1)" data-i18n="led.red"' in assets
@@ -4396,55 +4391,48 @@ def test_web_console_led_blink_color_selector():
 
 
 def test_web_console_theme_toggle():
-    """v1.7.xx：头部红绿蓝切换键右边、中英文切换键左边新增深色/浅色模式切换键
-    （themeTabs），三个选项：浅色（左）、跟随系统（中）、深色（右）。
-    v1.7.81 起外观改为与 DonkeyDrifter ThemeSwitcher 相同的分段控件样式
-    （独立 themeSwitch class，不再复用 langTabs），总高 34px；v1.7.93 起配色从
-    Tailwind 原值改为 DD 皮肤 CSS（theme-mus4.css/theme-light.css）实际渲染值——
-    深色容器 #111820 + 边框 #344154 + 内描边 #2b3441、未选中 #8fa1b5/hover #e8edf2，
-    浅色容器 #f4f6f9 + 边框 #ccd5df + 内描边 #d5dce4、未选中 #5b6b7d/hover #1a2330，
-    选中段两主题统一 #5cc8ff 蓝底 + #061019 近黑字 + 800 粗，与 .langSwitch、
-    DD ThemeSwitcher/LanguageSwitcher 逐值一致。
-    选择通过 localStorage（mus4.ui.theme）持久化，默认 'auto'（无存储/非法值回退），
-    即默认跟随系统；用户显式选择浅色/深色后以其为准。
-    跟随系统：'auto' 时经 matchMedia('(prefers-color-scheme: light)') 解析，
-    并监听系统主题 change 实时跟随；<head> 内有防闪烁内联脚本避免首帧闪深色。"""
+    """Issue #93（v1.8.3）：DC 深浅切换改为静音式单图标按钮 #themeToggle
+    （形态与位置参照静音按钮 #muteToggle）：单击在深色 ↔ 浅色间来回切换，
+    图标反映当前生效主题（深色显月亮，浅色显太阳，由 html[data-theme] 驱动）。
+    默认跟随浏览器 prefers-color-scheme：用户从未手动点过 = 'auto'，
+    浏览器切换深浅时实时跟随；手动单击后选择持久化（localStorage
+    mus4.ui.theme），此后不再跟随浏览器，刷新后保持。
+    原 #themeTabs 三态按钮组（auto/dark/light）已移除，auto 态由
+    "未手动切换 = 跟随浏览器"等效替代，renderThemeTabs 等死代码一并清理；
+    <head> 内防闪烁内联脚本避免首帧闪深色（保留不动）。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
-    # 头部主题切换按钮：全页面仅一处，位于红绿蓝切换键右边、中英文切换键左边
-    assert assets.count('id="themeTabs"') == 1
-    assert assets.index('id="ledBlinkTabs"') < assets.index('id="themeTabs"')
-    assert assets.index('id="themeTabs"') < assets.index('data-i18n-title="language.title"')
+    # 头部主题单按钮：全页面仅一处，位于红绿蓝切换键右边、中英文切换键左边
+    assert assets.count('id="themeToggle"') == 1
+    assert assets.index('id="ledBlinkTabs"') < assets.index('id="themeToggle"')
+    assert assets.index('id="themeToggle"') < assets.index('data-i18n-aria="language.title"')
 
-    # v1.7.81：独立 themeSwitch class（与 DD ThemeSwitcher 同款，不再复用 langTabs）
-    assert '<span class="themeSwitch" id="themeTabs"' in assets
+    # 单图标按钮：形态参照 #muteToggle（单图标 + 单击切换），太阳/月亮双图标
+    assert '<button type="button" id="themeToggle" class="themeButton" onclick="toggleTheme()"' in assets
+    assert 'data-i18n-aria="theme.title"' in assets
+    assert 'class="icoMoon"' in assets
+    assert 'class="icoSun"' in assets
 
-    # v1.7.88 CSS（用 id 选择器压过浅色主题 button 覆写；配色 = DD theme-mus4.css 渲染值）：
-    # 容器 34px 高胶囊 #111820 + 边框 #344154 + 内描边 #2b3441；按钮 24px 高、未选中
-    # #8fa1b5、hover #e8edf2；选中段 #5cc8ff 实心胶囊 + #061019 近黑字 + 800 粗
-    assert "#themeTabs{display:inline-flex;align-items:center;gap:4px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;border-radius:999px;padding:4px;height:34px;box-sizing:border-box}" in assets
-    assert "#themeTabs button{padding:4px 12px;height:24px;" in assets
-    assert "#themeTabs button:hover{color:#e8edf2}" in assets
-    assert "#themeTabs button.active{background:#5cc8ff;color:#061019;font-weight:800}" in assets
-    assert "#themeTabs button.active:hover{background:#5cc8ff;color:#061019}" in assets
+    # CSS：与 .muteButton 同款透明胶囊图标按钮；图标由 html[data-theme] 驱动
+    # （深色默认显月亮、浅色覆写切换为太阳）
+    assert ".themeButton{display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:28px;padding:0 6px;border:none;border-radius:999px;background:transparent;color:#8fa1b5;cursor:pointer}" in assets
+    assert ".themeButton:hover{color:#5cc8ff}" in assets
+    assert ".themeButton .icoSun{display:none}" in assets
+    assert 'html[data-theme="light"] .themeButton .icoSun{display:block}' in assets
+    assert 'html[data-theme="light"] .themeButton .icoMoon{display:none}' in assets
+    assert 'html[data-theme="light"] .themeButton{background:transparent}' in assets
+    assert 'html[data-theme="light"] .themeButton:hover{color:#0c9bd6}' in assets
 
-    # v1.7.88 浅色主题覆写（= DD theme-light.css 渲染值，与 .langSwitch 浅色逐值一致）：
-    # 容器 #f4f6f9 + 边框 #ccd5df + 内描边 #d5dce4；未选中 #5b6b7d、hover #1a2330；
-    # 选中段同为 #5cc8ff+#061019（800 粗继承深色基础规则）
-    assert 'html[data-theme="light"] #themeTabs{background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in assets
-    assert 'html[data-theme="light"] #themeTabs button{color:#5b6b7d}' in assets
-    assert 'html[data-theme="light"] #themeTabs button:hover{color:#1a2330}' in assets
-    assert 'html[data-theme="light"] #themeTabs button.active{background:#5cc8ff;color:#061019}' in assets
-    assert 'html[data-theme="light"] #themeTabs button.active:hover{background:#5cc8ff;color:#061019}' in assets
+    # 三态按钮组及其代码彻底移除，无死代码残留
+    assert "themeTabs" not in assets
+    assert "themeSwitch" not in assets
+    assert "renderThemeTabs" not in assets
+    assert "theme.auto" not in assets
+    assert "theme.light" not in assets
+    assert "theme.dark" not in assets
 
-    # 三个选项：跟随系统、浅色、深色，文案走 i18n
-    assert 'data-theme="auto" onclick="setTheme(\'auto\')" data-i18n="theme.auto"' in assets
-    assert 'data-theme="light" onclick="setTheme(\'light\')" data-i18n="theme.light"' in assets
-    assert 'data-theme="dark" onclick="setTheme(\'dark\')" data-i18n="theme.dark"' in assets
-
-    # i18n 文案：中英文各一条
-    for text in ["'theme.title':'主题'", "'theme.auto':'跟随系统'", "'theme.light':'浅色'", "'theme.dark':'深色'",
-                 "'theme.title':'Theme'", "'theme.auto':'Auto'", "'theme.light':'Light'", "'theme.dark':'Dark'"]:
+    # i18n 文案：仅保留 aria 标题键，中英文各一条
+    for text in ["'theme.title':'主题'", "'theme.title':'Theme'"]:
         assert text in assets
 
     # 前端逻辑：状态、渲染、初始化与切换，走 localStorage
@@ -4452,7 +4440,8 @@ def test_web_console_theme_toggle():
     assert "let uiTheme='auto'" in assets
     assert "function readStoredTheme()" in assets
     assert "function writeStoredTheme(theme)" in assets
-    assert "function renderThemeTabs()" in assets
+    # 单击切换：在当前生效主题（resolvedTheme）的深/浅反向间来回切换并持久化
+    assert "function toggleTheme(){setTheme(resolvedTheme()==='light'?'dark':'light')}" in assets
     assert "function setTheme(theme)" in assets
     assert "function initTheme()" in assets
     assert "initTheme();" in assets
@@ -4629,6 +4618,8 @@ def test_web_console_light_theme_overrides():
     系统为浅色时解析为 light，否则为 dark），并使网格缓存失效重绘。
     浅色样式全部以新增覆盖规则挂在 html[data-theme="light"] 选择器下
     （第三个 <style> 块），深色原文逐字不动。
+    v1.8.3 起 setTheme/initTheme 不再渲染三态按钮组（#themeTabs 已移除，
+    见 test_web_console_theme_toggle），仅保留主题解析与应用。
     canvas 图表与 toast 的 JS 颜色改从 CHART_THEMES 双主题色表取。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
@@ -4656,8 +4647,8 @@ def test_web_console_light_theme_overrides():
     assert "function systemTheme(){try{return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){return 'dark'}}" in assets
     assert "function resolvedTheme(){return uiTheme==='auto'?systemTheme():(uiTheme==='light'?'light':'dark')}" in assets
     assert "function applyTheme(){document.documentElement.dataset.theme=resolvedTheme();gridReady=false;draw()}" in assets
-    assert "function setTheme(theme){uiTheme=theme;writeStoredTheme(uiTheme);renderThemeTabs();applyTheme()}" in assets
-    assert "function initTheme(){uiTheme=readStoredTheme();renderThemeTabs();applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
+    assert "function setTheme(theme){uiTheme=theme;writeStoredTheme(uiTheme);applyTheme()}" in assets
+    assert "function initTheme(){uiTheme=readStoredTheme();applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
 
     # 图表/toast 双主题色表：深浅的 grid 与 str 关键色
     assert "grid:'#233041'" in assets

@@ -2,6 +2,9 @@
 
 ## 2026-08-17 v1.8.3
 
+- style(WebConsole): 三页面（DC/D/DD）语言切换按钮样式统一为 DD 原生样式（GitHub Issue #92 后续统一）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.langButton` 从 DC 自有样式（24px 高、透明底、无边框、#8fa1b5 字色、12px/800）改为逐值复刻 DD `LanguageSwitcher` 原生渲染——32×32 圆形（border-radius:9999px）、#27272a 底、1px #3f3f46 边框、12px/600、#d4d4d8 字色、hover #f4f4f5，transition 覆盖 color/background-color/border-color；hover 规则补 background 锁定（#27272a），抵消 DC 通用 `button:hover` 的背景覆盖，保证与 DD"hover 只变色"一致；浅色主题用同族 zinc 值（底 #f4f4f5、边框 #d4d4d8、字色 #52525b、hover #18181b）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_language_tabs_wired_to_set_language` 的 `.langButton` CSS 精确串断言更新为 DD 样式串（深/浅两套），全量 163 passed。
 - feat(WebConsole): DC 语言切换改为静音式单按钮——单击中/英互切，未手动选过语言时默认跟随浏览器语言（GitHub Issue #92）
   - `libraries/mus4_web/src/WebConsoleAssets.h`：
     - 主页面切换入口从折叠 FAB + 弹出菜单（🌐 `langFab` → `langMenu` 中/英两项）改为顶栏单按钮 `#langToggle`（`.langButton`）：透明胶囊文字按钮，中文态显「中」、英文态显「EN」，位于静音按钮右边、主题切换按钮左边（窄屏 order:16）。

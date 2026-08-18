@@ -1,5 +1,99 @@
 # CHANGELOG.md
 
+## 2026-08-18 v1.8.10
+
+- fix(WebConsole): DC 终端板块不再长时间停留在「正在连接上位机终端」——首探前先等待真实上报 IP，消除用默认回退 IP 首探必败的窗口
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `addTerminalTab()`：改为先完成标签 UI 创建与选中，再 `_fetchLauncherIp().then(()=>probeTerminal(term))` 首探——原实现首探在页面加载时往往先于 `/api/status` 返回执行，用脚本默认回退值 `192.168.3.41`（DHCP 漂移后已失联）探测必然失败，用户看到长时间 loading 后才靠 4s 重试自愈；真机网络环境下叠加首探 10s 超时即表现为"一直连不上"。
+    - `probeTerminal()`：探测超时由 10000ms 缩短为 5000ms，配合 4s 自动重试更快收敛。
+    - `termFailHint()`：从未收到 host_ip 上报（`_launcherIpAge===-1`，仍为默认回退值）时直接返回 `terminal.unknownIp` 提示，不再拼出误导性的回退地址链接。
+    - i18n 新增 `terminal.unknownIp` 中英词条。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.9 → v1.8.10。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——首探断言更新为 `_fetchLauncherIp().then(()=>probeTerminal(term))`；超时断言 10000 → 5000；新增 `terminal.unknownIp` 词条与 `termFailHint` IP 未知分支断言；版本断言升至 v1.8.10、CHANGELOG 顺序链延伸至 v1.8.10。
+
+## 2026-08-18 v1.8.9
+
+- feat(WebConsole): DC 顶栏「Drifter Console」标题文字可点击跳转官网，效果与点击 logo 图标一致（Issue #179，跨仓库功能：DD/DC/D 三页面标题可点）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主标题 `<h1 data-i18n="app.title">Drifter Console</h1>` 改为 `<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>`——`data-i18n` 随文字移到 `<a>` 上（i18n 用 textContent 赋值，包裹层不劫持），语言切换正常；与 logo 链接同 URL、新标签页打开。
+    - CSS 新增 `.titleLink{color:inherit;text-decoration:none}`：颜色继承 h1、无下划线，深浅主题下文字样式均与原纯文本一致。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.8 → v1.8.9。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——logo 测试、GitHub 链接顺序测试、入口按钮位置测试中三处 `<h1 data-i18n=...>` 断言更新为新的 `<a class="titleLink">` 结构并新增 titleLink HTML/CSS 断言；版本断言升至 v1.8.9、CHANGELOG 顺序链延伸至 v1.8.9。全量 163 passed。
+  - DD（DonkeyDrifter Web UI）与 D（Donkey 启动页）两侧同类改动在 DonkeyDrift 仓库同步提交（`web_ui/frontend/src/components/Layout.tsx`、`donkeycar/launcher/server.py`）。
+
+## 2026-08-18 v1.8.8
+
+- fix(WebConsole): DC「进入 DD」（DonkeyDrifter）按钮改为直达启动中转页，中间不再显示 Donkey 启动菜单页（Issue #103）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`enterDonkeyDrifterBtn` 两处指向从 `http://<ip>:8090/#drive` 改为 `http://<ip>:8090/launch/drive`——headerRow 静态初值（`192.168.3.41`）与 `_applyLauncherStatus()` 动态改写。`/launch/drive` 为 launcher 现成 GET 端点，返回极简跳转页（spinner + 同源 POST `/api/launch/drive` + 轮询 vite 就绪后重定向），全程不渲染 Donkey 菜单页；原 `#drive` 路径需先渲染菜单页再由其 JS 检测 hash 自动触发 6 号启动，中间页即用户所见问题。
+  - 「Donkey」按钮（`:8090/`）保持不动。
+  - 历史：v1.7.62 曾因 Safari 无法加载 `/launch/drive` 改用 `#drive`；此后 `LAUNCH_DRIVE_HTML` 已改轮询就绪后重定向（DonkeyDrift 侧），且 `/terminal` 等非标准路径 Safari 下正常，判定根因已消除，本次改回。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.7 → v1.8.8。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`#drive` 断言改为 `:8090/launch/drive` 出现 2 次（静态 + 动态）且 `:8090/#drive` 不再出现；版本断言升至 v1.8.8、CHANGELOG 顺序链延伸至 v1.8.8。
+
+## 2026-08-18 v1.8.7
+
+- feat(WebConsole): DC 顶栏新增「DeepSeek Harness」入口按钮，与 DonkeyDrifter Web UI（DD）侧同款（Issue #164 后续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 顶栏「Kimi Code Web」右侧新增 `#openDshBtn`（`button.openDsh`，文案「DeepSeek Harness」），交互与 Kimi Code Web 按钮完全同款：沿用 `_launcherIp`（`/api/status` 的 `host_ip`），点击 `POST http://<host>:8090/api/launch/dsh`（launcher 侧转发的 DSH 启动端点），同步上下文先开 `about:blank` 句柄，成功后导航 `j.url`、失败关闭并走 toast 提示；`AbortController` 120s 超时；等待态禁用按钮并切换启动中文案（`button.openDshLaunching`）。
+    - i18n 中英各新增 4 条：`button.openDsh` / `button.openDshLaunching` / `toast.dshFailed` / `toast.dshTimeout`。
+    - CSS：34px 高度规则追加 `#openDshBtn`；窄屏（max-width:820px）第 2 行插入 DSH 按钮 `order:9`，后续元素（br2/ledBlink/OTA/静音/DEV/br3/主题/语言）顺移 +1 至 10–17。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.6 → v1.8.7。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——34px 规则与窄屏 order 断言更新（含 `#openDshBtn{order:9}` 顺移链）；`test_web_console_header_entry_buttons` 新增 DSH 按钮 HTML 位置（kimi 之后、GitHub 链接之前）、`openDsh()`/`:8090/api/launch/dsh`/`dshLaunching` 与中英 i18n 词条断言；版本断言升至 v1.8.7、CHANGELOG 顺序链延伸至 v1.8.7。
+  - DSH 启动端点与 launcher 侧修复（设置页 403 权限补丁、缺省 cwd 进 Projects）在 DonkeyDrift 仓库同步提交。
+
+## 2026-08-17 v1.8.6
+
+- fix(WebConsole): DC 终端 loading 态加 10s 超时兜底，不再无限期停留在「正在连接上位机终端…」（Issue #101）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`probeTerminal()` 改为带超时的探测——`AbortController` + `setTimeout(...,10000)`，`no-cors` fetch 因上位机 IP 不可达长时间挂起（TCP 无响应、reject 也不来）时 10s 未落定一律按 fail 处理，复用既有的失败提示（含 staleIp 年龄标注）与 `scheduleTermRetry()` 每 4s 自动重试；引入探测序号 `term._probe` 防止旧探测的迟到结果覆盖新探测的状态（超时转 fail 后，迟到的成功也不会误把标签置回 ok）。
+  - 上位机终端页内层 WS 连接超时在 DonkeyDrift 仓库同步修复（DonkeyDrift `donkeycar/launcher/terminal_static/terminal.html`，Issue #101 补充线索第 2 层）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.5 → v1.8.6。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 终端测试新增 #101 断言（探测序号/AbortController 超时/signal/序号守卫/done 分发）；版本断言升至 v1.8.6、CHANGELOG 顺序链延伸至 v1.8.6。全量 163 passed。
+
+## 2026-08-17 v1.8.5
+
+- style(WebConsole): 三页面（DC/D/DD）语言按钮配色统一为 DC/D 主题按钮（深浅切换）样式（Issue #92 后续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.langButton` 从 DD 原生 zinc 配色（#27272a 底、#3f3f46 边框、#d4d4d8 字色、hover #f4f4f5；浅色 #f4f4f5/#d4d4d8/#52525b/#18181b）改为 DC/D 主题按钮（`.themeButton`）配色——深色 `background:#111820` + `border:1px solid #344154` + `box-shadow:inset 0 0 0 1px #2b3441` 内圈、字色 `#b9c5d3`、hover `#e8edf2`；浅色 `background:#f4f6f9` + `border-color:#ccd5df` + 内圈 `#d5dce4`、字色 `#3f4f63`、hover `#1a2330`；32×32 圆形、字体栈、字号/字重与切换逻辑均保持不变，仅换配色；hover 规则的 background 锁定同步换为 #111820/#f4f6f9。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.4 → v1.8.5。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `.langButton` CSS 精确串断言（深/浅四条）更新为主题按钮配色串；`test_firmware_version_is_current_and_changelog_is_ordered` 版本断言升至 v1.8.5、CHANGELOG 顺序链延伸至 v1.8.5。全量 163 passed。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.5 build="Aug 17 2026 09:52:02"`；无头浏览器实测深浅两主题下 `#langToggle` 与 `#themeToggle` 计算样式逐值一致（bg/border/inset 内圈/字色/32×32）。
+
+## 2026-08-17 v1.8.4
+
+- fix(WebConsole): DC 深浅主题切换按钮与 DD 主题按钮逐值统一——三处（DC / D 启动页 / DD）按钮一模一样（DD Issue #140 后续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#themeToggle`（`.themeButton`）视觉从透明幽灵胶囊（24px 高、无背景无边框、图标色 `#8fa1b5`、hover 青 `#5cc8ff`）改为 DD 主题按钮的实际渲染规格（DD 的 Tailwind 类经 `theme-mus4.css`/`theme-light.css` 重映射后的值）：32×32 圆形（`border-radius:9999px`），深色 `background:#111820` + `border:1px solid #344154` + `box-shadow:inset 0 0 0 1px #2b3441` 内描边，图标色 `#b9c5d3`、hover `#e8edf2`；浅色 `background:#f4f6f9` + `border-color:#ccd5df` + 内描边 `#d5dce4`，图标色 `#3f4f63`、hover `#1a2330`。
+    - 图标从 feather 路径换为 lucide Moon/Sun（与 DD `ThemeSwitcher.tsx`、D 启动页 `server.py` 完全相同的路径数据）：月亮 `M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z`，太阳 circle r=4 + 8 条独立射线 path；16px、stroke-width 2、`stroke="currentColor"` 不变。
+    - 逻辑不动：单击深/浅互切、`mus4.ui.theme` 持久化、默认跟随浏览器 `prefers-color-scheme`、深色显月亮/浅色显太阳均保持 v1.8.3 行为。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.3 → v1.8.4。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_theme_toggle` 的 CSS 断言更新为 DD 规格逐值串（含浅色 `color:#3f4f63`、hover `#1a2330`），新增 lucide 图标路径断言；`test_firmware_version_is_current_and_changelog_is_ordered` 版本断言升至 v1.8.4，CHANGELOG 顺序链延伸至 v1.8.4。
+
+## 2026-08-17 v1.8.3
+
+- style(WebConsole): 语言按钮字体逐值复刻 DD（#92 返工：字体栈补齐 + 车上旧样式根因修复）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.langButton` 补 DD `index.css` :root 完整字体栈（`-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji"`）及 `font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale`，抵消 DC 页面级 `system-ui,sans-serif` 与基础 `button` 规则的字体继承，按钮渲染字体与 DD 完全一致。
+  - 车上"无边框/24px/透明底"假象根因：另一并行工作区分支于 08:46 用未合入新样式的中间固件 OTA 覆盖了车辆（此前 08:36 已刷入正确样式），源码与 specificity 均无问题；本轮重编译 v1.8.3（build 09:06:41）OTA 刷回，无头浏览器实测计算样式确认 32×32、1px #3f3f46 边框、#27272a 底、#d4d4d8 字色、600 字重、DD 字体栈（深浅两主题分别验证）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `.langButton` CSS 精确串断言更新为含字体栈的新串，全量 163 passed。
+- style(WebConsole): 三页面（DC/D/DD）语言切换按钮样式统一为 DD 原生样式（GitHub Issue #92 后续统一）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.langButton` 从 DC 自有样式（24px 高、透明底、无边框、#8fa1b5 字色、12px/800）改为逐值复刻 DD `LanguageSwitcher` 原生渲染——32×32 圆形（border-radius:9999px）、#27272a 底、1px #3f3f46 边框、12px/600、#d4d4d8 字色、hover #f4f4f5，transition 覆盖 color/background-color/border-color；hover 规则补 background 锁定（#27272a），抵消 DC 通用 `button:hover` 的背景覆盖，保证与 DD"hover 只变色"一致；浅色主题用同族 zinc 值（底 #f4f4f5、边框 #d4d4d8、字色 #52525b、hover #18181b）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_language_tabs_wired_to_set_language` 的 `.langButton` CSS 精确串断言更新为 DD 样式串（深/浅两套），全量 163 passed。
+- feat(WebConsole): DC 语言切换改为静音式单按钮——单击中/英互切，未手动选过语言时默认跟随浏览器语言（GitHub Issue #92）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主页面切换入口从折叠 FAB + 弹出菜单（🌐 `langFab` → `langMenu` 中/英两项）改为顶栏单按钮 `#langToggle`（`.langButton`）：透明胶囊文字按钮，中文态显「中」、英文态显「EN」，位于静音按钮右边、主题切换按钮左边（窄屏 order:16）。
+    - 单击 `toggleLanguage()` 在中/英间互切（`setLanguage(uiLang==='zh'?'en':'zh')`）并持久化到 `mus4.ui.lang`；`renderLangButton()` 随语言切换刷新按钮文字，aria 标题复用 `language.title` 词条。
+    - 默认跟随浏览器语言：四个页面（主页面/Donkey 页/Joystick 校准页/关于页）的 `readStoredLanguage()` 在 localStorage 无有效值时回退 `detectBrowserLanguage()`（`navigator.language` 以 `zh` 开头即中文）；服务端 `/api/language` 返回 `auto` 时同样按浏览器语言解析后写入本地存储。
+    - 移除弹出菜单全部代码：`langFab`/`langMenu` 的 HTML、CSS 与 FAB 径向动作排序链、`toggleLanguageMenu()`/`closeLanguageMenu()`/`renderLangMenu()`、🌐 图标；三页面既有 `langTabs`（诊断/关于/Joystick 简化页的双页签）保持不动。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_language_tabs_wired_to_set_language` 重写为单按钮断言（按钮 HTML/CSS/`toggleLanguage`/`renderLangButton`/`readStoredLanguage` 浏览器回退/`detectBrowserLanguage` 精确串，`langSwitch`/`data-lang`/English/`langFab`/`langMenu` 无残留断言）；FAB 径向动作断言去掉语言入口并加无残留检查；移动端顶栏断言改 `#langToggle` 与窄屏 order:16；`data-i18n-title="language.title"` 断言改 `data-i18n-aria`。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.3 build="Aug 17 2026 08:16:58"`。
+- feat(WebConsole): DC 深浅主题切换改为静音式单按钮——单击深/浅互切，默认跟随浏览器深浅（GitHub Issue #93）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 切换入口从 `#themeTabs` 三态按钮组（浅色/跟随系统/深色）改为单图标按钮 `#themeToggle`（`.themeButton`），形态与位置参照同顶栏静音按钮 `#muteToggle`：透明胶囊图标按钮，位于红绿蓝切换键右边、语言切换键左边（窄屏 order:15 不变）。
+    - 单击 `toggleTheme()` 在当前生效主题的深/浅反向间来回切换（`setTheme(resolvedTheme()==='light'?'dark':'light')`）并持久化到 `mus4.ui.theme`；图标反映当前主题——深色显月亮（`icoMoon`）、浅色显太阳（`icoSun`），由 `html[data-theme]` CSS 驱动，无需 JS 改图标。
+    - 默认跟随浏览器 `prefers-color-scheme`：`uiTheme='auto'`（localStorage 无值）时 `resolvedTheme()` 经 matchMedia 解析并监听系统 change 实时跟随；用户手动单击后选择持久化，此后不再跟随浏览器，刷新后保持。auto 态由"未手动切换 = 跟随浏览器"等效替代。
+    - 移除三态按钮组全部代码：`#themeTabs` 容器与按钮 HTML、`renderThemeTabs()`、`setTheme()/initTheme()` 中的渲染调用、深浅两套 `#themeTabs` 分段控件 CSS；i18n 删去 `theme.auto/light/dark` 词条（仅保留 `theme.title` 作 aria 标题，中英各一条）。
+    - 首屏防闪烁内联脚本、`systemTheme()/resolvedTheme()/applyTheme()` 主题解析应用链路保持不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.2 → v1.8.3。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_theme_toggle` 重写为单按钮断言（按钮 HTML/双图标/CSS/`toggleTheme` 一键互切、`themeTabs`/`themeSwitch`/`renderThemeTabs`/`theme.auto|light|dark` 无残留断言）；窄屏 order 断言改 `#themeToggle{order:15}`；`test_web_console_light_theme_overrides` 的 `setTheme/initTheme` 断言去渲染调用；版本断言升至 v1.8.3，CHANGELOG 顺序链延伸至 v1.8.3。
+
 ## 2026-08-16 v1.8.2
 
 - fix(WebConsole): 修复终端标签智能缩写在真实设备上始终不触发（GitHub Issue #90 复盘：v1.8.1 的振荡修复正确但溢出检测根本没机会触发）

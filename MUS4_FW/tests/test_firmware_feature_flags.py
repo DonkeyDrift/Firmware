@@ -274,9 +274,9 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.6"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.7"' in build_info
+    assert "v1.8.7" in changelog
     assert "v1.8.6" in changelog
-    assert "v1.8.5" in changelog
     assert "v1.8.4" in changelog
     assert "v1.8.3" in changelog
     assert "v1.8.2" in changelog
@@ -309,6 +309,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-18 v1.8.7") < changelog.index("## 2026-08-17 v1.8.6")
     assert changelog.index("## 2026-08-17 v1.8.6") < changelog.index("## 2026-08-17 v1.8.5")
     assert changelog.index("## 2026-08-17 v1.8.5") < changelog.index("## 2026-08-17 v1.8.4")
     assert changelog.index("## 2026-08-17 v1.8.4") < changelog.index("## 2026-08-17 v1.8.3")
@@ -1604,7 +1605,7 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
 
     # v1.7.79/v1.7.80：OTA 按钮并入 34px 规则并按原比例放大字号/内边距；DEV 开关 62×34px 保持原宽高比，
     # 滑珠 26px、边距 4px、位移 28px，"DEV" 写在滑珠上
-    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,.headerRow .otaLink .otaButton{height:34px}' in source
+    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,#openDshBtn,.headerRow .otaLink .otaButton{height:34px}' in source
     assert '.headerRow .otaLink .otaButton{font-size:16px;padding:0 14px}' in source
     assert '#devModeToggle .slider{width:62px;height:34px}' in source
     assert '#devModeToggle .slider:before{content:"DEV";display:flex;align-items:center;justify-content:center;height:26px;width:26px;left:4px;bottom:4px;font-size:9px;font-weight:800;color:#061019}' in source
@@ -1651,13 +1652,14 @@ def test_web_console_header_logo_left_of_title():
 def test_web_console_mobile_header_layout():
     """窄屏（手机/平板竖屏，max-width:820px）头部重排为固定 4 行：
     第 1 行 logo + 标题 + GitHub + 版本号（紧跟 GitHub 右侧，整体左排）；
-    第 2 行 打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web；
+    第 2 行 打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web / 打开 DeepSeek Harness；
     第 3 行 红绿蓝（最左）+ OTA + 静音 + DEV（margin-left:auto 贴合最右端）；
     第 4 行 主题切换（左）+ 语言切换（右）。
     实现方式：headerRow 保持 flex-wrap，DOM 中三个 .rowBreak 分隔 span 桌面
     display:none，窄屏下 display:block + flex-basis:100% 强制换行，各元素用
     order 重排。桌面布局规则不动，仅靠媒体查询覆盖。
-    v1.7.70 第 2 行新增"打开 Kimi Code Web"占位按钮，order 插入 8，后续顺移 +1。"""
+    v1.7.70 第 2 行新增"打开 Kimi Code Web"占位按钮，order 插入 8，后续顺移 +1。
+    v1.8.7 第 2 行再新增"打开 DeepSeek Harness"按钮，order 插入 9，后续顺移 +1。"""
 
     source = firmware_source_text()
 
@@ -1678,21 +1680,22 @@ def test_web_console_mobile_header_layout():
     assert "#versionLabel{order:4}" in source
     assert "#versionLabel{order:4;margin-left:auto}" not in source
     assert ".br1{order:5}" in source
-    # 第 2 行：打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web
+    # 第 2 行：打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web / 打开 DeepSeek Harness
     assert "#enterDonkeyBtn{order:6}" in source
     assert "#enterDonkeyDrifterBtn{order:7}" in source
     assert "#openKimiCodeWebBtn{order:8}" in source
-    assert ".br2{order:9}" in source
+    assert "#openDshBtn{order:9}" in source
+    assert ".br2{order:10}" in source
     # 第 3 行（倒数第二行）：红绿蓝（最左）+ OTA + 静音（桌面右推 margin-left:auto 复位）
     # + DEV（margin-left:auto 贴合页面最右端）
-    assert "#ledBlinkTabs{order:10}" in source
-    assert ".headerRow .otaLink{order:11}" in source
-    assert "#muteToggle{order:12;margin-left:0}" in source
-    assert "#devModeToggle{order:13;margin-left:auto}" in source
-    assert ".br3{order:14}" in source
+    assert "#ledBlinkTabs{order:11}" in source
+    assert ".headerRow .otaLink{order:12}" in source
+    assert "#muteToggle{order:13;margin-left:0}" in source
+    assert "#devModeToggle{order:14;margin-left:auto}" in source
+    assert ".br3{order:15}" in source
     # 第 4 行：主题单按钮（左）+ 语言单按钮（margin-left:auto 贴合最右端，不再隐藏）
-    assert "#themeToggle{order:15}" in source
-    assert "#langToggle{order:16;margin-left:auto}" in source
+    assert "#themeToggle{order:16}" in source
+    assert "#langToggle{order:17;margin-left:auto}" in source
 
 
 def test_web_console_language_tabs_wired_to_set_language():
@@ -4573,23 +4576,28 @@ def test_web_console_header_entry_buttons():
     v1.7.80 OTA 按钮与 DEV 开关按原比例加宽（OTA 字号 16px/内边距 14px；开关 62×34px、位移 28px），
     开关旁 "DEV ON/OFF" 文字删除，"DEV" 写到滑珠上。
     v1.7.90 三个入口按键显示文案去掉"打开 "/"Open "前缀（zh/en 同步），
-    按钮 id、href/onclick 跳转与其它词条均不变。"""
+    按钮 id、href/onclick 跳转与其它词条均不变。
+    v1.8.7 Kimi Code Web 右侧新增"打开 DeepSeek Harness"按钮（#openDshBtn），
+    沿用 _launcherIp，POST :8090/api/launch/dsh，交互与 Kimi Code Web 按钮同款。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
 
-    # 位置：主标题 <h1> 之后、GitHub 链接之前，Donkey 在左、DonkeyDrifter 居中、Kimi Code Web 在右
+    # 位置：主标题 <h1> 之后、GitHub 链接之前，Donkey 在左、DonkeyDrifter 居中、
+    # Kimi Code Web 在右、DeepSeek Harness 紧随其后
     h1_pos = assets.index('<h1 data-i18n="app.title">Drifter Console</h1>')
     donkey_pos = assets.index('data-i18n="button.enterDonkey"')
     drifter_pos = assets.index('data-i18n="button.enterDonkeyDrifter"')
     kimi_pos = assets.index('data-i18n="button.openKimiCodeWeb"')
+    dsh_pos = assets.index('data-i18n="button.openDsh"')
     gh_pos = assets.index('<a class="ghLink"')
-    assert h1_pos < donkey_pos < drifter_pos < kimi_pos < gh_pos
+    assert h1_pos < donkey_pos < drifter_pos < kimi_pos < dsh_pos < gh_pos
 
     # v1.7.61：改用 <a target="_blank"> 原生链接，不再使用 onclick + window.open
     assert 'id="enterDonkeyBtn"' in assets
     assert 'id="enterDonkeyDrifterBtn"' in assets
     assert 'id="openKimiCodeWebBtn"' in assets
+    assert 'id="openDshBtn"' in assets
     assert 'target="_blank"' in assets
     assert 'rel="noopener"' in assets
 
@@ -4624,6 +4632,21 @@ def test_web_console_header_entry_buttons():
     assert "'toast.kimiCodeWebTimeout':'Kimi Code Web 启动超时'" in assets
     assert "'toast.kimiCodeWebTimeout':'Kimi Code Web launch timed out'" in assets
 
+    # v1.8.7："打开 DeepSeek Harness"按钮：交互与 Kimi Code Web 按钮同款，
+    # POST http://<host>:8090/api/launch/dsh，about:blank 句柄 + 120s 超时，
+    # 等待态禁用并切启动中文案，失败/超时走 toast；i18n 中英词条各出现 2 次
+    assert 'onclick="openDsh()"' in assets
+    assert 'async function openDsh()' in assets
+    assert ':8090/api/launch/dsh' in assets
+    assert "let dshLaunching=false" in assets
+    assert assets.count("'button.openDsh':'DeepSeek Harness'") == 2
+    assert "'button.openDshLaunching':'正在启动 DeepSeek Harness...'" in assets
+    assert "'button.openDshLaunching':'Launching DeepSeek Harness...'" in assets
+    assert "'toast.dshFailed':'DeepSeek Harness 启动失败'" in assets
+    assert "'toast.dshFailed':'Failed to launch DeepSeek Harness'" in assets
+    assert "'toast.dshTimeout':'DeepSeek Harness 启动超时'" in assets
+    assert "'toast.dshTimeout':'DeepSeek Harness launch timed out'" in assets
+
     # v1.7.59：enterDonkeyDrifter 指向 /launch/drive
     # v1.7.61：入口按钮改用 <a target="_blank">，不再使用 onclick + window.open
     # v1.7.62：enterDonkeyDrifter 改用 #drive hash（与"打开 Donkey"同路径，避免 Safari 问题）
@@ -4632,8 +4655,9 @@ def test_web_console_header_entry_buttons():
     assert 'enterDonkeyDrifter()' not in assets
 
     # v1.7.76：三个入口按键 34px 高（对齐 DD 侧"打开"按键），专属规则覆盖，
-    # .otaButton 基础规则保持 24px；v1.7.79 规则扩展追加头部 OTA 按钮
-    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,.headerRow .otaLink .otaButton{height:34px}' in assets
+    # .otaButton 基础规则保持 24px；v1.7.79 规则扩展追加头部 OTA 按钮；
+    # v1.8.7 规则再追加 #openDshBtn
+    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,#openDshBtn,.headerRow .otaLink .otaButton{height:34px}' in assets
     assert '.otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
 
 def test_web_console_light_theme_overrides():

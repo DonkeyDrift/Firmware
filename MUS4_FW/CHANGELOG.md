@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-18 v1.8.7
+
+- feat(WebConsole): DC 顶栏新增「DeepSeek Harness」入口按钮，与 DonkeyDrifter Web UI（DD）侧同款（Issue #164 后续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 顶栏「Kimi Code Web」右侧新增 `#openDshBtn`（`button.openDsh`，文案「DeepSeek Harness」），交互与 Kimi Code Web 按钮完全同款：沿用 `_launcherIp`（`/api/status` 的 `host_ip`），点击 `POST http://<host>:8090/api/launch/dsh`（launcher 侧转发的 DSH 启动端点），同步上下文先开 `about:blank` 句柄，成功后导航 `j.url`、失败关闭并走 toast 提示；`AbortController` 120s 超时；等待态禁用按钮并切换启动中文案（`button.openDshLaunching`）。
+    - i18n 中英各新增 4 条：`button.openDsh` / `button.openDshLaunching` / `toast.dshFailed` / `toast.dshTimeout`。
+    - CSS：34px 高度规则追加 `#openDshBtn`；窄屏（max-width:820px）第 2 行插入 DSH 按钮 `order:9`，后续元素（br2/ledBlink/OTA/静音/DEV/br3/主题/语言）顺移 +1 至 10–17。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.6 → v1.8.7。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——34px 规则与窄屏 order 断言更新（含 `#openDshBtn{order:9}` 顺移链）；`test_web_console_header_entry_buttons` 新增 DSH 按钮 HTML 位置（kimi 之后、GitHub 链接之前）、`openDsh()`/`:8090/api/launch/dsh`/`dshLaunching` 与中英 i18n 词条断言；版本断言升至 v1.8.7、CHANGELOG 顺序链延伸至 v1.8.7。
+  - DSH 启动端点与 launcher 侧修复（设置页 403 权限补丁、缺省 cwd 进 Projects）在 DonkeyDrift 仓库同步提交。
+
 ## 2026-08-17 v1.8.6
 
 - fix(WebConsole): DC 终端 loading 态加 10s 超时兜底，不再无限期停留在「正在连接上位机终端…」（Issue #101）

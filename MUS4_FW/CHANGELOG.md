@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-18 v1.8.11
+
+- fix(WebConsole): 删除 DC 顶栏 LED 闪烁颜色 RGB 切换按键，空闲闪烁固定为 RGB 三色全选（mask=7）且不可修改（Issue #107）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 删除顶栏 `#ledBlinkTabs` 红/绿/蓝多选控件（HTML 及 `#ledBlinkTabs` 容器 34px 覆写、三条选中配色/悬停规则、`order:11` 定位）；共享胶囊样式 `.langTabs` 保留不动。
+    - 删除 `uiLedBlinkMask` / `LED_BLINK_TAB_COLORS` / `renderLedBlinkTabs()` / `initLedBlink()` / `toggleLedBlinkColor(bit)` 及启动链中的 `initLedBlink();` 调用。
+    - i18n 删除 `led.title` / `led.red` / `led.green` / `led.blue` 中英词条。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：删除 `GET/POST /api/led-blink` 两条路由与 `handleWifiWebLedBlinkGet/Set` 两个处理器及 `#include "LedBlinkPreference.h"`。
+  - `libraries/mus4_core/src/LedBlinkPreference.h` / `LedBlinkPreference.cpp`：移除 NVS 持久化（`loadLedBlinkPreference` / `saveLedBlinkPreference` / Preferences），`getLedBlinkMask()` 恒返回 7；空闲（手动 + Park）三色交替闪烁仍由 ControlMixer 读取该掩码、LedStatus 应用，逻辑不变。
+  - `MUS4_FW.ino`：删除 `setup()` 中的 `loadLedBlinkPreference();` 调用及 `#include "LedBlinkPreference.h"`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.10 → v1.8.11。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——响应式 order 测试删除 `#ledBlinkTabs{order:11}` 断言（注释同步改为「OTA + 静音」）；`test_web_console_theme_toggle` 删除 themeToggle 与 ledBlinkTabs 的相对顺序断言；`test_web_console_led_blink_color_selector` 重写为「前端控件/逻辑/词条与后端接口/持久化全部移除、`getLedBlinkMask()` 恒返回 7、ControlMixer/LedStatus 仍驱动空闲闪烁」断言；版本断言升至 v1.8.11。全量 163 passed。
+
 ## 2026-08-18 v1.8.10
 
 - fix(WebConsole): DC 终端板块不再长时间停留在「正在连接上位机终端」——首探前先等待真实上报 IP，消除用默认回退 IP 首探必败的窗口

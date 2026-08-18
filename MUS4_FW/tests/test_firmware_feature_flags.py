@@ -274,8 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.10"' in build_info
-    assert "v1.8.10" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.11"' in build_info
+    assert "v1.8.11" in changelog
     assert "v1.8.8" in changelog
     assert "v1.8.7" in changelog
     assert "v1.8.6" in changelog
@@ -1699,9 +1699,8 @@ def test_web_console_mobile_header_layout():
     assert "#openKimiCodeWebBtn{order:8}" in source
     assert "#openDshBtn{order:9}" in source
     assert ".br2{order:10}" in source
-    # 第 3 行（倒数第二行）：红绿蓝（最左）+ OTA + 静音（桌面右推 margin-left:auto 复位）
+    # 第 3 行（倒数第二行）：OTA + 静音（桌面右推 margin-left:auto 复位）
     # + DEV（margin-left:auto 贴合页面最右端）
-    assert "#ledBlinkTabs{order:11}" in source
     assert ".headerRow .otaLink{order:12}" in source
     assert "#muteToggle{order:13;margin-left:0}" in source
     assert "#devModeToggle{order:14;margin-left:auto}" in source
@@ -4325,100 +4324,56 @@ def test_web_console_language_switch_rerenders_joystick_cal_status():
 
 
 def test_web_console_led_blink_color_selector():
-    """v1.7.51：头部静音键与语言切换键之间新增空闲灯色多选（ledBlinkTabs，复用
-    langTabs 胶囊样式），红/绿/蓝三个选项可独立勾选；勾选集合决定空闲（手动模式
-    + Park 锁定）时 WS2812B 状态灯交替闪烁的颜色——两色/三色交替闪、单色亮灭闪烁
-    （亮灭各 250ms）、全不选熄灭；选择经 /api/led-blink 读写并 NVS 持久化（命名空间 "webui"、键
-    "ledblink"，UChar 0-7，缺省 7 三色全选），固件侧由 mus4_core 的
-    LedBlinkPreference 统一持有，ControlMixer 每循环轮询掩码、变更即时生效。"""
+    """Issue #107：删除 LED 闪烁颜色 RGB 切换按键，固定为 RGB 全选（mask=7）且不可修改。
+    #ledBlinkTabs 控件、renderLedBlinkTabs/initLedBlink/toggleLedBlinkColor 逻辑、
+    /api/led-blink 接口与 NVS 持久化一并移除；ControlMixer 仍读取恒为 7 的
+    getLedBlinkMask() 驱动空闲（手动 + Park）三色交替闪烁。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
     server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
     pref = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "LedBlinkPreference.cpp").read_text(encoding="utf-8")
+    pref_h = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "LedBlinkPreference.h").read_text(encoding="utf-8")
     mixer = (PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.cpp").read_text(encoding="utf-8")
     led = (PROJECT_ROOT / "libraries" / "mus4_ui" / "src" / "LedStatus.cpp").read_text(encoding="utf-8")
     sketch = (PROJECT_ROOT / "MUS4_FW.ino").read_text(encoding="utf-8")
 
-    # 头部多选按钮：全页面仅一处，位于静音键右边、语言单按钮左边（v1.8.3 起 langToggle 用 aria 词条）
-    assert assets.count('id="ledBlinkTabs"') == 1
-    assert assets.index('id="muteToggle"') < assets.index('id="ledBlinkTabs"')
-    assert assets.index('id="ledBlinkTabs"') < assets.index('data-i18n-aria="language.title"')
+    # 前端：RGB 切换控件与相关逻辑全部移除
+    assert 'id="ledBlinkTabs"' not in assets
+    assert "toggleLedBlinkColor" not in assets
+    assert "initLedBlink" not in assets
+    assert "renderLedBlinkTabs" not in assets
+    assert "uiLedBlinkMask" not in assets
+    assert "LED_BLINK_TAB_COLORS" not in assets
+    for text in ["'led.title'", "'led.red'", "'led.green'", "'led.blue'"]:
+        assert text not in assets
 
-    # 三个颜色选项：位掩码 data-color 1/2/4，点击取反勾选，文案走 i18n
-    assert 'data-color="1" onclick="toggleLedBlinkColor(1)" data-i18n="led.red"' in assets
-    assert 'data-color="2" onclick="toggleLedBlinkColor(2)" data-i18n="led.green"' in assets
-    assert 'data-color="4" onclick="toggleLedBlinkColor(4)" data-i18n="led.blue"' in assets
+    # 前端不再读写 /api/led-blink
+    assert "fetch('/api/led-blink'" not in assets
 
-    # i18n 文案：中英文各一条
-    for text in ["'led.title':'闪烁颜色'", "'led.red':'红'", "'led.green':'绿'", "'led.blue':'蓝'",
-                 "'led.title':'Blink colors'", "'led.red':'Red'", "'led.green':'Green'", "'led.blue':'Blue'"]:
-        assert text in assets
+    # 后端：路由与处理器移除
+    assert "/api/led-blink" not in server
+    assert "handleWifiWebLedBlinkGet" not in server
+    assert "handleWifiWebLedBlinkSet" not in server
+    assert "saveLedBlinkPreference" not in server
+    assert '#include "LedBlinkPreference.h"' not in server
 
-    # 前端逻辑：状态、渲染、初始化与切换（多选用异或取反位），走 /api/led-blink
-    assert "let uiLedBlinkMask=7;" in assets
-    assert "function renderLedBlinkTabs()" in assets
-    # 相邻勾选按钮无缝连成一段胶囊：连体由 JS box-shadow 向相邻方向延伸 2px 填充
-    # 容器 gap 实现，段内边直角、段端圆角；非连体边界保留 .langTabs 原生 2px 均匀细缝
-    assert "#ledBlinkTabs{gap:0}" not in assets
-    assert "style.borderRadius" in assets
-    assert "style.boxShadow" in assets
-    # 容器总高与 DD 两个切换键（语言/主题，34px = 按钮 24px + 上下各 4px 内边距
-    # + 1px 边框）一致：本容器用 box-sizing:border-box 固定 34px，内边距上下各 4px
-    assert "#ledBlinkTabs{height:34px;padding:4px 2px}" in assets
-    # 悬停只提亮背景、不改变形状（v1.7.91 起）：移除悬停强制独立椭圆及为垫椭圆圆角
-    # 缝隙而生的桥接伪元素，按钮悬停时保持 renderLedBlinkTabs 计算的连体圆角不变
-    assert "#ledBlinkTabs button{position:relative;z-index:0}" in assets
-    assert "#ledBlinkTabs button:hover{border-radius:999px!important;z-index:1}" not in assets
-    assert "#ledBlinkTabs button.active:has(+button.active:hover)::after" not in assets
-    assert "#ledBlinkTabs button.active:hover+button.active::before" not in assets
-    # v1.7.64：三个选项的选中框各着各色（红 #ff6b6b、绿 #39d98a、蓝 #5cc8ff，与图表
-    # gz/thr/str 曲线同色）；悬停提亮（红 #ff9797、绿 #74e4ad、蓝沿用 #8bdcff）、连体
-    # box-shadow 延伸色按按钮各自颜色（LED_BLINK_TAB_COLORS 映射），
-    # 语言切换等其他 .langTabs 保持统一蓝不变
-    assert "#ledBlinkTabs button[data-color=\"1\"].active{background:#ff6b6b}" in assets
-    assert "#ledBlinkTabs button[data-color=\"2\"].active{background:#39d98a}" in assets
-    assert "#ledBlinkTabs button[data-color=\"4\"].active{background:#5cc8ff}" in assets
-    assert "#ledBlinkTabs button[data-color=\"1\"].active:hover{background:#ff9797}" in assets
-    assert "#ledBlinkTabs button[data-color=\"2\"].active:hover{background:#74e4ad}" in assets
-    assert "#ledBlinkTabs button[data-color=\"4\"].active:hover{background:#8bdcff}" in assets
-    assert "::after,#ledBlinkTabs button[data-color=\"1\"]::before{background:#ff6b6b}" not in assets
-    assert "::after,#ledBlinkTabs button[data-color=\"2\"]::before{background:#39d98a}" not in assets
-    assert "::after,#ledBlinkTabs button[data-color=\"4\"]::before{background:#5cc8ff}" not in assets
-    assert "const LED_BLINK_TAB_COLORS={1:'#ff6b6b',2:'#39d98a',4:'#5cc8ff'};" in assets
-    assert "const sh=[],c=LED_BLINK_TAB_COLORS[b.dataset.color]||'#5cc8ff'" in assets
-    assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in assets
-    assert "async function initLedBlink()" in assets
-    assert "async function toggleLedBlinkColor(bit)" in assets
-    assert "uiLedBlinkMask^bit" in assets
-    assert "fetch('/api/led-blink'" in assets
+    # 持久化移除：LedBlinkPreference 不再读写 NVS，恒返回 7
+    assert "#include <Preferences.h>" not in pref
+    assert "saveLedBlinkPreference" not in pref
+    assert "loadLedBlinkPreference" not in pref
+    assert "prefs." not in pref
+    assert "return 7;" in pref
+    assert "loadLedBlinkPreference" not in pref_h
+    assert "saveLedBlinkPreference" not in pref_h
+    assert "getLedBlinkMask" in pref_h
 
-    # 启动链：initLanguage() 后接 initMute()、initLedBlink()、initTheme()
-    assert "initLanguage();initMute();initLedBlink();initTheme();" in assets
+    # 固件启动不再加载偏好
+    assert "loadLedBlinkPreference();" not in sketch
 
-    # 路由注册：GET 查询、POST 设置
-    assert 'wifiWebServer.on("/api/led-blink", HTTP_GET, handleWifiWebLedBlinkGet);' in server
-    assert 'wifiWebServer.on("/api/led-blink", HTTP_POST, handleWifiWebLedBlinkSet);' in server
-
-    # 薄处理器：读写都委托 mus4_core 的 LedBlinkPreference API
-    assert '#include "LedBlinkPreference.h"' in server
-    assert "getLedBlinkMask()" in server
-    assert "saveLedBlinkPreference(" in server
-
-    # NVS 持久化：Preferences 命名空间 "webui"、键 "ledblink"（UChar 0-7），缺省 7 全选
-    assert "#include <Preferences.h>" in pref
-    assert 'prefs.begin("webui", true)' in pref
-    assert 'prefs.begin("webui", false)' in pref
-    assert 'prefs.getUChar("ledblink", 7)' in pref
-    assert 'prefs.putUChar("ledblink", mask)' in pref
-
-    # 固件侧：启动时加载偏好（在 setupWifiConsole 之前）；空闲（手动 + Park）闪烁按掩码驱动
-    assert '#include "LedBlinkPreference.h"' in sketch
-    assert "loadLedBlinkPreference();" in sketch
-    assert sketch.index("loadLedBlinkPreference();") < sketch.index("setupWifiConsole();")
+    # 空闲闪烁仍由固定掩码驱动：ControlMixer 读 getLedBlinkMask，LedStatus 应用掩码
     assert '#include "LedBlinkPreference.h"' in mixer
     assert "getLedBlinkMask()" in mixer
     assert "applyLedBlinkMask(mask)" in mixer
     assert "void applyLedBlinkMask(uint8_t mask)" in led
-    # 单色选择：与黑色交替（亮灭各 250ms），多色选择：颜色间交替
     assert "setLEDToggle(colors[0], CRGB::Black)" in led
     assert "setLEDToggle(colors[0], colors[1])" in led
     assert "setLEDToggle(colors[0], colors[1], colors[2])" in led
@@ -4436,9 +4391,8 @@ def test_web_console_theme_toggle():
     <head> 内防闪烁内联脚本避免首帧闪深色（保留不动）。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
-    # 头部主题单按钮：全页面仅一处，位于红绿蓝切换键右边、中英文切换键左边
+    # 头部主题单按钮：全页面仅一处，位于中英文切换键左边
     assert assets.count('id="themeToggle"') == 1
-    assert assets.index('id="ledBlinkTabs"') < assets.index('id="themeToggle"')
     assert assets.index('id="themeToggle"') < assets.index('data-i18n-aria="language.title"')
 
     # 单图标按钮：形态参照 #muteToggle（单图标 + 单击切换），太阳/月亮双图标

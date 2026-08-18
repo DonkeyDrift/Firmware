@@ -83,7 +83,6 @@
 
 #include "Buzzer.h"
 #include "MutePreference.h"
-#include "LedBlinkPreference.h"
 // #include "test_runner.h"
 
 TUI tui(Serial);
@@ -583,7 +582,6 @@ void setup()
       // Mute preference must be loaded before setupWifiConsole(): the AP start
       // melody plays during Wi-Fi setup, so the mute gate has to be armed first.
       loadMutePreference();
-      loadLedBlinkPreference();
       loadWifiApPreference();
       loadWifiStaPreference();
       loadWifiStaHistory();

@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-18 v1.8.8
+
+- fix(WebConsole): DC「进入 DD」（DonkeyDrifter）按钮改为直达启动中转页，中间不再显示 Donkey 启动菜单页（Issue #103）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`enterDonkeyDrifterBtn` 两处指向从 `http://<ip>:8090/#drive` 改为 `http://<ip>:8090/launch/drive`——headerRow 静态初值（`192.168.3.41`）与 `_applyLauncherStatus()` 动态改写。`/launch/drive` 为 launcher 现成 GET 端点，返回极简跳转页（spinner + 同源 POST `/api/launch/drive` + 轮询 vite 就绪后重定向），全程不渲染 Donkey 菜单页；原 `#drive` 路径需先渲染菜单页再由其 JS 检测 hash 自动触发 6 号启动，中间页即用户所见问题。
+  - 「Donkey」按钮（`:8090/`）保持不动。
+  - 历史：v1.7.62 曾因 Safari 无法加载 `/launch/drive` 改用 `#drive`；此后 `LAUNCH_DRIVE_HTML` 已改轮询就绪后重定向（DonkeyDrift 侧），且 `/terminal` 等非标准路径 Safari 下正常，判定根因已消除，本次改回。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.7 → v1.8.8。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`#drive` 断言改为 `:8090/launch/drive` 出现 2 次（静态 + 动态）且 `:8090/#drive` 不再出现；版本断言升至 v1.8.8、CHANGELOG 顺序链延伸至 v1.8.8。
+
 ## 2026-08-18 v1.8.7
 
 - feat(WebConsole): DC 顶栏新增「DeepSeek Harness」入口按钮，与 DonkeyDrifter Web UI（DD）侧同款（Issue #164 后续）

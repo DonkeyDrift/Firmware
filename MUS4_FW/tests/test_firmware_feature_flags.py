@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.7"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.8"' in build_info
+    assert "v1.8.8" in changelog
     assert "v1.8.7" in changelog
     assert "v1.8.6" in changelog
     assert "v1.8.4" in changelog
@@ -4650,7 +4651,10 @@ def test_web_console_header_entry_buttons():
     # v1.7.59：enterDonkeyDrifter 指向 /launch/drive
     # v1.7.61：入口按钮改用 <a target="_blank">，不再使用 onclick + window.open
     # v1.7.62：enterDonkeyDrifter 改用 #drive hash（与"打开 Donkey"同路径，避免 Safari 问题）
-    assert '#drive' in assets
+    # v1.8.8：改回 /launch/drive 直达启动中转页，不再渲染 Donkey 菜单页（Issue #103）；
+    # Safari 历史问题经 LAUNCH_DRIVE_HTML 轮询重定向后已消除
+    assert assets.count(':8090/launch/drive') == 2  # 静态初值 + _applyLauncherStatus 动态改写
+    assert ':8090/#drive' not in assets
     assert 'enterDonkeyLauncher' not in assets
     assert 'enterDonkeyDrifter()' not in assets
 

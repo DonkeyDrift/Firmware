@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.8"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.9"' in build_info
+    assert "v1.8.9" in changelog
     assert "v1.8.8" in changelog
     assert "v1.8.7" in changelog
     assert "v1.8.6" in changelog
@@ -1643,11 +1644,14 @@ def test_web_console_header_logo_left_of_title():
     # 位置：logo 在 headerRow 内、主标题 <h1> 左边
     header_pos = source.index('<div class="headerRow">')
     logo_pos = source.index('<img class="headerLogo" src="/favicon.png" alt="Drifter Console">')
-    h1_pos = source.index('<h1 data-i18n="app.title">Drifter Console</h1>')
+    h1_pos = source.index('<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>')
     assert header_pos < logo_pos < h1_pos
     # v1.7.97 起 logo 包锚点：点击在新标签页打开 donkeydrift.com，布局不变
     assert '<a class="logoLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener"><img class="headerLogo" src="/favicon.png" alt="Drifter Console"></a>' in source
     assert ".logoLink{display:inline-flex}" in source
+    # Issue #179 起标题文字也包锚点：与 logo 同 URL、新标签页打开，颜色继承标题、无下划线
+    assert '<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>' in source
+    assert ".titleLink{color:inherit;text-decoration:none}" in source
 
 
 def test_web_console_mobile_header_layout():
@@ -1774,7 +1778,7 @@ def test_web_console_header_github_link_replaces_version_label():
     assert 'aria-label="GitHub: DonkeyDrift/Firmware"' in source
     assert '<svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58' in source
     # 位置：紧跟主标题 </h1>（原版本号位置）、在语言单按钮 langToggle 左边
-    assert source.index('<h1 data-i18n="app.title">Drifter Console</h1>') < source.index('<a class="ghLink"') < source.index('id="langToggle"')
+    assert source.index('<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>') < source.index('<a class="ghLink"') < source.index('id="langToggle"')
     assert '.ghLink{display:inline-flex;align-items:center;color:#8fa1b5;' in source
     assert '.ghLink:hover{color:#5cc8ff}' in source
 
@@ -4586,7 +4590,7 @@ def test_web_console_header_entry_buttons():
 
     # 位置：主标题 <h1> 之后、GitHub 链接之前，Donkey 在左、DonkeyDrifter 居中、
     # Kimi Code Web 在右、DeepSeek Harness 紧随其后
-    h1_pos = assets.index('<h1 data-i18n="app.title">Drifter Console</h1>')
+    h1_pos = assets.index('<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>')
     donkey_pos = assets.index('data-i18n="button.enterDonkey"')
     drifter_pos = assets.index('data-i18n="button.enterDonkeyDrifter"')
     kimi_pos = assets.index('data-i18n="button.openKimiCodeWeb"')

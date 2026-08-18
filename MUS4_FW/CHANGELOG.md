@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-18 v1.8.10
+
+- fix(WebConsole): DC 终端板块不再长时间停留在「正在连接上位机终端」——首探前先等待真实上报 IP，消除用默认回退 IP 首探必败的窗口
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `addTerminalTab()`：改为先完成标签 UI 创建与选中，再 `_fetchLauncherIp().then(()=>probeTerminal(term))` 首探——原实现首探在页面加载时往往先于 `/api/status` 返回执行，用脚本默认回退值 `192.168.3.41`（DHCP 漂移后已失联）探测必然失败，用户看到长时间 loading 后才靠 4s 重试自愈；真机网络环境下叠加首探 10s 超时即表现为"一直连不上"。
+    - `probeTerminal()`：探测超时由 10000ms 缩短为 5000ms，配合 4s 自动重试更快收敛。
+    - `termFailHint()`：从未收到 host_ip 上报（`_launcherIpAge===-1`，仍为默认回退值）时直接返回 `terminal.unknownIp` 提示，不再拼出误导性的回退地址链接。
+    - i18n 新增 `terminal.unknownIp` 中英词条。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.9 → v1.8.10。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——首探断言更新为 `_fetchLauncherIp().then(()=>probeTerminal(term))`；超时断言 10000 → 5000；新增 `terminal.unknownIp` 词条与 `termFailHint` IP 未知分支断言；版本断言升至 v1.8.10、CHANGELOG 顺序链延伸至 v1.8.10。
+
 ## 2026-08-18 v1.8.9
 
 - feat(WebConsole): DC 顶栏「Drifter Console」标题文字可点击跳转官网，效果与点击 logo 图标一致（Issue #179，跨仓库功能：DD/DC/D 三页面标题可点）

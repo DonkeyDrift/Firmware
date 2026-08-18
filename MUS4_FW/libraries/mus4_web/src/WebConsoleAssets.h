@@ -143,6 +143,8 @@ I18N.zh['terminal.unreachable']='无法连接上位机终端服务，请确认�
 I18N.en['terminal.unreachable']='Host terminal unreachable. Make sure the host is online, or open directly: ';
 I18N.zh['terminal.staleIp']='上位机 IP 已 {n} 秒未上报，可能已过期';
 I18N.en['terminal.staleIp']='Host IP not reported for {n}s, may be stale';
+I18N.zh['terminal.unknownIp']='尚未收到上位机 IP 上报（_launcherIp 仍为默认回退值），请确认上位机已连接设备并通过串口上报 HOSTIP。';
+I18N.en['terminal.unknownIp']='Host IP not reported yet (using fallback). Make sure the host is connected and reporting HOSTIP over serial.';
 I18N.zh['terminal.new']='新建终端标签页';
 I18N.en['terminal.new']='New terminal tab';
 I18N.zh['terminal.tab']='终端';
@@ -302,16 +304,19 @@ function switchLogSource(src){currentLogSource=canonicalLogSource(src||'web');cm
 const CMD_TARGET_KEY='donkeydrifter.ui.cmdTarget';
 let termInited=false,termSeq=0,termActive=0;const termList=[];
 function terminalUrl(){return 'http://'+_launcherIp+':8090/terminal';}
-// #89：失败提示拼上 host_ip 上报年龄（>90s 视为过期，上位机正常 30s 上报一次）
-function termFailHint(){return t('terminal.unreachable')+terminalUrl()+(_launcherIpAge>90?' ('+t('terminal.staleIp').replace('{n}',_launcherIpAge)+')':'')}
+// #89：失败提示拼上 host_ip 上报年龄（>90s 视为过期，上位机正常 30s 上报一次）；
+// 从未收到上报（age=-1，_launcherIp 还是默认回退值）时明确提示 IP 未知，不显示误导性的回退地址
+function termFailHint(){if(_launcherIpAge===-1)return t('terminal.unknownIp');return t('terminal.unreachable')+terminalUrl()+(_launcherIpAge>90?' ('+t('terminal.staleIp').replace('{n}',_launcherIpAge)+')':'')}
 // #89：探测改为可重入；失败后 scheduleTermRetry 每 4s 先刷新 _launcherIp（含年龄）再重探，
 // 上位机恢复在线或 IP 更新后自动加载终端并清掉提示
 // #101：loading 态加超时兜底——上位机 IP 不可达时 no-cors fetch 可能长时间挂起（TCP 无响应，
-// reject 也不来），此前会无限期停在「正在连接上位机终端…」；10s 未落定一律按 fail 处理，
-// 复用失败提示与 4s 自动重试；探测序号防止旧探测的迟到结果覆盖新探测的状态
-function probeTerminal(term){term._probe=(term._probe||0)+1;const seq=term._probe,ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);const done=st=>{clearTimeout(timer);if(seq!==term._probe)return;if(st==='ok'){if(!term.f.src)term.f.src=terminalUrl();term.state='ok';if(termActive===term.id)terminalHint.textContent='';}else{term.state='fail';if(termActive===term.id)terminalHint.textContent=termFailHint();scheduleTermRetry();}};fetch('http://'+_launcherIp+':8090/api/status',{mode:'no-cors',cache:'no-store',signal:ctrl.signal}).then(()=>done('ok')).catch(()=>done('fail'));}
+// reject 也不来），此前会无限期停在「正在连接上位机终端…」；未落定一律按 fail 处理，
+// 复用失败提示与 4s 自动重试；探测序号防止旧探测的迟到结果覆盖新探测的状态。
+// 首探前 addTerminalTab 先 await _fetchLauncherIp() 拿到真实上报 IP，避免用默认回退值
+// 探测必然失败的窗口；超时由 10s 缩短为 5s，配合重试更快收敛
+function probeTerminal(term){term._probe=(term._probe||0)+1;const seq=term._probe,ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),5000);const done=st=>{clearTimeout(timer);if(seq!==term._probe)return;if(st==='ok'){if(!term.f.src)term.f.src=terminalUrl();term.state='ok';if(termActive===term.id)terminalHint.textContent='';}else{term.state='fail';if(termActive===term.id)terminalHint.textContent=termFailHint();scheduleTermRetry();}};fetch('http://'+_launcherIp+':8090/api/status',{mode:'no-cors',cache:'no-store',signal:ctrl.signal}).then(()=>done('ok')).catch(()=>done('fail'));}
 var _termRetryTimer=0;function scheduleTermRetry(){if(_termRetryTimer)return;_termRetryTimer=setInterval(async()=>{if(!termList.some(x=>x.state==='fail')){clearInterval(_termRetryTimer);_termRetryTimer=0;return}await _fetchLauncherIp();termList.forEach(x=>{if(x.state==='fail')probeTerminal(x)})},4000)}
-function addTerminalTab(){termInited=true;const id=++termSeq,f=document.createElement('iframe');f.className='termFrame';f.title='host terminal';f.setAttribute('scrolling','no');terminalWrap.insertBefore(f,terminalHint);const b=document.createElement('button');b.className='termTab';const c=document.createElement('span');c.className='termTabClose';c.textContent='×';c.title=t('terminal.closeTab');c.onclick=e=>{e.stopPropagation();killTerminalTab(id)};b.appendChild(c);const l=document.createElement('span');l.className='termTabLabel';l.textContent=t('terminal.tab')+' '+(termList.length+1);b.appendChild(l);b.onclick=()=>selectTerminalTab(id);termTabs.appendChild(b);const term={id:id,f:f,b:b,l:l,c:c,name:null,state:'loading'};termList.push(term);probeTerminal(term);selectTerminalTab(id);fitTermTabLabels();updateTermTabClose();}
+function addTerminalTab(){termInited=true;const id=++termSeq,f=document.createElement('iframe');f.className='termFrame';f.title='host terminal';f.setAttribute('scrolling','no');terminalWrap.insertBefore(f,terminalHint);const b=document.createElement('button');b.className='termTab';const c=document.createElement('span');c.className='termTabClose';c.textContent='×';c.title=t('terminal.closeTab');c.onclick=e=>{e.stopPropagation();killTerminalTab(id)};b.appendChild(c);const l=document.createElement('span');l.className='termTabLabel';l.textContent=t('terminal.tab')+' '+(termList.length+1);b.appendChild(l);b.onclick=()=>selectTerminalTab(id);termTabs.appendChild(b);const term={id:id,f:f,b:b,l:l,c:c,name:null,state:'loading'};termList.push(term);selectTerminalTab(id);fitTermTabLabels();updateTermTabClose();_fetchLauncherIp().then(()=>probeTerminal(term));}
 function selectTerminalTab(id){termActive=id;termList.forEach(x=>{x.f.style.display=x.id===id?'':'none';x.b.classList.toggle('active',x.id===id)});const cur=termList.find(x=>x.id===id);terminalHint.textContent=!cur?t('terminal.empty'):cur.state==='loading'?t('terminal.loading'):cur.state==='fail'?termFailHint():'';}
 function updateTermTabClose(){const hide=termList.length<=1;termList.forEach(x=>{x.c.style.display=hide?'none':''});}
 function killTerminalTab(id){if(termList.length<=1)return;const i=termList.findIndex(x=>x.id===id);if(i<0)return;const cur=termList[i];cur.f.remove();cur.b.remove();termList.splice(i,1);fitTermTabLabels();updateTermTabClose();if(termList.length===0){termActive=0;terminalHint.textContent=t('terminal.empty')}else if(id===termActive)selectTerminalTab(termList[Math.min(i,termList.length-1)].id);}

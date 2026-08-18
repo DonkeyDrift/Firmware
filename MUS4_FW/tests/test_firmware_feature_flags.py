@@ -274,8 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.9"' in build_info
-    assert "v1.8.9" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.10"' in build_info
+    assert "v1.8.10" in changelog
     assert "v1.8.8" in changelog
     assert "v1.8.7" in changelog
     assert "v1.8.6" in changelog
@@ -556,7 +556,7 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     # #89 修复：终端探测失败后周期重试（scheduleTermRetry 每 4s 刷新 _launcherIp 再重探），
     # host_ip 年龄>90s 视为过期并在提示中标注；探测逻辑抽为可重入的 probeTerminal
     assert "function probeTerminal(term)" in source
-    assert "probeTerminal(term);selectTerminalTab(id);fitTermTabLabels();updateTermTabClose();" in source
+    assert "selectTerminalTab(id);fitTermTabLabels();updateTermTabClose();_fetchLauncherIp().then(()=>probeTerminal(term));}" in source
     assert "function scheduleTermRetry()" in source
     assert "_termRetryTimer=setInterval" in source
     assert "if(!termList.some(x=>x.state==='fail')){clearInterval(_termRetryTimer)" in source
@@ -569,11 +569,19 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "t('terminal.staleIp')" in source
     assert "I18N.zh['terminal.staleIp']" in source
     assert "I18N.en['terminal.staleIp']" in source
+    # 首探等待真实 IP：addTerminalTab 探测前先 await _fetchLauncherIp()（.then 链式），
+    # 消灭页面加载时用默认回退 IP 首探必败的窗口（DC 终端一直「正在连接」的根因）；
+    # 从未收到上报（age=-1）时 termFailHint 明确提示 IP 未知，不显示误导性回退地址
+    assert "_fetchLauncherIp().then(()=>probeTerminal(term))" in source
+    assert "if(_launcherIpAge===-1)return t('terminal.unknownIp');" in source
+    assert "I18N.zh['terminal.unknownIp']" in source
+    assert "I18N.en['terminal.unknownIp']" in source
     # #101 修复：loading 态加超时兜底——no-cors fetch 因 IP 不可达长时间挂起时，
-    # 10s 未落定一律按 fail 处理（复用失败提示与 4s 自动重试），不再无限期停在「正在连接」；
-    # AbortController 主动中止；探测序号防旧探测迟到结果覆盖新探测状态
+    # 未落定一律按 fail 处理（复用失败提示与 4s 自动重试），不再无限期停在「正在连接」；
+    # AbortController 主动中止；探测序号防旧探测迟到结果覆盖新探测状态；
+    # 超时由 10s 缩短为 5s，配合 4s 重试更快收敛
     assert "term._probe=(term._probe||0)+1" in source
-    assert "const seq=term._probe,ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000)" in source
+    assert "const seq=term._probe,ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),5000)" in source
     assert "signal:ctrl.signal" in source
     assert "if(seq!==term._probe)return" in source
     assert ".then(()=>done('ok')).catch(()=>done('fail'))" in source

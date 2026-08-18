@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-08-18 v1.8.9
+
+- feat(WebConsole): DC 顶栏「Drifter Console」标题文字可点击跳转官网，效果与点击 logo 图标一致（Issue #179，跨仓库功能：DD/DC/D 三页面标题可点）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主标题 `<h1 data-i18n="app.title">Drifter Console</h1>` 改为 `<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>`——`data-i18n` 随文字移到 `<a>` 上（i18n 用 textContent 赋值，包裹层不劫持），语言切换正常；与 logo 链接同 URL、新标签页打开。
+    - CSS 新增 `.titleLink{color:inherit;text-decoration:none}`：颜色继承 h1、无下划线，深浅主题下文字样式均与原纯文本一致。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.8 → v1.8.9。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——logo 测试、GitHub 链接顺序测试、入口按钮位置测试中三处 `<h1 data-i18n=...>` 断言更新为新的 `<a class="titleLink">` 结构并新增 titleLink HTML/CSS 断言；版本断言升至 v1.8.9、CHANGELOG 顺序链延伸至 v1.8.9。全量 163 passed。
+  - DD（DonkeyDrifter Web UI）与 D（Donkey 启动页）两侧同类改动在 DonkeyDrift 仓库同步提交（`web_ui/frontend/src/components/Layout.tsx`、`donkeycar/launcher/server.py`）。
+
 ## 2026-08-18 v1.8.8
 
 - fix(WebConsole): DC「进入 DD」（DonkeyDrifter）按钮改为直达启动中转页，中间不再显示 Donkey 启动菜单页（Issue #103）

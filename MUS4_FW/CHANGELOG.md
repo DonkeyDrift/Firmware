@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-19 v1.8.20
+
+- fix(WebConsole): 恢复 Drifter Console 主页面 header 行显示——上一版 v1.8.19 误把车端 DC 标题栏整行隐藏，现改为仅在 DD 嵌入（URL 带 `?embedded=1`）时经 `body.embedded` 隐藏，直接访问车端 DC 时标题栏照常显示（Issue #234）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主 DC 页 `.headerRow` 由 `display:none` 恢复为 `display:flex`。
+    - 新增 CSS 规则 `body.embedded .headerRow{display:none}`。
+    - 主 DC 页脚本初始化前加 `if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded')`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.19 → v1.8.20。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言升至 v1.8.20、顺序断言补 v1.8.20；header 断言恢复 `display:flex` 并新增 `body.embedded .headerRow{display:none}` 断言。
+  - 注：DD 侧 iframe 改用 `http://<ip>/?embedded=1` 加载，配套改动见 DonkeyDrift 仓库当日条目。
+
 ## 2026-08-19 v1.8.19
 
 - style(WebConsole): 隐藏 Drifter Console 主页面 header 行（头像/标题/GitHub 图标/深浅色开关/OTA/DEV 开关整行不再显示），版本号改由 DonkeyDrifter 连接条「连接」按钮右侧显示（Issue #234）

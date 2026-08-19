@@ -274,8 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.11"' in build_info
-    assert "v1.8.11" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.12"' in build_info
+    assert "v1.8.12" in changelog
     assert "v1.8.8" in changelog
     assert "v1.8.7" in changelog
     assert "v1.8.6" in changelog
@@ -1624,7 +1624,7 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert ".headerRow{display:flex;align-items:center;" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
     assert ".otaLink{text-decoration:none}" in source
-    assert ".otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;line-height:1;text-decoration:none;display:inline-flex;align-items:center;cursor:pointer}" in source
+    assert ".otaButton{background:transparent;color:#e8edf2;border-color:transparent;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;line-height:1;text-decoration:none;display:inline-flex;align-items:center;cursor:pointer}" in source
     assert ".devHint{position:relative}" in source
     assert ".devHint:hover:after" in source
     assert "content:'开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。'" in source
@@ -4628,7 +4628,7 @@ def test_web_console_header_entry_buttons():
     # .otaButton 基础规则保持 24px；v1.7.79 规则扩展追加头部 OTA 按钮；
     # v1.8.7 规则再追加 #openDshBtn
     assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,#openDshBtn,.headerRow .otaLink .otaButton{height:34px}' in assets
-    assert '.otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
+    assert '.otaButton{background:transparent;color:#e8edf2;border-color:transparent;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
 
 def test_web_console_light_theme_overrides():
     """浅色主题生效：setTheme/initTheme 通过 applyTheme 把解析结果写到
@@ -4656,8 +4656,8 @@ def test_web_console_light_theme_overrides():
     assert 'html[data-theme="light"] .rcNum{background:transparent}' in assets
     # 浅色特异性修正：胶囊按钮组（语言/主题/LED）未激活段恢复透明，缝隙只露出容器底色，与深色行为一致
     assert 'html[data-theme="light"] .langTabs button{background:transparent;color:#5b6b7d}' in assets
-    # 浅色特异性修正：OTA 填充按钮保持青色（否则被浅色通用 button 白底规则压掉）
-    assert 'html[data-theme="light"] .otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff}' in assets
+    # 浅色特异性修正：OTA/入口按钮与深色一致为透明无框，仅文字着色，hover 用主题强调色反馈
+    assert 'html[data-theme="light"] .otaButton{background:transparent;color:#1a2330;border-color:transparent}' in assets
     # 浅色下胶囊容器加深底色并强化描边，使激活胶囊与外容器的嵌套轮廓与深色一样清晰
     assert 'html[data-theme="light"] .langTabs{background:#dde3ec;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in assets
 

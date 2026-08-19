@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-19 v1.8.12
+
+- fix(WebConsole): DC 顶栏 Donkey / DonkeyDrifter / Kimi Code Web / DeepSeek Harness / OTA 等入口按钮去掉蓝色胶囊框，统一为无框透明样式，深浅两主题下可读且 hover 反馈正常（Issue #108）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 深色 `.otaButton` 基础规则：`background:#5cc8ff;color:#061019;border-color:#5cc8ff` → `background:transparent;color:#e8edf2;border-color:transparent`，去掉蓝色背景与蓝色边框，文字改主题前景色。
+    - 深色 `.otaButton:hover`：`background:#8bdcff` → `color:#5cc8ff`，hover 仅改文字色，不再填充蓝色。
+    - 浅色 `html[data-theme="light"] .otaButton`：`background:#5cc8ff;color:#061019;border-color:#5cc8ff` → `background:transparent;color:#1a2330;border-color:transparent`。
+    - 浅色 hover 规则拆分：原 `html[data-theme="light"] .otaButton:hover,html[data-theme="light"] .rcSetBtn:hover{background:#3aa8dd}` 改为 `.otaButton:hover` 仅 `color:#0c9bd6`，`.rcSetBtn:hover` 保持 `background:#3aa8dd` 不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.11 → v1.8.12。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`.otaButton` 基础/浅色断言改为透明无框样式，版本断言升至 v1.8.12。
+
 ## 2026-08-18 v1.8.11
 
 - fix(WebConsole): 删除 DC 顶栏 LED 闪烁颜色 RGB 切换按键，空闲闪烁固定为 RGB 三色全选（mask=7）且不可修改（Issue #107）

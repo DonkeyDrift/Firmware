@@ -60,6 +60,7 @@ Input frames:
 Throttle:Steering\n
 Throttle:Steering:Seq\n
 Throttle:Steering*XX\n
+MODE <m>\n
 ```
 
 `XX` is a two-digit hexadecimal checksum.
@@ -77,7 +78,7 @@ Serial1 telemetry (uplink to host DonkeyCar `ArdImu` / `Arduino` part, v1.7.13+)
 
 ```text
 T<t>S<s>\n                                # MANUAL only, ~60Hz, no colon
-M<m>:P<p>\n                               # MANUAL only, on state change + 1Hz heartbeat
+M<m>:P<p>\n                               # All modes, on state change + 1Hz heartbeat
 $IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n        # All modes, ~100Hz, m/s² + rad/s
 ```
 

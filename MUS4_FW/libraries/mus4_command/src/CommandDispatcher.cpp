@@ -5,6 +5,7 @@
 #include "Mus4Log.h"
 #include "SharedTypes.h"
 #include "JoystickCalibration.h"
+#include "ControlMixer.h"
 #include "TUI.h"
 #include "RuntimeState.h"
 
@@ -118,6 +119,20 @@ bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pil
         mus4LogTarget = MUS4_LOG_TARGET_SERIAL;
         mus4LogLine("log", "target=serial");
         out.println("ACK:LOG_SERIAL");
+        return true;
+    }
+    if (line.startsWith("MODE ") || line.startsWith("MODE:")) {
+        String arg = line.substring(5);
+        arg.trim();
+        int m = -1;
+        if (arg.length() == 1 && arg.charAt(0) >= '0' && arg.charAt(0) <= '2') {
+            m = arg.charAt(0) - '0';
+        }
+        if (m >= 0 && setCarModeCommand(m)) {
+            out.printf("ACK:MODE %d\n", m);
+        } else {
+            out.println("NACK:MODE_INVALID");
+        }
         return true;
     }
     if (line.equalsIgnoreCase("SERVO_MID")) {

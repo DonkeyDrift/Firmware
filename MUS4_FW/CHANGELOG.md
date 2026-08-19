@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-18 v1.8.12
+
+- feat(FW): 支持通过命令设置车控模式（手动/半自动/全自动），与遥控器切换双向兼容（Issue #111）
+  - `libraries/mus4_control/src/ControlMixer.h` / `ControlMixer.cpp`：新增 `setCarModeCommand(mode)`；`mode_change()` 改为后到者生效仲裁——新增 `hostMode`（上位机覆盖，-1=无）与 `lastRcMode`（上次生效的 RC 派生模式），遥控器开关位置变化时清覆盖并让遥控器生效，否则维持上位机命令；提取 `applyMode()` 统一写 `car_output.mode` 并触发蜂鸣器。
+  - `libraries/mus4_command/src/CommandDispatcher.cpp`：新增 `MODE <m>` / `MODE:<m>` 命令（m∈{0,1,2}），成功回 `ACK:MODE <m>`、非法值回 `NACK:MODE_INVALID`；因 `dispatchCommandLine()` 为 Serial/无线/Web `/api/cmd` 共用入口，命令对所有通道生效。
+  - `libraries/mus4_command/src/WirelessConsole.cpp`：新增 `isWirelessModeCommand()`；`isWirelessCommandAllowed()` 对模式命令放行（需认证，Park Locked 下也允许切模式，油门仍由既有 Park/emergencyStop 钳 0）。
+  - `MUS4_FW.ino`：`M<m>:P<p>` 帧由「仅 MANUAL」提升为「所有模式，状态变化 + 1Hz 心跳」发送（从 MANUAL-only 的 T<S> 块中提出），使上位机在非 MANUAL 模式下也能收到模式/驻车变化。
+  - `README.md` / `README.zh-CN.md`：串口协议输入帧新增 `MODE <m>`；`M:P` 行改为所有模式发送。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.11 → v1.8.12。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增模式命令/仲裁/M:P 全模式断言，版本断言升至 v1.8.12。
+
 ## 2026-08-18 v1.8.11
 
 - fix(WebConsole): 删除 DC 顶栏 LED 闪烁颜色 RGB 切换按键，空闲闪烁固定为 RGB 三色全选（mask=7）且不可修改（Issue #107）

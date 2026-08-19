@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.15"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.16"' in build_info
+    assert "v1.8.16" in changelog
     assert "v1.8.15" in changelog
     assert "v1.8.14" in changelog
     assert "v1.8.13" in changelog
@@ -315,6 +316,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-19 v1.8.16") < changelog.index("## 2026-08-19 v1.8.15")
     assert changelog.index("## 2026-08-19 v1.8.15") < changelog.index("## 2026-08-19 v1.8.14")
     assert changelog.index("## 2026-08-19 v1.8.14") < changelog.index("## 2026-08-19 v1.8.13")
     assert changelog.index("## 2026-08-19 v1.8.13") < changelog.index("## 2026-08-18 v1.8.12")
@@ -4174,6 +4176,10 @@ def test_web_console_mute_toggle_button_ui():
     assert ".muteButton{" in assets
     assert ".muteButton.muted .icoMute{display:block}" in assets
     assert ".muteButton.muted .icoSound{display:none}" in assets
+    # v1.8.16：静音键形态统一为 32×32 圆形图标按钮，深色样式与旁边主题按钮逐值一致
+    assert ".muteButton{display:inline-flex;align-items:center;justify-content:center;margin-left:auto;width:32px;height:32px;min-width:0;padding:0;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3;cursor:pointer}" in assets
+    assert ".muteButton:hover{color:#e8edf2}" in assets
+    assert ".muteButton.muted{color:#5cc8ff}" in assets
 
     # i18n 文案：中英文各一条
     assert "'mute.title':'静音'" in assets
@@ -4704,7 +4710,9 @@ def test_web_console_light_theme_overrides():
     # 浅色特异性修正：fabToggle 保持青色发光圆点身份（hover/focus/active 加深为 #3aa8dd）
     assert 'html[data-theme="light"] .fabToggle{background:#5cc8ff;border-color:#5cc8ff}' in assets
     assert 'html[data-theme="light"] .fabToggle:hover,html[data-theme="light"] .fabToggle:focus-visible,html[data-theme="light"] .fabToggle:active{background:#3aa8dd;border-color:#3aa8dd}' in assets
-    assert 'html[data-theme="light"] .muteButton{background:transparent}' in assets
+    assert 'html[data-theme="light"] .muteButton{background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4;color:#3f4f63}' in assets
+    assert 'html[data-theme="light"] .muteButton:hover{color:#1a2330}' in assets
+    assert 'html[data-theme="light"] .muteButton.muted{color:#0c9bd6}' in assets
     assert 'html[data-theme="light"] .rcNum{background:transparent}' in assets
     # 浅色特异性修正：胶囊按钮组（语言/主题/LED）未激活段恢复透明，缝隙只露出容器底色，与深色行为一致
     assert 'html[data-theme="light"] .langTabs button{background:transparent;color:#5b6b7d}' in assets

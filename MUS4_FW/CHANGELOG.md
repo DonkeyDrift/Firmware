@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-08-19 v1.8.16
+
+- style(WebConsole): 静音按键 `.muteButton` 与相邻深浅色切换 `.themeButton` / 语言切换按钮样式统一——改为 32×32 圆形、同款底色/边框/内阴影与 hover 反馈，深浅两主题对齐（Issue #117）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 深色 `.muteButton`：`height:24px;min-width:28px;padding:0 6px;border:none;background:transparent;color:#8fa1b5` → `width:32px;height:32px;min-width:0;padding:0;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3`；保留 `margin-left:auto` 右推布局。
+    - 深色 `.muteButton:hover`：`color:#5cc8ff` → `color:#e8edf2`，与主题按钮 hover 一致；`.muteButton.muted` 保持 `color:#5cc8ff` 作为静音激活态。
+    - 浅色 `html[data-theme="light"] .muteButton`：`background:transparent` → `background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4;color:#3f4f63`，并新增 hover `color:#1a2330`、muted `color:#0c9bd6`；从 `html[data-theme="light"] .ghLink:hover,...` 合并规则中移出静音键的 hover/muted 着色。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.15 → v1.8.16。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——静音键深色 32×32 圆形样式与 hover 断言、浅色 `.muteButton` 底色/边框/内阴影/hover/muted 断言，版本断言升至 v1.8.16 且顺序断言补 v1.8.16。
+
 ## 2026-08-19 v1.8.15
 
 - style(WebConsole): DC 顶栏标题与入口标签的字号/字色/间距进一步对齐 DD 主导航——标题 text-xl 20px + font-bold 700 + zinc-100 前景色，入口标签 zinc-400 前景色 + cyan-400 hover，标题↔功能 32px、功能↔功能 24px（Issue #108 续）

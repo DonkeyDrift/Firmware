@@ -4679,14 +4679,23 @@ def test_web_console_header_entry_buttons():
     # v1.8.7 规则再追加 #openDshBtn
     assert '.headerRow .otaLink .otaButton{height:34px}' in assets
     assert '.otaButton{background:transparent;color:#e8edf2;border-color:transparent;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
-    # v1.8.14：4 个入口标签改用 .navTab，复刻 DD 主导航标签样式（14px / 500 / 弱化色，hover 主题色）
+    # v1.8.16：DC 顶栏标签复刻 DD 两类标签结构——D/DD 为 14px 功能标签(.navTab)，
+    # KCW/DSH 为 12px 弱化标签(.navTabWeak)并带 lucide 图标；仅 2 个 .navTab
     assert '.navTab{font-family:inherit;color:#8fa1b5;font-size:0.875rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1.25rem;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer;margin-right:12px}' in assets
     assert '.navTab:hover{color:#8bdcff;background:transparent}' in assets
-    assert assets.count('class="navTab"') == 4
+    assert '.navTabWeak{font-family:inherit;color:#6b7d90;font-size:0.75rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1rem;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-right:12px}' in assets
+    assert '.navTabWeak:hover{color:#b9c5d3;background:transparent}' in assets
+    assert assets.count('class="navTab"') == 2
+    assert assets.count('class="navTabWeak"') == 2
     assert '<a class="navTab" data-i18n="button.enterDonkey"' in assets
     assert '<a class="navTab" data-i18n="button.enterDonkeyDrifter"' in assets
-    assert '<button type="button" class="navTab" data-i18n="button.openKimiCodeWeb"' in assets
-    assert '<button type="button" class="navTab" data-i18n="button.openDsh"' in assets
+    assert '<button type="button" class="navTabWeak" id="openKimiCodeWebBtn"' in assets
+    assert '<button type="button" class="navTabWeak" id="openDshBtn"' in assets
+    assert '<span data-i18n="button.openKimiCodeWeb">Kimi Code Web</span>' in assets
+    assert '<span data-i18n="button.openDsh">DeepSeek Harness</span>' in assets
+    # KCW/DSH 带 lucide 图标（Sparkles / FlaskConical，14px，stroke=currentColor）
+    assert 'M9.937 15.5A2 2 0 0 0 8.5 14.063' in assets
+    assert 'M14 2v6a2 2 0 0 0 .245.96' in assets
 
 def test_web_console_light_theme_overrides():
     """浅色主题生效：setTheme/initTheme 通过 applyTheme 把解析结果写到
@@ -4721,6 +4730,8 @@ def test_web_console_light_theme_overrides():
     # v1.8.14：入口标签 .navTab 浅色复刻 DD 主导航标签（弱化色，hover 主题色，透明无框）
     assert 'html[data-theme="light"] .navTab{color:#5b6b7d;background:transparent;border:none}' in assets
     assert 'html[data-theme="light"] .navTab:hover{color:#0a7eb2;background:transparent}' in assets
+    assert 'html[data-theme="light"] .navTabWeak{color:#7c8da0;background:transparent;border:none}' in assets
+    assert 'html[data-theme="light"] .navTabWeak:hover{color:#3f4f63;background:transparent}' in assets
     # 浅色下胶囊容器加深底色并强化描边，使激活胶囊与外容器的嵌套轮廓与深色一样清晰
     assert 'html[data-theme="light"] .langTabs{background:#dde3ec;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in assets
 

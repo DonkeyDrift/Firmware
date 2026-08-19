@@ -2,6 +2,13 @@
 
 ## 2026-08-19 v1.8.16
 
+- style(WebConsole): DC 顶栏入口标签彻底复刻 DD 两类标签结构——Donkey / DonkeyDrifter 为 14px 功能标签，Kimi Code Web / DeepSeek Harness 改为 12px 弱化标签并内嵌 lucide 图标（Sparkles / FlaskConical），与 DD 高级入口完全一致（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 新增 `.navTabWeak` 深色规则：`color:#6b7d90;font-size:0.75rem;font-weight:500;line-height:1rem;display:inline-flex;align-items:center;gap:4px`，hover `#b9c5d3`；新增浅色 `html[data-theme="light"] .navTabWeak`：`color:#7c8da0`，hover `#3f4f63`。
+    - KCW/DSH 两个 `<button>` 由 `class="navTab"` 改为 `class="navTabWeak"`，图标 `<svg>` 与文字拆为 `<span data-i18n=...>`，按钮自身移除 `data-i18n`，避免 `applyLanguage` 用 `textContent` 覆盖清掉内嵌图标。
+    - `openKimiCodeWeb()`/`openDsh()` 的 loading/复位文案由 `btn.textContent=...` 改为 `btn.querySelector('span[data-i18n]').textContent=...`，点击后图标不再消失。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `.navTabWeak` 深浅色断言、`class="navTabWeak"` 数量 2、KCW/DSH 内嵌图标 SVG 路径断言；`class="navTab"` 数量由 4 改为 2。
+
 - style(WebConsole): 静音按键 `.muteButton` 与相邻深浅色切换 `.themeButton` / 语言切换按钮样式统一——改为 32×32 圆形、同款底色/边框/内阴影与 hover 反馈，深浅两主题对齐（Issue #117）
   - `libraries/mus4_web/src/WebConsoleAssets.h`：
     - 深色 `.muteButton`：`height:24px;min-width:28px;padding:0 6px;border:none;background:transparent;color:#8fa1b5` → `width:32px;height:32px;min-width:0;padding:0;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3`；保留 `margin-left:auto` 右推布局。

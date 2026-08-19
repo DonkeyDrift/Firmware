@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-08-19 v1.8.14
+
+- style(WebConsole): DC 顶栏 Donkey / DonkeyDrifter / Kimi Code Web / DeepSeek Harness 四个入口标签复刻 DD 主导航标签样式（14px / 500 字重 / 弱化前景色，hover 用主题强调色，无框无底无内边距），仅保留这 4 个入口（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 新增 `.navTab` 深色规则：`color:#8fa1b5;font-size:14px;font-weight:500;background:transparent;border:none;padding:0;line-height:1;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer`，hover `color:#8bdcff`。
+    - 新增浅色 `html[data-theme="light"] .navTab`：`color:#5b6b7d`，hover `color:#0a7eb2`。
+    - 4 个入口按钮 `class="otaButton"` → `class="navTab"`；`.headerRow` 的 34px 高规则只保留 `.headerRow .otaLink .otaButton`（OTA 按钮），不再覆盖入口标签。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.13 → v1.8.14。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `.navTab` 深浅色断言，入口按钮 class 断言改为 navTab，34px 规则断言改为仅 OTA，版本断言升至 v1.8.14。
+
 ## 2026-08-19 v1.8.13
 
 - fix(WebConsole): DC 顶栏 Donkey / DonkeyDrifter / Kimi Code Web / DeepSeek Harness / OTA 等入口按钮去掉蓝色胶囊框，统一为无框透明样式，深浅两主题下可读且 hover 反馈正常（Issue #108）

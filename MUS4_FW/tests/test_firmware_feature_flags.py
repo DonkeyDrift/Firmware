@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.19"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.20"' in build_info
+    assert "v1.8.20" in changelog
     assert "v1.8.19" in changelog
     assert "v1.8.18" in changelog
     assert "v1.8.17" in changelog
@@ -319,6 +320,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-19 v1.8.20") < changelog.index("## 2026-08-19 v1.8.19")
     assert changelog.index("## 2026-08-19 v1.8.19") < changelog.index("## 2026-08-19 v1.8.18")
     assert changelog.index("## 2026-08-19 v1.8.18") < changelog.index("## 2026-08-19 v1.8.17")
     assert changelog.index("## 2026-08-19 v1.8.17") < changelog.index("## 2026-08-19 v1.8.16")
@@ -1663,8 +1665,9 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     # v1.8.17：OTA 按钮与 DEV 开关已移至 DonkeyDrifter 顶栏，DC 头部不再渲染相关规则
     assert '.headerRow .otaLink .otaButton' not in source
     assert '#devModeToggle' not in source
-    # v1.8.19：主 DC 页标题行整行隐藏（版本号改由 DD 连接条右侧显示）
-    assert ".headerRow{display:none;align-items:center;" in source
+    # v1.8.20：主 DC 页标题行默认显示，仅在 DD 嵌入（?embedded=1）时经 body.embedded 隐藏
+    assert ".headerRow{display:flex;align-items:center;" in source
+    assert "body.embedded .headerRow{display:none}" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
     assert ".otaLink" not in source
     assert ".otaButton" not in source
@@ -4697,8 +4700,9 @@ def test_web_console_header_entry_buttons():
     assert 'M14 2v6a2 2 0 0 0 .245.96' in assets
     # v1.8.16 追加：顶栏字体渲染对齐 DD 导航——font-synthesis:none 阻止 500 字重被合成加粗，
     # text-rendering + font-smoothing 让字形更细更清晰（否则 Donkey/DonkeyDrifter 显得更粗更大）
-    # v1.8.19：主 DC 页整行隐藏（Issue #234），保留 DOM 供 JS 引用，仅改 display:flex→none
-    assert '.headerRow{display:none;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}' in assets
+    # v1.8.20：主 DC 页标题行默认显示，仅在 DD 嵌入（?embedded=1）时经 body.embedded 隐藏（Issue #234）
+    assert '.headerRow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}' in assets
+    assert 'body.embedded .headerRow{display:none}' in assets
 
 def test_web_console_light_theme_overrides():
     """浅色主题生效：setTheme/initTheme 通过 applyTheme 把解析结果写到

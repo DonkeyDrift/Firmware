@@ -12,6 +12,10 @@
 
 ## 2026-08-19 v1.8.16
 
+- style(WebConsole): DC 顶栏 Donkey / DonkeyDrifter 字体渲染对齐 DD 导航——补 `font-synthesis:none` 阻止 500 字重被浏览器合成加粗，`text-rendering:optimizeLegibility` + `-webkit-font-smoothing:antialiased` + `-moz-osx-font-smoothing:grayscale` 让字形更细更清晰（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.headerRow` 追加上述四条渲染属性，使 4 个入口标签继承 DD 导航同款抗锯齿/字形合成策略。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`.headerRow` 断言补 `font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale`。
+
 - style(WebConsole): DC 顶栏入口标签彻底复刻 DD 两类标签结构——Donkey / DonkeyDrifter 为 14px 功能标签，Kimi Code Web / DeepSeek Harness 改为 12px 弱化标签并内嵌 lucide 图标（Sparkles / FlaskConical），与 DD 高级入口完全一致（Issue #108 续）
   - `libraries/mus4_web/src/WebConsoleAssets.h`：
     - 新增 `.navTabWeak` 深色规则：`color:#6b7d90;font-size:0.75rem;font-weight:500;line-height:1rem;display:inline-flex;align-items:center;gap:4px`，hover `#b9c5d3`；新增浅色 `html[data-theme="light"] .navTabWeak`：`color:#7c8da0`，hover `#3f4f63`。

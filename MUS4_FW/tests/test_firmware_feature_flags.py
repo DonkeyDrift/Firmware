@@ -4696,6 +4696,9 @@ def test_web_console_header_entry_buttons():
     # KCW/DSH 带 lucide 图标（Sparkles / FlaskConical，14px，stroke=currentColor）
     assert 'M9.937 15.5A2 2 0 0 0 8.5 14.063' in assets
     assert 'M14 2v6a2 2 0 0 0 .245.96' in assets
+    # v1.8.16 追加：顶栏字体渲染对齐 DD 导航——font-synthesis:none 阻止 500 字重被合成加粗，
+    # text-rendering + font-smoothing 让字形更细更清晰（否则 Donkey/DonkeyDrifter 显得更粗更大）
+    assert '.headerRow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}' in assets
 
 def test_web_console_light_theme_overrides():
     """浅色主题生效：setTheme/initTheme 通过 applyTheme 把解析结果写到

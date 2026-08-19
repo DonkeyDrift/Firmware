@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-19 v1.8.15
+
+- style(WebConsole): DC 顶栏标题与入口标签的字号/字色/间距进一步对齐 DD 主导航——标题 text-xl 20px + font-bold 700 + zinc-100 前景色，入口标签 zinc-400 前景色 + cyan-400 hover，标题↔功能 32px、功能↔功能 24px（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `h1` 字号 22px → 20px 并显式 `font-weight:700`；`.headerRow` 追加 `font-family:ui-sans-serif,system-ui,sans-serif`。
+    - 新增 `.headerRow h1{color:#f4f4f5;margin:0 20px 0 0}`：标题↔功能间距 = gap 12px + margin-right 20px = 32px（对齐 DD `mr-8`）。
+    - 深色 `.navTab` 前景色 `#8fa1b5` → `#a1a1aa`（DD zinc-400），hover `#8bdcff` → `#22d3ee`（DD cyan-400），并追加 `margin-right:12px`：功能↔功能间距 = gap 12px + 12px = 24px（对齐 DD `space-x-6`）。
+    - 新增浅色 `html[data-theme="light"] .headerRow h1{color:#1a2330}` 保持浅色标题可读。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.14 → v1.8.15。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——标题字号/字色/间距断言，`.navTab` 深色前景色/hover/间距断言更新，版本断言升至 v1.8.15 且顺序断言补 v1.8.14。
+
 ## 2026-08-19 v1.8.14
 
 - style(WebConsole): DC 顶栏 Donkey / DonkeyDrifter / Kimi Code Web / DeepSeek Harness 四个入口标签复刻 DD 主导航标签样式（14px / 500 字重 / 弱化前景色，hover 用主题强调色，无框无底无内边距），仅保留这 4 个入口（Issue #108 续）

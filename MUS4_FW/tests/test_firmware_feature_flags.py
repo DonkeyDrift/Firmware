@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.14"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.15"' in build_info
+    assert "v1.8.15" in changelog
     assert "v1.8.14" in changelog
     assert "v1.8.13" in changelog
     assert "v1.8.12" in changelog
@@ -314,6 +315,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-19 v1.8.15") < changelog.index("## 2026-08-19 v1.8.14")
     assert changelog.index("## 2026-08-19 v1.8.14") < changelog.index("## 2026-08-19 v1.8.13")
     assert changelog.index("## 2026-08-19 v1.8.13") < changelog.index("## 2026-08-18 v1.8.12")
     assert changelog.index("## 2026-08-18 v1.8.12") < changelog.index("## 2026-08-18 v1.8.11")
@@ -1697,6 +1699,11 @@ def test_web_console_header_logo_left_of_title():
     # Issue #179 起标题文字也包锚点：与 logo 同 URL、新标签页打开，颜色继承标题、无下划线
     assert '<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>' in source
     assert ".titleLink{color:inherit;text-decoration:none}" in source
+    # v1.8.15：标题字号/字重/字色与间距对齐 DD 主导航（text-xl 20px / font-bold 700 /
+    # zinc-100 前景色；标题↔功能 32px = gap 12 + margin-right 20）
+    assert "h1{margin:0;font-size:20px;font-weight:700}" in source
+    assert ".headerRow h1{color:#f4f4f5;margin:0 20px 0 0}" in source
+    assert 'html[data-theme="light"] .headerRow h1{color:#1a2330}' in source
 
 
 def test_web_console_mobile_header_layout():
@@ -4667,8 +4674,8 @@ def test_web_console_header_entry_buttons():
     assert '.headerRow .otaLink .otaButton{height:34px}' in assets
     assert '.otaButton{background:transparent;color:#e8edf2;border-color:transparent;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
     # v1.8.14：4 个入口标签改用 .navTab，复刻 DD 主导航标签样式（14px / 500 / 弱化色，hover 主题色）
-    assert '.navTab{color:#8fa1b5;font-size:14px;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer}' in assets
-    assert '.navTab:hover{color:#8bdcff;background:transparent}' in assets
+    assert '.navTab{color:#a1a1aa;font-size:14px;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer;margin-right:12px}' in assets
+    assert '.navTab:hover{color:#22d3ee;background:transparent}' in assets
     assert assets.count('class="navTab"') == 4
     assert '<a class="navTab" data-i18n="button.enterDonkey"' in assets
     assert '<a class="navTab" data-i18n="button.enterDonkeyDrifter"' in assets

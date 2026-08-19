@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-19 v1.8.18
+
+- fix(WebConsole): 恢复 DC 顶栏 Donkey 入口——上一版（v1.8.17）将 Donkey/OTA/DEV 移至 DonkeyDrifter 顶栏时误移走了用户仍需的 Donkey 快捷入口，现把 Donkey 加回 DonkeyDrifter 左侧（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 在 `<h1>` 后、DonkeyDrifter 前恢复 `<a class="navTab" data-i18n="button.enterDonkey" id="enterDonkeyBtn" href="http://192.168.3.41:8090/" target="_blank" rel="noopener">Donkey</a>`。
+    - 移动端 `@media (max-width:820px)` 恢复 `#enterDonkeyBtn{order:6}`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.17 → v1.8.18。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`enterDonkeyBtn` 与 `.navTab` 数量断言恢复为存在/2，移动端 order 断言恢复，版本断言升至 v1.8.18 且顺序断言补 v1.8.18。
+
 ## 2026-08-19 v1.8.17
 
 - feat(WebConsole): DC 头部 Donkey / OTA / DEV 三控件移至 DonkeyDrifter 顶栏，DC 侧只保留导航入口与状态控件，静音键补 5s 轮询实现与 DD 双向同步

@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.17"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.18"' in build_info
+    assert "v1.8.18" in changelog
     assert "v1.8.17" in changelog
     assert "v1.8.16" in changelog
     assert "v1.8.15" in changelog
@@ -317,6 +318,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-19 v1.8.18") < changelog.index("## 2026-08-19 v1.8.17")
     assert changelog.index("## 2026-08-19 v1.8.17") < changelog.index("## 2026-08-19 v1.8.16")
     assert changelog.index("## 2026-08-19 v1.8.16") < changelog.index("## 2026-08-19 v1.8.15")
     assert changelog.index("## 2026-08-19 v1.8.15") < changelog.index("## 2026-08-19 v1.8.14")
@@ -1735,8 +1737,8 @@ def test_web_console_mobile_header_layout():
     assert "#versionLabel{order:4}" in source
     assert "#versionLabel{order:4;margin-left:auto}" not in source
     assert ".br1{order:5}" in source
-    # 第 2 行：DonkeyDrifter / Kimi Code Web / DeepSeek Harness
-    assert "#enterDonkeyBtn{order:6}" not in source
+    # 第 2 行：Donkey / DonkeyDrifter / Kimi Code Web / DeepSeek Harness
+    assert "#enterDonkeyBtn{order:6}" in source
     assert "#enterDonkeyDrifterBtn{order:7}" in source
     assert "#openKimiCodeWebBtn{order:8}" in source
     assert "#openDshBtn{order:9}" in source
@@ -4598,14 +4600,15 @@ def test_web_console_header_entry_buttons():
     # 位置：主标题 <h1> 之后、GitHub 链接之前，Donkey 在左、DonkeyDrifter 居中、
     # Kimi Code Web 在右、DeepSeek Harness 紧随其后
     h1_pos = assets.index('<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>')
+    donkey_pos = assets.index('data-i18n="button.enterDonkey"')
     drifter_pos = assets.index('data-i18n="button.enterDonkeyDrifter"')
     kimi_pos = assets.index('data-i18n="button.openKimiCodeWeb"')
     dsh_pos = assets.index('data-i18n="button.openDsh"')
     gh_pos = assets.index('<a class="ghLink"')
-    assert h1_pos < drifter_pos < kimi_pos < dsh_pos < gh_pos
+    assert h1_pos < donkey_pos < drifter_pos < kimi_pos < dsh_pos < gh_pos
 
     # v1.7.61：改用 <a target="_blank"> 原生链接，不再使用 onclick + window.open
-    assert 'id="enterDonkeyBtn"' not in assets
+    assert 'id="enterDonkeyBtn"' in assets
     assert 'id="enterDonkeyDrifterBtn"' in assets
     assert 'id="openKimiCodeWebBtn"' in assets
     assert 'id="openDshBtn"' in assets
@@ -4679,9 +4682,9 @@ def test_web_console_header_entry_buttons():
     assert '.navTab:hover{color:#8bdcff;background:transparent}' in assets
     assert '.navTabWeak{font-family:inherit;color:#6b7d90;font-size:0.75rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1rem;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-right:12px}' in assets
     assert '.navTabWeak:hover{color:#b9c5d3;background:transparent}' in assets
-    assert assets.count('class="navTab"') == 1
+    assert assets.count('class="navTab"') == 2
     assert assets.count('class="navTabWeak"') == 2
-    assert '<a class="navTab" data-i18n="button.enterDonkey"' not in assets
+    assert '<a class="navTab" data-i18n="button.enterDonkey"' in assets
     assert '<a class="navTab" data-i18n="button.enterDonkeyDrifter"' in assets
     assert '<button type="button" class="navTabWeak" id="openKimiCodeWebBtn"' in assets
     assert '<button type="button" class="navTabWeak" id="openDshBtn"' in assets

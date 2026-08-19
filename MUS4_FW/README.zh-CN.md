@@ -60,6 +60,7 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 Throttle:Steering\n
 Throttle:Steering:Seq\n
 Throttle:Steering*XX\n
+MODE <m>\n
 ```
 
 `XX` 是两位十六进制校验和。
@@ -77,7 +78,7 @@ Serial1 上行遥测（对接上位机 DonkeyCar `ArdImu` / `Arduino` part，v1.
 
 ```text
 T<t>S<s>\n                                # 仅 MANUAL，~60Hz，无冒号
-M<m>:P<p>\n                               # 仅 MANUAL，状态变化时立即发 + 1Hz 心跳
+M<m>:P<p>\n                               # 所有模式，状态变化时立即发 + 1Hz 心跳
 $IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n        # 所有模式，~100Hz，m/s² + rad/s
 ```
 

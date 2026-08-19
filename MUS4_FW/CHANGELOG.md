@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-19 v1.8.19
+
+- style(WebConsole): 隐藏 Drifter Console 主页面 header 行（头像/标题/GitHub 图标/深浅色开关/OTA/DEV 开关整行不再显示），版本号改由 DonkeyDrifter 连接条「连接」按钮右侧显示（Issue #234）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：主 DC 页（`/`）`.headerRow` 由 `display:flex;align-items:center` 改为 `display:none`，视觉删除但保留 DOM 供 JS 引用（`versionLabel`/`enterDonkeyBtn`/静音/OTA/DEV 等元素仍被 getElementById 引用）；`/drift` 页 `.headerRow` 保持原样。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.18 → v1.8.19。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言升至 v1.8.19，CHANGELOG 顺序断言补 `v1.8.19 < v1.8.18`。
+  - 注：DD 侧配套改动见 DonkeyDrift 仓库当日条目（Drifter Console 连接条「连接」按钮右侧显示车端固件版本号）。
+
 ## 2026-08-19 v1.8.18
 
 - fix(WebConsole): 恢复 DC 顶栏 Donkey 入口——上一版（v1.8.17）将 Donkey/OTA/DEV 移至 DonkeyDrifter 顶栏时误移走了用户仍需的 Donkey 快捷入口，现把 Donkey 加回 DonkeyDrifter 左侧（Issue #108 续）

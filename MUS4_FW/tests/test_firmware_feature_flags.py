@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.13"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.14"' in build_info
+    assert "v1.8.14" in changelog
     assert "v1.8.13" in changelog
     assert "v1.8.12" in changelog
     assert "v1.8.11" in changelog
@@ -313,6 +314,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-19 v1.8.14") < changelog.index("## 2026-08-19 v1.8.13")
     assert changelog.index("## 2026-08-19 v1.8.13") < changelog.index("## 2026-08-18 v1.8.12")
     assert changelog.index("## 2026-08-18 v1.8.12") < changelog.index("## 2026-08-18 v1.8.11")
     assert changelog.index("## 2026-08-18 v1.8.7") < changelog.index("## 2026-08-17 v1.8.6")
@@ -1650,7 +1652,7 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
 
     # v1.7.79/v1.7.80：OTA 按钮并入 34px 规则并按原比例放大字号/内边距；DEV 开关 62×34px 保持原宽高比，
     # 滑珠 26px、边距 4px、位移 28px，"DEV" 写在滑珠上
-    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,#openDshBtn,.headerRow .otaLink .otaButton{height:34px}' in source
+    assert '.headerRow .otaLink .otaButton{height:34px}' in source
     assert '.headerRow .otaLink .otaButton{font-size:16px;padding:0 14px}' in source
     assert '#devModeToggle .slider{width:62px;height:34px}' in source
     assert '#devModeToggle .slider:before{content:"DEV";display:flex;align-items:center;justify-content:center;height:26px;width:26px;left:4px;bottom:4px;font-size:9px;font-weight:800;color:#061019}' in source
@@ -4662,8 +4664,16 @@ def test_web_console_header_entry_buttons():
     # v1.7.76：三个入口按键 34px 高（对齐 DD 侧"打开"按键），专属规则覆盖，
     # .otaButton 基础规则保持 24px；v1.7.79 规则扩展追加头部 OTA 按钮；
     # v1.8.7 规则再追加 #openDshBtn
-    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,#openDshBtn,.headerRow .otaLink .otaButton{height:34px}' in assets
+    assert '.headerRow .otaLink .otaButton{height:34px}' in assets
     assert '.otaButton{background:transparent;color:#e8edf2;border-color:transparent;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
+    # v1.8.14：4 个入口标签改用 .navTab，复刻 DD 主导航标签样式（14px / 500 / 弱化色，hover 主题色）
+    assert '.navTab{color:#8fa1b5;font-size:14px;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer}' in assets
+    assert '.navTab:hover{color:#8bdcff;background:transparent}' in assets
+    assert assets.count('class="navTab"') == 4
+    assert '<a class="navTab" data-i18n="button.enterDonkey"' in assets
+    assert '<a class="navTab" data-i18n="button.enterDonkeyDrifter"' in assets
+    assert '<button type="button" class="navTab" data-i18n="button.openKimiCodeWeb"' in assets
+    assert '<button type="button" class="navTab" data-i18n="button.openDsh"' in assets
 
 def test_web_console_light_theme_overrides():
     """浅色主题生效：setTheme/initTheme 通过 applyTheme 把解析结果写到
@@ -4691,8 +4701,11 @@ def test_web_console_light_theme_overrides():
     assert 'html[data-theme="light"] .rcNum{background:transparent}' in assets
     # 浅色特异性修正：胶囊按钮组（语言/主题/LED）未激活段恢复透明，缝隙只露出容器底色，与深色行为一致
     assert 'html[data-theme="light"] .langTabs button{background:transparent;color:#5b6b7d}' in assets
-    # 浅色特异性修正：OTA/入口按钮与深色一致为透明无框，仅文字着色，hover 用主题强调色反馈
+    # 浅色特异性修正：OTA 按钮与深色一致为透明无框，仅文字着色，hover 用主题强调色反馈
     assert 'html[data-theme="light"] .otaButton{background:transparent;color:#1a2330;border-color:transparent}' in assets
+    # v1.8.14：入口标签 .navTab 浅色复刻 DD 主导航标签（弱化色，hover 主题色，透明无框）
+    assert 'html[data-theme="light"] .navTab{color:#5b6b7d;background:transparent;border:none}' in assets
+    assert 'html[data-theme="light"] .navTab:hover{color:#0a7eb2;background:transparent}' in assets
     # 浅色下胶囊容器加深底色并强化描边，使激活胶囊与外容器的嵌套轮廓与深色一样清晰
     assert 'html[data-theme="light"] .langTabs{background:#dde3ec;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in assets
 

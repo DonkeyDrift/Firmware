@@ -10,6 +10,13 @@
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.15 → v1.8.16。
   - 测试同步：`tests/test_firmware_feature_flags.py`——静音键深色 32×32 圆形样式与 hover 断言、浅色 `.muteButton` 底色/边框/内阴影/hover/muted 断言，版本断言升至 v1.8.16 且顺序断言补 v1.8.16。
 
+- style(WebConsole): DC 顶栏标题与入口标签改回 DD theme-mus4 实际渲染值（上一轮误按 Tailwind 默认色板，字号/字色/字体/行高均与 DD 皮肤不一致），并修复 Kimi Code Web / DeepSeek Harness 两个 `<button>` 标签字体被浏览器 UA 样式覆盖为 Arial 的问题（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 标题 `h1`：`font-size:20px` → `1.25rem`，补 `line-height:1.75rem`（DD text-xl），深色字色 `#f4f4f5` → `#e8edf2`（DD theme-mus4 `text-zinc-100`）。
+    - 字体栈：`.headerRow` 由 `ui-sans-serif,system-ui,sans-serif` 改为 DD theme-mus4 `.font-sans` 实值 `system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif`。
+    - 深色 `.navTab`：字色 `#a1a1aa` → `#8fa1b5`（DD theme-mus4 `text-zinc-400`），hover `#22d3ee` → `#8bdcff`（`hover:text-cyan-400`）；`font-size:14px` → `0.875rem`、`line-height:1` → `1.25rem`（DD text-sm）；补 `font-family:inherit` 让 `<button>` 标签继承 `.headerRow` 的完整字体栈，与 `<a>` 标签一致。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——标题/`.navTab` 深色断言更新为 theme-mus4 实值并补 `font-family:inherit`。
+
 ## 2026-08-19 v1.8.15
 
 - style(WebConsole): DC 顶栏标题与入口标签的字号/字色/间距进一步对齐 DD 主导航——标题 text-xl 20px + font-bold 700 + zinc-100 前景色，入口标签 zinc-400 前景色 + cyan-400 hover，标题↔功能 32px、功能↔功能 24px（Issue #108 续）

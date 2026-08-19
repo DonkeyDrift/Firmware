@@ -1703,8 +1703,8 @@ def test_web_console_header_logo_left_of_title():
     assert ".titleLink{color:inherit;text-decoration:none}" in source
     # v1.8.15：标题字号/字重/字色与间距对齐 DD 主导航（text-xl 20px / font-bold 700 /
     # zinc-100 前景色；标题↔功能 32px = gap 12 + margin-right 20）
-    assert "h1{margin:0;font-size:20px;font-weight:700}" in source
-    assert ".headerRow h1{color:#f4f4f5;margin:0 20px 0 0}" in source
+    assert "h1{margin:0;font-size:1.25rem;font-weight:700;line-height:1.75rem}" in source
+    assert ".headerRow h1{color:#e8edf2;margin:0 20px 0 0}" in source
     assert 'html[data-theme="light"] .headerRow h1{color:#1a2330}' in source
 
 
@@ -4680,8 +4680,8 @@ def test_web_console_header_entry_buttons():
     assert '.headerRow .otaLink .otaButton{height:34px}' in assets
     assert '.otaButton{background:transparent;color:#e8edf2;border-color:transparent;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
     # v1.8.14：4 个入口标签改用 .navTab，复刻 DD 主导航标签样式（14px / 500 / 弱化色，hover 主题色）
-    assert '.navTab{color:#a1a1aa;font-size:14px;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer;margin-right:12px}' in assets
-    assert '.navTab:hover{color:#22d3ee;background:transparent}' in assets
+    assert '.navTab{font-family:inherit;color:#8fa1b5;font-size:0.875rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1.25rem;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer;margin-right:12px}' in assets
+    assert '.navTab:hover{color:#8bdcff;background:transparent}' in assets
     assert assets.count('class="navTab"') == 4
     assert '<a class="navTab" data-i18n="button.enterDonkey"' in assets
     assert '<a class="navTab" data-i18n="button.enterDonkeyDrifter"' in assets

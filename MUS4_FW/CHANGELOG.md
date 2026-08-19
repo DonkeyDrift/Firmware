@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-08-19 v1.8.17
+
+- feat(WebConsole): DC 头部 Donkey / OTA / DEV 三控件移至 DonkeyDrifter 顶栏，DC 侧只保留导航入口与状态控件，静音键补 5s 轮询实现与 DD 双向同步
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 移除「Donkey」入口 `enterDonkeyBtn`（DonkeyDrifter / Kimi Code Web / DeepSeek Harness 保留）、OTA 链接 `.otaLink`（`/update`）、DEV 开关 `#devModeToggle` 及对应 `br2`/`br3` 换行。
+    - 清理死代码：`enterDonkeyBtn` 的 `_applyLauncherStatus` 动态 href 改写、DEV 相关 JS（`devModeCheck`/`devModeModal`/`renderDevMode`/`toggleDevModeFromSwitch`/`refreshDevMode`/`requestDevModeToggle`/`closeDevModeModal`/`setDevMode`）、`devModeModal` 确认弹窗 HTML、`#devModeToggle`/`.otaLink`/`.otaButton` 深浅两主题 CSS。
+    - init 增加 `setInterval(initMute,5000);`，静音状态 5s 轮询 `/api/mute`，与 DD 顶栏静音键双向同步（DC 侧改动会被 DD 轮询到，反之亦然）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.16 → v1.8.17。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——DEV 开关/OTA 按钮头部断言改为 `not in`，`test_web_console_mobile_header_layout` 改为 3 行布局（无 br2/br3/Donkey/OTA/DEV），入口按钮位置与 `.navTab` 计数（2→1）更新，版本与 CHANGELOG 顺序断言升至 v1.8.17。
+
 ## 2026-08-19 v1.8.16
 
 - style(WebConsole): DC 顶栏 Donkey / DonkeyDrifter 字体渲染对齐 DD 导航——补 `font-synthesis:none` 阻止 500 字重被浏览器合成加粗，`text-rendering:optimizeLegibility` + `-webkit-font-smoothing:antialiased` + `-moz-osx-font-smoothing:grayscale` 让字形更细更清晰（Issue #108 续）

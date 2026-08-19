@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.16"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.17"' in build_info
+    assert "v1.8.17" in changelog
     assert "v1.8.16" in changelog
     assert "v1.8.15" in changelog
     assert "v1.8.14" in changelog
@@ -316,6 +317,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-19 v1.8.17") < changelog.index("## 2026-08-19 v1.8.16")
     assert changelog.index("## 2026-08-19 v1.8.16") < changelog.index("## 2026-08-19 v1.8.15")
     assert changelog.index("## 2026-08-19 v1.8.15") < changelog.index("## 2026-08-19 v1.8.14")
     assert changelog.index("## 2026-08-19 v1.8.14") < changelog.index("## 2026-08-19 v1.8.13")
@@ -1643,9 +1645,9 @@ def test_web_console_uses_dev_label_for_development_switch():
 
     assert "DEV <b id=\"devModeSwitchText\">OFF</b>" not in source
     assert "devModeSwitchText" not in source
-    assert '<label class="toggleSwitch devHint" id="devModeToggle"><input type="checkbox" id="devModeCheck"' in source
-    assert '#devModeToggle .slider:before{content:"DEV";' in source
-    assert '#devModeToggle.devHint:hover:after{top:36px}' in source
+    # v1.8.17：DEV 开关已移至 DonkeyDrifter 顶栏，DC 头部不再渲染
+    assert 'id="devModeToggle"' not in source
+    assert '#devModeToggle' not in source
     assert "DEV MODE <b id=\"devModeSwitchText\">OFF</b>" not in source
     assert "DEBUG MODE <b id=\"devModeSwitchText\">OFF</b>" not in source
     assert "Auto OTA <b id=\"devModeSwitchText\">OFF</b>" not in source
@@ -1654,18 +1656,14 @@ def test_web_console_uses_dev_label_for_development_switch():
 def test_web_console_header_and_state_cards_keep_compact_layout():
     source = firmware_source_text()
 
-    # v1.7.79/v1.7.80：OTA 按钮并入 34px 规则并按原比例放大字号/内边距；DEV 开关 62×34px 保持原宽高比，
-    # 滑珠 26px、边距 4px、位移 28px，"DEV" 写在滑珠上
-    assert '.headerRow .otaLink .otaButton{height:34px}' in source
-    assert '.headerRow .otaLink .otaButton{font-size:16px;padding:0 14px}' in source
-    assert '#devModeToggle .slider{width:62px;height:34px}' in source
-    assert '#devModeToggle .slider:before{content:"DEV";display:flex;align-items:center;justify-content:center;height:26px;width:26px;left:4px;bottom:4px;font-size:9px;font-weight:800;color:#061019}' in source
-    assert '#devModeToggle input:checked+.slider:before{transform:translateX(28px)}' in source
-    # v1.7.78：标题行整行垂直居中（三个"打开"按键 34px 后不再底部对齐）
+    # v1.8.17：OTA 按钮与 DEV 开关已移至 DonkeyDrifter 顶栏，DC 头部不再渲染相关规则
+    assert '.headerRow .otaLink .otaButton' not in source
+    assert '#devModeToggle' not in source
+    # v1.7.78：标题行整行垂直居中
     assert ".headerRow{display:flex;align-items:center;" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
-    assert ".otaLink{text-decoration:none}" in source
-    assert ".otaButton{background:transparent;color:#e8edf2;border-color:transparent;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;line-height:1;text-decoration:none;display:inline-flex;align-items:center;cursor:pointer}" in source
+    assert ".otaLink" not in source
+    assert ".otaButton" not in source
     assert ".devHint{position:relative}" in source
     assert ".devHint:hover:after" in source
     assert "content:'开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。'" in source
@@ -1724,34 +1722,28 @@ def test_web_console_mobile_header_layout():
 
     assert ".rowBreak{display:none}" in source
     assert '<span class="rowBreak br1"></span>' in source
-    assert '<span class="rowBreak br2"></span>' in source
-    assert '<span class="rowBreak br3"></span>' in source
-    # br1 紧跟版本号、br2 在语言单按钮与 OTA 之间、br3 在 DEV 开关后（headerRow 末尾）
+    # v1.8.17：Donkey / OTA / DEV 已移至 DonkeyDrifter 顶栏，br2/br3 随之移除
+    assert '<span class="rowBreak br2"></span>' not in source
+    assert '<span class="rowBreak br3"></span>' not in source
     assert '<span class="version" id="versionLabel">--</span><span class="rowBreak br1"></span>' in source
-    assert '>中</button><span class="rowBreak br2"></span><a href="/update" class="otaLink">' in source
-    assert '<span class="slider"></span></label><span class="rowBreak br3"></span></div>' in source
     assert "@media (max-width:820px){.headerRow{align-items:center;gap:8px}" in source
     assert ".rowBreak{display:block;flex-basis:100%;height:0}" in source
-    # 第 1 行：logo + 标题 + GitHub + 版本号（紧跟 GitHub 右侧，不再 margin-left:auto 右推）
+    # 第 1 行：logo + 标题 + GitHub + 版本号
     assert ".headerLogo{order:1}" in source
     assert ".headerRow h1{order:2}" in source
     assert ".ghLink{order:3}" in source
     assert "#versionLabel{order:4}" in source
     assert "#versionLabel{order:4;margin-left:auto}" not in source
     assert ".br1{order:5}" in source
-    # 第 2 行：打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web / 打开 DeepSeek Harness
-    assert "#enterDonkeyBtn{order:6}" in source
+    # 第 2 行：DonkeyDrifter / Kimi Code Web / DeepSeek Harness
+    assert "#enterDonkeyBtn{order:6}" not in source
     assert "#enterDonkeyDrifterBtn{order:7}" in source
     assert "#openKimiCodeWebBtn{order:8}" in source
     assert "#openDshBtn{order:9}" in source
-    assert ".br2{order:10}" in source
-    # 第 3 行（倒数第二行）：OTA + 静音（桌面右推 margin-left:auto 复位）
-    # + DEV（margin-left:auto 贴合页面最右端）
-    assert ".headerRow .otaLink{order:12}" in source
+    # 第 3 行：静音（桌面右推 margin-left:auto 复位）+ 主题 + 语言（右对齐）
+    assert ".headerRow .otaLink{order:12}" not in source
     assert "#muteToggle{order:13;margin-left:0}" in source
-    assert "#devModeToggle{order:14;margin-left:auto}" in source
-    assert ".br3{order:15}" in source
-    # 第 4 行：主题单按钮（左）+ 语言单按钮（margin-left:auto 贴合最右端，不再隐藏）
+    assert "#devModeToggle{order:14;margin-left:auto}" not in source
     assert "#themeToggle{order:16}" in source
     assert "#langToggle{order:17;margin-left:auto}" in source
 
@@ -1793,11 +1785,9 @@ def test_web_console_language_tabs_wired_to_set_language():
     assert 'data-lang="zh"' not in source
     assert 'data-lang="en"' not in source
     assert ">English</button>" not in source
-    # 位置：langToggle 在 OTA 按钮左边；右推由 muteButton 承担，otaLink 不再 margin-left:auto
-    assert source.index('id="langToggle"') < source.index('<a href="/update" class="otaLink">')
-    assert ".otaLink{margin-left:auto" not in source
-    # otaLink 改 flex 消除 inline-block 基线下沉，保证 OTA 按钮与顶栏控件顶/底对齐同高
-    assert ".headerRow .otaLink{display:flex;align-items:center}" in source
+    # v1.8.17：OTA 按钮已移至 DonkeyDrifter 顶栏，DC 头部不再渲染 otaLink
+    assert '<a href="/update" class="otaLink">' not in source
+    assert ".otaLink" not in source
     # v1.8.3：单击切换 + 按钮文字渲染（applyLanguage 内调用 renderLangButton）
     assert "function toggleLanguage(){setLanguage(uiLang==='zh'?'en':'zh')}" in source
     assert "function renderLangButton(){const b=document.getElementById('langToggle');if(b)b.textContent=uiLang==='zh'?'中':'EN'}" in source
@@ -2220,7 +2210,9 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'继续曲线'" not in source
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
-    assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch devHint" id="devModeToggle">' in source
+    # v1.8.17：OTA 按钮与 DEV 开关已移至 DonkeyDrifter 顶栏，DC 头部不再渲染
+    assert '<a href="/update" class="otaLink">' not in source
+    assert 'id="devModeToggle"' not in source
     assert '<select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><div id="termTabs"></div><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
@@ -3696,7 +3688,10 @@ def test_ota_button_opens_in_same_tab():
         encoding="utf-8"
     )
 
-    assert 'href="/update"' in assets
+    # v1.8.17：头部 OTA 链接已移至 DonkeyDrifter 顶栏，DC 不再有 href="/update" 入口；
+    # 但 OTA 上传表单仍通过 XHR POST /update 在当前页完成（不影响本测试原意）
+    assert 'href="/update"' not in assets
+    assert "xhr.open('POST','/update')" in assets
     assert 'target="_blank" class="otaLink"' not in assets
 
 
@@ -4603,15 +4598,14 @@ def test_web_console_header_entry_buttons():
     # 位置：主标题 <h1> 之后、GitHub 链接之前，Donkey 在左、DonkeyDrifter 居中、
     # Kimi Code Web 在右、DeepSeek Harness 紧随其后
     h1_pos = assets.index('<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>')
-    donkey_pos = assets.index('data-i18n="button.enterDonkey"')
     drifter_pos = assets.index('data-i18n="button.enterDonkeyDrifter"')
     kimi_pos = assets.index('data-i18n="button.openKimiCodeWeb"')
     dsh_pos = assets.index('data-i18n="button.openDsh"')
     gh_pos = assets.index('<a class="ghLink"')
-    assert h1_pos < donkey_pos < drifter_pos < kimi_pos < dsh_pos < gh_pos
+    assert h1_pos < drifter_pos < kimi_pos < dsh_pos < gh_pos
 
     # v1.7.61：改用 <a target="_blank"> 原生链接，不再使用 onclick + window.open
-    assert 'id="enterDonkeyBtn"' in assets
+    assert 'id="enterDonkeyBtn"' not in assets
     assert 'id="enterDonkeyDrifterBtn"' in assets
     assert 'id="openKimiCodeWebBtn"' in assets
     assert 'id="openDshBtn"' in assets
@@ -4677,17 +4671,17 @@ def test_web_console_header_entry_buttons():
     # v1.7.76：三个入口按键 34px 高（对齐 DD 侧"打开"按键），专属规则覆盖，
     # .otaButton 基础规则保持 24px；v1.7.79 规则扩展追加头部 OTA 按钮；
     # v1.8.7 规则再追加 #openDshBtn
-    assert '.headerRow .otaLink .otaButton{height:34px}' in assets
-    assert '.otaButton{background:transparent;color:#e8edf2;border-color:transparent;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
+    assert '.headerRow .otaLink .otaButton' not in assets
+    assert '.otaButton{' not in assets
     # v1.8.16：DC 顶栏标签复刻 DD 两类标签结构——D/DD 为 14px 功能标签(.navTab)，
     # KCW/DSH 为 12px 弱化标签(.navTabWeak)并带 lucide 图标；仅 2 个 .navTab
     assert '.navTab{font-family:inherit;color:#8fa1b5;font-size:0.875rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1.25rem;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer;margin-right:12px}' in assets
     assert '.navTab:hover{color:#8bdcff;background:transparent}' in assets
     assert '.navTabWeak{font-family:inherit;color:#6b7d90;font-size:0.75rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1rem;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-right:12px}' in assets
     assert '.navTabWeak:hover{color:#b9c5d3;background:transparent}' in assets
-    assert assets.count('class="navTab"') == 2
+    assert assets.count('class="navTab"') == 1
     assert assets.count('class="navTabWeak"') == 2
-    assert '<a class="navTab" data-i18n="button.enterDonkey"' in assets
+    assert '<a class="navTab" data-i18n="button.enterDonkey"' not in assets
     assert '<a class="navTab" data-i18n="button.enterDonkeyDrifter"' in assets
     assert '<button type="button" class="navTabWeak" id="openKimiCodeWebBtn"' in assets
     assert '<button type="button" class="navTabWeak" id="openDshBtn"' in assets
@@ -4728,8 +4722,8 @@ def test_web_console_light_theme_overrides():
     assert 'html[data-theme="light"] .rcNum{background:transparent}' in assets
     # 浅色特异性修正：胶囊按钮组（语言/主题/LED）未激活段恢复透明，缝隙只露出容器底色，与深色行为一致
     assert 'html[data-theme="light"] .langTabs button{background:transparent;color:#5b6b7d}' in assets
-    # 浅色特异性修正：OTA 按钮与深色一致为透明无框，仅文字着色，hover 用主题强调色反馈
-    assert 'html[data-theme="light"] .otaButton{background:transparent;color:#1a2330;border-color:transparent}' in assets
+    # v1.8.17：OTA 按钮已移至 DonkeyDrifter 顶栏，浅色 otaButton 规则随之移除
+    assert 'html[data-theme="light"] .otaButton' not in assets
     # v1.8.14：入口标签 .navTab 浅色复刻 DD 主导航标签（弱化色，hover 主题色，透明无框）
     assert 'html[data-theme="light"] .navTab{color:#5b6b7d;background:transparent;border:none}' in assets
     assert 'html[data-theme="light"] .navTab:hover{color:#0a7eb2;background:transparent}' in assets

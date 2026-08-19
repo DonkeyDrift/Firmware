@@ -274,8 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.12"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.13"' in build_info
+    assert "v1.8.13" in changelog
     assert "v1.8.12" in changelog
+    assert "v1.8.11" in changelog
     assert "v1.8.8" in changelog
     assert "v1.8.7" in changelog
     assert "v1.8.6" in changelog
@@ -311,6 +313,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-18 v1.8.12") < changelog.index("## 2026-08-18 v1.8.11")
     assert changelog.index("## 2026-08-18 v1.8.7") < changelog.index("## 2026-08-17 v1.8.6")
     assert changelog.index("## 2026-08-17 v1.8.6") < changelog.index("## 2026-08-17 v1.8.5")
     assert changelog.index("## 2026-08-17 v1.8.5") < changelog.index("## 2026-08-17 v1.8.4")
@@ -342,6 +345,37 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert changelog.index("## 2026-08-15 v1.7.78") < changelog.index("## 2026-08-15 v1.7.77")
     assert changelog.index("## 2026-08-15 v1.7.77") < changelog.index("## 2026-08-15 v1.7.76")
     assert changelog.index("## 2026-08-15 v1.7.76") < changelog.index("## 2026-08-15 v1.7.75")
+
+
+def test_mode_command_channel_and_arbitration():
+    """Issue #111：固件支持通过命令设置车控模式，并与遥控器切换双向兼容。
+
+    - ControlMixer 新增 setCarModeCommand + 后到者生效仲裁（hostMode/lastRcMode）。
+    - CommandDispatcher 新增 MODE 命令（ACK:MODE / NACK:MODE_INVALID）。
+    - WirelessConsole 放行模式命令（需认证，Park 下也允许）。
+    - M:P 遥测帧提升为所有模式发送。
+    """
+
+    control_mixer_h = (PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.h").read_text(encoding="utf-8")
+    control_mixer_cpp = (PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.cpp").read_text(encoding="utf-8")
+    dispatcher_cpp = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.cpp").read_text(encoding="utf-8")
+    wireless_cpp = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.cpp").read_text(encoding="utf-8")
+    sketch = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "bool setCarModeCommand(int mode)" in control_mixer_h
+    assert "bool setCarModeCommand(int mode)" in control_mixer_cpp
+    assert "hostMode" in control_mixer_cpp
+    assert "lastRcMode" in control_mixer_cpp
+
+    assert r'out.printf("ACK:MODE %d\n", m)' in dispatcher_cpp
+    assert 'out.println("NACK:MODE_INVALID")' in dispatcher_cpp
+    assert "setCarModeCommand(m)" in dispatcher_cpp
+
+    assert "bool isWirelessModeCommand(const String& line)" in wireless_cpp
+    assert "if (isWirelessModeCommand(line)) return true" in wireless_cpp
+
+    assert r'"M%d:P%d\n"' in sketch
+    assert "模式帧 (所有模式" in sketch
 
 
 def test_host_ip_report_channel():

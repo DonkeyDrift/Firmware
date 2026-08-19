@@ -1,13 +1,24 @@
 # CHANGELOG.md
 
-## 2026-08-19 v1.8.12
+## 2026-08-19 v1.8.13
 
 - fix(WebConsole): 顶部 Donkey/DonkeyDrifter/Kimi Code Web/DeepSeek Harness 等入口按钮去掉蓝色胶囊框，统一为无框文字样式（Issue #108）
   - `libraries/mus4_web/src/WebConsoleAssets.h`：
     - `.otaButton` 深色主规则由蓝底蓝框 `background:#5cc8ff;color:#061019;border-color:#5cc8ff` 改为透明无框 `background:transparent;color:#e8edf2;border-color:transparent`（保留 34px 高度规则与字号/内边距覆盖规则不动）；hover 由 `background:#8bdcff` 改为文字提亮 `color:#5cc8ff`。
     - 浅色 `html[data-theme="light"] .otaButton` 同步改为透明无框 `background:transparent;color:#1a2330;border-color:transparent`，hover 单独提亮文字 `color:#0c9bd6`；`.rcSetBtn` 浅色 hover 背景不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.11 → v1.8.13。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_header_and_state_cards_keep_compact_layout` 的 `.otaButton` 主规则断言改为透明无框并新增 hover 断言；`test_web_console_header_entry_buttons` 的 `.otaButton` 截断断言同步；`test_web_console_light_theme_overrides` 浅色 `.otaButton` 断言改为透明无框并新增 hover 断言；版本断言升至 v1.8.13。全量 163 passed。
+
+## 2026-08-18 v1.8.12
+
+- feat(FW): 支持通过命令设置车控模式（手动/半自动/全自动），与遥控器切换双向兼容（Issue #111）
+  - `libraries/mus4_control/src/ControlMixer.h` / `ControlMixer.cpp`：新增 `setCarModeCommand(mode)`；`mode_change()` 改为后到者生效仲裁——新增 `hostMode`（上位机覆盖，-1=无）与 `lastRcMode`（上次生效的 RC 派生模式），遥控器开关位置变化时清覆盖并让遥控器生效，否则维持上位机命令；提取 `applyMode()` 统一写 `car_output.mode` 并触发蜂鸣器。
+  - `libraries/mus4_command/src/CommandDispatcher.cpp`：新增 `MODE <m>` / `MODE:<m>` 命令（m∈{0,1,2}），成功回 `ACK:MODE <m>`、非法值回 `NACK:MODE_INVALID`；因 `dispatchCommandLine()` 为 Serial/无线/Web `/api/cmd` 共用入口，命令对所有通道生效。
+  - `libraries/mus4_command/src/WirelessConsole.cpp`：新增 `isWirelessModeCommand()`；`isWirelessCommandAllowed()` 对模式命令放行（需认证，Park Locked 下也允许切模式，油门仍由既有 Park/emergencyStop 钳 0）。
+  - `MUS4_FW.ino`：`M<m>:P<p>` 帧由「仅 MANUAL」提升为「所有模式，状态变化 + 1Hz 心跳」发送（从 MANUAL-only 的 T<S> 块中提出），使上位机在非 MANUAL 模式下也能收到模式/驻车变化。
+  - `README.md` / `README.zh-CN.md`：串口协议输入帧新增 `MODE <m>`；`M:P` 行改为所有模式发送。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.11 → v1.8.12。
-  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_header_and_state_cards_keep_compact_layout` 的 `.otaButton` 主规则断言改为透明无框并新增 hover 断言；`test_web_console_header_entry_buttons` 的 `.otaButton` 截断断言同步；`test_web_console_light_theme_overrides` 浅色 `.otaButton` 断言改为透明无框并新增 hover 断言；版本断言升至 v1.8.12。全量 163 passed。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增模式命令/仲裁/M:P 全模式断言，版本断言升至 v1.8.12。
 
 ## 2026-08-18 v1.8.11
 

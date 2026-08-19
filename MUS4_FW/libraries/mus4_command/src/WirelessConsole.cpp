@@ -150,6 +150,14 @@ bool isCalibrationCommand(const String& line)
         line.equalsIgnoreCase("JOYSTICK_RESET");
 }
 
+bool isWirelessModeCommand(const String& line)
+{
+    if (!line.startsWith("MODE ") && !line.startsWith("MODE:")) return false;
+    String arg = line.substring(5);
+    arg.trim();
+    return arg.length() == 1 && arg.charAt(0) >= '0' && arg.charAt(0) <= '2';
+}
+
 bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, WifiRuntimeState& ws)
 {
     // DEV ON 仅对 Web 来源放权 "OTA + Web 配置 + 显示/日志切换 + WIFI_STA_* + 校准命令"；
@@ -168,6 +176,7 @@ bool isWirelessCommandAllowed(const String& line, WirelessCommandOrigin origin, 
     if (webDevMode && isCalibrationCommand(line)) return car_output.park == PARK_LOCKED;
     // 其余命令（控制 / 诊断）严格要求认证，不读 webDevMode。
     if (!authed) return false;
+    if (isWirelessModeCommand(line)) return true; // 模式命令需认证，Park 锁定下也允许（油门仍钳 0）
     if (isParkLockedWirelessCommand(line)) return car_output.park == PARK_LOCKED;
     return isWirelessControlCommand(line);
 }

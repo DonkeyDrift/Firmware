@@ -776,6 +776,18 @@ def test_web_console_language_selection_uses_local_storage_and_i18n_dictionary()
     assert "return lang==='en'?'en':'zh'" in source
 
 
+def test_web_console_reads_dd_lang_url_param():
+    """DD 内嵌 DC 时经 iframe src 的 `?lang=` 传入语言；DC 需优先读取
+    该参数，跨源 localStorage / 车端 /api/language 各自独立时仍与 DD
+    语言一致，避免“DD 已英文、DC 仍中文”。"""
+    source = firmware_source_text()
+
+    assert "readUrlLanguage" in source
+    assert "window.location.search" in source
+    assert "lang=(zh|en)" in source
+    assert "let lang=readUrlLanguage()" in source
+
+
 def test_web_console_static_core_copy_is_marked_for_i18n():
     source = firmware_source_text()
 

@@ -274,8 +274,23 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.10"' in build_info
-    assert "v1.8.10" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.27"' in build_info
+    assert "v1.8.27" in changelog
+    assert "v1.8.26" in changelog
+    assert "v1.8.25" in changelog
+    assert "v1.8.24" in changelog
+    assert "v1.8.23" in changelog
+    assert "v1.8.22" in changelog
+    assert "v1.8.20" in changelog
+    assert "v1.8.19" in changelog
+    assert "v1.8.18" in changelog
+    assert "v1.8.17" in changelog
+    assert "v1.8.16" in changelog
+    assert "v1.8.15" in changelog
+    assert "v1.8.14" in changelog
+    assert "v1.8.13" in changelog
+    assert "v1.8.12" in changelog
+    assert "v1.8.11" in changelog
     assert "v1.8.8" in changelog
     assert "v1.8.7" in changelog
     assert "v1.8.6" in changelog
@@ -311,6 +326,21 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-20 v1.8.27") < changelog.index("## 2026-08-20 v1.8.26")
+    assert changelog.index("## 2026-08-20 v1.8.26") < changelog.index("## 2026-08-20 v1.8.25")
+    assert changelog.index("## 2026-08-20 v1.8.25") < changelog.index("## 2026-08-20 v1.8.24")
+    assert changelog.index("## 2026-08-20 v1.8.24") < changelog.index("## 2026-08-20 v1.8.23")
+    assert changelog.index("## 2026-08-20 v1.8.23") < changelog.index("## 2026-08-20 v1.8.22")
+    assert changelog.index("## 2026-08-20 v1.8.22") < changelog.index("## 2026-08-19 v1.8.20")
+    assert changelog.index("## 2026-08-19 v1.8.20") < changelog.index("## 2026-08-19 v1.8.19")
+    assert changelog.index("## 2026-08-19 v1.8.19") < changelog.index("## 2026-08-19 v1.8.18")
+    assert changelog.index("## 2026-08-19 v1.8.18") < changelog.index("## 2026-08-19 v1.8.17")
+    assert changelog.index("## 2026-08-19 v1.8.17") < changelog.index("## 2026-08-19 v1.8.16")
+    assert changelog.index("## 2026-08-19 v1.8.16") < changelog.index("## 2026-08-19 v1.8.15")
+    assert changelog.index("## 2026-08-19 v1.8.15") < changelog.index("## 2026-08-19 v1.8.14")
+    assert changelog.index("## 2026-08-19 v1.8.14") < changelog.index("## 2026-08-19 v1.8.13")
+    assert changelog.index("## 2026-08-19 v1.8.13") < changelog.index("## 2026-08-18 v1.8.12")
+    assert changelog.index("## 2026-08-18 v1.8.12") < changelog.index("## 2026-08-18 v1.8.11")
     assert changelog.index("## 2026-08-18 v1.8.7") < changelog.index("## 2026-08-17 v1.8.6")
     assert changelog.index("## 2026-08-17 v1.8.6") < changelog.index("## 2026-08-17 v1.8.5")
     assert changelog.index("## 2026-08-17 v1.8.5") < changelog.index("## 2026-08-17 v1.8.4")
@@ -342,6 +372,37 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert changelog.index("## 2026-08-15 v1.7.78") < changelog.index("## 2026-08-15 v1.7.77")
     assert changelog.index("## 2026-08-15 v1.7.77") < changelog.index("## 2026-08-15 v1.7.76")
     assert changelog.index("## 2026-08-15 v1.7.76") < changelog.index("## 2026-08-15 v1.7.75")
+
+
+def test_mode_command_channel_and_arbitration():
+    """Issue #111：固件支持通过命令设置车控模式，并与遥控器切换双向兼容。
+
+    - ControlMixer 新增 setCarModeCommand + 后到者生效仲裁（hostMode/lastRcMode）。
+    - CommandDispatcher 新增 MODE 命令（ACK:MODE / NACK:MODE_INVALID）。
+    - WirelessConsole 放行模式命令（需认证，Park 下也允许）。
+    - M:P 遥测帧提升为所有模式发送。
+    """
+
+    control_mixer_h = (PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.h").read_text(encoding="utf-8")
+    control_mixer_cpp = (PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.cpp").read_text(encoding="utf-8")
+    dispatcher_cpp = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.cpp").read_text(encoding="utf-8")
+    wireless_cpp = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "WirelessConsole.cpp").read_text(encoding="utf-8")
+    sketch = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert "bool setCarModeCommand(int mode)" in control_mixer_h
+    assert "bool setCarModeCommand(int mode)" in control_mixer_cpp
+    assert "hostMode" in control_mixer_cpp
+    assert "lastRcMode" in control_mixer_cpp
+
+    assert r'out.printf("ACK:MODE %d\n", m)' in dispatcher_cpp
+    assert 'out.println("NACK:MODE_INVALID")' in dispatcher_cpp
+    assert "setCarModeCommand(m)" in dispatcher_cpp
+
+    assert "bool isWirelessModeCommand(const String& line)" in wireless_cpp
+    assert "if (isWirelessModeCommand(line)) return true" in wireless_cpp
+
+    assert r'"M%d:P%d\n"' in sketch
+    assert "模式帧 (所有模式" in sketch
 
 
 def test_host_ip_report_channel():
@@ -719,6 +780,18 @@ def test_web_console_language_selection_uses_local_storage_and_i18n_dictionary()
     assert "function setLanguage" in source
     assert "document.documentElement.lang" in source
     assert "return lang==='en'?'en':'zh'" in source
+
+
+def test_web_console_reads_dd_lang_url_param():
+    """DD 内嵌 DC 时经 iframe src 的 `?lang=` 传入语言；DC 需优先读取
+    该参数，跨源 localStorage / 车端 /api/language 各自独立时仍与 DD
+    语言一致，避免“DD 已英文、DC 仍中文”。"""
+    source = firmware_source_text()
+
+    assert "readUrlLanguage" in source
+    assert "window.location.search" in source
+    assert "lang=(zh|en)" in source
+    assert "let lang=readUrlLanguage()" in source
 
 
 def test_web_console_static_core_copy_is_marked_for_i18n():
@@ -1595,16 +1668,22 @@ def test_wireless_ota_and_control_safety_guards_remain_present():
 
 
 def test_web_console_uses_dev_label_for_development_switch():
-    """v1.7.80：开关旁 "DEV ON/OFF" 文字标签删除，"DEV" 直接写到开关滑珠上
-    （伪元素 content:"DEV" 随滑珠移动），devHint 提示气泡移到 label 上；
-    JS 不再引用 devModeSwitchText。"""
+    """v1.8.24：DEV 开关由滑珠开关改为 DonkeyDrifter 同款文字胶囊按钮
+    （#devModeToggle 直接显示 "DEV"，devOn 态 cyan 高亮）；滑珠 / devModeSwitchText /
+    devModeCheck / requestDevModeToggle 死代码全部移除，状态改由 uiDevMode 维护。"""
     source = firmware_source_text()
 
     assert "DEV <b id=\"devModeSwitchText\">OFF</b>" not in source
     assert "devModeSwitchText" not in source
-    assert '<label class="toggleSwitch devHint" id="devModeToggle"><input type="checkbox" id="devModeCheck"' in source
-    assert '#devModeToggle .slider:before{content:"DEV";' in source
-    assert '#devModeToggle.devHint:hover:after{top:36px}' in source
+    assert "devModeCheck" not in source
+    assert "requestDevModeToggle" not in source
+    # v1.8.21：DEV 开关恢复至 DC 头部（PR #124 曾移至 DonkeyDrifter 顶栏，现加回）
+    # v1.8.24：改为 DD 同款文字胶囊按钮，role=switch + aria-checked 由 renderDevMode 同步
+    assert 'id="devModeToggle" class="devHint" onclick="toggleDevModeFromSwitch()" role="switch" aria-checked="false">DEV</button>' in source
+    assert '#devModeToggle' in source
+    assert '#devModeToggle.devOn{' in source
+    assert "function renderDevMode(v){uiDevMode=!!v" in source
+    assert "function toggleDevModeFromSwitch(){if(uiDevMode)" in source
     assert "DEV MODE <b id=\"devModeSwitchText\">OFF</b>" not in source
     assert "DEBUG MODE <b id=\"devModeSwitchText\">OFF</b>" not in source
     assert "Auto OTA <b id=\"devModeSwitchText\">OFF</b>" not in source
@@ -1613,18 +1692,16 @@ def test_web_console_uses_dev_label_for_development_switch():
 def test_web_console_header_and_state_cards_keep_compact_layout():
     source = firmware_source_text()
 
-    # v1.7.79/v1.7.80：OTA 按钮并入 34px 规则并按原比例放大字号/内边距；DEV 开关 62×34px 保持原宽高比，
-    # 滑珠 26px、边距 4px、位移 28px，"DEV" 写在滑珠上
-    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,#openDshBtn,.headerRow .otaLink .otaButton{height:34px}' in source
-    assert '.headerRow .otaLink .otaButton{font-size:16px;padding:0 14px}' in source
-    assert '#devModeToggle .slider{width:62px;height:34px}' in source
-    assert '#devModeToggle .slider:before{content:"DEV";display:flex;align-items:center;justify-content:center;height:26px;width:26px;left:4px;bottom:4px;font-size:9px;font-weight:800;color:#061019}' in source
-    assert '#devModeToggle input:checked+.slider:before{transform:translateX(28px)}' in source
-    # v1.7.78：标题行整行垂直居中（三个"打开"按键 34px 后不再底部对齐）
+    # v1.8.21：OTA 按钮与 DEV 开关恢复至 DC 头部（PR #124 曾移至 DonkeyDrifter 顶栏，现加回）
+    # v1.8.24：OTA 改为 .otaLink 文字胶囊，DEV 改为 #devModeToggle 文字胶囊（DD 同款）
+    assert '.otaLink{display:inline-flex;align-items:center;justify-content:center;height:32px' in source
+    assert '#devModeToggle{display:inline-flex;align-items:center;justify-content:center;height:32px' in source
+    assert '#devModeToggle' in source
+    # v1.8.20：主 DC 页标题行默认显示，仅在 DD 嵌入（?embedded=1）时经 body.embedded 隐藏
     assert ".headerRow{display:flex;align-items:center;" in source
+    assert "body.embedded .headerRow{display:none}" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
-    assert ".otaLink{text-decoration:none}" in source
-    assert ".otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;line-height:1;text-decoration:none;display:inline-flex;align-items:center;cursor:pointer}" in source
+    assert ".otaLink" in source
     assert ".devHint{position:relative}" in source
     assert ".devHint:hover:after" in source
     assert "content:'开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。'" in source
@@ -1660,6 +1737,11 @@ def test_web_console_header_logo_left_of_title():
     # Issue #179 起标题文字也包锚点：与 logo 同 URL、新标签页打开，颜色继承标题、无下划线
     assert '<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>' in source
     assert ".titleLink{color:inherit;text-decoration:none}" in source
+    # v1.8.15：标题字号/字重/字色与间距对齐 DD 主导航（text-xl 20px / font-bold 700 /
+    # zinc-100 前景色；标题↔功能 32px = gap 12 + margin-right 20）
+    assert "h1{margin:0;font-size:1.25rem;font-weight:700;line-height:1.75rem}" in source
+    assert ".headerRow h1{color:#e8edf2;margin:0 20px 0 0}" in source
+    assert 'html[data-theme="light"] .headerRow h1{color:#1a2330}' in source
 
 
 def test_web_console_mobile_header_layout():
@@ -1678,35 +1760,28 @@ def test_web_console_mobile_header_layout():
 
     assert ".rowBreak{display:none}" in source
     assert '<span class="rowBreak br1"></span>' in source
+    # v1.8.21：Donkey / OTA / DEV 恢复至 DC 头部，br2/br3 随之加回
     assert '<span class="rowBreak br2"></span>' in source
     assert '<span class="rowBreak br3"></span>' in source
-    # br1 紧跟版本号、br2 在语言单按钮与 OTA 之间、br3 在 DEV 开关后（headerRow 末尾）
     assert '<span class="version" id="versionLabel">--</span><span class="rowBreak br1"></span>' in source
-    assert '>中</button><span class="rowBreak br2"></span><a href="/update" class="otaLink">' in source
-    assert '<span class="slider"></span></label><span class="rowBreak br3"></span></div>' in source
     assert "@media (max-width:820px){.headerRow{align-items:center;gap:8px}" in source
     assert ".rowBreak{display:block;flex-basis:100%;height:0}" in source
-    # 第 1 行：logo + 标题 + GitHub + 版本号（紧跟 GitHub 右侧，不再 margin-left:auto 右推）
+    # 第 1 行：logo + 标题 + GitHub + 版本号
     assert ".headerLogo{order:1}" in source
     assert ".headerRow h1{order:2}" in source
     assert ".ghLink{order:3}" in source
     assert "#versionLabel{order:4}" in source
     assert "#versionLabel{order:4;margin-left:auto}" not in source
     assert ".br1{order:5}" in source
-    # 第 2 行：打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web / 打开 DeepSeek Harness
+    # 第 2 行：Donkey / DonkeyDrifter / Kimi Code Web / DeepSeek Harness
     assert "#enterDonkeyBtn{order:6}" in source
     assert "#enterDonkeyDrifterBtn{order:7}" in source
     assert "#openKimiCodeWebBtn{order:8}" in source
     assert "#openDshBtn{order:9}" in source
-    assert ".br2{order:10}" in source
-    # 第 3 行（倒数第二行）：红绿蓝（最左）+ OTA + 静音（桌面右推 margin-left:auto 复位）
-    # + DEV（margin-left:auto 贴合页面最右端）
-    assert "#ledBlinkTabs{order:11}" in source
+    # 第 3 行：静音（桌面右推 margin-left:auto 复位）+ 主题 + 语言（右对齐）
     assert ".headerRow .otaLink{order:12}" in source
     assert "#muteToggle{order:13;margin-left:0}" in source
     assert "#devModeToggle{order:14;margin-left:auto}" in source
-    assert ".br3{order:15}" in source
-    # 第 4 行：主题单按钮（左）+ 语言单按钮（margin-left:auto 贴合最右端，不再隐藏）
     assert "#themeToggle{order:16}" in source
     assert "#langToggle{order:17;margin-left:auto}" in source
 
@@ -1748,11 +1823,9 @@ def test_web_console_language_tabs_wired_to_set_language():
     assert 'data-lang="zh"' not in source
     assert 'data-lang="en"' not in source
     assert ">English</button>" not in source
-    # 位置：langToggle 在 OTA 按钮左边；右推由 muteButton 承担，otaLink 不再 margin-left:auto
-    assert source.index('id="langToggle"') < source.index('<a href="/update" class="otaLink">')
-    assert ".otaLink{margin-left:auto" not in source
-    # otaLink 改 flex 消除 inline-block 基线下沉，保证 OTA 按钮与顶栏控件顶/底对齐同高
-    assert ".headerRow .otaLink{display:flex;align-items:center}" in source
+    # v1.8.21：OTA 按钮恢复至 DC 头部，otaLink 随之加回
+    assert '<a href="/update" class="otaLink"' in source
+    assert ".otaLink" in source
     # v1.8.3：单击切换 + 按钮文字渲染（applyLanguage 内调用 renderLangButton）
     assert "function toggleLanguage(){setLanguage(uiLang==='zh'?'en':'zh')}" in source
     assert "function renderLangButton(){const b=document.getElementById('langToggle');if(b)b.textContent=uiLang==='zh'?'中':'EN'}" in source
@@ -2175,7 +2248,9 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "'继续曲线'" not in source
     assert "'退出全屏'" not in source
     assert "'全屏曲线'" not in source
-    assert '<a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch devHint" id="devModeToggle">' in source
+    # v1.8.21：OTA 按钮与 DEV 开关恢复至 DC 头部（PR #124 曾移至 DonkeyDrifter 顶栏，现加回）
+    assert '<a href="/update" class="otaLink"' in source
+    assert 'id="devModeToggle"' in source
     assert '<select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><div id="termTabs"></div><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
@@ -3651,7 +3726,10 @@ def test_ota_button_opens_in_same_tab():
         encoding="utf-8"
     )
 
+    # v1.8.21：头部 OTA 链接恢复至 DC（href="/update" 当前标签页打开，无 target=_blank）；
+    # OTA 上传表单仍通过 XHR POST /update 在当前页完成
     assert 'href="/update"' in assets
+    assert "xhr.open('POST','/update')" in assets
     assert 'target="_blank" class="otaLink"' not in assets
 
 
@@ -4131,6 +4209,10 @@ def test_web_console_mute_toggle_button_ui():
     assert ".muteButton{" in assets
     assert ".muteButton.muted .icoMute{display:block}" in assets
     assert ".muteButton.muted .icoSound{display:none}" in assets
+    # v1.8.16：静音键形态统一为 32×32 圆形图标按钮，深色样式与旁边主题按钮逐值一致
+    assert ".muteButton{display:inline-flex;align-items:center;justify-content:center;margin-left:auto;width:32px;height:32px;min-width:0;padding:0;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3;cursor:pointer}" in assets
+    assert ".muteButton:hover{color:#e8edf2}" in assets
+    assert ".muteButton.muted{background:rgba(92,200,255,.1);border-color:#5cc8ff;box-shadow:inset 0 0 0 1px #5cc8ff;color:#5cc8ff}" in assets
 
     # i18n 文案：中英文各一条
     assert "'mute.title':'静音'" in assets
@@ -4141,6 +4223,10 @@ def test_web_console_mute_toggle_button_ui():
     assert "function renderMuteButton()" in assets
     assert "async function initMute()" in assets
     assert "async function toggleMute()" in assets
+    # v1.8.26：内嵌时经 postMessage 即时接收 DD 静音切换，不等 5s 轮询/刷新
+    assert "dd-console-mute-changed" in assets
+    assert "window.addEventListener('message',function(e)" in assets
+    assert "uiMuted=!!d.muted;renderMuteButton()" in assets
 
     # 启动链：initLanguage()（v1.7.46 起取代直接 applyLanguage）后接 initMute()
     assert "initLanguage();initMute();" in assets
@@ -4325,100 +4411,56 @@ def test_web_console_language_switch_rerenders_joystick_cal_status():
 
 
 def test_web_console_led_blink_color_selector():
-    """v1.7.51：头部静音键与语言切换键之间新增空闲灯色多选（ledBlinkTabs，复用
-    langTabs 胶囊样式），红/绿/蓝三个选项可独立勾选；勾选集合决定空闲（手动模式
-    + Park 锁定）时 WS2812B 状态灯交替闪烁的颜色——两色/三色交替闪、单色亮灭闪烁
-    （亮灭各 250ms）、全不选熄灭；选择经 /api/led-blink 读写并 NVS 持久化（命名空间 "webui"、键
-    "ledblink"，UChar 0-7，缺省 7 三色全选），固件侧由 mus4_core 的
-    LedBlinkPreference 统一持有，ControlMixer 每循环轮询掩码、变更即时生效。"""
+    """Issue #107：删除 LED 闪烁颜色 RGB 切换按键，固定为 RGB 全选（mask=7）且不可修改。
+    #ledBlinkTabs 控件、renderLedBlinkTabs/initLedBlink/toggleLedBlinkColor 逻辑、
+    /api/led-blink 接口与 NVS 持久化一并移除；ControlMixer 仍读取恒为 7 的
+    getLedBlinkMask() 驱动空闲（手动 + Park）三色交替闪烁。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
     server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
     pref = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "LedBlinkPreference.cpp").read_text(encoding="utf-8")
+    pref_h = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "LedBlinkPreference.h").read_text(encoding="utf-8")
     mixer = (PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.cpp").read_text(encoding="utf-8")
     led = (PROJECT_ROOT / "libraries" / "mus4_ui" / "src" / "LedStatus.cpp").read_text(encoding="utf-8")
     sketch = (PROJECT_ROOT / "MUS4_FW.ino").read_text(encoding="utf-8")
 
-    # 头部多选按钮：全页面仅一处，位于静音键右边、语言单按钮左边（v1.8.3 起 langToggle 用 aria 词条）
-    assert assets.count('id="ledBlinkTabs"') == 1
-    assert assets.index('id="muteToggle"') < assets.index('id="ledBlinkTabs"')
-    assert assets.index('id="ledBlinkTabs"') < assets.index('data-i18n-aria="language.title"')
+    # 前端：RGB 切换控件与相关逻辑全部移除
+    assert 'id="ledBlinkTabs"' not in assets
+    assert "toggleLedBlinkColor" not in assets
+    assert "initLedBlink" not in assets
+    assert "renderLedBlinkTabs" not in assets
+    assert "uiLedBlinkMask" not in assets
+    assert "LED_BLINK_TAB_COLORS" not in assets
+    for text in ["'led.title'", "'led.red'", "'led.green'", "'led.blue'"]:
+        assert text not in assets
 
-    # 三个颜色选项：位掩码 data-color 1/2/4，点击取反勾选，文案走 i18n
-    assert 'data-color="1" onclick="toggleLedBlinkColor(1)" data-i18n="led.red"' in assets
-    assert 'data-color="2" onclick="toggleLedBlinkColor(2)" data-i18n="led.green"' in assets
-    assert 'data-color="4" onclick="toggleLedBlinkColor(4)" data-i18n="led.blue"' in assets
+    # 前端不再读写 /api/led-blink
+    assert "fetch('/api/led-blink'" not in assets
 
-    # i18n 文案：中英文各一条
-    for text in ["'led.title':'闪烁颜色'", "'led.red':'红'", "'led.green':'绿'", "'led.blue':'蓝'",
-                 "'led.title':'Blink colors'", "'led.red':'Red'", "'led.green':'Green'", "'led.blue':'Blue'"]:
-        assert text in assets
+    # 后端：路由与处理器移除
+    assert "/api/led-blink" not in server
+    assert "handleWifiWebLedBlinkGet" not in server
+    assert "handleWifiWebLedBlinkSet" not in server
+    assert "saveLedBlinkPreference" not in server
+    assert '#include "LedBlinkPreference.h"' not in server
 
-    # 前端逻辑：状态、渲染、初始化与切换（多选用异或取反位），走 /api/led-blink
-    assert "let uiLedBlinkMask=7;" in assets
-    assert "function renderLedBlinkTabs()" in assets
-    # 相邻勾选按钮无缝连成一段胶囊：连体由 JS box-shadow 向相邻方向延伸 2px 填充
-    # 容器 gap 实现，段内边直角、段端圆角；非连体边界保留 .langTabs 原生 2px 均匀细缝
-    assert "#ledBlinkTabs{gap:0}" not in assets
-    assert "style.borderRadius" in assets
-    assert "style.boxShadow" in assets
-    # 容器总高与 DD 两个切换键（语言/主题，34px = 按钮 24px + 上下各 4px 内边距
-    # + 1px 边框）一致：本容器用 box-sizing:border-box 固定 34px，内边距上下各 4px
-    assert "#ledBlinkTabs{height:34px;padding:4px 2px}" in assets
-    # 悬停只提亮背景、不改变形状（v1.7.91 起）：移除悬停强制独立椭圆及为垫椭圆圆角
-    # 缝隙而生的桥接伪元素，按钮悬停时保持 renderLedBlinkTabs 计算的连体圆角不变
-    assert "#ledBlinkTabs button{position:relative;z-index:0}" in assets
-    assert "#ledBlinkTabs button:hover{border-radius:999px!important;z-index:1}" not in assets
-    assert "#ledBlinkTabs button.active:has(+button.active:hover)::after" not in assets
-    assert "#ledBlinkTabs button.active:hover+button.active::before" not in assets
-    # v1.7.64：三个选项的选中框各着各色（红 #ff6b6b、绿 #39d98a、蓝 #5cc8ff，与图表
-    # gz/thr/str 曲线同色）；悬停提亮（红 #ff9797、绿 #74e4ad、蓝沿用 #8bdcff）、连体
-    # box-shadow 延伸色按按钮各自颜色（LED_BLINK_TAB_COLORS 映射），
-    # 语言切换等其他 .langTabs 保持统一蓝不变
-    assert "#ledBlinkTabs button[data-color=\"1\"].active{background:#ff6b6b}" in assets
-    assert "#ledBlinkTabs button[data-color=\"2\"].active{background:#39d98a}" in assets
-    assert "#ledBlinkTabs button[data-color=\"4\"].active{background:#5cc8ff}" in assets
-    assert "#ledBlinkTabs button[data-color=\"1\"].active:hover{background:#ff9797}" in assets
-    assert "#ledBlinkTabs button[data-color=\"2\"].active:hover{background:#74e4ad}" in assets
-    assert "#ledBlinkTabs button[data-color=\"4\"].active:hover{background:#8bdcff}" in assets
-    assert "::after,#ledBlinkTabs button[data-color=\"1\"]::before{background:#ff6b6b}" not in assets
-    assert "::after,#ledBlinkTabs button[data-color=\"2\"]::before{background:#39d98a}" not in assets
-    assert "::after,#ledBlinkTabs button[data-color=\"4\"]::before{background:#5cc8ff}" not in assets
-    assert "const LED_BLINK_TAB_COLORS={1:'#ff6b6b',2:'#39d98a',4:'#5cc8ff'};" in assets
-    assert "const sh=[],c=LED_BLINK_TAB_COLORS[b.dataset.color]||'#5cc8ff'" in assets
-    assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in assets
-    assert "async function initLedBlink()" in assets
-    assert "async function toggleLedBlinkColor(bit)" in assets
-    assert "uiLedBlinkMask^bit" in assets
-    assert "fetch('/api/led-blink'" in assets
+    # 持久化移除：LedBlinkPreference 不再读写 NVS，恒返回 7
+    assert "#include <Preferences.h>" not in pref
+    assert "saveLedBlinkPreference" not in pref
+    assert "loadLedBlinkPreference" not in pref
+    assert "prefs." not in pref
+    assert "return 7;" in pref
+    assert "loadLedBlinkPreference" not in pref_h
+    assert "saveLedBlinkPreference" not in pref_h
+    assert "getLedBlinkMask" in pref_h
 
-    # 启动链：initLanguage() 后接 initMute()、initLedBlink()、initTheme()
-    assert "initLanguage();initMute();initLedBlink();initTheme();" in assets
+    # 固件启动不再加载偏好
+    assert "loadLedBlinkPreference();" not in sketch
 
-    # 路由注册：GET 查询、POST 设置
-    assert 'wifiWebServer.on("/api/led-blink", HTTP_GET, handleWifiWebLedBlinkGet);' in server
-    assert 'wifiWebServer.on("/api/led-blink", HTTP_POST, handleWifiWebLedBlinkSet);' in server
-
-    # 薄处理器：读写都委托 mus4_core 的 LedBlinkPreference API
-    assert '#include "LedBlinkPreference.h"' in server
-    assert "getLedBlinkMask()" in server
-    assert "saveLedBlinkPreference(" in server
-
-    # NVS 持久化：Preferences 命名空间 "webui"、键 "ledblink"（UChar 0-7），缺省 7 全选
-    assert "#include <Preferences.h>" in pref
-    assert 'prefs.begin("webui", true)' in pref
-    assert 'prefs.begin("webui", false)' in pref
-    assert 'prefs.getUChar("ledblink", 7)' in pref
-    assert 'prefs.putUChar("ledblink", mask)' in pref
-
-    # 固件侧：启动时加载偏好（在 setupWifiConsole 之前）；空闲（手动 + Park）闪烁按掩码驱动
-    assert '#include "LedBlinkPreference.h"' in sketch
-    assert "loadLedBlinkPreference();" in sketch
-    assert sketch.index("loadLedBlinkPreference();") < sketch.index("setupWifiConsole();")
+    # 空闲闪烁仍由固定掩码驱动：ControlMixer 读 getLedBlinkMask，LedStatus 应用掩码
     assert '#include "LedBlinkPreference.h"' in mixer
     assert "getLedBlinkMask()" in mixer
     assert "applyLedBlinkMask(mask)" in mixer
     assert "void applyLedBlinkMask(uint8_t mask)" in led
-    # 单色选择：与黑色交替（亮灭各 250ms），多色选择：颜色间交替
     assert "setLEDToggle(colors[0], CRGB::Black)" in led
     assert "setLEDToggle(colors[0], colors[1])" in led
     assert "setLEDToggle(colors[0], colors[1], colors[2])" in led
@@ -4429,16 +4471,15 @@ def test_web_console_theme_toggle():
     （形态与位置参照静音按钮 #muteToggle）：单击在深色 ↔ 浅色间来回切换，
     图标反映当前生效主题（深色显月亮，浅色显太阳，由 html[data-theme] 驱动）。
     默认跟随浏览器 prefers-color-scheme：用户从未手动点过 = 'auto'，
-    浏览器切换深浅时实时跟随；手动单击后选择持久化（localStorage
-    mus4.ui.theme），此后不再跟随浏览器，刷新后保持。
+    浏览器切换深浅时实时跟随；手动单击只改内存态 uiTheme，不写任何
+    localStorage / sessionStorage，刷新即重置为跟随系统。
     原 #themeTabs 三态按钮组（auto/dark/light）已移除，auto 态由
     "未手动切换 = 跟随浏览器"等效替代，renderThemeTabs 等死代码一并清理；
-    <head> 内防闪烁内联脚本避免首帧闪深色（保留不动）。"""
+    <head> 内防闪烁内联脚本避免首帧闪深色（不读存储、直接跟随系统）。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
-    # 头部主题单按钮：全页面仅一处，位于红绿蓝切换键右边、中英文切换键左边
+    # 头部主题单按钮：全页面仅一处，位于中英文切换键左边
     assert assets.count('id="themeToggle"') == 1
-    assert assets.index('id="ledBlinkTabs"') < assets.index('id="themeToggle"')
     assert assets.index('id="themeToggle"') < assets.index('data-i18n-aria="language.title"')
 
     # 单图标按钮：形态参照 #muteToggle（单图标 + 单击切换），太阳/月亮双图标
@@ -4475,19 +4516,17 @@ def test_web_console_theme_toggle():
     for text in ["'theme.title':'主题'", "'theme.title':'Theme'"]:
         assert text in assets
 
-    # 前端逻辑：状态、渲染、初始化与切换，走 localStorage
-    assert "const THEME_STORAGE_KEY='mus4.ui.theme'" in assets
+    # 前端逻辑：状态、渲染、初始化与切换，仅内存态、不写任何存储
+    assert "const THEME_STORAGE_KEY='mus4.ui.theme'" not in assets
+    assert "function readStoredTheme()" not in assets
+    assert "function writeStoredTheme(theme)" not in assets
+    assert "localStorage.getItem('mus4.ui.theme')" not in assets
     assert "let uiTheme='auto'" in assets
-    assert "function readStoredTheme()" in assets
-    assert "function writeStoredTheme(theme)" in assets
-    # 单击切换：在当前生效主题（resolvedTheme）的深/浅反向间来回切换并持久化
+    # 单击切换：在当前生效主题（resolvedTheme）的深/浅反向间来回切换（仅内存、不持久化）
     assert "function toggleTheme(){setTheme(resolvedTheme()==='light'?'dark':'light')}" in assets
-    assert "function setTheme(theme)" in assets
-    assert "function initTheme()" in assets
+    assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in assets
+    assert "function initTheme(){uiTheme='auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
     assert "initTheme();" in assets
-
-    # 默认值：localStorage 无值时返回 'auto'（跟随系统）
-    assert "localStorage.getItem(THEME_STORAGE_KEY)||'auto'" in assets
 
     # 跟随系统：'auto' 经 matchMedia 解析（matchMedia 不可用/异常时回退 dark），显式 light/dark 原样返回
     assert "function systemTheme(){try{return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){return 'dark'}}" in assets
@@ -4499,10 +4538,10 @@ def test_web_console_theme_toggle():
     assert "mq.addEventListener('change',onThemeChange)" in assets
     assert "mq.addListener(onThemeChange)" in assets
 
-    # 防闪烁：<head> 内第一个 <style> 之前的内联脚本，按存储值预置 data-theme（无存储/'auto'/非法值一律经 matchMedia 跟随系统）
-    assert "<script>try{let t=localStorage.getItem('mus4.ui.theme');if(t!=='light'&&t!=='dark')t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t}catch(e){}</script>" in assets
-    assert assets.index("<title>Drifter Console</title>") < assets.index("localStorage.getItem('mus4.ui.theme')")
-    assert assets.index("localStorage.getItem('mus4.ui.theme')") < assets.index("<style>")
+    # 防闪烁：<head> 内第一个 <style> 之前的内联脚本，直接按 matchMedia 预置 data-theme（不读任何存储，刷新即重新跟随系统）
+    assert "<script>try{let t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t}catch(e){}</script>" in assets
+    assert assets.index("<title>Drifter Console</title>") < assets.index("window.matchMedia('(prefers-color-scheme: light)')")
+    assert assets.index("window.matchMedia('(prefers-color-scheme: light)')") < assets.index("<style>")
 
 
 def test_ota_glitch_led_effect():
@@ -4588,6 +4627,8 @@ def test_web_console_header_entry_buttons():
     并新增 #devModeToggle scoped 规则把 DEV 开关轨道加高至 34px。
     v1.7.80 OTA 按钮与 DEV 开关按原比例加宽（OTA 字号 16px/内边距 14px；开关 62×34px、位移 28px），
     开关旁 "DEV ON/OFF" 文字删除，"DEV" 写到滑珠上。
+    v1.8.24 OTA 改为 .otaLink 文字胶囊、DEV 改为 #devModeToggle 文字胶囊（DD 同款），
+    滑珠 / .otaButton / devModeCheck 全部移除。
     v1.7.90 三个入口按键显示文案去掉"打开 "/"Open "前缀（zh/en 同步），
     按钮 id、href/onclick 跳转与其它词条均不变。
     v1.8.7 Kimi Code Web 右侧新增"打开 DeepSeek Harness"按钮（#openDshBtn），
@@ -4670,11 +4711,32 @@ def test_web_console_header_entry_buttons():
     assert 'enterDonkeyLauncher' not in assets
     assert 'enterDonkeyDrifter()' not in assets
 
-    # v1.7.76：三个入口按键 34px 高（对齐 DD 侧"打开"按键），专属规则覆盖，
-    # .otaButton 基础规则保持 24px；v1.7.79 规则扩展追加头部 OTA 按钮；
-    # v1.8.7 规则再追加 #openDshBtn
-    assert '#enterDonkeyBtn,#enterDonkeyDrifterBtn,#openKimiCodeWebBtn,#openDshBtn,.headerRow .otaLink .otaButton{height:34px}' in assets
-    assert '.otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff;font-weight:800;font-size:11px;padding:0 10px;min-width:0;height:24px;border-radius:999px;' in assets
+    # v1.7.76：三个入口按键 34px 高（对齐 DD 侧"打开"按键），专属规则覆盖；
+    # v1.8.7 规则再追加 #openDshBtn；v1.8.24 OTA 改为 .otaLink 文字胶囊（不再有 .otaButton）
+    assert '.otaLink{display:inline-flex;align-items:center;justify-content:center;height:32px' in assets
+    assert '.otaButton{' not in assets
+    # v1.8.16：DC 顶栏标签复刻 DD 两类标签结构——D/DD 为 14px 功能标签(.navTab)，
+    # KCW/DSH 为 12px 弱化标签(.navTabWeak)并带 lucide 图标；仅 2 个 .navTab
+    assert '.navTab{font-family:inherit;color:#8fa1b5;font-size:0.875rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1.25rem;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer;margin-right:12px}' in assets
+    assert '.navTab:hover{color:#8bdcff;background:transparent}' in assets
+    assert '.navTabWeak{font-family:inherit;color:#6b7d90;font-size:0.75rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1rem;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-right:12px}' in assets
+    assert '.navTabWeak:hover{color:#b9c5d3;background:transparent}' in assets
+    assert assets.count('class="navTab"') == 2
+    assert assets.count('class="navTabWeak"') == 2
+    assert '<a class="navTab" data-i18n="button.enterDonkey"' in assets
+    assert '<a class="navTab" data-i18n="button.enterDonkeyDrifter"' in assets
+    assert '<button type="button" class="navTabWeak" id="openKimiCodeWebBtn"' in assets
+    assert '<button type="button" class="navTabWeak" id="openDshBtn"' in assets
+    assert '<span data-i18n="button.openKimiCodeWeb">Kimi Code Web</span>' in assets
+    assert '<span data-i18n="button.openDsh">DeepSeek Harness</span>' in assets
+    # KCW/DSH 带 lucide 图标（Sparkles / FlaskConical，14px，stroke=currentColor）
+    assert 'M9.937 15.5A2 2 0 0 0 8.5 14.063' in assets
+    assert 'M14 2v6a2 2 0 0 0 .245.96' in assets
+    # v1.8.16 追加：顶栏字体渲染对齐 DD 导航——font-synthesis:none 阻止 500 字重被合成加粗，
+    # text-rendering + font-smoothing 让字形更细更清晰（否则 Donkey/DonkeyDrifter 显得更粗更大）
+    # v1.8.20：主 DC 页标题行默认显示，仅在 DD 嵌入（?embedded=1）时经 body.embedded 隐藏（Issue #234）
+    assert '.headerRow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}' in assets
+    assert 'body.embedded .headerRow{display:none}' in assets
 
 def test_web_console_light_theme_overrides():
     """浅色主题生效：setTheme/initTheme 通过 applyTheme 把解析结果写到
@@ -4698,12 +4760,22 @@ def test_web_console_light_theme_overrides():
     # 浅色特异性修正：fabToggle 保持青色发光圆点身份（hover/focus/active 加深为 #3aa8dd）
     assert 'html[data-theme="light"] .fabToggle{background:#5cc8ff;border-color:#5cc8ff}' in assets
     assert 'html[data-theme="light"] .fabToggle:hover,html[data-theme="light"] .fabToggle:focus-visible,html[data-theme="light"] .fabToggle:active{background:#3aa8dd;border-color:#3aa8dd}' in assets
-    assert 'html[data-theme="light"] .muteButton{background:transparent}' in assets
+    assert 'html[data-theme="light"] .muteButton{background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4;color:#3f4f63}' in assets
+    assert 'html[data-theme="light"] .muteButton:hover{color:#1a2330}' in assets
+    assert 'html[data-theme="light"] .muteButton.muted{background:rgba(92,200,255,.1);border-color:#5cc8ff;box-shadow:inset 0 0 0 1px #5cc8ff;color:#5cc8ff}' in assets
     assert 'html[data-theme="light"] .rcNum{background:transparent}' in assets
     # 浅色特异性修正：胶囊按钮组（语言/主题/LED）未激活段恢复透明，缝隙只露出容器底色，与深色行为一致
     assert 'html[data-theme="light"] .langTabs button{background:transparent;color:#5b6b7d}' in assets
-    # 浅色特异性修正：OTA 填充按钮保持青色（否则被浅色通用 button 白底规则压掉）
-    assert 'html[data-theme="light"] .otaButton{background:#5cc8ff;color:#061019;border-color:#5cc8ff}' in assets
+    # v1.8.24：OTA/DEV 改为文字胶囊，浅色 .otaLink / #devModeToggle 规则取代原 .otaButton
+    assert 'html[data-theme="light"] .otaLink{background:#f4f6f9;border-color:#ccd5df' in assets
+    assert 'html[data-theme="light"] #devModeToggle{background:#f4f6f9;border-color:#ccd5df' in assets
+    assert 'html[data-theme="light"] #devModeToggle.devOn{background:rgba(92,200,255,.25)' in assets
+    assert 'html[data-theme="light"] .otaButton' not in assets
+    # v1.8.14：入口标签 .navTab 浅色复刻 DD 主导航标签（弱化色，hover 主题色，透明无框）
+    assert 'html[data-theme="light"] .navTab{color:#5b6b7d;background:transparent;border:none}' in assets
+    assert 'html[data-theme="light"] .navTab:hover{color:#0a7eb2;background:transparent}' in assets
+    assert 'html[data-theme="light"] .navTabWeak{color:#7c8da0;background:transparent;border:none}' in assets
+    assert 'html[data-theme="light"] .navTabWeak:hover{color:#3f4f63;background:transparent}' in assets
     # 浅色下胶囊容器加深底色并强化描边，使激活胶囊与外容器的嵌套轮廓与深色一样清晰
     assert 'html[data-theme="light"] .langTabs{background:#dde3ec;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in assets
 
@@ -4711,8 +4783,8 @@ def test_web_console_light_theme_overrides():
     assert "function systemTheme(){try{return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){return 'dark'}}" in assets
     assert "function resolvedTheme(){return uiTheme==='auto'?systemTheme():(uiTheme==='light'?'light':'dark')}" in assets
     assert "function applyTheme(){document.documentElement.dataset.theme=resolvedTheme();gridReady=false;draw()}" in assets
-    assert "function setTheme(theme){uiTheme=theme;writeStoredTheme(uiTheme);applyTheme()}" in assets
-    assert "function initTheme(){uiTheme=readStoredTheme();applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
+    assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in assets
+    assert "function initTheme(){uiTheme='auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
 
     # 图表/toast 双主题色表：深浅的 grid 与 str 关键色
     assert "grid:'#233041'" in assets
@@ -4724,10 +4796,10 @@ def test_web_console_light_theme_overrides():
     assert "drawSeries('thr',ct.thr,-1,1,100)" in assets
     assert "toast.style.borderColor=ok?CHART_THEMES[resolvedTheme()].toastOk:CHART_THEMES[resolvedTheme()].toastErr" in assets
 
-    # 原有主题骨架不回退
-    assert "const THEME_STORAGE_KEY='mus4.ui.theme'" in assets
+    # 原有主题骨架不回退（仅内存态，不再有 localStorage 读写）
+    assert "const THEME_STORAGE_KEY='mus4.ui.theme'" not in assets
     assert "let uiTheme='auto'" in assets
-    assert "localStorage.getItem(THEME_STORAGE_KEY)||'auto'" in assets
+    assert "localStorage.getItem(THEME_STORAGE_KEY)" not in assets
     assert "initTheme();" in assets
     # 深色原文不动：激活胶囊两主题保持 #5cc8ff/#061019
     assert '.langTabs button.active{background:#5cc8ff;color:#061019}' in assets

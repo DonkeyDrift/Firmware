@@ -23,31 +23,68 @@ extern bool toggleActive;
 extern Buzzer buzzer;
 
 static int lastCarMode = -1;
+static int hostMode = -1;    // 上位机命令模式覆盖；-1 = 无覆盖
+static int lastRcMode = -1;  // 上次生效的 RC 派生模式；-1 = 未初始化
 
-void mode_change(bool modeValid)
+static void applyMode(int mode)
 {
-    if (!modeValid) {
-        return;
-    }
-
-    rc_data.mode = pwm_filtered[CH_MODE];
-    if (rc_data.mode <= MODE_PWM_MANUAL_MAX)
-    {
-        car_output.mode = CAR_MODE_MANUAL; // 0: RC manual mode
-    }
-    else if (rc_data.mode >= MODE_PWM_FULL_AUTO_MIN)
-    {
-        car_output.mode = CAR_MODE_FULL_AUTO; // 2: autonomous driving mode
-    }
-    else
-    {
-        car_output.mode = CAR_MODE_SEMI_AUTO; // 1: Pilot steering with manual throttle
-    }
-
+    car_output.mode = mode;
     if (car_output.mode != lastCarMode)
     {
         buzzer.playModeSound(car_output.mode);
         lastCarMode = car_output.mode;
+    }
+}
+
+bool setCarModeCommand(int mode)
+{
+    if (mode < CAR_MODE_MANUAL || mode > CAR_MODE_FULL_AUTO)
+    {
+        return false;
+    }
+    hostMode = mode;
+    applyMode(mode); // 立即生效
+    return true;
+}
+
+void mode_change(bool modeValid)
+{
+    if (!modeValid) {
+        // RC 信号无效：保持当前模式（含上位机覆盖）
+        return;
+    }
+
+    rc_data.mode = pwm_filtered[CH_MODE];
+    int rcMode;
+    if (rc_data.mode <= MODE_PWM_MANUAL_MAX)
+    {
+        rcMode = CAR_MODE_MANUAL; // 0: RC manual mode
+    }
+    else if (rc_data.mode >= MODE_PWM_FULL_AUTO_MIN)
+    {
+        rcMode = CAR_MODE_FULL_AUTO; // 2: autonomous driving mode
+    }
+    else
+    {
+        rcMode = CAR_MODE_SEMI_AUTO; // 1: Pilot steering with manual throttle
+    }
+
+    if (rcMode != lastRcMode)
+    {
+        // 遥控器模式开关位置发生变化 → 遥控器覆盖上位机设置
+        hostMode = -1;
+        lastRcMode = rcMode;
+        applyMode(rcMode);
+    }
+    else if (hostMode >= 0)
+    {
+        // RC 未变且存在上位机覆盖 → 维持上位机设置
+        applyMode(hostMode);
+    }
+    else
+    {
+        applyMode(rcMode);
+        lastRcMode = rcMode;
     }
 }
 

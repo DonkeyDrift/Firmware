@@ -1,5 +1,184 @@
 # CHANGELOG.md
 
+## 2026-08-20 v1.8.27
+
+- fix(WebConsole): DC 深浅色手动切换改为仅内存态、不写 localStorage——修复「手动切换后刷新仍保持所选主题，无法重新跟随系统」的问题，使 DC 与 Donkey / DonkeyDrifter 三页一致：默认跟随系统、每次进入/刷新都重新按浏览器 prefers-color-scheme 解析
+  - 背景：DC 原先把主题选择持久化到 `localStorage['mus4.ui.theme']`，手动点过太阳/月亮后刷新仍保持所选主题、不再跟随系统；Donkey 与 DonkeyDrifter 已改为不持久化，DC 需对齐。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 删除 `THEME_STORAGE_KEY`（`mus4.ui.theme`）常量与 `readStoredTheme()` / `writeStoredTheme()` 两个函数。
+    - `setTheme(theme)` 由 `uiTheme=theme;writeStoredTheme(uiTheme);applyTheme()` 改为 `uiTheme=theme;applyTheme()`（只改内存态）。
+    - `initTheme()` 由 `uiTheme=readStoredTheme();applyTheme();…` 改为 `uiTheme='auto';applyTheme();…`（默认跟随系统，不读存储）。
+    - 头部防闪烁内联脚本由「按 localStorage 预置 data-theme」改为「直接按 matchMedia 预置 data-theme」，不读任何存储。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.25 → v1.8.27（避让并行会话已占用的 v1.8.26）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——主题断言改为「无 THEME_STORAGE_KEY / readStoredTheme / writeStoredTheme / localStorage 读取，setTheme/initTheme 精确为内存态写法，防闪烁脚本为新 matchMedia 版本」；版本与 CHANGELOG 顺序断言升至 v1.8.27（跳号 v1.8.26），并补上 v1.8.25 条目（修正 v1.8.25 提交漏改版本断言的既有问题）。
+
+## 2026-08-20 v1.8.26
+
+- feat(WebConsole): DC 内嵌于 DonkeyDrifter 时经 postMessage 即时同步 DD 顶栏静音键——配合 DD 侧 `ConsoleMuteButton` 切换成功后广播 `dd-console-mute-changed` 事件，实现「在 DD 上改静音、内嵌 DC 立马变」，无需等 5s 轮询或手动刷新
+  - 背景：此前静音虽已双向同步（Issue #117），但靠两边各自每 5s 轮询 `/api/mute`，DD 切换后内嵌 DC 最迟 5s 才更新；本次改为 DD 切换成功即广播 DOM 事件 → `DrifterConsolePage` 对 iframe `contentWindow.postMessage({type:'dd-console-mute-changed',muted:<bool>})` → DC 直接更新图标，不重载 iframe、不丢曲线/终端状态（静音是高频轻量操作，重载体验差）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`toggleMute` 后新增 `window.addEventListener('message',function(e){…d.type==='dd-console-mute-changed'…uiMuted=!!d.muted;renderMuteButton()})`，识别 DD 转发来的静音消息即时更新；保留 `setInterval(initMute,5000)` 作为兜底纠偏。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.25 → v1.8.26。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 静音按钮 UI 测试新增 `dd-console-mute-changed` 与 `message` 监听断言；版本一致性测试由 v1.8.24 修正到 v1.8.26 并补上 v1.8.25 条目断言（顺带修复 v1.8.25 lang-sync 合入时遗漏的版本测试更新）。
+
+## 2026-08-20 v1.8.25
+
+- feat(WebConsole): DC 内嵌在 DonkeyDrifter 时经 iframe src 的 `?lang=` 跟随 DD 语言——修复「DD 已切英文、内嵌 Drifter Console 仍是中文」的跨源语言不同步问题
+  - 背景：DD（:8000）顶栏切换语言只写 DD 自己 origin 的 `localStorage`，内嵌 DC（车端 :80）的 `initLanguage` 读的是车端 `/api/language` + 自己 origin 的 `localStorage`，两边各自独立，DD 切语言不会传导到内嵌 DC。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `readUrlLanguage()`（解析 `?lang=zh|en`），`initLanguage` 改为 `let lang=readUrlLanguage();if(!lang){…fetch /api/language…}`，即 `?lang=` 优先级最高、无参数时再走车端 `/api/language`/localStorage；console / drift / judge / ota 四处内嵌页的 `initLanguage` 同步修改。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.24 → v1.8.25。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_web_console_reads_dd_lang_url_param`（断言 `readUrlLanguage`/`window.location.search`/`lang=(zh|en)`/`let lang=readUrlLanguage()`）；全量 326 passed。
+
+## 2026-08-20 v1.8.24
+
+- style(WebConsole): DC 头部 OTA 按钮与 DEV 开关复刻 DonkeyDrifter 顶栏 `ConsoleOtaButton` / `ConsoleDevToggle`——把上一版恢复的「OTA 文字链接 + DEV 滑珠开关」统一改成 DD 同款文字胶囊（32px 高 / 12px 内边距 / 圆角全胶囊 / 深色 `#111820` 底 + `#344154` 边框 + inset 内圈 + `#b9c5d3` 字色），DEV 开启态用 `rgba(92,200,255,.25)` 青底 + `#5cc8ff` 边框/内圈/字色三层高亮，与 DD 完全一致
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 中 `<a href="/update" class="otaLink"><button class="otaButton">OTA</button></a>` 改为 `<a href="/update" class="otaLink" data-i18n="button.ota">OTA</a>`（去掉非法嵌套的 button，链接直接作为文字胶囊）；`<label class="toggleSwitch devHint" id="devModeToggle"><input id="devModeCheck" ...><span class="slider"></span></label>` 改为 `<button type="button" id="devModeToggle" class="devHint" onclick="toggleDevModeFromSwitch()" role="switch" aria-checked="false">DEV</button>`。
+    - 深色 CSS：`.otaLink` 由透明文字链接改为胶囊（`display:inline-flex;height:32px;padding:0 12px;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3;font-size:12px;font-weight:600`，hover 转 `#5cc8ff`）；新增 `#devModeToggle` 同款胶囊 + `#devModeToggle.devOn` 青底三层高亮；删除 `.otaButton` 与 `#devModeToggle .slider`/`input:checked+.slider` 系列滑珠规则。
+    - 浅色 CSS：`.otaLink` / `#devModeToggle` 用 `#f4f6f9` 底 + `#ccd5df` 边框 + inset `#d5dce4` + `#3f4f63` 字色（hover `#0c9bd6`），`devOn` 态与深色一致用 `#5cc8ff`。
+    - JS：新增 `let uiDevMode=false`；`renderDevMode` 改为 `classList.toggle('devOn')` + 同步 `aria-checked`；`toggleDevModeFromSwitch` 改按 `uiDevMode` 判断（关→直接 `setDevMode(false)`、开→弹确认）；移除死代码 `devModeCheck` 常量与 `requestDevModeToggle`；init 增加 `setInterval(refreshDevMode,5000)` 与 DD 每 5s 轮询同步 DEV 状态。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.23 → v1.8.24。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——DEV 断言改为文字胶囊结构（`role="switch"`/`devOn`/`uiDevMode`），`.otaButton`/`devModeCheck`/`requestDevModeToggle` 改为 `not in`，OTA/DEV 头部/浅色断言改为 `.otaLink`/`#devModeToggle` 胶囊规则，版本与 CHANGELOG 顺序断言升至 v1.8.24。
+
+## 2026-08-20 v1.8.23
+
+- fix(WebConsole): 恢复 DC 头部 OTA 按钮与 DEV 开关——上一版（v1.8.17）将 Donkey/OTA/DEV 移至 DonkeyDrifter 顶栏时误移走了用户仍需在 DC 头部直接操作的 OTA 与 DEV，现把两者加回（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 语言按钮后恢复 `<span class="rowBreak br2"></span><a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch devHint" id="devModeToggle"><input type="checkbox" id="devModeCheck" onchange="toggleDevModeFromSwitch()"><span class="slider"></span></label><span class="rowBreak br3"></span>`。
+    - 恢复 DEV 确认弹窗 `#devModeModal`、DEV 相关 JS（`devModeCheck`/`devModeModal` 引用与 `renderDevMode`/`toggleDevModeFromSwitch`/`refreshDevMode`/`requestDevModeToggle`/`closeDevModeModal`/`setDevMode` 函数）、init 里的 `refreshDevMode()`。
+    - 恢复 OTA/DEV 深浅两主题 CSS：`.otaLink`/`.otaButton`/`#devModeToggle` 及移动端 order（`.br2{order:10}`、`.headerRow .otaLink{order:12}`、`#devModeToggle{order:14;margin-left:auto}`、`.br3{order:15}`）。
+    - `_applyLauncherStatus` 恢复 `enterDonkeyBtn` 动态 href 改写（与 Donkey 入口配套）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.22 → v1.8.23。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——OTA/DEV 头部断言由 `not in` 改回 `in`，移动端布局恢复 4 行（br2/br3/OTA/DEV order 断言），浅色 otaButton 断言恢复，版本与 CHANGELOG 顺序断言升至 v1.8.23。
+
+## 2026-08-20 v1.8.22
+
+- style(WebConsole): DC 顶栏静音键静音激活态复刻 DonkeyDrifter 顶栏 `ConsoleMuteButton`——激活时改用 `rgba(92,200,255,.1)` 半透明青底 + `#5cc8ff` 边框/inset 内圈/图标字色（深浅两主题一致，浅色不再用 `#0c9bd6`），与 DD 静音键视觉完全一致
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：深色 `.muteButton.muted` 由仅改字色 `#5cc8ff` 扩为 `background:rgba(92,200,255,.1);border-color:#5cc8ff;box-shadow:inset 0 0 0 1px #5cc8ff;color:#5cc8ff`；浅色 `html[data-theme="light"] .muteButton.muted` 同步改为同款 `#5cc8ff` 三层高亮（原 `#0c9bd6`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.20 → v1.8.22。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——深浅两套 `.muteButton.muted` 断言更新为新三层高亮写法，版本与 CHANGELOG 顺序断言升至 v1.8.22。
+
+## 2026-08-19 v1.8.20
+
+- fix(WebConsole): 恢复 Drifter Console 主页面 header 行显示——上一版 v1.8.19 误把车端 DC 标题栏整行隐藏，现改为仅在 DD 嵌入（URL 带 `?embedded=1`）时经 `body.embedded` 隐藏，直接访问车端 DC 时标题栏照常显示（Issue #234）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主 DC 页 `.headerRow` 由 `display:none` 恢复为 `display:flex`。
+    - 新增 CSS 规则 `body.embedded .headerRow{display:none}`。
+    - 主 DC 页脚本初始化前加 `if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded')`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.19 → v1.8.20。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言升至 v1.8.20、顺序断言补 v1.8.20；header 断言恢复 `display:flex` 并新增 `body.embedded .headerRow{display:none}` 断言。
+  - 注：DD 侧 iframe 改用 `http://<ip>/?embedded=1` 加载，配套改动见 DonkeyDrift 仓库当日条目。
+
+## 2026-08-19 v1.8.19
+
+- style(WebConsole): 隐藏 Drifter Console 主页面 header 行（头像/标题/GitHub 图标/深浅色开关/OTA/DEV 开关整行不再显示），版本号改由 DonkeyDrifter 连接条「连接」按钮右侧显示（Issue #234）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：主 DC 页（`/`）`.headerRow` 由 `display:flex;align-items:center` 改为 `display:none`，视觉删除但保留 DOM 供 JS 引用（`versionLabel`/`enterDonkeyBtn`/静音/OTA/DEV 等元素仍被 getElementById 引用）；`/drift` 页 `.headerRow` 保持原样。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.18 → v1.8.19。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言升至 v1.8.19，CHANGELOG 顺序断言补 `v1.8.19 < v1.8.18`。
+  - 注：DD 侧配套改动见 DonkeyDrift 仓库当日条目（Drifter Console 连接条「连接」按钮右侧显示车端固件版本号）。
+
+## 2026-08-19 v1.8.18
+
+- fix(WebConsole): 恢复 DC 顶栏 Donkey 入口——上一版（v1.8.17）将 Donkey/OTA/DEV 移至 DonkeyDrifter 顶栏时误移走了用户仍需的 Donkey 快捷入口，现把 Donkey 加回 DonkeyDrifter 左侧（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 在 `<h1>` 后、DonkeyDrifter 前恢复 `<a class="navTab" data-i18n="button.enterDonkey" id="enterDonkeyBtn" href="http://192.168.3.41:8090/" target="_blank" rel="noopener">Donkey</a>`。
+    - 移动端 `@media (max-width:820px)` 恢复 `#enterDonkeyBtn{order:6}`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.17 → v1.8.18。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`enterDonkeyBtn` 与 `.navTab` 数量断言恢复为存在/2，移动端 order 断言恢复，版本断言升至 v1.8.18 且顺序断言补 v1.8.18。
+
+## 2026-08-19 v1.8.17
+
+- feat(WebConsole): DC 头部 Donkey / OTA / DEV 三控件移至 DonkeyDrifter 顶栏，DC 侧只保留导航入口与状态控件，静音键补 5s 轮询实现与 DD 双向同步
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 移除「Donkey」入口 `enterDonkeyBtn`（DonkeyDrifter / Kimi Code Web / DeepSeek Harness 保留）、OTA 链接 `.otaLink`（`/update`）、DEV 开关 `#devModeToggle` 及对应 `br2`/`br3` 换行。
+    - 清理死代码：`enterDonkeyBtn` 的 `_applyLauncherStatus` 动态 href 改写、DEV 相关 JS（`devModeCheck`/`devModeModal`/`renderDevMode`/`toggleDevModeFromSwitch`/`refreshDevMode`/`requestDevModeToggle`/`closeDevModeModal`/`setDevMode`）、`devModeModal` 确认弹窗 HTML、`#devModeToggle`/`.otaLink`/`.otaButton` 深浅两主题 CSS。
+    - init 增加 `setInterval(initMute,5000);`，静音状态 5s 轮询 `/api/mute`，与 DD 顶栏静音键双向同步（DC 侧改动会被 DD 轮询到，反之亦然）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.16 → v1.8.17。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——DEV 开关/OTA 按钮头部断言改为 `not in`，`test_web_console_mobile_header_layout` 改为 3 行布局（无 br2/br3/Donkey/OTA/DEV），入口按钮位置与 `.navTab` 计数（2→1）更新，版本与 CHANGELOG 顺序断言升至 v1.8.17。
+
+## 2026-08-19 v1.8.16
+
+- style(WebConsole): DC 顶栏 Donkey / DonkeyDrifter 字体渲染对齐 DD 导航——补 `font-synthesis:none` 阻止 500 字重被浏览器合成加粗，`text-rendering:optimizeLegibility` + `-webkit-font-smoothing:antialiased` + `-moz-osx-font-smoothing:grayscale` 让字形更细更清晰（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.headerRow` 追加上述四条渲染属性，使 4 个入口标签继承 DD 导航同款抗锯齿/字形合成策略。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`.headerRow` 断言补 `font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale`。
+
+- style(WebConsole): DC 顶栏入口标签彻底复刻 DD 两类标签结构——Donkey / DonkeyDrifter 为 14px 功能标签，Kimi Code Web / DeepSeek Harness 改为 12px 弱化标签并内嵌 lucide 图标（Sparkles / FlaskConical），与 DD 高级入口完全一致（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 新增 `.navTabWeak` 深色规则：`color:#6b7d90;font-size:0.75rem;font-weight:500;line-height:1rem;display:inline-flex;align-items:center;gap:4px`，hover `#b9c5d3`；新增浅色 `html[data-theme="light"] .navTabWeak`：`color:#7c8da0`，hover `#3f4f63`。
+    - KCW/DSH 两个 `<button>` 由 `class="navTab"` 改为 `class="navTabWeak"`，图标 `<svg>` 与文字拆为 `<span data-i18n=...>`，按钮自身移除 `data-i18n`，避免 `applyLanguage` 用 `textContent` 覆盖清掉内嵌图标。
+    - `openKimiCodeWeb()`/`openDsh()` 的 loading/复位文案由 `btn.textContent=...` 改为 `btn.querySelector('span[data-i18n]').textContent=...`，点击后图标不再消失。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `.navTabWeak` 深浅色断言、`class="navTabWeak"` 数量 2、KCW/DSH 内嵌图标 SVG 路径断言；`class="navTab"` 数量由 4 改为 2。
+
+- style(WebConsole): 静音按键 `.muteButton` 与相邻深浅色切换 `.themeButton` / 语言切换按钮样式统一——改为 32×32 圆形、同款底色/边框/内阴影与 hover 反馈，深浅两主题对齐（Issue #117）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 深色 `.muteButton`：`height:24px;min-width:28px;padding:0 6px;border:none;background:transparent;color:#8fa1b5` → `width:32px;height:32px;min-width:0;padding:0;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3`；保留 `margin-left:auto` 右推布局。
+    - 深色 `.muteButton:hover`：`color:#5cc8ff` → `color:#e8edf2`，与主题按钮 hover 一致；`.muteButton.muted` 保持 `color:#5cc8ff` 作为静音激活态。
+    - 浅色 `html[data-theme="light"] .muteButton`：`background:transparent` → `background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4;color:#3f4f63`，并新增 hover `color:#1a2330`、muted `color:#0c9bd6`；从 `html[data-theme="light"] .ghLink:hover,...` 合并规则中移出静音键的 hover/muted 着色。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.15 → v1.8.16。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——静音键深色 32×32 圆形样式与 hover 断言、浅色 `.muteButton` 底色/边框/内阴影/hover/muted 断言，版本断言升至 v1.8.16 且顺序断言补 v1.8.16。
+
+- style(WebConsole): DC 顶栏标题与入口标签改回 DD theme-mus4 实际渲染值（上一轮误按 Tailwind 默认色板，字号/字色/字体/行高均与 DD 皮肤不一致），并修复 Kimi Code Web / DeepSeek Harness 两个 `<button>` 标签字体被浏览器 UA 样式覆盖为 Arial 的问题（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 标题 `h1`：`font-size:20px` → `1.25rem`，补 `line-height:1.75rem`（DD text-xl），深色字色 `#f4f4f5` → `#e8edf2`（DD theme-mus4 `text-zinc-100`）。
+    - 字体栈：`.headerRow` 由 `ui-sans-serif,system-ui,sans-serif` 改为 DD theme-mus4 `.font-sans` 实值 `system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif`。
+    - 深色 `.navTab`：字色 `#a1a1aa` → `#8fa1b5`（DD theme-mus4 `text-zinc-400`），hover `#22d3ee` → `#8bdcff`（`hover:text-cyan-400`）；`font-size:14px` → `0.875rem`、`line-height:1` → `1.25rem`（DD text-sm）；补 `font-family:inherit` 让 `<button>` 标签继承 `.headerRow` 的完整字体栈，与 `<a>` 标签一致。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——标题/`.navTab` 深色断言更新为 theme-mus4 实值并补 `font-family:inherit`。
+
+## 2026-08-19 v1.8.15
+
+- style(WebConsole): DC 顶栏标题与入口标签的字号/字色/间距进一步对齐 DD 主导航——标题 text-xl 20px + font-bold 700 + zinc-100 前景色，入口标签 zinc-400 前景色 + cyan-400 hover，标题↔功能 32px、功能↔功能 24px（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `h1` 字号 22px → 20px 并显式 `font-weight:700`；`.headerRow` 追加 `font-family:ui-sans-serif,system-ui,sans-serif`。
+    - 新增 `.headerRow h1{color:#f4f4f5;margin:0 20px 0 0}`：标题↔功能间距 = gap 12px + margin-right 20px = 32px（对齐 DD `mr-8`）。
+    - 深色 `.navTab` 前景色 `#8fa1b5` → `#a1a1aa`（DD zinc-400），hover `#8bdcff` → `#22d3ee`（DD cyan-400），并追加 `margin-right:12px`：功能↔功能间距 = gap 12px + 12px = 24px（对齐 DD `space-x-6`）。
+    - 新增浅色 `html[data-theme="light"] .headerRow h1{color:#1a2330}` 保持浅色标题可读。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.14 → v1.8.15。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——标题字号/字色/间距断言，`.navTab` 深色前景色/hover/间距断言更新，版本断言升至 v1.8.15 且顺序断言补 v1.8.14。
+
+## 2026-08-19 v1.8.14
+
+- style(WebConsole): DC 顶栏 Donkey / DonkeyDrifter / Kimi Code Web / DeepSeek Harness 四个入口标签复刻 DD 主导航标签样式（14px / 500 字重 / 弱化前景色，hover 用主题强调色，无框无底无内边距），仅保留这 4 个入口（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 新增 `.navTab` 深色规则：`color:#8fa1b5;font-size:14px;font-weight:500;background:transparent;border:none;padding:0;line-height:1;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer`，hover `color:#8bdcff`。
+    - 新增浅色 `html[data-theme="light"] .navTab`：`color:#5b6b7d`，hover `color:#0a7eb2`。
+    - 4 个入口按钮 `class="otaButton"` → `class="navTab"`；`.headerRow` 的 34px 高规则只保留 `.headerRow .otaLink .otaButton`（OTA 按钮），不再覆盖入口标签。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.13 → v1.8.14。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `.navTab` 深浅色断言，入口按钮 class 断言改为 navTab，34px 规则断言改为仅 OTA，版本断言升至 v1.8.14。
+
+## 2026-08-19 v1.8.13
+
+- fix(WebConsole): DC 顶栏 Donkey / DonkeyDrifter / Kimi Code Web / DeepSeek Harness / OTA 等入口按钮去掉蓝色胶囊框，统一为无框透明样式，深浅两主题下可读且 hover 反馈正常（Issue #108）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 深色 `.otaButton` 基础规则：`background:#5cc8ff;color:#061019;border-color:#5cc8ff` → `background:transparent;color:#e8edf2;border-color:transparent`，去掉蓝色背景与蓝色边框，文字改主题前景色。
+    - 深色 `.otaButton:hover`：`background:#8bdcff` → `color:#5cc8ff`，hover 仅改文字色，不再填充蓝色。
+    - 浅色 `html[data-theme="light"] .otaButton`：`background:#5cc8ff;color:#061019;border-color:#5cc8ff` → `background:transparent;color:#1a2330;border-color:transparent`。
+    - 浅色 hover 规则拆分：原 `html[data-theme="light"] .otaButton:hover,html[data-theme="light"] .rcSetBtn:hover{background:#3aa8dd}` 改为 `.otaButton:hover` 仅 `color:#0c9bd6`，`.rcSetBtn:hover` 保持 `background:#3aa8dd` 不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.12 → v1.8.13。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`.otaButton` 基础/浅色断言改为透明无框样式，版本断言升至 v1.8.13。
+
+## 2026-08-18 v1.8.12
+
+- feat(FW): 支持通过命令设置车控模式（手动/半自动/全自动），与遥控器切换双向兼容（Issue #111）
+  - `libraries/mus4_control/src/ControlMixer.h` / `ControlMixer.cpp`：新增 `setCarModeCommand(mode)`；`mode_change()` 改为后到者生效仲裁——新增 `hostMode`（上位机覆盖，-1=无）与 `lastRcMode`（上次生效的 RC 派生模式），遥控器开关位置变化时清覆盖并让遥控器生效，否则维持上位机命令；提取 `applyMode()` 统一写 `car_output.mode` 并触发蜂鸣器。
+  - `libraries/mus4_command/src/CommandDispatcher.cpp`：新增 `MODE <m>` / `MODE:<m>` 命令（m∈{0,1,2}），成功回 `ACK:MODE <m>`、非法值回 `NACK:MODE_INVALID`；因 `dispatchCommandLine()` 为 Serial/无线/Web `/api/cmd` 共用入口，命令对所有通道生效。
+  - `libraries/mus4_command/src/WirelessConsole.cpp`：新增 `isWirelessModeCommand()`；`isWirelessCommandAllowed()` 对模式命令放行（需认证，Park Locked 下也允许切模式，油门仍由既有 Park/emergencyStop 钳 0）。
+  - `MUS4_FW.ino`：`M<m>:P<p>` 帧由「仅 MANUAL」提升为「所有模式，状态变化 + 1Hz 心跳」发送（从 MANUAL-only 的 T<S> 块中提出），使上位机在非 MANUAL 模式下也能收到模式/驻车变化。
+  - `README.md` / `README.zh-CN.md`：串口协议输入帧新增 `MODE <m>`；`M:P` 行改为所有模式发送。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.11 → v1.8.12。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增模式命令/仲裁/M:P 全模式断言，版本断言升至 v1.8.12。
+
+## 2026-08-18 v1.8.11
+
+- fix(WebConsole): 删除 DC 顶栏 LED 闪烁颜色 RGB 切换按键，空闲闪烁固定为 RGB 三色全选（mask=7）且不可修改（Issue #107）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 删除顶栏 `#ledBlinkTabs` 红/绿/蓝多选控件（HTML 及 `#ledBlinkTabs` 容器 34px 覆写、三条选中配色/悬停规则、`order:11` 定位）；共享胶囊样式 `.langTabs` 保留不动。
+    - 删除 `uiLedBlinkMask` / `LED_BLINK_TAB_COLORS` / `renderLedBlinkTabs()` / `initLedBlink()` / `toggleLedBlinkColor(bit)` 及启动链中的 `initLedBlink();` 调用。
+    - i18n 删除 `led.title` / `led.red` / `led.green` / `led.blue` 中英词条。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：删除 `GET/POST /api/led-blink` 两条路由与 `handleWifiWebLedBlinkGet/Set` 两个处理器及 `#include "LedBlinkPreference.h"`。
+  - `libraries/mus4_core/src/LedBlinkPreference.h` / `LedBlinkPreference.cpp`：移除 NVS 持久化（`loadLedBlinkPreference` / `saveLedBlinkPreference` / Preferences），`getLedBlinkMask()` 恒返回 7；空闲（手动 + Park）三色交替闪烁仍由 ControlMixer 读取该掩码、LedStatus 应用，逻辑不变。
+  - `MUS4_FW.ino`：删除 `setup()` 中的 `loadLedBlinkPreference();` 调用及 `#include "LedBlinkPreference.h"`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.10 → v1.8.11。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——响应式 order 测试删除 `#ledBlinkTabs{order:11}` 断言（注释同步改为「OTA + 静音」）；`test_web_console_theme_toggle` 删除 themeToggle 与 ledBlinkTabs 的相对顺序断言；`test_web_console_led_blink_color_selector` 重写为「前端控件/逻辑/词条与后端接口/持久化全部移除、`getLedBlinkMask()` 恒返回 7、ControlMixer/LedStatus 仍驱动空闲闪烁」断言；版本断言升至 v1.8.11。全量 163 passed。
+
 ## 2026-08-18 v1.8.10
 
 - fix(WebConsole): DC 终端板块不再长时间停留在「正在连接上位机终端」——首探前先等待真实上报 IP，消除用默认回退 IP 首探必败的窗口

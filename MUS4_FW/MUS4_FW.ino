@@ -83,7 +83,6 @@
 
 #include "Buzzer.h"
 #include "MutePreference.h"
-#include "LedBlinkPreference.h"
 // #include "test_runner.h"
 
 TUI tui(Serial);
@@ -583,7 +582,6 @@ void setup()
       // Mute preference must be loaded before setupWifiConsole(): the AP start
       // melody plays during Wi-Fi setup, so the mute gate has to be armed first.
       loadMutePreference();
-      loadLedBlinkPreference();
       loadWifiApPreference();
       loadWifiStaPreference();
       loadWifiStaHistory();
@@ -818,25 +816,27 @@ void loop()
                     lastTelemWebLogMs = millis();
                 }
 #endif
-
-                // --- M<m>:P<p> 模式帧 (1Hz 心跳 / 变化即时) ---
-                bool modeChanged = (car_output.mode != lastEmittedMode);
-                bool parkChanged = ((int)car_output.park != lastEmittedPark);
-                bool heartbeatDue = (millis() - lastModeParkEmitMs) >= MODE_PARK_HEARTBEAT_MS;
-                if (modeChanged || parkChanged || heartbeatDue) {
-                    int n2 = snprintf(s1Buf + s1Len, sizeof(s1Buf) - s1Len,
-                                      "M%d:P%d\n", car_output.mode, (int)car_output.park);
-                    if (n2 > 0 && n2 < (int)(sizeof(s1Buf) - s1Len)) s1Len += n2;
-#ifdef ENABLE_WIFI_CONSOLE
-                    String mp = String("M") + car_output.mode + ":P" + ((int)car_output.park) + "\n";
-                    appendWebLog("serial1", mp);
-#endif
-                    lastEmittedMode = car_output.mode;
-                    lastEmittedPark = (int)car_output.park;
-                    lastModeParkEmitMs = millis();
-                }
             }
             lastRCDataUpdate = millis();
+        }
+
+        // --- M<m>:P<p> 模式帧 (所有模式, 状态变化即时 + 1Hz 心跳) ---
+        if (shouldEmitSerial1Telemetry(otaRuntime)) {
+            bool modeChanged = (car_output.mode != lastEmittedMode);
+            bool parkChanged = ((int)car_output.park != lastEmittedPark);
+            bool heartbeatDue = (millis() - lastModeParkEmitMs) >= MODE_PARK_HEARTBEAT_MS;
+            if (modeChanged || parkChanged || heartbeatDue) {
+                int n2 = snprintf(s1Buf + s1Len, sizeof(s1Buf) - s1Len,
+                                  "M%d:P%d\n", car_output.mode, (int)car_output.park);
+                if (n2 > 0 && n2 < (int)(sizeof(s1Buf) - s1Len)) s1Len += n2;
+#ifdef ENABLE_WIFI_CONSOLE
+                String mp = String("M") + car_output.mode + ":P" + ((int)car_output.park) + "\n";
+                appendWebLog("serial1", mp);
+#endif
+                lastEmittedMode = car_output.mode;
+                lastEmittedPark = (int)car_output.park;
+                lastModeParkEmitMs = millis();
+            }
         }
 
         // --- $IMU 帧 (100Hz, 所有模式) ---

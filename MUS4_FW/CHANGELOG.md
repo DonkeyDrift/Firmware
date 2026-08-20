@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-20 v1.8.24
+
+- style(WebConsole): DC 头部 OTA 按钮与 DEV 开关复刻 DonkeyDrifter 顶栏 `ConsoleOtaButton` / `ConsoleDevToggle`——把上一版恢复的「OTA 文字链接 + DEV 滑珠开关」统一改成 DD 同款文字胶囊（32px 高 / 12px 内边距 / 圆角全胶囊 / 深色 `#111820` 底 + `#344154` 边框 + inset 内圈 + `#b9c5d3` 字色），DEV 开启态用 `rgba(92,200,255,.25)` 青底 + `#5cc8ff` 边框/内圈/字色三层高亮，与 DD 完全一致
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 中 `<a href="/update" class="otaLink"><button class="otaButton">OTA</button></a>` 改为 `<a href="/update" class="otaLink" data-i18n="button.ota">OTA</a>`（去掉非法嵌套的 button，链接直接作为文字胶囊）；`<label class="toggleSwitch devHint" id="devModeToggle"><input id="devModeCheck" ...><span class="slider"></span></label>` 改为 `<button type="button" id="devModeToggle" class="devHint" onclick="toggleDevModeFromSwitch()" role="switch" aria-checked="false">DEV</button>`。
+    - 深色 CSS：`.otaLink` 由透明文字链接改为胶囊（`display:inline-flex;height:32px;padding:0 12px;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3;font-size:12px;font-weight:600`，hover 转 `#5cc8ff`）；新增 `#devModeToggle` 同款胶囊 + `#devModeToggle.devOn` 青底三层高亮；删除 `.otaButton` 与 `#devModeToggle .slider`/`input:checked+.slider` 系列滑珠规则。
+    - 浅色 CSS：`.otaLink` / `#devModeToggle` 用 `#f4f6f9` 底 + `#ccd5df` 边框 + inset `#d5dce4` + `#3f4f63` 字色（hover `#0c9bd6`），`devOn` 态与深色一致用 `#5cc8ff`。
+    - JS：新增 `let uiDevMode=false`；`renderDevMode` 改为 `classList.toggle('devOn')` + 同步 `aria-checked`；`toggleDevModeFromSwitch` 改按 `uiDevMode` 判断（关→直接 `setDevMode(false)`、开→弹确认）；移除死代码 `devModeCheck` 常量与 `requestDevModeToggle`；init 增加 `setInterval(refreshDevMode,5000)` 与 DD 每 5s 轮询同步 DEV 状态。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.23 → v1.8.24。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——DEV 断言改为文字胶囊结构（`role="switch"`/`devOn`/`uiDevMode`），`.otaButton`/`devModeCheck`/`requestDevModeToggle` 改为 `not in`，OTA/DEV 头部/浅色断言改为 `.otaLink`/`#devModeToggle` 胶囊规则，版本与 CHANGELOG 顺序断言升至 v1.8.24。
+
 ## 2026-08-20 v1.8.23
 
 - fix(WebConsole): 恢复 DC 头部 OTA 按钮与 DEV 开关——上一版（v1.8.17）将 Donkey/OTA/DEV 移至 DonkeyDrifter 顶栏时误移走了用户仍需在 DC 头部直接操作的 OTA 与 DEV，现把两者加回（Issue #108 续）

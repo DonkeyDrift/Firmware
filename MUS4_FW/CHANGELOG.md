@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-20 v1.8.25
+
+- feat(WebConsole): DC 内嵌在 DonkeyDrifter 时经 iframe src 的 `?lang=` 跟随 DD 语言——修复「DD 已切英文、内嵌 Drifter Console 仍是中文」的跨源语言不同步问题
+  - 背景：DD（:8000）顶栏切换语言只写 DD 自己 origin 的 `localStorage`，内嵌 DC（车端 :80）的 `initLanguage` 读的是车端 `/api/language` + 自己 origin 的 `localStorage`，两边各自独立，DD 切语言不会传导到内嵌 DC。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `readUrlLanguage()`（解析 `?lang=zh|en`），`initLanguage` 改为 `let lang=readUrlLanguage();if(!lang){…fetch /api/language…}`，即 `?lang=` 优先级最高、无参数时再走车端 `/api/language`/localStorage；console / drift / judge / ota 四处内嵌页的 `initLanguage` 同步修改。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.24 → v1.8.25。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_web_console_reads_dd_lang_url_param`（断言 `readUrlLanguage`/`window.location.search`/`lang=(zh|en)`/`let lang=readUrlLanguage()`）；全量 326 passed。
+
 ## 2026-08-20 v1.8.24
 
 - style(WebConsole): DC 头部 OTA 按钮与 DEV 开关复刻 DonkeyDrifter 顶栏 `ConsoleOtaButton` / `ConsoleDevToggle`——把上一版恢复的「OTA 文字链接 + DEV 滑珠开关」统一改成 DD 同款文字胶囊（32px 高 / 12px 内边距 / 圆角全胶囊 / 深色 `#111820` 底 + `#344154` 边框 + inset 内圈 + `#b9c5d3` 字色），DEV 开启态用 `rgba(92,200,255,.25)` 青底 + `#5cc8ff` 边框/内圈/字色三层高亮，与 DD 完全一致

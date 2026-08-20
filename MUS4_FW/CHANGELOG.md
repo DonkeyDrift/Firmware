@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-20 v1.8.23
+
+- fix(WebConsole): 恢复 DC 头部 OTA 按钮与 DEV 开关——上一版（v1.8.17）将 Donkey/OTA/DEV 移至 DonkeyDrifter 顶栏时误移走了用户仍需在 DC 头部直接操作的 OTA 与 DEV，现把两者加回（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 语言按钮后恢复 `<span class="rowBreak br2"></span><a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch devHint" id="devModeToggle"><input type="checkbox" id="devModeCheck" onchange="toggleDevModeFromSwitch()"><span class="slider"></span></label><span class="rowBreak br3"></span>`。
+    - 恢复 DEV 确认弹窗 `#devModeModal`、DEV 相关 JS（`devModeCheck`/`devModeModal` 引用与 `renderDevMode`/`toggleDevModeFromSwitch`/`refreshDevMode`/`requestDevModeToggle`/`closeDevModeModal`/`setDevMode` 函数）、init 里的 `refreshDevMode()`。
+    - 恢复 OTA/DEV 深浅两主题 CSS：`.otaLink`/`.otaButton`/`#devModeToggle` 及移动端 order（`.br2{order:10}`、`.headerRow .otaLink{order:12}`、`#devModeToggle{order:14;margin-left:auto}`、`.br3{order:15}`）。
+    - `_applyLauncherStatus` 恢复 `enterDonkeyBtn` 动态 href 改写（与 Donkey 入口配套）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.22 → v1.8.23。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——OTA/DEV 头部断言由 `not in` 改回 `in`，移动端布局恢复 4 行（br2/br3/OTA/DEV order 断言），浅色 otaButton 断言恢复，版本与 CHANGELOG 顺序断言升至 v1.8.23。
+
 ## 2026-08-20 v1.8.22
 
 - style(WebConsole): DC 顶栏静音键静音激活态复刻 DonkeyDrifter 顶栏 `ConsoleMuteButton`——激活时改用 `rgba(92,200,255,.1)` 半透明青底 + `#5cc8ff` 边框/inset 内圈/图标字色（深浅两主题一致，浅色不再用 `#0c9bd6`），与 DD 静音键视觉完全一致

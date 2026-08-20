@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-08-20 v1.8.23
+
+- fix(WebConsole): Donkey 入口链接按上位机 IP 动态改写——之前 `enterDonkeyBtn` 静态指向 fallback `192.168.3.41`，`_applyLauncherStatus` 只改写 DonkeyDrifter 链接，导致车端 IP 变化后点击「Donkey」仍跳旧 IP 报「无法连接服务器」
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`_applyLauncherStatus` 在改写 `enterDonkeyDrifterBtn` 的同时，把 `enterDonkeyBtn` 的 href 改写为 `http://<host_ip>:8090/`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.22 → v1.8.23。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `enterDonkeyBtn` 动态改写断言，版本与 CHANGELOG 顺序断言升至 v1.8.23。
+
 ## 2026-08-20 v1.8.22
 
 - style(WebConsole): DC 顶栏静音键静音激活态复刻 DonkeyDrifter 顶栏 `ConsoleMuteButton`——激活时改用 `rgba(92,200,255,.1)` 半透明青底 + `#5cc8ff` 边框/inset 内圈/图标字色（深浅两主题一致，浅色不再用 `#0c9bd6`），与 DD 静音键视觉完全一致

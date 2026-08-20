@@ -274,8 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.22"' in build_info
-    assert "v1.8.22" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.23"' in build_info
+    assert "v1.8.23" in changelog
     assert "v1.8.20" in changelog
     assert "v1.8.19" in changelog
     assert "v1.8.18" in changelog
@@ -321,6 +321,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-20 v1.8.23") < changelog.index("## 2026-08-20 v1.8.22")
     assert changelog.index("## 2026-08-20 v1.8.22") < changelog.index("## 2026-08-19 v1.8.20")
     assert changelog.index("## 2026-08-19 v1.8.20") < changelog.index("## 2026-08-19 v1.8.19")
     assert changelog.index("## 2026-08-19 v1.8.19") < changelog.index("## 2026-08-19 v1.8.18")
@@ -4674,6 +4675,8 @@ def test_web_console_header_entry_buttons():
     # v1.8.8：改回 /launch/drive 直达启动中转页，不再渲染 Donkey 菜单页（Issue #103）；
     # Safari 历史问题经 LAUNCH_DRIVE_HTML 轮询重定向后已消除
     assert assets.count(':8090/launch/drive') == 2  # 静态初值 + _applyLauncherStatus 动态改写
+    # Donkey 链接同样按 host_ip 动态改写（指向 :8090/，不再停留在 fallback 旧 IP）
+    assert "document.getElementById('enterDonkeyBtn').href='http://'+_launcherIp+':8090/';" in assets
     assert ':8090/#drive' not in assets
     assert 'enterDonkeyLauncher' not in assets
     assert 'enterDonkeyDrifter()' not in assets

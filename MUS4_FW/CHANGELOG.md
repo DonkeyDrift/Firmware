@@ -1,5 +1,12 @@
 # CHANGELOG.md
 
+## 2026-08-20 v1.8.22
+
+- style(WebConsole): DC 顶栏静音键静音激活态复刻 DonkeyDrifter 顶栏 `ConsoleMuteButton`——激活时改用 `rgba(92,200,255,.1)` 半透明青底 + `#5cc8ff` 边框/inset 内圈/图标字色（深浅两主题一致，浅色不再用 `#0c9bd6`），与 DD 静音键视觉完全一致
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：深色 `.muteButton.muted` 由仅改字色 `#5cc8ff` 扩为 `background:rgba(92,200,255,.1);border-color:#5cc8ff;box-shadow:inset 0 0 0 1px #5cc8ff;color:#5cc8ff`；浅色 `html[data-theme="light"] .muteButton.muted` 同步改为同款 `#5cc8ff` 三层高亮（原 `#0c9bd6`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.20 → v1.8.22。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——深浅两套 `.muteButton.muted` 断言更新为新三层高亮写法，版本与 CHANGELOG 顺序断言升至 v1.8.22。
+
 ## 2026-08-19 v1.8.20
 
 - fix(WebConsole): 恢复 Drifter Console 主页面 header 行显示——上一版 v1.8.19 误把车端 DC 标题栏整行隐藏，现改为仅在 DD 嵌入（URL 带 `?embedded=1`）时经 `body.embedded` 隐藏，直接访问车端 DC 时标题栏照常显示（Issue #234）

@@ -270,6 +270,7 @@ async function initLanguage(){let lang=readUrlLanguage();if(!lang){try{const r=a
 function renderMuteButton(){const b=document.getElementById('muteToggle');if(b)b.classList.toggle('muted',uiMuted)}
 async function initMute(){try{const r=await fetch('/api/mute',{cache:'no-store'});if(!r.ok)return;const j=await r.json();uiMuted=j.muted===1||j.muted===true;renderMuteButton()}catch(e){}}
 async function toggleMute(){const next=uiMuted?0:1;try{const r=await fetch('/api/mute',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'muted='+next});if(!r.ok)return;const j=await r.json();uiMuted=j.muted===1||j.muted===true;renderMuteButton()}catch(e){}}
+window.addEventListener('message',function(e){const d=e.data;if(d&&d.type==='dd-console-mute-changed'){uiMuted=!!d.muted;renderMuteButton()}});
 function toggleTheme(){setTheme(resolvedTheme()==='light'?'dark':'light')}
 function setTheme(theme){uiTheme=theme;applyTheme()}
 function initTheme(){uiTheme='auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}

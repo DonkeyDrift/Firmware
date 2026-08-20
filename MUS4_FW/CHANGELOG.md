@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-08-20 v1.8.27
+
+- fix(WebConsole): DC 深浅色手动切换改为仅内存态、不写 localStorage——修复「手动切换后刷新仍保持所选主题，无法重新跟随系统」的问题，使 DC 与 Donkey / DonkeyDrifter 三页一致：默认跟随系统、每次进入/刷新都重新按浏览器 prefers-color-scheme 解析
+  - 背景：DC 原先把主题选择持久化到 `localStorage['mus4.ui.theme']`，手动点过太阳/月亮后刷新仍保持所选主题、不再跟随系统；Donkey 与 DonkeyDrifter 已改为不持久化，DC 需对齐。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 删除 `THEME_STORAGE_KEY`（`mus4.ui.theme`）常量与 `readStoredTheme()` / `writeStoredTheme()` 两个函数。
+    - `setTheme(theme)` 由 `uiTheme=theme;writeStoredTheme(uiTheme);applyTheme()` 改为 `uiTheme=theme;applyTheme()`（只改内存态）。
+    - `initTheme()` 由 `uiTheme=readStoredTheme();applyTheme();…` 改为 `uiTheme='auto';applyTheme();…`（默认跟随系统，不读存储）。
+    - 头部防闪烁内联脚本由「按 localStorage 预置 data-theme」改为「直接按 matchMedia 预置 data-theme」，不读任何存储。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.25 → v1.8.27（避让并行会话已占用的 v1.8.26）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——主题断言改为「无 THEME_STORAGE_KEY / readStoredTheme / writeStoredTheme / localStorage 读取，setTheme/initTheme 精确为内存态写法，防闪烁脚本为新 matchMedia 版本」；版本与 CHANGELOG 顺序断言升至 v1.8.27（跳号 v1.8.26），并补上 v1.8.25 条目（修正 v1.8.25 提交漏改版本断言的既有问题）。
+
 ## 2026-08-20 v1.8.26
 
 - feat(WebConsole): DC 内嵌于 DonkeyDrifter 时经 postMessage 即时同步 DD 顶栏静音键——配合 DD 侧 `ConsoleMuteButton` 切换成功后广播 `dd-console-mute-changed` 事件，实现「在 DD 上改静音、内嵌 DC 立马变」，无需等 5s 轮询或手动刷新

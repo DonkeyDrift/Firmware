@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-20 v1.8.26
+
+- feat(WebConsole): DC 内嵌于 DonkeyDrifter 时经 postMessage 即时同步 DD 顶栏静音键——配合 DD 侧 `ConsoleMuteButton` 切换成功后广播 `dd-console-mute-changed` 事件，实现「在 DD 上改静音、内嵌 DC 立马变」，无需等 5s 轮询或手动刷新
+  - 背景：此前静音虽已双向同步（Issue #117），但靠两边各自每 5s 轮询 `/api/mute`，DD 切换后内嵌 DC 最迟 5s 才更新；本次改为 DD 切换成功即广播 DOM 事件 → `DrifterConsolePage` 对 iframe `contentWindow.postMessage({type:'dd-console-mute-changed',muted:<bool>})` → DC 直接更新图标，不重载 iframe、不丢曲线/终端状态（静音是高频轻量操作，重载体验差）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`toggleMute` 后新增 `window.addEventListener('message',function(e){…d.type==='dd-console-mute-changed'…uiMuted=!!d.muted;renderMuteButton()})`，识别 DD 转发来的静音消息即时更新；保留 `setInterval(initMute,5000)` 作为兜底纠偏。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.25 → v1.8.26。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 静音按钮 UI 测试新增 `dd-console-mute-changed` 与 `message` 监听断言；版本一致性测试由 v1.8.24 修正到 v1.8.26 并补上 v1.8.25 条目断言（顺带修复 v1.8.25 lang-sync 合入时遗漏的版本测试更新）。
+
 ## 2026-08-20 v1.8.25
 
 - feat(WebConsole): DC 内嵌在 DonkeyDrifter 时经 iframe src 的 `?lang=` 跟随 DD 语言——修复「DD 已切英文、内嵌 Drifter Console 仍是中文」的跨源语言不同步问题

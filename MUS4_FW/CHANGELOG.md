@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-08-21 v1.8.29
+
+- fix(WebConsole): 终端全屏后四周白边——`#terminalWrap` 全屏态去掉 `padding`/`border-radius` 并统一深色背景，删除亮色主题的全屏浅色背景覆盖，使终端 iframe 全屏铺满、无白边
+  - 背景：终端全屏时 `#terminalWrap` 仍带 `padding:8px`，且亮色主题下 `html[data-theme="light"] #terminalWrap:fullscreen` 背景为 `#eef1f5`（近白），把深色终端 iframe 四周衬成白边。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#terminalWrap:fullscreen` 由 `{background:#101318;height:auto;min-height:0;max-height:none}` 改为 `{background:#101318;height:auto;min-height:0;max-height:none;padding:0;border-radius:0}`，全屏铺满、无内边距与圆角。
+    - 删除 `html[data-theme="light"] #terminalWrap:fullscreen{background:#eef1f5}` 覆盖规则，全屏统一走深色背景（终端本身为深色主题）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.28 → v1.8.29。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——终端全屏断言改为「`#terminalWrap:fullscreen` 含 `padding:0;border-radius:0`；不再存在 `html[data-theme="light"] #terminalWrap:fullscreen`」；版本与 CHANGELOG 顺序断言升至 v1.8.29。
+
 ## 2026-08-21 v1.8.28
 
 - feat(WebConsole): DC 新增「仅设置」视图（`?settings=1`），供 DonkeyDrifter 的 Car Connector 页面只嵌入车辆设置板块，而非整个 DC 主页

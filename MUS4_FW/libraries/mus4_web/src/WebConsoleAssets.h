@@ -33,6 +33,14 @@ body.settings .fabActions{display:none}
 html[data-theme="light"] .settingsView .setTitle{color:#1a2330}
 html[data-theme="light"] .settingsView .setRow{background:#fff;border-color:#d5dce4}
 html[data-theme="light"] .settingsView .setRow h3{color:#5b6b7d}
+/* ?wifi=1：把 STA/AP 配网弹窗作为静态板块直接呈现（1:1 复用车端表单），供 DD Car Connector 内嵌 */
+body.wifi .grid{display:none}
+body.wifi .headerRow{display:none}
+body.wifi .fabToggle{display:none}
+body.wifi .fabActions{display:none}
+body.wifi #wifiApModal,body.wifi #wifiStaModal{position:static;display:block;background:transparent;backdrop-filter:none;align-items:stretch;justify-content:flex-start}
+body.wifi #wifiApModal .dialog,body.wifi #wifiStaModal .dialog{position:relative;width:100%;max-width:640px;margin:0 0 14px;transform:none;opacity:1}
+body.wifi #wifiApModal .dialogActions button:first-child,body.wifi #wifiStaModal .dialogActions button:first-child{display:none}
 </style>
 </head>
 <body>
@@ -462,7 +470,7 @@ function ensureGrid(){const w=cw,h=ch;if(gridReady&&gridCanvas.width===w*dpr&&gr
 function drawSeries(key,color,min,max,divisor=1){const w=cw,h=ch,plotX=36,plotW=w-52,plotH=h-40;if(pointCount<2)return;const stepX=plotW/255,rightX=plotX+plotW,buckets=[];for(let i=0;i<pointCount;i++){const p=pointAt(i);if(!p)continue;const x=rightX-(pointCount-1-i)*stepX;const xi=Math.round(x);if(xi<plotX-5||xi>w-16+5)continue;const y=20+map((p[key]||0)/divisor,min,max,plotH);let b=buckets[xi];if(!b)buckets[xi]={min:y,max:y,xSum:x,count:1,gap:(p.dt||16)>80};else{if(y<b.min)b.min=y;if(y>b.max)b.max=y;b.xSum+=x;b.count++;if((p.dt||16)>80)b.gap=true}}ctx.strokeStyle=color;ctx.beginPath();let drawn=false;for(let xi=0;xi<=w;xi++){const b=buckets[xi];if(!b)continue;const x=b.xSum/b.count;const mid=(b.min+b.max)/2;if(!drawn||b.gap){ctx.moveTo(x,mid);drawn=true}else{ctx.lineTo(x,mid)}if(b.max-b.min>1){ctx.moveTo(x,b.min);ctx.lineTo(x,b.max);ctx.moveTo(x,mid)}}if(drawn)ctx.stroke()}
 function draw(){const w=cw,h=ch;ensureGrid();ctx.clearRect(36,0,w-52,h);ctx.drawImage(gridCanvas,36*dpr,0,(w-52)*dpr,h*dpr,36,0,w-52,h);const ct=CHART_THEMES[resolvedTheme()];ctx.fillStyle=ct.axis;ctx.font='bold 11px sans-serif';ctx.textAlign='right';ctx.textBaseline='middle';const yLabels=[1,0.75,0.5,0.25,0,-0.25,-0.5,-0.75,-1];for(let i=0;i<9;i++){ctx.fillText(String(yLabels[i]),32,Math.round(20+i*(h-40)/8))}ctx.save();ctx.beginPath();ctx.rect(36,0,w-52,h);ctx.clip();ctx.lineWidth=2;drawSeries('thr',ct.thr,-1,1,100);drawSeries('str',ct.str,-1,1,100);drawSeries('gz',ct.gz,-1,1,5);if(screenSaverActive){ctx.fillStyle=ct.saver;ctx.font='20px sans-serif';ctx.textAlign='center';ctx.fillText('Drifting for Fun~',w/2,h/2)}ctx.restore()}
 function renderLoop(now){requestAnimationFrame(renderLoop);let dt=Math.min(100,now-lastFrameTime);lastFrameTime=now;if(document.hidden||chartPaused)return;if(screenSaverActive){const stepX=(cw-52)/255;scrollOffset+=dt/18*stepX;scrollOffset=Math.min(scrollOffset,stepX*1.5);while(scrollOffset>=stepX){addPoint({seq:0,t:saverTime,dt:16,thr:90*Math.sin(saverTime/400),str:90*Math.sin(saverTime/550+1),gz:5*Math.sin(saverTime/300+2)});saverTime+=16;scrollOffset-=stepX}if(now-lastDrawTime>=16){lastDrawTime=now;draw()}}}
-if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');if(location.search.indexOf('settings=1')>=0)document.body.classList.add('settings');initCanvasDpr();initLanguage();initMute();initTheme();refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,5000);setInterval(refreshWifiSta,5000);setInterval(initMute,5000);setInterval(refreshDevMode,5000);setInterval(pollLog,1000);connectDataSocket();setTimeout(()=>{if(!dataWsConnected)pollData()},1200);updateTubMeta();draw();requestAnimationFrame(renderLoop);refreshJoystickCalStatus();restoreCmdTarget();
+if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');if(location.search.indexOf('settings=1')>=0)document.body.classList.add('settings');if(location.search.indexOf('wifi=1')>=0){document.body.classList.add('wifi');openWifiApModal();openWifiStaModal();}initCanvasDpr();initLanguage();initMute();initTheme();refreshStatus();refreshDevMode();refreshWifiSta();setInterval(refreshStatus,5000);setInterval(refreshWifiSta,5000);setInterval(initMute,5000);setInterval(refreshDevMode,5000);setInterval(pollLog,1000);connectDataSocket();setTimeout(()=>{if(!dataWsConnected)pollData()},1200);updateTubMeta();draw();requestAnimationFrame(renderLoop);refreshJoystickCalStatus();restoreCmdTarget();
 </script>
 </body>
 </html>

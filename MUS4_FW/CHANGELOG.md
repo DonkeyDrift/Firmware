@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-08-21 v1.8.33
+
+- feat(WebConsole): 新增 `?wifi=1` 内嵌配网板块视图——把 STA/AP 配网弹窗以静态板块形式直接呈现，供 DD Car Connector 1:1 内嵌（Issue #234）
+  - 背景：DD 的 Car Connector 此前只在顶部放「STA 配置 / AP 名称」两个按钮，点按经 postMessage 打开车端配网弹窗；用户希望像 Drifter Console 那样把完整配网板块（SSID 输入 / 扫描 / 密码 / 上位机配网 / 历史 / AP 前缀预览）直接铺在页面里，而不是一个按键。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS 新增 `body.wifi` 规则——隐藏 `.grid` / `.headerRow` / `.fabToggle` / `.fabActions`；把 `#wifiApModal`、`#wifiStaModal` 由 `position:fixed` 遮罩弹窗改为 `position:static;display:block;background:transparent` 的静态板块，`.dialog` 改 `width:100%;max-width:640px;margin:0 0 14px`；隐藏两个配网弹窗的首个「取消」按钮（板块模式下无需关闭）。
+    - JS init 增加 `if(location.search.indexOf('wifi=1')>=0){document.body.classList.add('wifi');openWifiApModal();openWifiStaModal();}`——加载时自动 open 两个配网表单并填充字段（复用既有 refresh 逻辑，1:1 车端表单）。
+    - `?wifi=1` 与 `?settings=1` 可叠加：DD 侧 iframe 用 `?embedded=1&settings=1&wifi=1` 同屏显示「调校（漂移 / Judge / 手柄校准）」+「AP 名称配置」+「STA Wi-Fi 配置」三个板块；DEV / OTA 仍不在该视图内（顶栏 `body.embedded` 隐藏、settingsView 无 system 行）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.32 → v1.8.33。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本与 CHANGELOG 顺序断言升至 v1.8.33；`python3 -m pytest tests/ -q` 全绿。
+  - 注：配套 DD 侧 CarSettingsPanel iframe 改用 `&wifi=1`、删除 postMessage 按钮在 DonkeyDrift 仓库同日条目；收尾后 OTA 刷车验证。
+
 ## 2026-08-21 v1.8.32
 
 - fix(WebConsole): 移除 DC 头部「C Code」入口按钮及其全部配套代码（JS / i18n / 移动端 order / 测试断言），恢复为 Kimi Code Web + DeepSeek Harness 两个弱化入口

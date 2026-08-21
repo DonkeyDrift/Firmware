@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-21 v1.8.34
+
+- fix(WebConsole): Diagnostics 面板「漂移设置」按钮硬编码过时 IP `http://192.168.3.150/drift` 导致点击后页面打不开——改为相对路径 `window.open('/drift','_blank')`，跳转到 ESP32 自身的 `/drift` 页面
+  - 背景：v1.8.28 新增 `?settings=1` 设置视图时，Settings 视图的漂移设置按钮已正确使用 `location.href='/drift'` 跳转到 ESP32 自身页面；但 Diagnostics 面板（主视图）的同名按钮仍沿用 v1.7.56 时代的硬编码上位机 IP `192.168.3.150`，该 IP 已过时且上位机无 `/drift` 路由，两辆车点击后均打不开页面。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：第 64 行 `onclick="window.open('http://192.168.3.150/drift','_blank')"` → `onclick="window.open('/drift','_blank')"`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.33 → v1.8.34。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_drift_settings_button_next_to_joystick_calibration` 的 docstring 与断言由 `http://192.168.3.150/drift` 改为 `window.open('/drift','_blank')`；版本一致性与 CHANGELOG 顺序断言升至 v1.8.34。
+
 ## 2026-08-21 v1.8.33
 
 - feat(WebConsole): 新增 `?wifi=1` 内嵌配网板块视图——把 STA/AP 配网弹窗以静态板块形式直接呈现，供 DD Car Connector 1:1 内嵌（Issue #234）

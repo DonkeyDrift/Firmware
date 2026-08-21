@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.30"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.31"' in build_info
+    assert "v1.8.31" in changelog
     assert "v1.8.30" in changelog
     assert "v1.8.29" in changelog
     assert "v1.8.28" in changelog
@@ -329,6 +330,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-21 v1.8.31") < changelog.index("## 2026-08-21 v1.8.30")
     assert changelog.index("## 2026-08-21 v1.8.30") < changelog.index("## 2026-08-21 v1.8.29")
     assert changelog.index("## 2026-08-21 v1.8.29") < changelog.index("## 2026-08-21 v1.8.28")
     assert changelog.index("## 2026-08-21 v1.8.28") < changelog.index("## 2026-08-20 v1.8.27")
@@ -1754,14 +1756,16 @@ def test_web_console_header_logo_left_of_title():
 def test_web_console_mobile_header_layout():
     """窄屏（手机/平板竖屏，max-width:820px）头部重排为固定 4 行：
     第 1 行 logo + 标题 + GitHub + 版本号（紧跟 GitHub 右侧，整体左排）；
-    第 2 行 打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web / 打开 DeepSeek Harness；
+    第 2 行 打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web / C Code / 打开 DeepSeek Harness；
     第 3 行 红绿蓝（最左）+ OTA + 静音 + DEV（margin-left:auto 贴合最右端）；
     第 4 行 主题切换（左）+ 语言切换（右）。
     实现方式：headerRow 保持 flex-wrap，DOM 中三个 .rowBreak 分隔 span 桌面
     display:none，窄屏下 display:block + flex-basis:100% 强制换行，各元素用
     order 重排。桌面布局规则不动，仅靠媒体查询覆盖。
     v1.7.70 第 2 行新增"打开 Kimi Code Web"占位按钮，order 插入 8，后续顺移 +1。
-    v1.8.7 第 2 行再新增"打开 DeepSeek Harness"按钮，order 插入 9，后续顺移 +1。"""
+    v1.8.7 第 2 行再新增"打开 DeepSeek Harness"按钮，order 插入 9，后续顺移 +1。
+    本次改动 第 2 行再新增"C Code"按钮（#openCCodeBtn，插在 Kimi Code Web 与
+    DeepSeek Harness 之间），order 插入 9，后续顺移 +1。"""
 
     source = firmware_source_text()
 
@@ -1780,17 +1784,18 @@ def test_web_console_mobile_header_layout():
     assert "#versionLabel{order:4}" in source
     assert "#versionLabel{order:4;margin-left:auto}" not in source
     assert ".br1{order:5}" in source
-    # 第 2 行：Donkey / DonkeyDrifter / Kimi Code Web / DeepSeek Harness
+    # 第 2 行：Donkey / DonkeyDrifter / Kimi Code Web / C Code / DeepSeek Harness
     assert "#enterDonkeyBtn{order:6}" in source
     assert "#enterDonkeyDrifterBtn{order:7}" in source
     assert "#openKimiCodeWebBtn{order:8}" in source
-    assert "#openDshBtn{order:9}" in source
+    assert "#openCCodeBtn{order:9}" in source
+    assert "#openDshBtn{order:10}" in source
     # 第 3 行：静音（桌面右推 margin-left:auto 复位）+ 主题 + 语言（右对齐）
-    assert ".headerRow .otaLink{order:12}" in source
-    assert "#muteToggle{order:13;margin-left:0}" in source
-    assert "#devModeToggle{order:14;margin-left:auto}" in source
-    assert "#themeToggle{order:16}" in source
-    assert "#langToggle{order:17;margin-left:auto}" in source
+    assert ".headerRow .otaLink{order:13}" in source
+    assert "#muteToggle{order:14;margin-left:0}" in source
+    assert "#devModeToggle{order:15;margin-left:auto}" in source
+    assert "#themeToggle{order:17}" in source
+    assert "#langToggle{order:18;margin-left:auto}" in source
 
 
 def test_web_console_language_tabs_wired_to_set_language():
@@ -4639,25 +4644,30 @@ def test_web_console_header_entry_buttons():
     v1.7.90 三个入口按键显示文案去掉"打开 "/"Open "前缀（zh/en 同步），
     按钮 id、href/onclick 跳转与其它词条均不变。
     v1.8.7 Kimi Code Web 右侧新增"打开 DeepSeek Harness"按钮（#openDshBtn），
-    沿用 _launcherIp，POST :8090/api/launch/dsh，交互与 Kimi Code Web 按钮同款。"""
+    沿用 _launcherIp，POST :8090/api/launch/dsh，交互与 Kimi Code Web 按钮同款。
+    本次改动 Kimi Code Web 与 DeepSeek Harness 之间新增"C Code"按钮（#openCCodeBtn），
+    沿用 _launcherIp，POST :8090/api/launch/claude-code，返回 launcher 网页终端 URL
+    并在新标签页打开（终端内运行 claude），交互与 DeepSeek Harness 按钮同款、超时 15s。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
 
     # 位置：主标题 <h1> 之后、GitHub 链接之前，Donkey 在左、DonkeyDrifter 居中、
-    # Kimi Code Web 在右、DeepSeek Harness 紧随其后
+    # Kimi Code Web 在右、C Code 紧随其后、DeepSeek Harness 在最右
     h1_pos = assets.index('<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>')
     donkey_pos = assets.index('data-i18n="button.enterDonkey"')
     drifter_pos = assets.index('data-i18n="button.enterDonkeyDrifter"')
     kimi_pos = assets.index('data-i18n="button.openKimiCodeWeb"')
+    ccode_pos = assets.index('data-i18n="button.openCCode"')
     dsh_pos = assets.index('data-i18n="button.openDsh"')
     gh_pos = assets.index('<a class="ghLink"')
-    assert h1_pos < donkey_pos < drifter_pos < kimi_pos < dsh_pos < gh_pos
+    assert h1_pos < donkey_pos < drifter_pos < kimi_pos < ccode_pos < dsh_pos < gh_pos
 
     # v1.7.61：改用 <a target="_blank"> 原生链接，不再使用 onclick + window.open
     assert 'id="enterDonkeyBtn"' in assets
     assert 'id="enterDonkeyDrifterBtn"' in assets
     assert 'id="openKimiCodeWebBtn"' in assets
+    assert 'id="openCCodeBtn"' in assets
     assert 'id="openDshBtn"' in assets
     assert 'target="_blank"' in assets
     assert 'rel="noopener"' in assets
@@ -4708,6 +4718,23 @@ def test_web_console_header_entry_buttons():
     assert "'toast.dshTimeout':'DeepSeek Harness 启动超时'" in assets
     assert "'toast.dshTimeout':'DeepSeek Harness launch timed out'" in assets
 
+    # 本次改动："C Code"按钮：交互与 DeepSeek Harness 按钮同款，
+    # POST http://<host>:8090/api/launch/claude-code（毫秒级返回，15s 超时），
+    # about:blank 句柄 + 等待态禁用并切启动中文案，失败/超时走 toast；
+    # i18n 中英词条各出现 2 次
+    assert 'onclick="openCCode()"' in assets
+    assert 'async function openCCode()' in assets
+    assert ':8090/api/launch/claude-code' in assets
+    assert "let cCodeLaunching=false" in assets
+    assert '15000' in assets
+    assert assets.count("'button.openCCode':'C Code'") == 2
+    assert "'button.openCCodeLaunching':'正在启动 C Code...'" in assets
+    assert "'button.openCCodeLaunching':'Launching C Code...'" in assets
+    assert "'toast.cCodeFailed':'C Code 启动失败'" in assets
+    assert "'toast.cCodeFailed':'Failed to launch C Code'" in assets
+    assert "'toast.cCodeTimeout':'C Code 启动超时'" in assets
+    assert "'toast.cCodeTimeout':'C Code launch timed out'" in assets
+
     # v1.7.59：enterDonkeyDrifter 指向 /launch/drive
     # v1.7.61：入口按钮改用 <a target="_blank">，不再使用 onclick + window.open
     # v1.7.62：enterDonkeyDrifter 改用 #drive hash（与"打开 Donkey"同路径，避免 Safari 问题）
@@ -4723,21 +4750,24 @@ def test_web_console_header_entry_buttons():
     assert '.otaLink{display:inline-flex;align-items:center;justify-content:center;height:32px' in assets
     assert '.otaButton{' not in assets
     # v1.8.16：DC 顶栏标签复刻 DD 两类标签结构——D/DD 为 14px 功能标签(.navTab)，
-    # KCW/DSH 为 12px 弱化标签(.navTabWeak)并带 lucide 图标；仅 2 个 .navTab
+    # KCW/C Code/DSH 为 12px 弱化标签(.navTabWeak)并带 lucide 图标；仅 2 个 .navTab
     assert '.navTab{font-family:inherit;color:#8fa1b5;font-size:0.875rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1.25rem;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer;margin-right:12px}' in assets
     assert '.navTab:hover{color:#8bdcff;background:transparent}' in assets
     assert '.navTabWeak{font-family:inherit;color:#6b7d90;font-size:0.75rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1rem;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-right:12px}' in assets
     assert '.navTabWeak:hover{color:#b9c5d3;background:transparent}' in assets
     assert assets.count('class="navTab"') == 2
-    assert assets.count('class="navTabWeak"') == 2
+    assert assets.count('class="navTabWeak"') == 3
     assert '<a class="navTab" data-i18n="button.enterDonkey"' in assets
     assert '<a class="navTab" data-i18n="button.enterDonkeyDrifter"' in assets
     assert '<button type="button" class="navTabWeak" id="openKimiCodeWebBtn"' in assets
+    assert '<button type="button" class="navTabWeak" id="openCCodeBtn"' in assets
     assert '<button type="button" class="navTabWeak" id="openDshBtn"' in assets
     assert '<span data-i18n="button.openKimiCodeWeb">Kimi Code Web</span>' in assets
+    assert '<span data-i18n="button.openCCode">C Code</span>' in assets
     assert '<span data-i18n="button.openDsh">DeepSeek Harness</span>' in assets
-    # KCW/DSH 带 lucide 图标（Sparkles / FlaskConical，14px，stroke=currentColor）
+    # KCW/C Code/DSH 带 lucide 图标（Sparkles / Terminal / FlaskConical，14px，stroke=currentColor）
     assert 'M9.937 15.5A2 2 0 0 0 8.5 14.063' in assets
+    assert 'M12 19h8' in assets
     assert 'M14 2v6a2 2 0 0 0 .245.96' in assets
     # v1.8.16 追加：顶栏字体渲染对齐 DD 导航——font-synthesis:none 阻止 500 字重被合成加粗，
     # text-rendering + font-smoothing 让字形更细更清晰（否则 Donkey/DonkeyDrifter 显得更粗更大）

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-21 v1.8.35
+
+- style(WebConsole): 删除 Drifter Console 主控台页面 4 个面板组的外框（border / background / border-radius），保留内含子元素各自样式
+  - 背景：用户反馈 Drifter Console 页面中 4 个 `.panel` 面板组（状态卡片 Mode/Park/Drift/Voltage/Network、遥测曲线 chartPanel、终端 serialPanel、RC Channels diagnosticsPanel）外面的边框框线使界面冗余，要求删掉外框、保留内部卡片/曲线/终端/RC 单元格各自的样式。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 深色主题 `.panel` 规则：`background:#171c24;border:1px solid #2b3441;border-radius:8px;padding:10px` → `background:transparent;border:none;border-radius:0;padding:10px`（保留 padding 提供内容呼吸空间，`.grid` 的 `gap:10px` 提供面板间距）。
+    - 浅色主题覆盖 `html[data-theme="light"] .panel`：`background:#fff;border-color:#d5dce4` → `background:transparent;border:none`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.34 → v1.8.35。
+  - 不影响范围：`/drift`（Drift Assist Tuning）和 `/judge`（Drift Judge）页面有各自独立的 `.panel` CSS，不受影响；面板内部 `.stateCard`、`.rcCell`、`.foldHead`、chart canvas、`#terminalWrap` 等保留各自边框/背景。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证 v1.8.35 生效。
+
 ## 2026-08-21 v1.8.34
 
 - fix(WebConsole): Diagnostics 面板「漂移设置」按钮硬编码过时 IP `http://192.168.3.150/drift` 导致点击后页面打不开——改为相对路径 `window.open('/drift','_blank')`，跳转到 ESP32 自身的 `/drift` 页面

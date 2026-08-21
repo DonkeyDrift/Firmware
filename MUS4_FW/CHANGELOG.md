@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-21 v1.8.32
+
+- fix(WebConsole): 移除 DC 头部「C Code」入口按钮及其全部配套代码（JS / i18n / 移动端 order / 测试断言），恢复为 Kimi Code Web + DeepSeek Harness 两个弱化入口
+  - 背景：C Code 入口（v1.8.31 引入）经实际使用后用户决定移除；Claude Code 无官方 web UI，复用 launcher 网页终端的方案体验不佳，遂删除。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：删除 `#openCCodeBtn` 按钮 HTML（含 lucide Terminal 图标）、`openCCode()` JS 函数（含 `cCodeLaunching` 防重入标志）、zh/en 各 4 个 i18n 键（`button.openCCode` / `button.openCCodeLaunching` / `toast.cCodeFailed` / `toast.cCodeTimeout`）；移动端 `@media(max-width:820px)` order 链删除 `#openCCodeBtn{order:9}` 并将后续元素 order 各减 1（`#openDshBtn` 10→9、`.br2` 11→10、`.headerRow .otaLink` 13→12、`#muteToggle` 14→13、`#devModeToggle` 15→14、`.br3` 16→15、`#themeToggle` 17→16、`#langToggle` 18→17）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.31 → v1.8.32。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_header_entry_buttons` 位置链断言改回 `h1 < donkey < drifter < kimi < dsh < gh`（删除 `ccode_pos`），删除 C Code 按钮/函数/路径/超时/i18n 断言块，`class="navTabWeak"` 计数 3 → 2，删除 Terminal 图标 `M12 19h8` 断言；`test_web_console_mobile_header_layout` order 断言同步还原；版本与 CHANGELOG 顺序断言升至 v1.8.32。两文件 165 项单测全部通过，`arduino-cli.py -c` 编译通过。
+  - 注：配套 DD 侧入口移除在 DonkeyDrift 仓库同日条目（C Code 入口移除）；收尾后 OTA 刷车验证。
+
 ## 2026-08-21 v1.8.31
 
 - feat(WebConsole): DC 头部在 Kimi Code Web 与 DeepSeek Harness 之间新增「C Code」入口按钮——点击经 launcher 新端点 `POST /api/launch/claude-code` 拿到网页终端 URL（`/terminal?cmd=cd <工作区> && claude`），在新标签页的网页终端里运行 Claude Code

@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-21 v1.8.28
+
+- feat(WebConsole): DC 新增「仅设置」视图（`?settings=1`），供 DonkeyDrifter 的 Car Connector 页面只嵌入车辆设置板块，而非整个 DC 主页
+  - 背景：Car Connector 之前用 iframe 嵌入了整个 DC 主页（Mode/Park/Drift/电池等显示卡全带进来），用户指出这些是「显示」而非「设置」；正确需求是只把设置类板块（WiFi 配网、OTA、开发模式、漂移设置、Judge、手柄校准）放进 Car Connector。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `<style>` 新增 `.settingsView` 与 `body.settings` 相关样式：默认隐藏 `#settingsView`，`body.settings` 时显示 `#settingsView` 并隐藏 `.grid` / `.headerRow` / `.fabToggle` / `.fabActions`。
+    - `.grid` 闭合后新增 `<div id="settingsView" class="settingsView">`：标题「车辆设置」+ 三组 setRow——WiFi（STA Wi-Fi 配置 / AP 名称配置）、系统（OTA / 开发模式开关 `#devModeToggleSettings`）、调校（漂移设置 / Judge 设置 / 手柄校准）。
+    - URL 检测：`location.search` 含 `settings=1` 时 `document.body.classList.add('settings')`。
+    - `renderDevMode` 同步更新 `#devModeToggleSettings` 的开/关态与 aria-checked。
+    - i18n 新增 `settings.title` / `settings.wifi` / `settings.system` / `settings.tuning` / `settings.judge` / `settings.dev`（zh/en）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.27 → v1.8.28。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言升至 v1.8.28，并新增 v1.8.28 在 v1.8.27 之前的顺序断言。
+
 ## 2026-08-20 v1.8.27
 
 - fix(WebConsole): DC 深浅色手动切换改为仅内存态、不写 localStorage——修复「手动切换后刷新仍保持所选主题，无法重新跟随系统」的问题，使 DC 与 Donkey / DonkeyDrifter 三页一致：默认跟随系统、每次进入/刷新都重新按浏览器 prefers-color-scheme 解析

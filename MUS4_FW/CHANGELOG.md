@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-21 v1.8.30
+
+- fix(WebConsole): Car Connector 内嵌 DC 的 `?settings=1` 设置视图删掉「系统（OTA/开发模式）」与「Wi-Fi 配网」两行，改为由 DonkeyDrifter 侧把「连接/配网」融合成一个板块
+  - 背景：用户反馈 Car Connector 里嵌入的 DC 设置视图，「系统」行（OTA + 开发模式）太突兀、不该占一整行；「配网」则与 DD 侧 Car Connector 顶部的「连接（设备发现/选择）」在功能上重复，应融合成一个板块。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#settingsView` 删除「Wi-Fi 配网」setRow 与「系统」setRow，只保留「调校」（漂移设置 / Judge 设置 / 手柄校准）。
+    - `window.addEventListener('message',…)` 新增 `dd-open-wifi-sta` → `openWifiStaModal()`、`dd-open-wifi-ap` → `openWifiApModal()`，供 DD 侧顶部配网按钮经 postMessage 打开车端 STA/AP 配置弹窗（弹窗仍渲染在 iframe 内，1:1 车端 UI）。
+    - `renderDevMode` 删除已失效的 `#devModeToggleSettings` 同步（该元素随「系统」行一并删除）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.29 → v1.8.30。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言升至 v1.8.30，并新增 v1.8.30 在 v1.8.29 之前的顺序断言。
+
 ## 2026-08-21 v1.8.29
 
 - fix(WebConsole): 终端全屏后四周白边——`#terminalWrap` 全屏态去掉 `padding`/`border-radius` 并统一深色背景，删除亮色主题的全屏浅色背景覆盖，使终端 iframe 全屏铺满、无白边

@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.30"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.31"' in build_info
+    assert "v1.8.31" in changelog
     assert "v1.8.30" in changelog
     assert "v1.8.29" in changelog
     assert "v1.8.28" in changelog
@@ -329,6 +330,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-21 v1.8.31") < changelog.index("## 2026-08-21 v1.8.30")
     assert changelog.index("## 2026-08-21 v1.8.30") < changelog.index("## 2026-08-21 v1.8.29")
     assert changelog.index("## 2026-08-21 v1.8.29") < changelog.index("## 2026-08-21 v1.8.28")
     assert changelog.index("## 2026-08-21 v1.8.28") < changelog.index("## 2026-08-20 v1.8.27")

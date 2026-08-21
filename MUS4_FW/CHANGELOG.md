@@ -1,6 +1,6 @@
 # CHANGELOG.md
 
-## 2026-08-21 v1.8.30
+## 2026-08-21 v1.8.31
 
 - feat(WebConsole): DC 头部在 Kimi Code Web 与 DeepSeek Harness 之间新增「C Code」入口按钮——点击经 launcher 新端点 `POST /api/launch/claude-code` 拿到网页终端 URL（`/terminal?cmd=cd <工作区> && claude`），在新标签页的网页终端里运行 Claude Code
   - 背景：DD 标签栏与 DC 头部已有 Kimi Code Web / DeepSeek Harness 两个弱化入口，用户要求在其间加入 C Code（Claude Code）；Claude Code 无官方 web UI，故复用 launcher 的 `/terminal?cmd=` 网页终端机制（菜单 8/9/10 同款），入口即开即得、端点毫秒级返回，无需冷启动等待。
@@ -9,9 +9,19 @@
     - JS：`openKimiCodeWeb()` 与 `openDsh()` 之间新增 `openCCode()`，逐行镜像 `openDsh()`（防重入标志 `cCodeLaunching` → `window.open('about:blank')` 占住新标签 → 禁用按钮切 Launching 文案 → AbortController + fetch POST `http://<launcherIp>:8090/api/launch/claude-code` → 成功 `newTab.location.href=j.url` → 失败关标签 + showToast → finally 恢复）；超时 15s（端点无子进程、即时返回，不同于 kimi 的 120s 冷启动）。
     - i18n：zh/en 各在 kimiCodeWeb 组与 dsh 组之间新增 `button.openCCode` / `button.openCCodeLaunching` / `toast.cCodeFailed` / `toast.cCodeTimeout` 四键（措辞镜像 dsh 组）。
     - 移动端 CSS（`@media (max-width:820px)` 的显式 `order` 链）：`#openCCodeBtn{order:9}` 插入 kimi(8) 之后，`#openDshBtn` 及后续元素 order 顺移 +1（v1.8.7 加 dsh 时的同款处理，避免窄屏下新按钮以默认 order:0 掉到头部最前）。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.29 → v1.8.30。
-  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_header_entry_buttons` 位置链断言改为 `h1 < donkey < drifter < kimi < ccode < dsh < gh`，新增 `openCCodeBtn` 按钮/`openCCode()` 函数/`/api/launch/claude-code` 路径/15000 超时/i18n 四键中英文案/lucide Terminal 图标路径（`M12 19h8`）等断言块，`class="navTabWeak"` 计数 2 → 3；`test_web_console_mobile_header_layout` 同步 order 顺移断言；版本与 CHANGELOG 顺序断言升至 v1.8.30。两文件 165 项单测全部通过，`arduino-cli.py -c` 编译通过。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.30 → v1.8.31（避让并行会话已合入的 v1.8.30）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_header_entry_buttons` 位置链断言改为 `h1 < donkey < drifter < kimi < ccode < dsh < gh`，新增 `openCCodeBtn` 按钮/`openCCode()` 函数/`/api/launch/claude-code` 路径/15000 超时/i18n 四键中英文案/lucide Terminal 图标路径（`M12 19h8`）等断言块，`class="navTabWeak"` 计数 2 → 3；`test_web_console_mobile_header_layout` 同步 order 顺移断言；版本与 CHANGELOG 顺序断言升至 v1.8.31。两文件 165 项单测全部通过，`arduino-cli.py -c` 编译通过。
   - 注：配套 launcher 端点与 DD 侧按钮在 DonkeyDrift 仓库同日条目（C Code 入口）；收尾后 OTA 刷车验证。
+
+## 2026-08-21 v1.8.30
+- fix(WebConsole): Car Connector 内嵌 DC 的 `?settings=1` 设置视图删掉「系统（OTA/开发模式）」与「Wi-Fi 配网」两行，改为由 DonkeyDrifter 侧把「连接/配网」融合成一个板块
+  - 背景：用户反馈 Car Connector 里嵌入的 DC 设置视图，「系统」行（OTA + 开发模式）太突兀、不该占一整行；「配网」则与 DD 侧 Car Connector 顶部的「连接（设备发现/选择）」在功能上重复，应融合成一个板块。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#settingsView` 删除「Wi-Fi 配网」setRow 与「系统」setRow，只保留「调校」（漂移设置 / Judge 设置 / 手柄校准）。
+    - `window.addEventListener('message',…)` 新增 `dd-open-wifi-sta` → `openWifiStaModal()`、`dd-open-wifi-ap` → `openWifiApModal()`，供 DD 侧顶部配网按钮经 postMessage 打开车端 STA/AP 配置弹窗（弹窗仍渲染在 iframe 内，1:1 车端 UI）。
+    - `renderDevMode` 删除已失效的 `#devModeToggleSettings` 同步（该元素随「系统」行一并删除）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.29 → v1.8.30。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言升至 v1.8.30，并新增 v1.8.30 在 v1.8.29 之前的顺序断言。
 
 ## 2026-08-21 v1.8.29
 

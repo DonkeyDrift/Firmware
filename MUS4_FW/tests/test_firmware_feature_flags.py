@@ -274,7 +274,9 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.32"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.34"' in build_info
+    assert "v1.8.34" in changelog
+    assert "v1.8.33" in changelog
     assert "v1.8.32" in changelog
     assert "v1.8.31" in changelog
     assert "v1.8.30" in changelog
@@ -331,6 +333,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-21 v1.8.34") < changelog.index("## 2026-08-21 v1.8.33")
+    assert changelog.index("## 2026-08-21 v1.8.33") < changelog.index("## 2026-08-21 v1.8.32")
     assert changelog.index("## 2026-08-21 v1.8.32") < changelog.index("## 2026-08-21 v1.8.31")
     assert changelog.index("## 2026-08-21 v1.8.31") < changelog.index("## 2026-08-21 v1.8.30")
     assert changelog.index("## 2026-08-21 v1.8.30") < changelog.index("## 2026-08-21 v1.8.29")
@@ -3587,14 +3591,14 @@ def test_joystick_cal_modal_handles_auth_and_nack():
 def test_drift_settings_button_next_to_joystick_calibration():
     """
     Diagnostics 面板的"手柄校准"按钮旁需提供"漂移设置"入口，
-    方便用户跳转到上位机漂移配置页 http://192.168.3.150/drift。
+    方便用户跳转到 ESP32 自身的漂移配置页 /drift。
     """
     assets = (
         PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
     ).read_text(encoding="utf-8")
 
     assert "button.driftSettings" in assets, "前端缺少漂移设置按钮的 data-i18n key"
-    assert "http://192.168.3.150/drift" in assets, "漂移设置按钮应跳转到上位机 drift 配置页"
+    assert "window.open('/drift','_blank')" in assets, "漂移设置按钮应跳转到 ESP32 自身 drift 配置页"
     assert "I18N.zh['button.driftSettings']" in assets, "缺少中文漂移设置文案"
     assert "I18N.en['button.driftSettings']" in assets, "缺少英文漂移设置文案"
     # 漂移设置按钮应与手柄校准按钮位于同一容器（margin:10px 0 的 div）

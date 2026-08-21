@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-21 v1.8.30
+
+- feat(WebConsole): DC 头部在 Kimi Code Web 与 DeepSeek Harness 之间新增「C Code」入口按钮——点击经 launcher 新端点 `POST /api/launch/claude-code` 拿到网页终端 URL（`/terminal?cmd=cd <工作区> && claude`），在新标签页的网页终端里运行 Claude Code
+  - 背景：DD 标签栏与 DC 头部已有 Kimi Code Web / DeepSeek Harness 两个弱化入口，用户要求在其间加入 C Code（Claude Code）；Claude Code 无官方 web UI，故复用 launcher 的 `/terminal?cmd=` 网页终端机制（菜单 8/9/10 同款），入口即开即得、端点毫秒级返回，无需冷启动等待。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 头部按钮：`openKimiCodeWebBtn` 与 `openDshBtn` 之间插入 `openCCodeBtn`（`class="navTabWeak"`，lucide Terminal 内联 SVG 图标 14×14 `stroke="currentColor"`，与邻居同款；`<span data-i18n="button.openCCode">C Code</span>`）。
+    - JS：`openKimiCodeWeb()` 与 `openDsh()` 之间新增 `openCCode()`，逐行镜像 `openDsh()`（防重入标志 `cCodeLaunching` → `window.open('about:blank')` 占住新标签 → 禁用按钮切 Launching 文案 → AbortController + fetch POST `http://<launcherIp>:8090/api/launch/claude-code` → 成功 `newTab.location.href=j.url` → 失败关标签 + showToast → finally 恢复）；超时 15s（端点无子进程、即时返回，不同于 kimi 的 120s 冷启动）。
+    - i18n：zh/en 各在 kimiCodeWeb 组与 dsh 组之间新增 `button.openCCode` / `button.openCCodeLaunching` / `toast.cCodeFailed` / `toast.cCodeTimeout` 四键（措辞镜像 dsh 组）。
+    - 移动端 CSS（`@media (max-width:820px)` 的显式 `order` 链）：`#openCCodeBtn{order:9}` 插入 kimi(8) 之后，`#openDshBtn` 及后续元素 order 顺移 +1（v1.8.7 加 dsh 时的同款处理，避免窄屏下新按钮以默认 order:0 掉到头部最前）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.29 → v1.8.30。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_header_entry_buttons` 位置链断言改为 `h1 < donkey < drifter < kimi < ccode < dsh < gh`，新增 `openCCodeBtn` 按钮/`openCCode()` 函数/`/api/launch/claude-code` 路径/15000 超时/i18n 四键中英文案/lucide Terminal 图标路径（`M12 19h8`）等断言块，`class="navTabWeak"` 计数 2 → 3；`test_web_console_mobile_header_layout` 同步 order 顺移断言；版本与 CHANGELOG 顺序断言升至 v1.8.30。两文件 165 项单测全部通过，`arduino-cli.py -c` 编译通过。
+  - 注：配套 launcher 端点与 DD 侧按钮在 DonkeyDrift 仓库同日条目（C Code 入口）；收尾后 OTA 刷车验证。
+
 ## 2026-08-21 v1.8.29
 
 - fix(WebConsole): 终端全屏后四周白边——`#terminalWrap` 全屏态去掉 `padding`/`border-radius` 并统一深色背景，删除亮色主题的全屏浅色背景覆盖，使终端 iframe 全屏铺满、无白边

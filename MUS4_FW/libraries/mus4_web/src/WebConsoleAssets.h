@@ -68,8 +68,6 @@ html[data-theme="light"] .settingsView .setRow h3{color:#5b6b7d}
 </div>
 <div id="settingsView" class="settingsView">
 <h2 class="setTitle" data-i18n="settings.title">车辆设置</h2>
-<div class="setRow"><h3 data-i18n="settings.wifi">Wi-Fi 配网</h3><div class="setActions"><button type="button" onclick="openWifiStaModal()" data-i18n="wifi.staTitle">STA Wi-Fi 配置</button><button type="button" onclick="openWifiApModal()" data-i18n="wifi.apTitle">AP 名称配置</button></div></div>
-<div class="setRow"><h3 data-i18n="settings.system">系统</h3><div class="setActions"><button type="button" onclick="location.href='/update'" data-i18n="button.ota">OTA</button><button type="button" id="devModeToggleSettings" class="devHint" onclick="toggleDevModeFromSwitch()" role="switch" aria-checked="false" data-i18n="settings.dev">开发模式</button></div></div>
 <div class="setRow"><h3 data-i18n="settings.tuning">调校</h3><div class="setActions"><button type="button" onclick="location.href='/drift'" data-i18n="button.driftSettings">漂移设置</button><button type="button" onclick="location.href='/judge'" data-i18n="settings.judge">Judge 设置</button><button type="button" onclick="openJoystickCalModal()" data-i18n="button.joystickCal">手柄校准</button></div></div>
 </div>
 <div id="devModeModal" class="modal"><div class="dialog"><h2 data-i18n="dev.title">开启开发模式？</h2><p data-i18n="dev.body">开发模式会持久化，并允许 Web Console 免认证保持 OTA 监听。不会放宽控制命令；实际 OTA 传输期间固件会默认 Park Locked。</p><div class="dialogActions"><button onclick="closeDevModeModal(false)" data-i18n="button.cancel">取消</button><button onclick="closeDevModeModal(true)" data-i18n="button.confirmDev">确认开启</button></div></div></div>
@@ -303,7 +301,7 @@ async function initLanguage(){let lang=readUrlLanguage();if(!lang){try{const r=a
 function renderMuteButton(){const b=document.getElementById('muteToggle');if(b)b.classList.toggle('muted',uiMuted)}
 async function initMute(){try{const r=await fetch('/api/mute',{cache:'no-store'});if(!r.ok)return;const j=await r.json();uiMuted=j.muted===1||j.muted===true;renderMuteButton()}catch(e){}}
 async function toggleMute(){const next=uiMuted?0:1;try{const r=await fetch('/api/mute',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'muted='+next});if(!r.ok)return;const j=await r.json();uiMuted=j.muted===1||j.muted===true;renderMuteButton()}catch(e){}}
-window.addEventListener('message',function(e){const d=e.data;if(d&&d.type==='dd-console-mute-changed'){uiMuted=!!d.muted;renderMuteButton()}});
+window.addEventListener('message',function(e){const d=e.data;if(!d)return;if(d.type==='dd-console-mute-changed'){uiMuted=!!d.muted;renderMuteButton()}else if(d.type==='dd-open-wifi-sta'){openWifiStaModal()}else if(d.type==='dd-open-wifi-ap'){openWifiApModal()}});
 function toggleTheme(){setTheme(resolvedTheme()==='light'?'dark':'light')}
 function setTheme(theme){uiTheme=theme;applyTheme()}
 function initTheme(){uiTheme='auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}
@@ -406,7 +404,7 @@ function commitThrottleLimit(el,slider,setter){const s=document.getElementById(s
 function commitThrottleMin(el){commitThrottleLimit(el,'throttleMinSlider','setThrottleMin')}
 function commitThrottleMax(el){commitThrottleLimit(el,'throttleMaxSlider','setThrottleMax')}
 async function sendCmd(){const v=cmd.value.trim();if(!v)return;const target=(cmdTarget?cmdTarget.value:'web')||'web';const r=await fetch('/api/cmd?target='+encodeURIComponent(target),{method:'POST',headers:{'Content-Type':'text/plain'},body:v});const t=await r.text();showCommandError(t);cmd.value='';refreshStatus();setTimeout(pollLog,200)}
-function renderDevMode(v){uiDevMode=!!v;const b=document.getElementById('devModeToggle');if(b){b.classList.toggle('devOn',uiDevMode);b.setAttribute('aria-checked',uiDevMode?'true':'false')}const s=document.getElementById('devModeToggleSettings');if(s){s.classList.toggle('devOn',uiDevMode);s.setAttribute('aria-checked',uiDevMode?'true':'false')}}function toggleDevModeFromSwitch(){if(uiDevMode){setDevMode(false)}else{devModeModal.classList.add('show')}}
+function renderDevMode(v){uiDevMode=!!v;const b=document.getElementById('devModeToggle');if(b){b.classList.toggle('devOn',uiDevMode);b.setAttribute('aria-checked',uiDevMode?'true':'false')}}function toggleDevModeFromSwitch(){if(uiDevMode){setDevMode(false)}else{devModeModal.classList.add('show')}}
 async function refreshDevMode(){try{const r=await fetch('/api/devmode');const j=await r.json();renderDevMode(!!j.enabled)}catch(e){}}
 function closeDevModeModal(ok){devModeModal.classList.remove('show');if(ok)setDevMode(true)}
 async function setDevMode(v){try{const r=await fetch('/api/devmode',{method:'POST',headers:{'Content-Type':'text/plain'},body:v?'1':'0'});if(!r.ok)throw new Error(await r.text());const j=await r.json();renderDevMode(!!j.enabled);refreshStatus()}catch(e){line('dev mode error: '+e);refreshDevMode()}}

@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.42
+
+- feat(WebConsole): DC 头部在 Kimi Code Web 与 DeepSeek Harness 之间新增「ZCode」入口按钮——点击经 launcher 端点 `POST /api/launch/zcode` 拿到网页终端 URL（`/terminal?cmd=...&title=ZCode&icon=zcode.png`），在新标签页的网页终端里运行 ZCode（TUI 编码 agent）
+  - 背景：DC 头部已有 Kimi Code Web / DeepSeek Harness 两个弱化入口；ZCode 为 TUI agent，复用 launcher 的 `/terminal?cmd=` 网页终端机制，入口即开即得、端点毫秒级返回，无需冷启动等待。该改动最初在功能分支 Tony-zcode-entry 上完成但未及提交，后被基于更新 Tony 的 v1.8.41 编译刷车覆盖丢失，本次在最新 Tony 上恢复并重发。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 头部按钮：`openKimiCodeWebBtn` 与 `openDshBtn` 之间插入 `openZCodeBtn`（`class="navTabWeak"`，lucide Code2 内联 SVG 图标 14×14 `stroke="currentColor"`，两条 chevron 加一条斜线 path，与邻居同款；`<span data-i18n="button.openZCode">ZCode</span>`）。
+    - JS：`openDsh()` 之后新增 `openZCode()`，逐行镜像 `openDsh()`（防重入标志 `zCodeLaunching` → `window.open('about:blank')` 占住新标签 → 禁用按钮切 Launching 文案 → AbortController + fetch POST `http://<launcherIp>:8090/api/launch/zcode` → 成功 `newTab.location.href=j.url` → 失败关标签 + showToast → finally 恢复）；超时 15s（端点无子进程、即时返回，不同于 kimi 的 120s 冷启动）。
+    - i18n：zh/en 各在 dsh 组之后新增 `button.openZCode` / `button.openZCodeLaunching` / `toast.zCodeFailed` / `toast.zCodeTimeout` 四键（措辞镜像 dsh 组）。
+    - 移动端 CSS（`@media (max-width:820px)` 的显式 `order` 链）：`#openZCodeBtn{order:9}` 插入 kimi(8) 之后，`#openDshBtn` 及后续元素 order 顺移 +1（v1.8.7 同款处理，避免窄屏下新按钮以默认 order:0 掉到头部最前）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.39 → v1.8.42（v1.8.40/v1.8.41 由其它会话基于更新 Tony 编译刷车使用，未回本仓库，故跳号对齐车上实际版本之后）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_header_entry_buttons` 位置链断言改为 `h1 < donkey < drifter < kimi < zcode < dsh < gh`，新增 `openZCodeBtn` 按钮/`openZCode()` 函数/`/api/launch/zcode` 路径/15000 超时/i18n 四键中英文案/lucide Code2 图标路径等断言块，`class="navTabWeak"` 计数 2 → 3；`test_web_console_mobile_header_layout` 同步 order 顺移断言；版本与 CHANGELOG 顺序断言升至 v1.8.42。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证生效（api/status version=v1.8.42，首页 HTML 含 zcode 入口）。
+
 ## 2026-08-22 v1.8.39
 
 - fix(WebConsole): 删除漂移调参页（/drift）自带的深浅色切换按钮——该页应完全跟随 Drifter Console 主题（经 `?theme=` 参数传递），不应有自己的切换开关

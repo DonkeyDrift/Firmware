@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-21 v1.8.36
+
+- fix(WebConsole): 修复 Diagnostics 面板内 rcFold foldBody 末尾多余 `</div>` 导致浏览器提前关闭 `.grid` 容器，使手柄校准按钮、方向状态文本、STATUS Details 折叠面板被移到 `<body>` 下而非 `#diagnosticsPanel` 内部，造成左侧未与 Mode 卡片和遥测曲线对齐
+  - 根因：`libraries/mus4_web/src/WebConsoleAssets.h` 第 71 行末尾有 6 个 `</div>` 但只需 5 个（内层 flex / rcCell / 外层 flex / foldBody / rcFold），多出的 `</div>` 被 HTML 解析器用于关闭 `.grid` 容器，后续元素溢出到 `<body>`。
+  - 修复：删除末尾多余的 1 个 `</div>`（`</div></div></div></div></div></div>` → `</div></div></div></div></div>`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.35 → v1.8.36。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本与 CHANGELOG 顺序断言升至 v1.8.36。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证 v1.8.36 生效。
+
 ## 2026-08-21 v1.8.35
 
 - style(WebConsole): 删除 Drifter Console 主控台页面 4 个面板组的外框（border / background / border-radius），保留内含子元素各自样式

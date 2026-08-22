@@ -1,21 +1,35 @@
 # CHANGELOG.md
 
-## 2026-08-21 v1.8.37
+## 2026-08-21 v1.8.38
 
 - style(WebConsole): 遥测曲线 Y 轴标签字体由 `bold 11px sans-serif` 改为 `12px sans-serif`（去掉粗体，与图例标签 `.legend span{font-size:12px}` 一致）
   - 背景：用户反馈 Y 轴数字（1 / 0.75 / 0.5 等）字体偏粗，要求改为与右下角 Steering / GyroZ 标签相同的字体风格。
   - `libraries/mus4_web/src/WebConsoleAssets.h`：`draw()` 函数中 `ctx.font='bold 11px sans-serif'` → `ctx.font='12px sans-serif'`。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.36 → v1.8.37。
-  - `arduino-cli.py -c` 编译通过，OTA 刷车验证 v1.8.37 生效。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.37 → v1.8.38。
+  - 注：本条目原为本地 Tony 上的 v1.8.37，Tony 本地/远端分叉 reconciled 合并时顺移至 v1.8.38（v1.8.36 由远端漂移页主题条目占用）。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证生效。
 
-## 2026-08-21 v1.8.36
+## 2026-08-21 v1.8.37
 
 - fix(WebConsole): 修复 Diagnostics 面板内 rcFold foldBody 末尾多余 `</div>` 导致浏览器提前关闭 `.grid` 容器，使手柄校准按钮、方向状态文本、STATUS Details 折叠面板被移到 `<body>` 下而非 `#diagnosticsPanel` 内部，造成左侧未与 Mode 卡片和遥测曲线对齐
   - 根因：`libraries/mus4_web/src/WebConsoleAssets.h` 第 71 行末尾有 6 个 `</div>` 但只需 5 个（内层 flex / rcCell / 外层 flex / foldBody / rcFold），多出的 `</div>` 被 HTML 解析器用于关闭 `.grid` 容器，后续元素溢出到 `<body>`。
   - 修复：删除末尾多余的 1 个 `</div>`（`</div></div></div></div></div></div>` → `</div></div></div></div></div>`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.36 → v1.8.37。
+  - 注：本条目原为本地 Tony 上的 v1.8.36，Tony 本地/远端分叉 reconciled 合并时顺移至 v1.8.37（v1.8.36 由远端漂移页主题条目占用）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本与 CHANGELOG 顺序断言升至 v1.8.37。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证生效。
+
+## 2026-08-21 v1.8.36
+
+- feat(WebConsole): 漂移调参页（/drift）跟随 Drifter Console 深浅色主题 + 全部标题改为悬停灰字提示 + 删除「返回 Drifter Console」链接
+  - 背景：漂移调参页此前仅深色硬编码，与控制台深浅色不一致；页头有「返回 Drifter Console」链接用户要求删掉；标题下的描述文字（Status/Steering Correction/Throttle Strategy 及 h1 版本小字）常显占空间，用户要求参考 DonkeyDrifter 的小标题样式——光标悬停时灰字从标题右侧滑出。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主题：`<head>` 加防闪烁脚本（优先读 `?theme=light|dark` URL 参数，缺省按系统 `prefers-color-scheme`）；新增整套 `html[data-theme="light"]` 浅色覆盖（body/panel/summaryItem/field/input/button/a/muted/hintSpan/themeButton）；新增主题切换按钮（`#themeToggle` 太阳/月亮 SVG，与控制台同款样式）；JS 新增 `readUrlTheme/systemTheme/resolvedTheme/applyTheme/toggleTheme/setTheme/initTheme`（内存态、不写 localStorage，与控制台 v1.8.27 决策一致），`initTheme()` 加入初始化链。
+    - 跟随控制台：控制台三处 /drift 入口携带当前主题——Drift 卡 Tune 链接加 `id="driftTuneLink"`，`applyTheme()` 内同步其 `href='/drift?theme='+resolvedTheme()`；Diagnostics 漂移设置按钮 `window.open('/drift?theme='+resolvedTheme(),'_blank')`；设置视图漂移设置按钮 `location.href='/drift?theme='+resolvedTheme()`。
+    - 标题悬停提示：新增 `.titleHint`（inline-flex 容器）+ `.hintSpan`（`max-width:0;opacity:0` 收起，`.titleHint:hover` 时 `max-width:340px;opacity:1;margin-left:12px` 滑出，`transition:all .3s ease-in-out`）样式；h1+版本小字、Status、Steering Correction、Throttle Strategy 共 4 处标题改造，原常显描述文字移入 hintSpan。
+    - 删除 `<a href="/" data-i18n="drift.backLink">` 返回链接及 zh/en `drift.backLink` 键；新增 `drift.theme.title` zh「主题」/ en「Theme」。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.35 → v1.8.36。
-  - 测试同步：`tests/test_firmware_feature_flags.py` 版本与 CHANGELOG 顺序断言升至 v1.8.36。
-  - `arduino-cli.py -c` 编译通过，OTA 刷车验证 v1.8.36 生效。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——Tune 链接断言加 `id="driftTuneLink"`；`test_drift_settings_button_next_to_joystick_calibration` 断言改为携带主题参数的 `window.open('/drift?theme='+resolvedTheme(),'_blank')`；新增 `test_drift_page_theme_and_title_hints`（防闪烁脚本/浅色覆盖/切换按钮/内存态/三处入口主题参数/4 处 titleHint+hintSpan/backLink 删除断言）；版本与 CHANGELOG 顺序断言升至 v1.8.36。
 
 ## 2026-08-21 v1.8.35
 

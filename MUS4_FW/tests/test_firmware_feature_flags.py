@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.48"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.49"' in build_info
+    assert "v1.8.49" in changelog
     assert "v1.8.48" in changelog
     assert "v1.8.47" in changelog
     assert "v1.8.46" in changelog
@@ -345,6 +346,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.49") < changelog.index("## 2026-08-22 v1.8.48")
     assert changelog.index("## 2026-08-22 v1.8.48") < changelog.index("## 2026-08-22 v1.8.47")
     assert changelog.index("## 2026-08-22 v1.8.47") < changelog.index("## 2026-08-22 v1.8.46")
     assert changelog.index("## 2026-08-22 v1.8.46") < changelog.index("## 2026-08-22 v1.8.45")
@@ -3715,10 +3717,11 @@ def test_drift_settings_button_next_to_joystick_calibration():
     assert "window.open('/drift?theme='+resolvedTheme(),'_blank')" in assets, "漂移设置按钮应携带当前主题跳转到 ESP32 自身 drift 配置页"
     assert "I18N.zh['button.driftSettings']" in assets, "缺少中文漂移设置文案"
     assert "I18N.en['button.driftSettings']" in assets, "缺少英文漂移设置文案"
-    # 漂移设置按钮应与手柄校准按钮位于同一容器（margin:10px 0 的 div）
+    # 漂移设置按钮应与手柄校准按钮位于同一容器（设置视图调校行 / 诊断面板按钮行）
+    # 阈值 320：v1.8.47 起按钮加 id、v1.8.48 起 Judge 入口带 ?theme= 参数，同行字符串变长
     cal_btn = assets.index("openJoystickCalModal()")
     drift_btn = assets.index("button.driftSettings")
-    assert abs(cal_btn - drift_btn) < 200, "漂移设置按钮应紧邻手柄校准按钮"
+    assert abs(cal_btn - drift_btn) < 320, "漂移设置按钮应紧邻手柄校准按钮"
 
 
 def test_drift_page_theme_and_title_hints():
@@ -3819,6 +3822,65 @@ def test_joystick_cal_and_rc_panel_title_hints():
     for key in i18n_keys:
         assert f"I18N.zh['{key}']" in assets, f"缺中文 i18n 键 {key}"
         assert f"I18N.en['{key}']" in assets, f"缺英文 i18n 键 {key}"
+
+
+def test_judge_page_theme_and_title_hints():
+    """Drift Judge 页（/judge）应跟随控制台深浅色主题，且所有标题采用悬停灰字
+    提示样式（v1.8.48，对齐 /drift 调参页）：
+
+    - <head> 内有防闪烁主题脚本（读 ?theme= URL 参数，缺省按系统 prefers-color-scheme）。
+    - 控制台设置视图「Judge 设置」入口携带当前主题参数，实现"跟随 Drifter Console 深浅色"。
+    - 页内不自带主题切换按钮、不写 localStorage——主题完全跟随控制台 ?theme= 参数传递，
+      缺省 auto 跟随系统，内存态。
+    - drawChart() 图表底色/网格线/曲线色按 resolvedTheme() 取色，浅色主题下图表不变黑。
+    - 大标题（h1）与各级小标题（面板 .label、小节 .sectionTitle）的描述文字改为
+      悬停时从标题右侧滑出的灰字提示（.titleHint + .hintSpan），共 6 处
+      （h1/gyroZ 曲线/评分阈值调参/基础阈值/评分参数/评分维度）。
+    - 「返回 Drifter Console」链接保留（本次未要求删除）。
+    """
+    assets = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
+    ).read_text(encoding="utf-8")
+    page = _page_region(assets, "WIFI_WEB_JUDGE_HTML")
+
+    # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（无切换按钮，完全跟随控制台 ?theme= 参数）
+    assert "document.documentElement.dataset.theme" in page, "Judge 页缺少防闪烁主题脚本"
+    assert 'html[data-theme="light"] body{' in page, "Judge 页缺少浅色主题覆盖"
+    assert 'html[data-theme="light"] .chartWrap{' in page, "Judge 页缺少浅色图表容器覆盖"
+    assert "function initTheme()" in page, "Judge 页缺少 initTheme"
+    assert "function readUrlTheme()" in page, "Judge 页缺少 ?theme= 参数解析"
+    assert "function initTheme(){uiTheme=readUrlTheme()||readParentTheme()||'auto';applyTheme();" in page, "Judge 页 initTheme 应以 ?theme= 参数优先、内嵌时读父页主题、缺省 auto"
+    assert "function readParentTheme()" in page, "Judge 页缺少同源父页主题读取（CC 内嵌 iframe 跟随控制台）"
+    assert "window.parent.document.documentElement.dataset.theme" in page
+    assert "mus4.ui.theme" not in page, "Judge 页主题不应写 localStorage（与控制台一致的内存态）"
+    assert 'id="themeToggle"' not in page, "Judge 页不应有主题切换按钮（应跟随控制台）"
+    assert "function toggleTheme()" not in page, "Judge 页不应有 toggleTheme"
+
+    # drawChart 按主题取色（浅色底/网格/曲线）
+    assert "const light=resolvedTheme()==='light'" in page, "drawChart 未按主题取色"
+    assert "light?'#f4f6f9':'#0f1720'" in page, "drawChart 缺浅色底色"
+    assert "light?'#d5dce4':'#223042'" in page, "drawChart 缺浅色网格色"
+    assert "light?'#0c9bd6':'#5cc8ff'" in page, "drawChart 缺浅色曲线色"
+    assert "initTheme();drawChart();" in page, "初始化序列应先 initTheme 再 drawChart"
+
+    # 控制台「Judge 设置」入口携带主题参数
+    assert "location.href='/judge?theme='+resolvedTheme()" in assets, "控制台 Judge 设置入口未携带 ?theme= 参数"
+
+    # 标题悬停提示结构（6 处：h1/gyroZ 曲线/评分阈值调参/基础阈值/评分参数/评分维度）
+    assert page.count('class="titleHint"') == 6, "Judge 页应有 6 处 titleHint"
+    assert page.count('class="hintSpan"') == 6, "Judge 页应有 6 处 hintSpan"
+    assert ".titleHint:hover .hintSpan{" in page, "缺少悬停展开提示的 CSS"
+    assert 'html[data-theme="light"] .hintSpan{' in page, "缺少 light 主题 hintSpan 颜色变体"
+    assert '<div class="titleHint"><h1>Drift Judge</h1>' in page, "h1 未包 titleHint"
+    assert 'data-i18n="judge.gyroChartHint"' in page, "gyroZ 曲线标题缺悬停提示"
+    assert "I18N.zh['judge.gyroChartHint']" in page, "缺中文 i18n 键 judge.gyroChartHint"
+    assert "I18N.en['judge.gyroChartHint']" in page, "缺英文 i18n 键 judge.gyroChartHint"
+    for key in ["judge.tuneDesc", "judge.section.thresholdsDesc", "judge.section.scoringDesc", "judge.dimDesc"]:
+        assert f'<span class="hintSpan" data-i18n="{key}">' in page, f"{key} 应转为 hintSpan 悬停提示"
+        assert f'class="sectionDesc" data-i18n="{key}"' not in page, f"{key} 不应再是常驻 sectionDesc"
+
+    # 返回链接保留（本次未要求删除）
+    assert 'data-i18n="judge.backLink"' in page, "返回 Drifter Console 链接应保留"
 
 
 def test_ota_closes_websocket_during_upload():

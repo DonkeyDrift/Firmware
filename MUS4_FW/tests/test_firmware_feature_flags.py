@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.42"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.46"' in build_info
+    assert "v1.8.46" in changelog
     assert "v1.8.42" in changelog
     assert "v1.8.41" in changelog
     assert "v1.8.39" in changelog
@@ -339,6 +340,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.46") < changelog.index("## 2026-08-22 v1.8.42")
     assert changelog.index("## 2026-08-22 v1.8.42") < changelog.index("## 2026-08-22 v1.8.41")
     assert changelog.index("## 2026-08-22 v1.8.41") < changelog.index("## 2026-08-22 v1.8.39")
     assert changelog.index("## 2026-08-22 v1.8.39") < changelog.index("## 2026-08-21 v1.8.38")
@@ -2341,9 +2343,9 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
 
     assert 'id="rcFold" class="fold"' in source
     assert 'id="statusFold" class="fold"' in source
-    assert '<span class="foldIcon">▸</span><span data-i18n="panel.rcChannels">RC Channels</span>' in source
+    assert '<span class="foldIcon">▸</span><span class="titleHint"><span data-i18n="panel.rcChannels">RC Channels</span>' in source
     assert '<span class="foldIcon">▸</span><span data-i18n="panel.statusDetails">STATUS Details</span>' in source
-    assert 'aria-expanded="false"><span class="foldIcon">▸</span><span data-i18n="panel.rcChannels">RC Channels</span>' in source
+    assert 'aria-expanded="false"><span class="foldIcon">▸</span><span class="titleHint"><span data-i18n="panel.rcChannels">RC Channels</span>' in source
     assert 'id="servoDutyValue"' in source
     assert 'id="escDutyValue"' in source
     assert '.fold:not(.open) .foldBody{display:none}' in source
@@ -3697,6 +3699,55 @@ def test_drift_page_theme_and_title_hints():
     # 返回链接已删除
     assert "drift.backLink" not in page, "返回 Drifter Console 链接及其 i18n 键应已删除"
     assert 'href="/"' not in page, "漂移页不应再有返回首页链接"
+
+
+def test_joystick_cal_and_rc_panel_title_hints():
+    """手柄校准弹窗与 RC Channels 校准面板的所有标题采用悬停灰字提示
+    （.titleHint + .hintSpan），与 v1.8.36 漂移调参页一致：
+
+    - 主控制台页面补齐 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）。
+    - 弹窗大标题（cal.title）、RC Channels 折叠头（panel.rcChannels）及 12 个 rcCell
+      小标题（CH1~CH6 / OUT Steering / OUT Throttle / Mid S / Mid T / Min T / Max T）
+      全部包为标题+悬停灰字，并补齐 14 组中英 i18n 键。
+    """
+    assets = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
+    ).read_text(encoding="utf-8")
+    console = _page_region(assets, "WIFI_WEB_CONSOLE_HTML")
+
+    # 主控制台页面补齐 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）
+    assert ".titleHint{display:inline-flex;align-items:baseline" in console, "主控制台缺 titleHint 基础样式"
+    assert ".hintSpan{max-width:0;opacity:0;" in console, "主控制台缺 hintSpan 折叠样式"
+    assert ".titleHint:hover .hintSpan{max-width:340px;opacity:1;" in console, "主控制台缺悬停展开样式"
+    assert 'html[data-theme="light"] .hintSpan{' in console, "主控制台缺 light 主题 hintSpan 颜色变体"
+
+    # 弹窗大标题
+    assert '<div class="titleHint"><h3 data-i18n="cal.title">手柄校准</h3>' in console, "手柄校准弹窗大标题未包 titleHint"
+    assert 'data-i18n="cal.title.hint"' in console, "弹窗标题缺 cal.title.hint 悬停提示"
+
+    # RC Channels 折叠头
+    assert '<span class="titleHint"><span data-i18n="panel.rcChannels">RC Channels</span>' in console, "RC Channels 折叠头未包 titleHint"
+    assert 'data-i18n="rc.hint.panel"' in console, "RC Channels 折叠头缺 rc.hint.panel 悬停提示"
+
+    # 12 个 rcCell 小标题
+    hint_keys = [
+        "rc.hint.ch1", "rc.hint.ch2", "rc.hint.ch3", "rc.hint.ch4",
+        "rc.hint.ch5", "rc.hint.ch6", "rc.hint.outSteering",
+        "rc.hint.outThrottle", "rc.hint.midS", "rc.hint.midT",
+        "rc.hint.minT", "rc.hint.maxT",
+    ]
+    for key in hint_keys:
+        assert f'data-i18n="{key}"' in console, f"rcCell 小标题缺少悬停提示 {key}"
+
+    # 控制台页面 titleHint 包装总数：弹窗 1 + 折叠头 1 + rcCell 12 = 14
+    assert console.count('class="titleHint"') == 14, "控制台应有 14 处 titleHint（弹窗1+折叠头1+rcCell12）"
+    assert console.count('class="hintSpan"') == 14, "控制台应有 14 处 hintSpan"
+
+    # 14 组中英 i18n 键齐全
+    i18n_keys = ["cal.title.hint", "rc.hint.panel", *hint_keys]
+    for key in i18n_keys:
+        assert f"I18N.zh['{key}']" in assets, f"缺中文 i18n 键 {key}"
+        assert f"I18N.en['{key}']" in assets, f"缺英文 i18n 键 {key}"
 
 
 def test_ota_closes_websocket_during_upload():

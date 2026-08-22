@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.46
+
+- feat(WebConsole): CC 车辆设置内嵌视图（`?embedded=1&settings=1&wifi=1`）默认展开漂移设置与 Judge 设置——两个跳转按钮改为同页内嵌子 iframe 板块（Issue #234 后续）
+  - 背景：CC 内嵌设置视图里「漂移设置 / Judge 设置」此前是两个跳转按钮，点击会把整个 iframe 导航走；用户要求这两个设置默认展开、直接可见可调。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主页 settingsView 调校行：「漂移设置」「Judge 设置」按钮加 `id="driftSettingsBtn"` / `id="judgeSettingsBtn"`；行后新增 `<div class="embedTuneSections">`，含两个内嵌子板块（h3 标题复用既有 i18n 键 `button.driftSettings` / `settings.judge` + `<iframe class="embedTuneFrame" src="/drift?embedded=1">` / `src="/judge?embedded=1"`）。
+    - 主页 CSS（`body.embedded.settings` 作用域限定）：`.embedTuneSections{display:none}` 默认隐藏、`body.embedded.settings .embedTuneSections{display:block}` 只在 CC 车辆设置内嵌视图显示；同作用域隐藏 `driftSettingsBtn`/`judgeSettingsBtn` 两个跳转按钮（「手柄校准」按钮保留，弹窗本就内联可用）；iframe 全宽无边框圆角 10px、深色底 `#101318`，driftFrame 高 820px / judgeFrame 高 1000px。
+    - /drift 页：新增 `body.embedded .headerRow{display:none}`，init 开头加 `embedded=1` 检测置 `body.embedded` class——子 iframe 内隐藏自身头部。
+    - /judge 页：头部 panel 加 `id="judgeHeadPanel"`，新增 `body.embedded #judgeHeadPanel{display:none}`，init 开头同样加 embedded class 检测。
+    - 车端独立 DC 页面与独立设置视图完全不动：内嵌板块仅在 `body.embedded.settings` 显示；主题/语言无需传参——子 iframe 与车主页同源同 localStorage，主题走系统检测自动跟随。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.45 → v1.8.46。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_web_console_settings_view_embeds_tune_sections`（内嵌板块 HTML/CSS 规则、两个按钮 id 与隐藏规则、drift/judge 子页 embedded 守卫与 init 检测——按 `WIFI_WEB_*_HTML` 切片断言避免与主页同名规则混淆）；版本断言 v1.8.46。
+
 ## 2026-08-22 v1.8.45
 
 - style(WebConsole): wifi 内嵌融合单卡去掉 STA 卡上边框——消除 AP/STA 之间的黄色横杠

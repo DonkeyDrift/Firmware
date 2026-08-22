@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.45"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.46"' in build_info
+    assert "v1.8.46" in changelog
     assert "v1.8.45" in changelog
     assert "v1.8.44" in changelog
     # 注意：v1.8.43 被有意跳过（其它会话基于旧基点的构建正在车上运行、未以该形态回本仓库）
@@ -342,6 +343,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.46") < changelog.index("## 2026-08-22 v1.8.45")
     assert changelog.index("## 2026-08-22 v1.8.45") < changelog.index("## 2026-08-22 v1.8.44")
     assert changelog.index("## 2026-08-22 v1.8.44") < changelog.index("## 2026-08-22 v1.8.42")
     assert changelog.index("## 2026-08-22 v1.8.42") < changelog.index("## 2026-08-22 v1.8.41")
@@ -2411,6 +2413,38 @@ def test_web_console_embedded_main_view_hides_settings_panels():
     assert 'body.embedded #diagSettingsRow{display:none}' not in source
     assert 'body.embedded #networkGear{display:none}' not in source
     assert 'body.embedded #driftTuneLink{display:none}' not in source
+
+
+def test_web_console_settings_view_embeds_tune_sections():
+    """Issue #234 后续（v1.8.46）：CC 车辆设置内嵌视图（?embedded=1&settings=1&wifi=1，
+    即 body.embedded.settings 作用域）默认展开漂移设置与 Judge 设置——两个跳转按钮
+    改为同页内嵌子 iframe 板块（/drift?embedded=1、/judge?embedded=1），按钮本身在该
+    作用域隐藏；车端独立 DC 页面与独立设置视图不受影响；/drift、/judge 子页支持
+    embedded=1 时隐藏自身头部。"""
+    source = firmware_source_text()
+
+    # 主页：内嵌板块 HTML（默认 display:none，仅 body.embedded.settings 显示）
+    assert '<div class="embedTuneSections">' in source
+    assert '<iframe class="embedTuneFrame driftFrame" src="/drift?embedded=1"' in source
+    assert '<iframe class="embedTuneFrame judgeFrame" src="/judge?embedded=1"' in source
+    assert '.embedTuneSections{display:none}' in source
+    assert 'body.embedded.settings .embedTuneSections{display:block}' in source
+    assert '.embedTuneFrame{display:block;width:100%;border:0' in source
+    # 主页：两个跳转按钮加 id，并在 body.embedded.settings 作用域隐藏（手柄校准按钮保留）
+    assert 'id="driftSettingsBtn"' in source
+    assert 'id="judgeSettingsBtn"' in source
+    assert 'body.embedded.settings #driftSettingsBtn,body.embedded.settings #judgeSettingsBtn{display:none}' in source
+
+    # /judge 页（JUDGE 段在 DRIFT 段之前）：头部 panel 加 id 并在 embedded 时隐藏；init 检测 embedded=1
+    judge = source[source.index('WIFI_WEB_JUDGE_HTML'):source.index('WIFI_WEB_DRIFT_HTML')]
+    assert 'id="judgeHeadPanel"' in judge
+    assert 'body.embedded #judgeHeadPanel{display:none}' in judge
+    assert "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');syncJudgeConfigInputs();" in judge
+
+    # /drift 页：embedded 时隐藏自身 headerRow（主页也有同名规则，必须切片到 DRIFT 段断言）；init 检测 embedded=1
+    drift = source[source.index('WIFI_WEB_DRIFT_HTML'):]
+    assert 'body.embedded .headerRow{display:none}' in drift
+    assert "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');initLanguage();initTheme();loadDriftConfig();" in drift
 
 
 def test_web_console_status_parser_preserves_quoted_values_with_spaces():

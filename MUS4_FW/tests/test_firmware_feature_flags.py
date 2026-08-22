@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.48"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.54"' in build_info
+    assert "v1.8.54" in changelog
     assert "v1.8.48" in changelog
     assert "v1.8.46" in changelog
     assert "v1.8.42" in changelog
@@ -341,6 +342,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.54") < changelog.index("## 2026-08-22 v1.8.48")
     assert changelog.index("## 2026-08-22 v1.8.48") < changelog.index("## 2026-08-22 v1.8.46")
     assert changelog.index("## 2026-08-22 v1.8.46") < changelog.index("## 2026-08-22 v1.8.42")
     assert changelog.index("## 2026-08-22 v1.8.42") < changelog.index("## 2026-08-22 v1.8.41")
@@ -403,6 +405,21 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert changelog.index("## 2026-08-15 v1.7.78") < changelog.index("## 2026-08-15 v1.7.77")
     assert changelog.index("## 2026-08-15 v1.7.77") < changelog.index("## 2026-08-15 v1.7.76")
     assert changelog.index("## 2026-08-15 v1.7.76") < changelog.index("## 2026-08-15 v1.7.75")
+
+
+def test_sta_scan_popover_light_theme_selector():
+    """v1.8.54：STA 配网「搜索网络」扫描弹层的浅色覆盖选择器必须带逗号。
+
+    浅色主题块中 `.scanPopover` 与 `.foldHead` 之间漏逗号会拼成无效选择器
+    `scanpopoverhtml`（元素不存在），导致浅色模式下扫描弹层与折叠头仍为深色。
+    """
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+
+    assert 'html[data-theme="light"] .scanPopover,html[data-theme="light"] .foldHead{' in assets
+    assert "scanPopoverhtml" not in assets
+    # 弹层深色底与浅色覆盖都齐全（浅色覆盖修复后必须覆盖深色底 #111820）
+    assert ".scanPopover{display:none" in assets
+    assert "background:#111820" in assets
 
 
 def test_mode_command_channel_and_arbitration():

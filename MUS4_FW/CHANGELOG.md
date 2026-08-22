@@ -1,6 +1,6 @@
 # CHANGELOG.md
 
-## 2026-08-23 v1.8.57
+## 2026-08-23 v1.8.58
 
 - fix(WebConsole): 「上位机配网」状态条永远显示「等待...」——STA 板块打开时立即拉取并 5s 慢轮询 /api/host-wifi-status，IDLE 状态改显示上位机在线/等待上报真实状态（Issue #234 后续）
   - 根因：`openWifiStaModal()` 强制 `hostWifiToggle.checked=true` 并调 `onHostWifiToggle()`，但该函数 checked 分支只做 `bar.style.display='block'`，从不 fetch `/api/host-wifi-status`——2s 轮询只在 `saveHostWifi()`（点「发送」）后才启动。CC 内嵌视图（?embedded=1&settings=1&wifi=1）里 STA 板块常开，label 永远停在 HTML 占位文字 `wifi.hostStatus.idle`（等待...）。实际上位机在线且周期上报（Serial2 `HOSTIP|` 帧，运行时全局 `hostReportedIp`/`hostReportedIpMs`），`/api/status` 已有 `host_ip`/`host_ip_age_s`，但 host-wifi-status 接口与前端都没用它。
@@ -10,10 +10,10 @@
     - `closeWifiStaModal()` 补 `stopHostWifiPoll()`（原关弹窗不停轮询有小泄漏；CC 内嵌视图不关弹窗，常开轮询正是预期行为）。
     - `pollHostWifiStatus()` IDLE 分支重写：`host_ip` 非空且 `host_ip_age_s<=60` 视为上位机在线——label 显示新 i18n `wifi.hostStatus.hostOnline`（上位机在线 / Host online），`hostWifiStatusIp` 显示 `IP: x.x.x.x`，error span 隐藏；否则 label 显示新 i18n `wifi.hostStatus.waitingHost`（等待上位机上报 / Waiting for host report），ip/error span 隐藏。connecting/connected/failed 分支保持现有行为（含 connected/failed 里 `stopHostWifiPoll()` 自愈）；原 `{IDLE:...}` 状态映射表移除 IDLE 项，IDLE 改由上述专用分支处理。
     - i18n：`wifi.hostStatus.idle` 键删除（JS 与 HTML 占位均已不再引用），新增 `wifi.hostStatus.hostOnline` 与 `wifi.hostStatus.waitingHost` 中英各一份；状态条 HTML 占位 `data-i18n` 由 `wifi.hostStatus.idle` 改为 `wifi.hostStatus.waitingHost`（首次拉取前的占位语义对齐）。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.53 → v1.8.57（并行会话接连占号：v1.8.54 扫描弹层浅色修复、v1.8.56 STA 历史回填，v1.8.55 被对方先占后弃用而跳过，撞号三次 +1）。
-  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `test_web_console_host_wifi_status_bar_shows_host_report_state`（后端新 JSON 字段/reserve 224、前端 onHostWifiToggle 立即拉取+5s 轮询、closeWifiStaModal 停轮询、IDLE 分支 host_ip/age<=60 判断、新 i18n 键存在且 idle 键删除）；版本断言 v1.8.57、CHANGELOG 顺序链补 v1.8.57 行。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.53 → v1.8.58（并行会话接连占号：v1.8.54 扫描弹层浅色修复、v1.8.57 STA 历史回填，v1.8.55/v1.8.56 被对方先占后弃而跳过，撞号四次 +1）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `test_web_console_host_wifi_status_bar_shows_host_report_state`（后端新 JSON 字段/reserve 224、前端 onHostWifiToggle 立即拉取+5s 轮询、closeWifiStaModal 停轮询、IDLE 分支 host_ip/age<=60 判断、新 i18n 键存在且 idle 键删除）；版本断言 v1.8.58、CHANGELOG 顺序链补 v1.8.58 行。
 
-## 2026-08-22 v1.8.56
+## 2026-08-22 v1.8.57
 
 - feat(WebConsole): STA Wi-Fi 配置右侧「已保存网络」历史列表支持点击回填——点击一行即把该网络的 SSID 与密码填入左侧表单，直接点「连接」即可切换
   - 背景：历史列表（`wifiHistoryList`）此前只展示 + 单条删除，切换已存网络要手动重输 SSID 和密码。历史条目本就存了密码（NVS `sta_h{0..4}p`），但公开的历史列表 API 按设计只输出 `password_set` 标志、从不出明文。
@@ -23,8 +23,8 @@
     - `refreshWifiHistory()`：历史行加 `onclick` 调 `selectWifiHistory()`、加 `title` 悬停提示；删除按钮 `onclick` 改带 `ev.stopPropagation()`，点 🗑 不再误触发行回填。
     - CSS：`.histRow` 加 `cursor:pointer` 表明可点。
     - i18n：新增 `wifi.historyFill` 中英键（「点击填充 SSID 与密码」/「Click to fill SSID and password」）。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.54 → v1.8.56（v1.8.55 由并行会话 `Tony-dc-embedded-declutter` 分支先行提交使用，跳号避开碰撞）。
-  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.56；`test_web_console_wifi_sta_history_ui` 新增回填断言（`selectWifiHistory` 定义/行 onclick/stopPropagation/`?ssid=` 拉取/cursor:pointer/`wifi.historyFill` 中英键）；`test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_secret` 新增 `?ssid=` 分支断言（arg 读取/history 查找/404/明文仅在该鉴权端点输出）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.54 → v1.8.57（v1.8.55、v1.8.56 先后被并行会话 `Tony-dc-embedded-declutter` 分支提交使用，两次跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.57；`test_web_console_wifi_sta_history_ui` 新增回填断言（`selectWifiHistory` 定义/行 onclick/stopPropagation/`?ssid=` 拉取/cursor:pointer/`wifi.historyFill` 中英键）；`test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_secret` 新增 `?ssid=` 分支断言（arg 读取/history 查找/404/明文仅在该鉴权端点输出）。
 
 ## 2026-08-22 v1.8.54
 

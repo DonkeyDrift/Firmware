@@ -274,16 +274,16 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.57"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.58"' in build_info
+    assert "v1.8.58" in changelog
     assert "v1.8.57" in changelog
-    assert "v1.8.56" in changelog
     assert "v1.8.54" in changelog
     assert "v1.8.53" in changelog
     assert "v1.8.52" in changelog
     assert "v1.8.51" in changelog
     assert "v1.8.50" in changelog
     assert "v1.8.49" in changelog
-    # 注意：v1.8.55 被有意跳过（并行会话先占后弃、改跳 v1.8.56，本地 CHANGELOG 无 v1.8.55 条目）
+    # 注意：v1.8.55/v1.8.56 被有意跳过（并行会话先占后弃、最终改跳 v1.8.57，本地 CHANGELOG 无这两条目的标题）
     assert "v1.8.48" in changelog
     assert "v1.8.47" in changelog
     assert "v1.8.46" in changelog
@@ -354,8 +354,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
-    assert changelog.index("## 2026-08-23 v1.8.57") < changelog.index("## 2026-08-22 v1.8.56")
-    assert changelog.index("## 2026-08-22 v1.8.56") < changelog.index("## 2026-08-22 v1.8.54")
+    assert changelog.index("## 2026-08-23 v1.8.58") < changelog.index("## 2026-08-22 v1.8.57")
+    assert changelog.index("## 2026-08-22 v1.8.57") < changelog.index("## 2026-08-22 v1.8.54")
     assert changelog.index("## 2026-08-22 v1.8.54") < changelog.index("## 2026-08-22 v1.8.53")
     assert changelog.index("## 2026-08-22 v1.8.53") < changelog.index("## 2026-08-22 v1.8.52")
     assert changelog.index("## 2026-08-22 v1.8.52") < changelog.index("## 2026-08-22 v1.8.51")
@@ -2600,7 +2600,7 @@ def test_web_console_sta_modal_defaults_host_provisioning_on():
 
 
 def test_web_console_host_wifi_status_bar_shows_host_report_state():
-    """v1.8.57：「上位机配网」状态条不再永远停在「等待...」——
+    """v1.8.58：「上位机配网」状态条不再永远停在「等待...」——
 
     STA 板块打开（onHostWifiToggle checked 分支）立即拉取 /api/host-wifi-status 并
     5s 慢轮询；接口新增 host_ip/host_ip_age_s 字段（上位机 HOSTIP| 周期上报），
@@ -2705,7 +2705,7 @@ def test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_
     assert "\\\"password_len\\\":" in source
     assert "appendJsonString(response, ws.staPassword)" in source
 
-    # v1.8.56：?ssid= 分支返回历史条目密码（同鉴权），未命中返回 404，不向前端列表暴露明文
+    # v1.8.57：?ssid= 分支返回历史条目密码（同鉴权），未命中返回 404，不向前端列表暴露明文
     password_body = re.search(
         r"static void handleWifiWebStaPassword\(\)\s*\{(?P<body>.*?)\n\}",
         source,
@@ -4593,7 +4593,7 @@ def test_web_console_wifi_sta_history_ui():
     assert "fetch('/api/wifi-sta/history')" in assets
     assert "fetch('/api/wifi-sta/history/delete'" in assets
 
-    # v1.8.56：点击历史行回填 SSID+密码（删除按钮 stopPropagation 不触发行点击）
+    # v1.8.57：点击历史行回填 SSID+密码（删除按钮 stopPropagation 不触发行点击）
     assert "async function selectWifiHistory(ssid,passwordSet)" in assets
     assert "row.onclick=()=>selectWifiHistory(e.ssid||'',!!e.password_set)" in assets
     assert "ev.stopPropagation();deleteWifiHistoryEntry" in assets

@@ -1,6 +1,6 @@
 # CHANGELOG.md
 
-## 2026-08-22 v1.8.56
+## 2026-08-22 v1.8.57
 
 - feat(WebConsole): STA Wi-Fi 配置右侧「已保存网络」历史列表支持点击回填——点击一行即把该网络的 SSID 与密码填入左侧表单，直接点「连接」即可切换
   - 背景：历史列表（`wifiHistoryList`）此前只展示 + 单条删除，切换已存网络要手动重输 SSID 和密码。历史条目本就存了密码（NVS `sta_h{0..4}p`），但公开的历史列表 API 按设计只输出 `password_set` 标志、从不出明文。
@@ -10,8 +10,8 @@
     - `refreshWifiHistory()`：历史行加 `onclick` 调 `selectWifiHistory()`、加 `title` 悬停提示；删除按钮 `onclick` 改带 `ev.stopPropagation()`，点 🗑 不再误触发行回填。
     - CSS：`.histRow` 加 `cursor:pointer` 表明可点。
     - i18n：新增 `wifi.historyFill` 中英键（「点击填充 SSID 与密码」/「Click to fill SSID and password」）。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.54 → v1.8.56（v1.8.55 由并行会话 `Tony-dc-embedded-declutter` 分支先行提交使用，跳号避开碰撞）。
-  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.56；`test_web_console_wifi_sta_history_ui` 新增回填断言（`selectWifiHistory` 定义/行 onclick/stopPropagation/`?ssid=` 拉取/cursor:pointer/`wifi.historyFill` 中英键）；`test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_secret` 新增 `?ssid=` 分支断言（arg 读取/history 查找/404/明文仅在该鉴权端点输出）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.54 → v1.8.57（v1.8.55、v1.8.56 先后被并行会话 `Tony-dc-embedded-declutter` 分支提交使用，两次跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.57；`test_web_console_wifi_sta_history_ui` 新增回填断言（`selectWifiHistory` 定义/行 onclick/stopPropagation/`?ssid=` 拉取/cursor:pointer/`wifi.historyFill` 中英键）；`test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_secret` 新增 `?ssid=` 分支断言（arg 读取/history 查找/404/明文仅在该鉴权端点输出）。
 
 ## 2026-08-22 v1.8.54
 

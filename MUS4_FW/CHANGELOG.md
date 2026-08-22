@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.45
+
+- style(WebConsole): wifi 内嵌融合单卡去掉 STA 卡上边框——消除 AP/STA 之间的黄色横杠
+  - 背景：浅色主题下 `.dialog` 边框色为 `#d99a17`（金色），AP/STA 融合时只去了 AP 卡底边，STA 卡顶边残留，两卡之间出现一条黄杠（DD Car Connector 车辆设置内嵌视图可见）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`body.wifi #wifiStaModal .dialog` 规则加 `border-top:none`，AP/STA 两卡背景无缝相接成真正单卡；深色主题同步生效（同规则覆盖）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.44 → v1.8.45。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 融合单卡断言更新为含 `border-top:none` 的 STA 规则；版本断言 v1.8.45。
+
 ## 2026-08-22 v1.8.44
 
 - feat(WebConsole): DD 内嵌主视图（`?embedded=1`）隐藏设置类板块/入口——已全部移至 DD Car Connector 的车辆设置（Issue #234 后续）

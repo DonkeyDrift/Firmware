@@ -54,7 +54,7 @@ body.wifi #wifiApModal .dialog,body.wifi #wifiStaModal .dialog{position:relative
 body.wifi #wifiApModal .dialogActions button:first-child,body.wifi #wifiStaModal .dialogActions button:first-child{display:none}
 /* AP/STA 两个配网板块在 wifi 内嵌视图融合为单卡片：上卡（AP）去底边/底圆角/底间距/阴影，下卡（STA）去顶圆角接上 */
 body.wifi #wifiApModal .dialog{margin:0;border-bottom:none;border-radius:14px 14px 0 0;padding-bottom:8px;box-shadow:none}
-body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-radius:0 0 14px 14px;padding-top:4px}
+body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-top:none;border-radius:0 0 14px 14px;padding-top:4px}
 </style>
 </head>
 <body>

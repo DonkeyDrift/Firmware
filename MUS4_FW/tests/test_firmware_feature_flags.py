@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.44"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.45"' in build_info
+    assert "v1.8.45" in changelog
     assert "v1.8.44" in changelog
     # 注意：v1.8.43 被有意跳过（其它会话基于旧基点的构建正在车上运行、未以该形态回本仓库）
     assert "v1.8.42" in changelog
@@ -341,6 +342,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.45") < changelog.index("## 2026-08-22 v1.8.44")
     assert changelog.index("## 2026-08-22 v1.8.44") < changelog.index("## 2026-08-22 v1.8.42")
     assert changelog.index("## 2026-08-22 v1.8.42") < changelog.index("## 2026-08-22 v1.8.41")
     assert changelog.index("## 2026-08-22 v1.8.41") < changelog.index("## 2026-08-22 v1.8.39")
@@ -2383,9 +2385,9 @@ def test_web_console_settings_view_shows_rc_channels_panel():
     assert "if(location.search.indexOf('settings=1')>=0||location.search.indexOf('wifi=1')>=0)toggleFold('rcFold');" in source
     # settingsView（车辆设置标题 + 调校行）移到 .grid 之前，内嵌视图里排在 RC Channels 面板前
     assert source.index('<div id="settingsView" class="settingsView">') < source.index('<div class="grid">')
-    # v1.8.42：wifi 内嵌视图里 AP/STA 两个配网板块融合为单卡片（上卡去底边/底圆角，下卡去顶圆角）
+    # v1.8.45：融合单卡去掉 STA 卡上边框（浅色主题 .dialog 边框色 #d99a17 会在 AP/STA 之间形成一条黄杠）
     assert 'body.wifi #wifiApModal .dialog{margin:0;border-bottom:none;border-radius:14px 14px 0 0;padding-bottom:8px;box-shadow:none}' in source
-    assert 'body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-radius:0 0 14px 14px;padding-top:4px}' in source
+    assert 'body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-top:none;border-radius:0 0 14px 14px;padding-top:4px}' in source
 
 
 def test_web_console_embedded_main_view_hides_settings_panels():

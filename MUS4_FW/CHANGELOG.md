@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.55
+
+- feat(WebConsole): STA Wi-Fi 配置右侧「已保存网络」历史列表支持点击回填——点击一行即把该网络的 SSID 与密码填入左侧表单，直接点「连接」即可切换
+  - 背景：历史列表（`wifiHistoryList`）此前只展示 + 单条删除，切换已存网络要手动重输 SSID 和密码。历史条目本就存了密码（NVS `sta_h{0..4}p`），但公开的历史列表 API 按设计只输出 `password_set` 标志、从不出明文。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：`handleWifiWebStaPassword()` 新增 `?ssid=` 参数分支——传 SSID 时经 `findWifiStaHistoryEntry()` 返回该历史条目的 `password_set`/`password_len`/密码明文（与该端点既有「当前配置密码」分支同一鉴权：控制台认证或 DEV 模式，安全等级不变）；未命中历史返回 404 `not_found`。不传 `ssid` 时行为完全不变。历史列表公开 GET 仍只输出 `password_set` 标志、不含明文。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - JS 新增 `selectWifiHistory(ssid,passwordSet)`：填 `staSsid`；`password_set` 为真时 `fetch('/api/wifi-sta/password?ssid='+encodeURIComponent(ssid))` 取回密码填入密码框（填真实密码而非占位星号，`staPasswordDirty=true` 使保存时显式发送该密码，避免错用当前配置的 keep_password），开放网络则清空密码框；重置眼睛可见态/占位态/已取密码缓存，焦点落到「连接」按钮。
+    - `refreshWifiHistory()`：历史行加 `onclick` 调 `selectWifiHistory()`、加 `title` 悬停提示；删除按钮 `onclick` 改带 `ev.stopPropagation()`，点 🗑 不再误触发行回填。
+    - CSS：`.histRow` 加 `cursor:pointer` 表明可点。
+    - i18n：新增 `wifi.historyFill` 中英键（「点击填充 SSID 与密码」/「Click to fill SSID and password」）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.54 → v1.8.55。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.55；`test_web_console_wifi_sta_history_ui` 新增回填断言（`selectWifiHistory` 定义/行 onclick/stopPropagation/`?ssid=` 拉取/cursor:pointer/`wifi.historyFill` 中英键）；`test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_secret` 新增 `?ssid=` 分支断言（arg 读取/history 查找/404/明文仅在该鉴权端点输出）。
+
 ## 2026-08-22 v1.8.54
 
 - fix(WebConsole): 修复 STA Wi-Fi 配置「搜索网络」扫描弹层在浅色模式下仍为深色——浅色主题 CSS 选择器列表漏了一个逗号

@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-21 v1.8.37
+
+- style(WebConsole): 遥测曲线 Y 轴标签字体由 `bold 11px sans-serif` 改为 `12px sans-serif`（去掉粗体，与图例标签 `.legend span{font-size:12px}` 一致）
+  - 背景：用户反馈 Y 轴数字（1 / 0.75 / 0.5 等）字体偏粗，要求改为与右下角 Steering / GyroZ 标签相同的字体风格。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`draw()` 函数中 `ctx.font='bold 11px sans-serif'` → `ctx.font='12px sans-serif'`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.36 → v1.8.37。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证 v1.8.37 生效。
+
 ## 2026-08-21 v1.8.36
 
 - fix(WebConsole): 修复 Diagnostics 面板内 rcFold foldBody 末尾多余 `</div>` 导致浏览器提前关闭 `.grid` 容器，使手柄校准按钮、方向状态文本、STATUS Details 折叠面板被移到 `<body>` 下而非 `#diagnosticsPanel` 内部，造成左侧未与 Mode 卡片和遥测曲线对齐

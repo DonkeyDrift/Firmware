@@ -1,6 +1,6 @@
 # CHANGELOG.md
 
-## 2026-08-23 v1.8.56
+## 2026-08-23 v1.8.57
 
 - fix(WebConsole): 「上位机配网」状态条永远显示「等待...」——STA 板块打开时立即拉取并 5s 慢轮询 /api/host-wifi-status，IDLE 状态改显示上位机在线/等待上报真实状态（Issue #234 后续）
   - 根因：`openWifiStaModal()` 强制 `hostWifiToggle.checked=true` 并调 `onHostWifiToggle()`，但该函数 checked 分支只做 `bar.style.display='block'`，从不 fetch `/api/host-wifi-status`——2s 轮询只在 `saveHostWifi()`（点「发送」）后才启动。CC 内嵌视图（?embedded=1&settings=1&wifi=1）里 STA 板块常开，label 永远停在 HTML 占位文字 `wifi.hostStatus.idle`（等待...）。实际上位机在线且周期上报（Serial2 `HOSTIP|` 帧，运行时全局 `hostReportedIp`/`hostReportedIpMs`），`/api/status` 已有 `host_ip`/`host_ip_age_s`，但 host-wifi-status 接口与前端都没用它。
@@ -10,8 +10,29 @@
     - `closeWifiStaModal()` 补 `stopHostWifiPoll()`（原关弹窗不停轮询有小泄漏；CC 内嵌视图不关弹窗，常开轮询正是预期行为）。
     - `pollHostWifiStatus()` IDLE 分支重写：`host_ip` 非空且 `host_ip_age_s<=60` 视为上位机在线——label 显示新 i18n `wifi.hostStatus.hostOnline`（上位机在线 / Host online），`hostWifiStatusIp` 显示 `IP: x.x.x.x`，error span 隐藏；否则 label 显示新 i18n `wifi.hostStatus.waitingHost`（等待上位机上报 / Waiting for host report），ip/error span 隐藏。connecting/connected/failed 分支保持现有行为（含 connected/failed 里 `stopHostWifiPoll()` 自愈）；原 `{IDLE:...}` 状态映射表移除 IDLE 项，IDLE 改由上述专用分支处理。
     - i18n：`wifi.hostStatus.idle` 键删除（JS 与 HTML 占位均已不再引用），新增 `wifi.hostStatus.hostOnline` 与 `wifi.hostStatus.waitingHost` 中英各一份；状态条 HTML 占位 `data-i18n` 由 `wifi.hostStatus.idle` 改为 `wifi.hostStatus.waitingHost`（首次拉取前的占位语义对齐）。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.53 → v1.8.56（v1.8.54/v1.8.55 已先后被并行会话 Tony-fix-scan-popover-light-theme、Tony-sta-history-autofill 使用，撞号两次 +1）。
-  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `test_web_console_host_wifi_status_bar_shows_host_report_state`（后端新 JSON 字段/reserve 224、前端 onHostWifiToggle 立即拉取+5s 轮询、closeWifiStaModal 停轮询、IDLE 分支 host_ip/age<=60 判断、新 i18n 键存在且 idle 键删除）；版本断言 v1.8.56、CHANGELOG 顺序链补 v1.8.56 行。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.53 → v1.8.57（并行会话接连占号：v1.8.54 扫描弹层浅色修复、v1.8.56 STA 历史回填，v1.8.55 被对方先占后弃用而跳过，撞号三次 +1）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `test_web_console_host_wifi_status_bar_shows_host_report_state`（后端新 JSON 字段/reserve 224、前端 onHostWifiToggle 立即拉取+5s 轮询、closeWifiStaModal 停轮询、IDLE 分支 host_ip/age<=60 判断、新 i18n 键存在且 idle 键删除）；版本断言 v1.8.57、CHANGELOG 顺序链补 v1.8.57 行。
+
+## 2026-08-22 v1.8.56
+
+- feat(WebConsole): STA Wi-Fi 配置右侧「已保存网络」历史列表支持点击回填——点击一行即把该网络的 SSID 与密码填入左侧表单，直接点「连接」即可切换
+  - 背景：历史列表（`wifiHistoryList`）此前只展示 + 单条删除，切换已存网络要手动重输 SSID 和密码。历史条目本就存了密码（NVS `sta_h{0..4}p`），但公开的历史列表 API 按设计只输出 `password_set` 标志、从不出明文。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：`handleWifiWebStaPassword()` 新增 `?ssid=` 参数分支——传 SSID 时经 `findWifiStaHistoryEntry()` 返回该历史条目的 `password_set`/`password_len`/密码明文（与该端点既有「当前配置密码」分支同一鉴权：控制台认证或 DEV 模式，安全等级不变）；未命中历史返回 404 `not_found`。不传 `ssid` 时行为完全不变。历史列表公开 GET 仍只输出 `password_set` 标志、不含明文。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - JS 新增 `selectWifiHistory(ssid,passwordSet)`：填 `staSsid`；`password_set` 为真时 `fetch('/api/wifi-sta/password?ssid='+encodeURIComponent(ssid))` 取回密码填入密码框（填真实密码而非占位星号，`staPasswordDirty=true` 使保存时显式发送该密码，避免错用当前配置的 keep_password），开放网络则清空密码框；重置眼睛可见态/占位态/已取密码缓存，焦点落到「连接」按钮。
+    - `refreshWifiHistory()`：历史行加 `onclick` 调 `selectWifiHistory()`、加 `title` 悬停提示；删除按钮 `onclick` 改带 `ev.stopPropagation()`，点 🗑 不再误触发行回填。
+    - CSS：`.histRow` 加 `cursor:pointer` 表明可点。
+    - i18n：新增 `wifi.historyFill` 中英键（「点击填充 SSID 与密码」/「Click to fill SSID and password」）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.54 → v1.8.56（v1.8.55 由并行会话 `Tony-dc-embedded-declutter` 分支先行提交使用，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.56；`test_web_console_wifi_sta_history_ui` 新增回填断言（`selectWifiHistory` 定义/行 onclick/stopPropagation/`?ssid=` 拉取/cursor:pointer/`wifi.historyFill` 中英键）；`test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_secret` 新增 `?ssid=` 分支断言（arg 读取/history 查找/404/明文仅在该鉴权端点输出）。
+
+## 2026-08-22 v1.8.54
+
+- fix(WebConsole): 修复 STA Wi-Fi 配置「搜索网络」扫描弹层在浅色模式下仍为深色——浅色主题 CSS 选择器列表漏了一个逗号
+  - 背景：主控制台浅色主题块中 `html[data-theme="light"] .scanPopover` 与紧随其后的 `html[data-theme="light"] .foldHead` 之间漏写逗号，被拼成无效选择器 `.scanPopoverhtml[data-theme="light"] .foldHead`（`scanpopoverhtml` 元素不存在），整条声明对扫描弹层与折叠头均不生效；浅色模式下 STA 配网点 ⌕ 打开的扫描弹层仍是深色底 `#111820` + 蓝边 `#5cc8ff`。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.scanPopoverhtml[data-theme="light"] .foldHead` 改为 `.scanPopover,html[data-theme="light"] .foldHead`（插入一个逗号），恢复 `.scanPopover` 浅色覆盖（浅底 `#f4f6f9`、浅边框 `#d5dce4`、深文字 `#1f3a52`），同时恢复 `.foldHead`（RC Channels / STATUS Details 折叠头）的浅色底色。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.48 → v1.8.54（v1.8.49~v1.8.53 由并行会话 `Tony-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.54；新增 `test_sta_scan_popover_light_theme_selector` 断言修复后的 `.scanPopover,html[data-theme="light"] .foldHead{` 选择器存在且无效拼接 `scanPopoverhtml` 不再出现。
 
 ## 2026-08-22 v1.8.53
 

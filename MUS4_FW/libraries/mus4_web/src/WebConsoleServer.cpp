@@ -958,6 +958,28 @@ static void handleWifiWebStaPassword()
         wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
         return;
     }
+    // ?ssid=<已保存网络> 时返回该历史条目的密码（与当前配置密码同等鉴权），
+    // 供历史列表点击回填；不传 ssid 时保持原行为（当前配置）。
+    String historySsid = wifiWebServer.arg("ssid");
+    historySsid.trim();
+    if (historySsid.length() > 0) {
+        String historyPassword;
+        if (!findWifiStaHistoryEntry(historySsid, historyPassword)) {
+            wifiWebServer.send(404, "application/json", "{\"error\":\"not_found\"}");
+            return;
+        }
+        String historyResponse;
+        historyResponse.reserve(128);
+        historyResponse += "{\"password_set\":";
+        historyResponse += historyPassword.length() > 0 ? "true" : "false";
+        historyResponse += ",\"password_len\":";
+        historyResponse += historyPassword.length();
+        historyResponse += ",\"password\":";
+        appendJsonString(historyResponse, historyPassword.c_str());
+        historyResponse += '}';
+        wifiWebServer.send(200, "application/json", historyResponse);
+        return;
+    }
     String response;
     response.reserve(128);
     response += "{\"password_set\":";

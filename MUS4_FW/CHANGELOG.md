@@ -13,6 +13,25 @@
   - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_header_entry_buttons` 位置链断言改为 `h1 < donkey < drifter < kimi < zcode < dsh < gh`，新增 `openZCodeBtn` 按钮/`openZCode()` 函数/`/api/launch/zcode` 路径/15000 超时/i18n 四键中英文案/lucide Code2 图标路径等断言块，`class="navTabWeak"` 计数 2 → 3；`test_web_console_mobile_header_layout` 同步 order 顺移断言；版本与 CHANGELOG 顺序断言升至 v1.8.42。
   - `arduino-cli.py -c` 编译通过，OTA 刷车验证生效（api/status version=v1.8.42，首页 HTML 含 zcode 入口）。
 
+## 2026-08-22 v1.8.41
+
+- feat(WebConsole): `?settings=1` / `?wifi=1` 内嵌视图新增 RC Channels 校准面板（Issue #234），DD Car Connector 内嵌视图可同屏调整 RC 校准
+  - 背景：DD Car Connector 的车辆设置内嵌视图（iframe `?embedded=1&settings=1&wifi=1`）此前只有「调校 + AP 名称配置 + STA Wi-Fi 配置」；用户要求把 Drifter Console 的 RC Channel 诊断面板（含舵机/油门中点 Set 按钮、油门 Min/Max 滑块等校准控件）也搬进内嵌视图，主题/静音/语言、OTA、DEV 仍不搬。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS：`body.settings .grid{display:none}` / `body.wifi .grid{display:none}` 整藏规则改为选择性显示——`body.settings .grid,body.wifi .grid{display:block}`；`... .grid>section.panel{display:none}` 藏全部面板 section；`... #diagnosticsPanel{display:block}`（ID 高特异性）只留 Diagnostics 面板；`... #diagnosticsPanel>div{display:none}` 藏其直接子 div；`... #diagnosticsPanel #rcFold{display:block}`（双 ID 最高特异性）只露出 `#rcFold`（RC Channels），`#statusFold`（STATUS Details，纯显示）、手柄校准按钮行、`#joystickCalStatus` 仍隐藏。另补 `body.settings #serialPanel,body.wifi #serialPanel{display:none}`——基础规则 `#serialPanel{display:flex}`（ID 特异性 (1,0,0) 高于 `.grid>section.panel` 的 (0,3,2)）会穿透整藏把终端面板顶出来，须按 ID 单独藏（无头浏览器实测发现）。
+    - HTML：`#settingsView` 板块（车辆设置标题 + 调校行）由 `.grid` 之后移到 `.grid` 之前，内嵌视图顺序变为「车辆设置/调校 → RC Channels → AP 名称配置 → STA Wi-Fi 配置」；主控台页面 settingsView 默认 `display:none`，移动对主页面零影响。调校行「漂移设置」按钮沿用 v1.8.36 的 `location.href='/drift?theme='+resolvedTheme()`（rebase 时保留主题跟随改动）。
+    - JS init：新增 `if(...settings=1...||...wifi=1...)toggleFold('rcFold')`——内嵌视图加载时自动展开 RC Channels 折叠面板，校准控件直接可见（主控台页面无参数、不受影响）。
+    - rcFold 留在 `.grid` 内不移位，`updateState` 按 id 实时更新通道值/中点值逻辑零改动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.38 → v1.8.41（v1.8.37/v1.8.38 均被并行会话条目顺移占用，跳号避开当日多会话版本碰撞；v1.8.40 为本功能中间构建，未合入）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本与 CHANGELOG 顺序断言升至 v1.8.41；新增 `test_web_console_settings_view_shows_rc_channels_panel` 断言上述 CSS 规则（含 `#serialPanel` 按 ID 整藏）、init 自动展开与 settingsView 前移位置。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证 v1.8.41 生效（无头浏览器实测内嵌视图：settingsView/rcFold/两个配网板块可见，statusFold/chartPanel/serialPanel 隐藏，RC 通道值实时刷新）。
+- style(WebConsole): `?wifi=1` 内嵌视图中「AP 名称配置」与「STA Wi-Fi 配置」两个板块融合为单卡片（Issue #234 后续）
+  - 背景：DD Car Connector 内嵌视图里 AP/STA 两个配网板块是两张独立卡片（14px 圆角 + 黄边 + 阴影，中间 14px 间隔），用户要求放在一起、融合成一个板块。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（纯 CSS，仅 `body.wifi` 作用域，主控台页面的配网弹窗不受影响）：AP 卡 `margin:0;border-bottom:none;border-radius:14px 14px 0 0;padding-bottom:8px;box-shadow:none`；STA 卡 `margin:0 0 14px;border-radius:0 0 14px 14px;padding-top:4px`——两卡上下拼接成一张 14px 圆角单卡，两个 h2（AP 名称配置 / STA Wi-Fi 配置）保留为卡内分节标题。
+  - `libraries/mus4_core/src/BuildInfo.h`：分支内曾记为 v1.8.41 → v1.8.42；合入 Tony 时 v1.8.42 已由 ZCode 入口条目（上方）占用，本改动作为 Issue #234 同一提交的一部分并入本 v1.8.41 条目，版本不再变动。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本与 CHANGELOG 顺序断言保持 v1.8.42（ZCode）> v1.8.41（本条目）链；`test_web_console_settings_view_shows_rc_channels_panel` 增加融合 CSS 断言。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车 + 无头浏览器截图实测融合效果。
+
 ## 2026-08-22 v1.8.39
 
 - fix(WebConsole): 删除漂移调参页（/drift）自带的深浅色切换按钮——该页应完全跟随 Drifter Console 主题（经 `?theme=` 参数传递），不应有自己的切换开关

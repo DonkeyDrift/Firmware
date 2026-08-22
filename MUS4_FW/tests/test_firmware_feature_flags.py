@@ -276,6 +276,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
 
     assert '#define MUS4_FIRMWARE_VERSION "v1.8.42"' in build_info
     assert "v1.8.42" in changelog
+    assert "v1.8.41" in changelog
     assert "v1.8.39" in changelog
     assert "v1.8.38" in changelog
     assert "v1.8.37" in changelog
@@ -338,7 +339,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
-    assert changelog.index("## 2026-08-22 v1.8.42") < changelog.index("## 2026-08-22 v1.8.39")
+    assert changelog.index("## 2026-08-22 v1.8.42") < changelog.index("## 2026-08-22 v1.8.41")
+    assert changelog.index("## 2026-08-22 v1.8.41") < changelog.index("## 2026-08-22 v1.8.39")
     assert changelog.index("## 2026-08-22 v1.8.39") < changelog.index("## 2026-08-21 v1.8.38")
     assert changelog.index("## 2026-08-21 v1.8.38") < changelog.index("## 2026-08-21 v1.8.37")
     assert changelog.index("## 2026-08-21 v1.8.37") < changelog.index("## 2026-08-21 v1.8.36")
@@ -2356,6 +2358,31 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
     assert "function renderStatus(t)" in source
     assert "function parseStatusPairs(t)" in source
     assert "statusBox.textContent=t;updateNetworkCard" not in source
+
+
+def test_web_console_settings_view_shows_rc_channels_panel():
+    """Issue #234（v1.8.41）：?settings=1 / ?wifi=1 内嵌视图选择性显示 .grid，
+    只露出 Diagnostics 面板里的 #rcFold（RC Channels 校准面板，含中点 Set 与
+    油门 Min/Max 滑块），供 DD Car Connector 内嵌同屏调整 RC 校准。"""
+    source = firmware_source_text()
+
+    assert 'body.settings .grid,body.wifi .grid{display:block}' in source
+    assert 'body.settings .grid>section.panel,body.wifi .grid>section.panel{display:none}' in source
+    # 基础规则 #serialPanel{display:flex}（ID 特异性）会穿透 .grid>section.panel 的整藏，需单独按 ID 藏
+    assert 'body.settings #serialPanel,body.wifi #serialPanel{display:none}' in source
+    assert 'body.settings #diagnosticsPanel,body.wifi #diagnosticsPanel{display:block}' in source
+    assert 'body.settings #diagnosticsPanel>div,body.wifi #diagnosticsPanel>div{display:none}' in source
+    assert 'body.settings #diagnosticsPanel #rcFold,body.wifi #diagnosticsPanel #rcFold{display:block}' in source
+    # 旧的整藏规则已移除（与 display:block 冲突，同特异性后者胜出会导致 grid 仍被藏）
+    assert 'body.settings .grid{display:none}' not in source
+    assert 'body.wifi .grid{display:none}' not in source
+    # settings/wifi 内嵌视图加载时自动展开 RC Channels 折叠面板
+    assert "if(location.search.indexOf('settings=1')>=0||location.search.indexOf('wifi=1')>=0)toggleFold('rcFold');" in source
+    # settingsView（车辆设置标题 + 调校行）移到 .grid 之前，内嵌视图里排在 RC Channels 面板前
+    assert source.index('<div id="settingsView" class="settingsView">') < source.index('<div class="grid">')
+    # v1.8.42：wifi 内嵌视图里 AP/STA 两个配网板块融合为单卡片（上卡去底边/底圆角，下卡去顶圆角）
+    assert 'body.wifi #wifiApModal .dialog{margin:0;border-bottom:none;border-radius:14px 14px 0 0;padding-bottom:8px;box-shadow:none}' in source
+    assert 'body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-radius:0 0 14px 14px;padding-top:4px}' in source
 
 
 def test_web_console_status_parser_preserves_quoted_values_with_spaces():

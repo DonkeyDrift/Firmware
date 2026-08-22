@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.54
+
+- fix(WebConsole): 修复 STA Wi-Fi 配置「搜索网络」扫描弹层在浅色模式下仍为深色——浅色主题 CSS 选择器列表漏了一个逗号
+  - 背景：主控制台浅色主题块中 `html[data-theme="light"] .scanPopover` 与紧随其后的 `html[data-theme="light"] .foldHead` 之间漏写逗号，被拼成无效选择器 `.scanPopoverhtml[data-theme="light"] .foldHead`（`scanpopoverhtml` 元素不存在），整条声明对扫描弹层与折叠头均不生效；浅色模式下 STA 配网点 ⌕ 打开的扫描弹层仍是深色底 `#111820` + 蓝边 `#5cc8ff`。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.scanPopoverhtml[data-theme="light"] .foldHead` 改为 `.scanPopover,html[data-theme="light"] .foldHead`（插入一个逗号），恢复 `.scanPopover` 浅色覆盖（浅底 `#f4f6f9`、浅边框 `#d5dce4`、深文字 `#1f3a52`），同时恢复 `.foldHead`（RC Channels / STATUS Details 折叠头）的浅色底色。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.48 → v1.8.54（v1.8.49~v1.8.53 由并行会话 `Tony-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.54；新增 `test_sta_scan_popover_light_theme_selector` 断言修复后的 `.scanPopover,html[data-theme="light"] .foldHead{` 选择器存在且无效拼接 `scanPopoverhtml` 不再出现。
+
 ## 2026-08-22 v1.8.48
 
 - feat(WebConsole): Drift Judge 页（/judge）跟随 Drifter Console 深浅色主题，全部标题改为悬停灰字提示（titleHint），样式对齐 /drift 调参页

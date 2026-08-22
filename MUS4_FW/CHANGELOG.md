@@ -1,6 +1,6 @@
 # CHANGELOG.md
 
-## 2026-08-22 v1.8.46
+## 2026-08-22 v1.8.47
 
 - feat(WebConsole): CC 车辆设置内嵌视图（`?embedded=1&settings=1&wifi=1`）默认展开漂移设置与 Judge 设置——两个跳转按钮改为同页内嵌子 iframe 板块（Issue #234 后续）
   - 背景：CC 内嵌设置视图里「漂移设置 / Judge 设置」此前是两个跳转按钮，点击会把整个 iframe 导航走；用户要求这两个设置默认展开、直接可见可调。
@@ -10,8 +10,16 @@
     - /drift 页：新增 `body.embedded .headerRow{display:none}`，init 开头加 `embedded=1` 检测置 `body.embedded` class——子 iframe 内隐藏自身头部。
     - /judge 页：头部 panel 加 `id="judgeHeadPanel"`，新增 `body.embedded #judgeHeadPanel{display:none}`，init 开头同样加 embedded class 检测。
     - 车端独立 DC 页面与独立设置视图完全不动：内嵌板块仅在 `body.embedded.settings` 显示；主题/语言无需传参——子 iframe 与车主页同源同 localStorage，主题走系统检测自动跟随。
-  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.45 → v1.8.46。
-  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_web_console_settings_view_embeds_tune_sections`（内嵌板块 HTML/CSS 规则、两个按钮 id 与隐藏规则、drift/judge 子页 embedded 守卫与 init 检测——按 `WIFI_WEB_*_HTML` 切片断言避免与主页同名规则混淆）；版本断言 v1.8.46。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.45 → v1.8.47（v1.8.46 由并行会话的 titleHint 条目占用，跳号避撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_web_console_settings_view_embeds_tune_sections`（内嵌板块 HTML/CSS 规则、两个按钮 id 与隐藏规则、drift/judge 子页 embedded 守卫与 init 检测——按 `WIFI_WEB_*_HTML` 切片断言避免与主页同名规则混淆）；版本断言 v1.8.47。
+
+## 2026-08-22 v1.8.46
+
+- feat(WebConsole): 手柄校准弹窗与 RC Channels 校准面板全部标题加悬停灰字提示（titleHint），样式对齐 /drift 调参页与 DD group-hover
+  - 背景：漂移调参页（v1.8.36）已把大标题/各级小标题改为悬停右侧滑出灰字提示；手柄校准弹窗（`cal.title` 大标题）与 RC Channels 校准面板（`#rcFold` 折叠头 + CH1~CH6 / OUT Steering / OUT Throttle / Mid S / Mid T / Min T / Max T 共 12 个 `.rcCell` 小标题）仍是旧样式，用户要求同款。弹窗与面板本就连同控制台主页面自动跟随深浅色，无需自带切换按钮；本次仅补提示样式。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：主控制台 `<style>` 新增 `.titleHint`/`.hintSpan`（含 `html[data-theme="light"] .hintSpan` 变体，与 /drift 页规则逐字一致）；`#joystickCalModal` 标题、`#rcFold` 折叠头与 12 个 `.rcCell` 标题全部包为 `.titleHint`+`.hintSpan`；新增 14 组中英 i18n 键（`cal.title.hint`、`rc.hint.panel`、`rc.hint.ch1`~`rc.hint.ch6`、`rc.hint.outSteering`/`outThrottle`/`midS`/`midT`/`minT`/`maxT`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.42 → v1.8.46（v1.8.43~v1.8.45 由并行会话 `session-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.46；`test_web_console_groups_rc_and_status_into_collapsible_sections` 的 rcFold 折叠头断言改为 `.titleHint` 包装后的新串；新增 `test_joystick_cal_and_rc_panel_title_hints` 断言 14 处 titleHint 包装、CSS 规则与 14 组中英 i18n 键齐全。
 
 ## 2026-08-22 v1.8.45
 

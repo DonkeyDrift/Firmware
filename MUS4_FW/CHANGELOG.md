@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.48
+
+- feat(WebConsole): Drift Judge 页（/judge）跟随 Drifter Console 深浅色主题，全部标题改为悬停灰字提示（titleHint），样式对齐 /drift 调参页
+  - 背景：/judge 页 CSS 全部硬编码深色且无 `?theme=` 支持，从 DD Car Connector 内嵌视图或控制台「Judge 设置」进入始终是黑界面；大小标题也没有 v1.8.36 漂移页的悬停灰字提示。本次只补主题跟随与标题提示两点；页内「返回 Drifter Console」链接保留（本次未要求删除），页内本无主题切换按钮、不新增。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主题跟随：`<head>` 内新增防闪烁脚本（读 `?theme=` URL 参数，缺省按系统 `prefers-color-scheme`，与 /drift 页逐字一致）；`<style>` 新增 `html[data-theme="light"]` 全量浅色覆盖（body/a/button/button.alt/muted/label/sub/mini/sectionDesc/fieldHint/summaryItem .k/scoreExplain/dimTrend/panel/heroCard/card/summaryItem/field/statusPill/collision/field input/sectionTitle/fieldTitle/dimName/bar/dimBar/chartWrap/tuneSection）；JS 新增 `uiTheme`/`readUrlTheme()`/`systemTheme()`/`resolvedTheme()`/`readParentTheme()`/`applyTheme()`/`initTheme()` 内存态主题（不写 localStorage），`initTheme()` 以 `?theme=` 参数优先、无参数且处于同源 iframe（CC 内嵌视图 `/judge?embedded=1`）时读父页 `documentElement.dataset.theme` 跟随 Drifter Console 当前主题、再缺省 auto 跟随系统；初始化序列调用 `initTheme()`；`drawChart()` 图表底色/网格线/曲线色改按 `resolvedTheme()` 取色（浅色 `#f4f6f9`/`#d5dce4`/`#0c9bd6`，深色不变）。
+    - 控制台入口：设置视图调校行「Judge 设置」按钮 `location.href='/judge'` 改为 `location.href='/judge?theme='+resolvedTheme()`（与漂移设置入口同款）。
+    - 标题悬停灰字：`<style>` 新增 `.titleHint`/`.hintSpan`（含 `html[data-theme="light"] .hintSpan` 变体，与 /drift 页规则逐字一致）；6 处标题包为 titleHint——h1「Drift Judge」（原副标题转为 hintSpan）、gyroZ 曲线（新增 `judge.gyroChartHint` 中英键「实时偏航角速度曲线」/「Live gyroZ trace」）、评分阈值调参（`judge.tuneDesc` 由 muted 副行转为 hintSpan）、基础阈值（`judge.section.thresholdsDesc` 由 sectionDesc 转为 hintSpan）、评分参数（`judge.section.scoringDesc` 同）、评分维度（`judge.dimDesc` 由 muted 副行转为 hintSpan）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.46 → v1.8.48（v1.8.47 由并行会话 `session-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.48；新增 `test_judge_page_theme_and_title_hints` 断言防闪烁脚本/浅色覆盖/内存态主题 JS（无 localStorage、无切换按钮、`readParentTheme()` 同源父页主题跟随）/drawChart 主题取色/6 处 titleHint 与 hintSpan/悬停 CSS/`judge.gyroChartHint` 中英键/控制台 `/judge?theme=` 入口。
+
 ## 2026-08-22 v1.8.46
 
 - feat(WebConsole): 手柄校准弹窗与 RC Channels 校准面板全部标题加悬停灰字提示（titleHint），样式对齐 /drift 调参页与 DD group-hover

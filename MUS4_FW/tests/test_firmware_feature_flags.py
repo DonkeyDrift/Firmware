@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.47"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.48"' in build_info
+    assert "v1.8.48" in changelog
     assert "v1.8.47" in changelog
     assert "v1.8.46" in changelog
     assert "v1.8.45" in changelog
@@ -344,6 +345,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.48") < changelog.index("## 2026-08-22 v1.8.47")
     assert changelog.index("## 2026-08-22 v1.8.47") < changelog.index("## 2026-08-22 v1.8.46")
     assert changelog.index("## 2026-08-22 v1.8.46") < changelog.index("## 2026-08-22 v1.8.45")
     assert changelog.index("## 2026-08-22 v1.8.45") < changelog.index("## 2026-08-22 v1.8.44")
@@ -2418,11 +2420,12 @@ def test_web_console_embedded_main_view_hides_settings_panels():
 
 
 def test_web_console_settings_view_embeds_tune_sections():
-    """Issue #234 后续（v1.8.46）：CC 车辆设置内嵌视图（?embedded=1&settings=1&wifi=1，
+    """Issue #234 后续（v1.8.47/v1.8.48）：CC 车辆设置内嵌视图（?embedded=1&settings=1&wifi=1，
     即 body.embedded.settings 作用域）默认展开漂移设置与 Judge 设置——两个跳转按钮
-    改为同页内嵌子 iframe 板块（/drift?embedded=1、/judge?embedded=1），按钮本身在该
-    作用域隐藏；车端独立 DC 页面与独立设置视图不受影响；/drift、/judge 子页支持
-    embedded=1 时隐藏自身头部。"""
+    改为同页内嵌子 iframe 板块（/drift?embedded=1、/judge?embedded=1）；v1.8.48 起「车辆设置」
+    标题与「调校」行（含跳转按钮与手柄校准按钮）在该作用域整行隐藏，手柄校准移至 DD CC 页
+    顶栏经 postMessage(dd-open-joystick-cal) 打开弹窗；车端独立 DC 页面与独立设置视图不受
+    影响；/drift、/judge 子页支持 embedded=1 时隐藏自身头部。"""
     source = firmware_source_text()
 
     # 主页：内嵌板块 HTML（默认 display:none，仅 body.embedded.settings 显示）
@@ -2432,10 +2435,16 @@ def test_web_console_settings_view_embeds_tune_sections():
     assert '.embedTuneSections{display:none}' in source
     assert 'body.embedded.settings .embedTuneSections{display:block}' in source
     assert '.embedTuneFrame{display:block;width:100%;border:0' in source
-    # 主页：两个跳转按钮加 id，并在 body.embedded.settings 作用域隐藏（手柄校准按钮保留）
+    # 主页：两个跳转按钮保留 id（v1.8.47 引入）；v1.8.48 起整个「车辆设置」标题与「调校」行在
+    # body.embedded.settings 作用域整行隐藏（含手柄校准按钮——已移至 DD CC 页顶栏）
     assert 'id="driftSettingsBtn"' in source
     assert 'id="judgeSettingsBtn"' in source
-    assert 'body.embedded.settings #driftSettingsBtn,body.embedded.settings #judgeSettingsBtn{display:none}' in source
+    assert 'body.embedded.settings #settingsView .setTitle{display:none}' in source
+    assert 'body.embedded.settings #settingsView .setRow{display:none}' in source
+    # v1.8.47 的跳转按钮定点隐藏规则已被 setRow 整行隐藏覆盖，不应再存在
+    assert 'body.embedded.settings #driftSettingsBtn,body.embedded.settings #judgeSettingsBtn{display:none}' not in source
+    # 主页：message 监听追加 dd-open-joystick-cal 分支（DD CC 页顶栏「手柄校准」按钮经 postMessage 打开弹窗）
+    assert "else if(d.type==='dd-open-joystick-cal'){openJoystickCalModal()}" in source
 
     # /judge 页（JUDGE 段在 DRIFT 段之前）：头部 panel 加 id 并在 embedded 时隐藏；init 检测 embedded=1
     judge = source[source.index('WIFI_WEB_JUDGE_HTML'):source.index('WIFI_WEB_DRIFT_HTML')]

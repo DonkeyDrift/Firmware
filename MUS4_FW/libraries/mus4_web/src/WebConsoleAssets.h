@@ -45,8 +45,9 @@ body.embedded:not(.settings):not(.wifi) #rcFold{display:none}
 body.embedded:not(.settings):not(.wifi) #diagSettingsRow{display:none}
 body.embedded:not(.settings):not(.wifi) #networkGear{display:none}
 body.embedded:not(.settings):not(.wifi) #driftTuneLink{display:none}
-/* DD 内嵌设置视图（embedded+settings 同时成立，即 CC 车辆设置）：漂移设置/Judge 设置以子 iframe 默认展开，
-   对应跳转按钮隐藏（仅留手柄校准）；车端独立 DC 的设置视图（无 embedded）保持跳转按钮、不加载内嵌页 */
+/* DD 内嵌设置视图（embedded+settings 同时成立，即 CC 车辆设置）：漂移设置/Judge 设置以子 iframe 默认展开；
+   「车辆设置」标题与「调校」行（跳转按钮 + 手柄校准按钮）整行隐藏——手柄校准已移至 DD CC 页顶栏，
+   经 postMessage(dd-open-joystick-cal) 让本页打开校准弹窗；车端独立 DC 的设置视图（无 embedded）保持原样 */
 .embedTuneSections{display:none}
 body.embedded.settings .embedTuneSections{display:block}
 .embedTuneSection{margin-bottom:12px}
@@ -54,7 +55,8 @@ body.embedded.settings .embedTuneSections{display:block}
 .embedTuneFrame{display:block;width:100%;border:0;border-radius:10px;background:#101318}
 .embedTuneFrame.driftFrame{height:820px}
 .embedTuneFrame.judgeFrame{height:1000px}
-body.embedded.settings #driftSettingsBtn,body.embedded.settings #judgeSettingsBtn{display:none}
+body.embedded.settings #settingsView .setTitle{display:none}
+body.embedded.settings #settingsView .setRow{display:none}
 html[data-theme="light"] .embedTuneSection h3{color:#5b6b7d}
 /* ?wifi=1：把 STA/AP 配网弹窗作为静态板块直接呈现（1:1 复用车端表单），供 DD Car Connector 内嵌 */
 body.wifi .headerRow{display:none}
@@ -369,7 +371,7 @@ async function initLanguage(){let lang=readUrlLanguage();if(!lang){try{const r=a
 function renderMuteButton(){const b=document.getElementById('muteToggle');if(b)b.classList.toggle('muted',uiMuted)}
 async function initMute(){try{const r=await fetch('/api/mute',{cache:'no-store'});if(!r.ok)return;const j=await r.json();uiMuted=j.muted===1||j.muted===true;renderMuteButton()}catch(e){}}
 async function toggleMute(){const next=uiMuted?0:1;try{const r=await fetch('/api/mute',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'muted='+next});if(!r.ok)return;const j=await r.json();uiMuted=j.muted===1||j.muted===true;renderMuteButton()}catch(e){}}
-window.addEventListener('message',function(e){const d=e.data;if(!d)return;if(d.type==='dd-console-mute-changed'){uiMuted=!!d.muted;renderMuteButton()}else if(d.type==='dd-open-wifi-sta'){openWifiStaModal()}else if(d.type==='dd-open-wifi-ap'){openWifiApModal()}});
+window.addEventListener('message',function(e){const d=e.data;if(!d)return;if(d.type==='dd-console-mute-changed'){uiMuted=!!d.muted;renderMuteButton()}else if(d.type==='dd-open-wifi-sta'){openWifiStaModal()}else if(d.type==='dd-open-wifi-ap'){openWifiApModal()}else if(d.type==='dd-open-joystick-cal'){openJoystickCalModal()}});
 function toggleTheme(){setTheme(resolvedTheme()==='light'?'dark':'light')}
 function setTheme(theme){uiTheme=theme;applyTheme()}
 function initTheme(){uiTheme='auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}

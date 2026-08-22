@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.48
+
+- feat(WebConsole): CC 车辆设置内嵌视图删「车辆设置」标题与「调校」行框——手柄校准按钮移至 DD CC 页顶栏，经 postMessage 打开校准弹窗（Issue #234 后续）
+  - 背景：内嵌设置视图里漂移/Judge 设置已默认展开（v1.8.47），调校行只剩手柄校准一个按钮；用户要求把该按钮移到 DD CC 页顶部「重新扫描」右边，并删掉「车辆设置」标题与「调校」行框。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS（`body.embedded.settings` 作用域限定）：新增 `body.embedded.settings #settingsView .setTitle{display:none}` 与 `body.embedded.settings #settingsView .setRow{display:none}`——「车辆设置」标题与「调校」行（含两个跳转按钮与手柄校准按钮）整行隐藏；v1.8.47 的 `#driftSettingsBtn/#judgeSettingsBtn{display:none}` 规则已被 setRow 整行隐藏覆盖，移除。车端独立 DC 页面与独立设置视图（无 embedded）保持原样。
+    - JS：既有 `window.addEventListener('message', ...)`（dd-console-mute-changed / dd-open-wifi-sta / dd-open-wifi-ap）追加 `dd-open-joystick-cal` 分支——收到 DD CC 页顶栏「手柄校准」按钮的 postMessage 后调用 `openJoystickCalModal()`，弹窗在内嵌 iframe 可视区内居中打开。
+  - DD 侧配套（DonkeyDrift 仓库 `Tony-cc-declutter` 分支）：`CarSettingsPanel.tsx` 顶栏「重新扫描」右侧新增「手柄校准」按钮，点击 postMessage `{type:'dd-open-joystick-cal'}` 到内嵌 iframe（沿用 DrifterConsolePage 静音同步的同款 postMessage 通道）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.47 → v1.8.48。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_settings_view_embeds_tune_sections` 更新——按钮隐藏规则断言替换为 setTitle/setRow 整行隐藏断言，新增 `dd-open-joystick-cal` 监听分支断言；版本断言 v1.8.48。
+
 ## 2026-08-22 v1.8.47
 
 - feat(WebConsole): CC 车辆设置内嵌视图（`?embedded=1&settings=1&wifi=1`）默认展开漂移设置与 Judge 设置——两个跳转按钮改为同页内嵌子 iframe 板块（Issue #234 后续）

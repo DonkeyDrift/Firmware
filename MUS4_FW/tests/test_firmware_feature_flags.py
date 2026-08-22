@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.52"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.53"' in build_info
+    assert "v1.8.53" in changelog
     assert "v1.8.52" in changelog
     assert "v1.8.51" in changelog
     assert "v1.8.50" in changelog
@@ -349,6 +350,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.53") < changelog.index("## 2026-08-22 v1.8.52")
     assert changelog.index("## 2026-08-22 v1.8.52") < changelog.index("## 2026-08-22 v1.8.51")
     assert changelog.index("## 2026-08-22 v1.8.51") < changelog.index("## 2026-08-22 v1.8.50")
     assert changelog.index("## 2026-08-22 v1.8.50") < changelog.index("## 2026-08-22 v1.8.49")
@@ -2496,6 +2498,10 @@ def test_web_console_settings_view_embeds_tune_sections():
     drift = source[source.index('WIFI_WEB_DRIFT_HTML'):]
     assert 'body.embedded .headerRow{display:none}' in drift
     assert "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');initLanguage();initTheme();loadDriftConfig();" in drift
+    # v1.8.53：embedded 时隐藏漂移页顶部 Status 状态栏面板（CC 设置页只留设置表单，与 v1.8.51 judge 页
+    # #judgeHero/#gyroChartPanel 同款做法；JS 仍更新其元素、隐藏不影响运行）；车端独立 /drift 页完整保留
+    assert '<div class="panel" id="driftStatusPanel">' in drift
+    assert 'body.embedded #driftStatusPanel{display:none}' in drift
 
 
 def test_web_console_status_parser_preserves_quoted_values_with_spaces():

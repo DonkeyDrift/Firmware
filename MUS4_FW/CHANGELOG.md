@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.53
+
+- style(WebConsole): CC 内嵌设置视图删掉漂移子页顶部的 Status 状态栏面板（embedded 作用域限定，Issue #234 后续）
+  - 背景：CC 车辆设置内嵌视图（?embedded=1&settings=1&wifi=1）里漂移子 iframe 顶部有一条 Status 状态栏（Enabled/Active/Yaw Error/Throttle Mode 四项实时状态，中文显示 关/待命/0.00/直通）——显示类内容不属于设置（DD 主视图已有遥测），用户要求「把最上面的状态栏删掉」；车端独立 /drift 页面保持原样完整显示。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（WIFI_WEB_DRIFT_HTML 切片）：做法与 v1.8.51 judge 页 `#judgeHero`/`#gyroChartPanel` 隐藏完全一致——漂移页 body 起点 headerRow 之后的第一个 `.panel`（Status 面板，含 `drift.status.label` 标题与 `stateEnabled`/`stateActive`/`stateYawError`/`stateThrottleMode` 四个 summaryItem）加 `id="driftStatusPanel"`；既有 `body.embedded .headerRow{display:none}` 规则旁新增 `body.embedded #driftStatusPanel{display:none}`。漂移页 JS 仍正常更新这些元素，纯 CSS 隐藏不影响运行；CC 内嵌视图里 `initEmbedTuneFrames()` 的 ResizeObserver 会自动收掉子 iframe 高度。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.52 → v1.8.53。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_settings_view_embeds_tune_sections` 的 DRIFT 段断言新增 `id="driftStatusPanel"` 与 `body.embedded #driftStatusPanel{display:none}` 两项；版本断言 v1.8.53、CHANGELOG 顺序链补 v1.8.53 行。
+
 ## 2026-08-22 v1.8.52
 
 - style(WebConsole): CC 内嵌设置视图 RC Channels 折叠头压平为静态标题（常开不可折叠）+ 配网板块上移为内嵌视图最顶部板块（Issue #234 后续）

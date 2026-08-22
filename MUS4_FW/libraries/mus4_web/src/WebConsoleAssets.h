@@ -45,21 +45,20 @@ body.embedded:not(.settings):not(.wifi) #rcFold{display:none}
 body.embedded:not(.settings):not(.wifi) #diagSettingsRow{display:none}
 body.embedded:not(.settings):not(.wifi) #networkGear{display:none}
 body.embedded:not(.settings):not(.wifi) #driftTuneLink{display:none}
-/* DD 内嵌设置视图（embedded+settings 同时成立，即 CC 车辆设置）：漂移设置/Judge 设置以子 iframe 默认展开；
+/* DD 内嵌设置视图（embedded+settings 同时成立，即 CC 车辆设置）：漂移/Judge 设置以子 iframe 默认展开、
+   不设分类标题、前后相接融合为一页（逻辑顺序：先车辆动态参数=漂移，后评判规则=Judge；Judge 页内嵌时
+   隐藏得分 hero/gyroZ 曲线等显示类区域并撑满宽度，见其页内 body.embedded 规则）；
    「车辆设置」标题与「调校」行（跳转按钮 + 手柄校准按钮）整行隐藏——手柄校准已移至 DD CC 页顶栏，
    经 postMessage(dd-open-joystick-cal) 让本页打开校准弹窗；车端独立 DC 的设置视图（无 embedded）保持原样。
    子 iframe 的 src 经 data-src 懒加载（仅本作用域由 initEmbedTuneFrames() 赋值，其余视图不加载/不跑子页轮询），
    加载后按内容高度自动撑高（ResizeObserver 跟踪），不出现内部滚动条；下方 820px/1000px 仅为加载前占位高度 */
 .embedTuneSections{display:none}
 body.embedded.settings .embedTuneSections{display:block}
-.embedTuneSection{margin-bottom:12px}
-.embedTuneSection h3{margin:0 0 6px;font-size:12px;font-weight:700;color:#8fa1b5;text-transform:uppercase;letter-spacing:.05em}
 .embedTuneFrame{display:block;width:100%;border:0;border-radius:10px;background:#101318;overflow:hidden}
 .embedTuneFrame.driftFrame{height:820px}
 .embedTuneFrame.judgeFrame{height:1000px}
 body.embedded.settings #settingsView .setTitle{display:none}
 body.embedded.settings #settingsView .setRow{display:none}
-html[data-theme="light"] .embedTuneSection h3{color:#5b6b7d}
 /* ?wifi=1：把 STA/AP 配网弹窗作为静态板块直接呈现（1:1 复用车端表单），供 DD Car Connector 内嵌 */
 body.wifi .headerRow{display:none}
 body.wifi .fabToggle{display:none}
@@ -82,7 +81,7 @@ html[data-theme="light"] .hintSpan{color:#5b6b7d}
 <div id="settingsView" class="settingsView">
 <h2 class="setTitle" data-i18n="settings.title">车辆设置</h2>
 <div class="setRow"><h3 data-i18n="settings.tuning">调校</h3><div class="setActions"><button type="button" id="driftSettingsBtn" onclick="location.href='/drift?theme='+resolvedTheme()" data-i18n="button.driftSettings">漂移设置</button><button type="button" id="judgeSettingsBtn" onclick="location.href='/judge?theme='+resolvedTheme()" data-i18n="settings.judge">Judge 设置</button><button type="button" onclick="openJoystickCalModal()" data-i18n="button.joystickCal">手柄校准</button></div></div>
-<div class="embedTuneSections"><div class="embedTuneSection"><h3 data-i18n="button.driftSettings">漂移设置</h3><iframe class="embedTuneFrame driftFrame" data-src="/drift?embedded=1" title="漂移设置"></iframe></div><div class="embedTuneSection"><h3 data-i18n="settings.judge">Judge 设置</h3><iframe class="embedTuneFrame judgeFrame" data-src="/judge?embedded=1" title="Judge 设置"></iframe></div></div>
+<div class="embedTuneSections"><iframe class="embedTuneFrame driftFrame" data-src="/drift?embedded=1" title="漂移设置"></iframe><iframe class="embedTuneFrame judgeFrame" data-src="/judge?embedded=1" title="Judge 设置"></iframe></div>
 </div>
 <div class="grid">
 <section class="panel wide">
@@ -107,7 +106,7 @@ html[data-theme="light"] .hintSpan{color:#5b6b7d}
 <div id="log" class="log"></div>
 </section>
 <section class="panel wide" id="diagnosticsPanel">
-<div id="rcFold" class="fold"><button class="foldHead" onclick="toggleFold('rcFold')" aria-expanded="false"><span class="foldIcon">▸</span><span class="titleHint"><span data-i18n="panel.rcChannels">RC Channels</span><span class="hintSpan" data-i18n="rc.hint.panel">接收机六通道实时值与转向/油门行程校准</span></span></button><div class="foldBody"><div class="rcGrid"><div class="rcCell"><span class="titleHint"><b>CH1 Steering</b><span class="hintSpan" data-i18n="rc.hint.ch1">转向通道输入（接收机 CH1 原始值）</span></span><span id="ch1Value">----</span></div><div class="rcCell"><span class="titleHint"><b>CH2 Throttle</b><span class="hintSpan" data-i18n="rc.hint.ch2">油门通道输入（接收机 CH2 原始值）</span></span><span id="ch2Value">----</span></div><div class="rcCell"><span class="titleHint"><b>CH3 Park</b><span class="hintSpan" data-i18n="rc.hint.ch3">Park 锁定开关通道（CH3）</span></span><span id="ch3Value">----</span></div><div class="rcCell modeCh"><span class="titleHint"><b>CH4 Mode</b><span class="hintSpan" data-i18n="rc.hint.ch4">驾驶模式切换通道（CH4）</span></span><span id="ch4Value">----</span></div><div class="rcCell"><span class="titleHint"><b>CH5 Drift</b><span class="hintSpan" data-i18n="rc.hint.ch5">漂移辅助开关通道（CH5）</span></span><span id="ch5Value">----</span></div><div class="rcCell"><span class="titleHint"><b>CH6 Scale</b><span class="hintSpan" data-i18n="rc.hint.ch6">输出缩放通道（CH6）</span></span><span id="ch6Value">----</span></div></div><div style="display:flex;gap:6px;margin-top:6px"><div class="rcCell" style="flex:1"><span class="titleHint"><b>OUT Steering</b><span class="hintSpan" data-i18n="rc.hint.outSteering">校准映射后的转向输出占空比</span></span><span id="servoDutyValue">----</span></div><div class="rcCell" style="flex:1"><span class="titleHint"><b>OUT Throttle</b><span class="hintSpan" data-i18n="rc.hint.outThrottle">校准映射后的油门输出占空比</span></span><span id="escDutyValue">----</span></div></div><div style="display:flex;gap:6px;margin-top:6px"><div class="rcCell" style="flex:1"><span class="titleHint"><b>Mid S</b><span class="hintSpan" data-i18n="rc.hint.midS">转向中点 duty；点 Set 把当前位置设为中点</span></span><div style="display:flex;align-items:center;justify-content:center"><span id="servoMidValue">----</span><button class="rcSetBtn" onclick="setServoMid()" style="font-size:11px;padding:1px 6px;margin-left:4px;cursor:pointer" title="设为转向中点" data-i18n-title="rc.setSteeringMid">Set</button></div></div><div class="rcCell" style="flex:1"><span class="titleHint"><b>Mid T</b><span class="hintSpan" data-i18n="rc.hint.midT">油门中点 duty；点 Set 把当前位置设为中点</span></span><div style="display:flex;align-items:center;justify-content:center"><span id="motorMidValue">----</span><button class="rcSetBtn" onclick="setMotorMid()" style="font-size:11px;padding:1px 6px;margin-left:4px;cursor:pointer" title="设为油门中点" data-i18n-title="rc.setThrottleMid">Set</button></div></div></div><div style="display:flex;gap:6px;margin-top:6px"><div class="rcCell" style="flex:1"><span class="titleHint"><b>Min T</b><span class="hintSpan" data-i18n="rc.hint.minT">油门最小输出限幅</span></span><div style="display:flex;align-items:center;justify-content:center;gap:10px"><input type="range" id="throttleMinSlider" min="4915" max="7372" value="4915" step="1" oninput="setThrottleMin(this.value)" style="width:70%;min-width:0;height:18px;margin:2px 0"><input type="number" class="rcNum" id="throttleMinValue" min="4915" max="7372" step="1" placeholder="----" title="点击输入数值" data-i18n-title="rc.numInput" onchange="commitThrottleMin(this)"></div></div><div class="rcCell" style="flex:1"><span class="titleHint"><b>Max T</b><span class="hintSpan" data-i18n="rc.hint.maxT">油门最大输出限幅</span></span><div style="display:flex;align-items:center;justify-content:center;gap:10px"><input type="range" id="throttleMaxSlider" min="7372" max="9830" value="9830" step="1" oninput="setThrottleMax(this.value)" style="width:70%;min-width:0;height:18px;margin:2px 0"><input type="number" class="rcNum" id="throttleMaxValue" min="7372" max="9830" step="1" placeholder="----" title="点击输入数值" data-i18n-title="rc.numInput" onchange="commitThrottleMax(this)"></div></div></div></div></div>
+<div id="rcFold" class="fold"><button class="foldHead" onclick="toggleFold('rcFold')" aria-expanded="false"><span class="foldIcon">▸</span><span class="titleHint"><span data-i18n="panel.rcChannels">RC Channels</span><span class="hintSpan" data-i18n="rc.hint.panel">接收机六通道实时值与转向/油门行程校准</span></span></button><div class="foldBody"><div class="rcGrid"><div class="rcCell"><b>CH1 Steering</b><span id="ch1Value">----</span></div><div class="rcCell"><b>CH2 Throttle</b><span id="ch2Value">----</span></div><div class="rcCell"><b>CH3 Park</b><span id="ch3Value">----</span></div><div class="rcCell modeCh"><b>CH4 Mode</b><span id="ch4Value">----</span></div><div class="rcCell"><b>CH5 Drift</b><span id="ch5Value">----</span></div><div class="rcCell"><b>CH6 Scale</b><span id="ch6Value">----</span></div></div><div style="display:flex;gap:6px;margin-top:6px"><div class="rcCell" style="flex:1"><b>OUT Steering</b><span id="servoDutyValue">----</span></div><div class="rcCell" style="flex:1"><b>OUT Throttle</b><span id="escDutyValue">----</span></div></div><div style="display:flex;gap:6px;margin-top:6px"><div class="rcCell" style="flex:1"><b>Mid S</b><div style="display:flex;align-items:center;justify-content:center"><span id="servoMidValue">----</span><button class="rcSetBtn" onclick="setServoMid()" style="font-size:11px;padding:1px 6px;margin-left:4px;cursor:pointer" title="设为转向中点" data-i18n-title="rc.setSteeringMid">Set</button></div></div><div class="rcCell" style="flex:1"><b>Mid T</b><div style="display:flex;align-items:center;justify-content:center"><span id="motorMidValue">----</span><button class="rcSetBtn" onclick="setMotorMid()" style="font-size:11px;padding:1px 6px;margin-left:4px;cursor:pointer" title="设为油门中点" data-i18n-title="rc.setThrottleMid">Set</button></div></div></div><div style="display:flex;gap:6px;margin-top:6px"><div class="rcCell" style="flex:1"><b>Min T</b><div style="display:flex;align-items:center;justify-content:center;gap:10px"><input type="range" id="throttleMinSlider" min="4915" max="7372" value="4915" step="1" oninput="setThrottleMin(this.value)" style="width:70%;min-width:0;height:18px;margin:2px 0"><input type="number" class="rcNum" id="throttleMinValue" min="4915" max="7372" step="1" placeholder="----" title="点击输入数值" data-i18n-title="rc.numInput" onchange="commitThrottleMin(this)"></div></div><div class="rcCell" style="flex:1"><b>Max T</b><div style="display:flex;align-items:center;justify-content:center;gap:10px"><input type="range" id="throttleMaxSlider" min="7372" max="9830" value="9830" step="1" oninput="setThrottleMax(this.value)" style="width:70%;min-width:0;height:18px;margin:2px 0"><input type="number" class="rcNum" id="throttleMaxValue" min="7372" max="9830" step="1" placeholder="----" title="点击输入数值" data-i18n-title="rc.numInput" onchange="commitThrottleMax(this)"></div></div></div></div></div>
 <div id="diagSettingsRow" style="margin:10px 0"><button onclick="openJoystickCalModal()" data-i18n="button.joystickCal">Calibrate Joystick</button><button onclick="window.open('/drift?theme='+resolvedTheme(),'_blank')" data-i18n="button.driftSettings" style="margin-left:8px">漂移设置</button></div>
 <div id="joystickCalStatus" style="font-size:12px;color:#8fa1b5;margin-bottom:8px">方向: -- / -- / -- | 油门: -- / -- / --</div>
 <div id="statusFold" class="fold"><button class="foldHead" onclick="toggleFold('statusFold')" aria-expanded="false"><span class="foldIcon">▸</span><span data-i18n="panel.statusDetails">STATUS Details</span></button><div class="foldBody"><div id="status">loading...</div></div></div>
@@ -174,18 +173,6 @@ I18N.zh['error.authRequired']='认证失败或未被授权：请检查 AP 密码
 I18N.zh['error.parkRequired']='需要 Park 锁定：请确保车辆已切换到 Park Locked 状态。';
 I18N.zh['cal.title.hint']='分步引导校准手柄转向与油门的居中和行程';
 I18N.zh['rc.hint.panel']='接收机六通道实时值与转向/油门行程校准';
-I18N.zh['rc.hint.ch1']='转向通道输入（接收机 CH1 原始值）';
-I18N.zh['rc.hint.ch2']='油门通道输入（接收机 CH2 原始值）';
-I18N.zh['rc.hint.ch3']='Park 锁定开关通道（CH3）';
-I18N.zh['rc.hint.ch4']='驾驶模式切换通道（CH4）';
-I18N.zh['rc.hint.ch5']='漂移辅助开关通道（CH5）';
-I18N.zh['rc.hint.ch6']='输出缩放通道（CH6）';
-I18N.zh['rc.hint.outSteering']='校准映射后的转向输出占空比';
-I18N.zh['rc.hint.outThrottle']='校准映射后的油门输出占空比';
-I18N.zh['rc.hint.midS']='转向中点 duty；点 Set 把当前位置设为中点';
-I18N.zh['rc.hint.midT']='油门中点 duty；点 Set 把当前位置设为中点';
-I18N.zh['rc.hint.minT']='油门最小输出限幅';
-I18N.zh['rc.hint.maxT']='油门最大输出限幅';
 I18N.en['button.joystickCal']='Calibrate Joystick';
 I18N.en['button.driftSettings']='Drift Settings';
 I18N.en['cal.title']='Joystick Calibration';
@@ -202,18 +189,6 @@ I18N.en['error.authRequired']='Authentication failed or not authorized: please c
 I18N.en['error.parkRequired']='Park lock required: make sure the vehicle is in Park Locked state.';
 I18N.en['cal.title.hint']='Step-by-step wizard to calibrate joystick steering & throttle center and range';
 I18N.en['rc.hint.panel']='Live receiver channel values plus steering/throttle range calibration';
-I18N.en['rc.hint.ch1']='Steering channel input (raw receiver CH1)';
-I18N.en['rc.hint.ch2']='Throttle channel input (raw receiver CH2)';
-I18N.en['rc.hint.ch3']='Park lock switch channel (CH3)';
-I18N.en['rc.hint.ch4']='Drive mode switch channel (CH4)';
-I18N.en['rc.hint.ch5']='Drift assist switch channel (CH5)';
-I18N.en['rc.hint.ch6']='Output scale channel (CH6)';
-I18N.en['rc.hint.outSteering']='Steering output duty after calibration mapping';
-I18N.en['rc.hint.outThrottle']='Throttle output duty after calibration mapping';
-I18N.en['rc.hint.midS']='Steering center duty; click Set to capture the current position';
-I18N.en['rc.hint.midT']='Throttle center duty; click Set to capture the current position';
-I18N.en['rc.hint.minT']='Minimum throttle output clamp';
-I18N.en['rc.hint.maxT']='Maximum throttle output clamp';
 I18N.zh['wifi.historyTitle']='已保存的 WiFi';
 I18N.en['wifi.historyTitle']='Saved WiFi';
 I18N.zh['wifi.historyEmpty']='暂无记录';
@@ -610,6 +585,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .tuneActions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
 #judgeConfigStatus{font-size:12px}
 body.embedded #judgeHeadPanel{display:none}
+/* CC 内嵌视图：judge 页撑满 iframe 宽度（去 760px 居中限宽），并隐藏显示类区域（得分 hero、gyroZ 曲线），只留设置表单 */
+body.embedded{max-width:none}
+body.embedded #judgeHero{display:none}
+body.embedded #gyroChartPanel{display:none}
 .titleHint{display:inline-flex;align-items:baseline;cursor:default;width:fit-content;max-width:100%}.hintSpan{max-width:0;opacity:0;overflow:hidden;white-space:nowrap;transition:all .3s ease-in-out;font-size:12px;font-weight:400;color:#8fa1b5;text-transform:none;letter-spacing:0}.titleHint:hover .hintSpan{max-width:340px;opacity:1;margin-left:12px}
 html[data-theme="light"] body{background:#eef1f5;color:#1a2330}
 html[data-theme="light"] a{color:#0c9bd6}
@@ -640,7 +619,7 @@ html[data-theme="light"] .tuneSection{border-top-color:#d5dce4}
 </div>
 </div>
 </div>
-<div class="hero">
+<div class="hero" id="judgeHero">
 <div class="heroCard">
 <div class="label">pseudoSpeed</div>
 <div id="pseudoSpeed" class="heroValue">--</div>
@@ -662,7 +641,7 @@ html[data-theme="light"] .tuneSection{border-top-color:#d5dce4}
 <div id="collision" class="collision" style="margin-top:12px" data-i18n="judge.collision.ok">状态正常</div>
 </div>
 </div>
-<div class="panel">
+<div class="panel" id="gyroChartPanel">
 <div class="titleHint"><span class="label" data-i18n="judge.gyroChartLabel">gyroZ 曲线</span><span class="hintSpan" data-i18n="judge.gyroChartHint">实时偏航角速度曲线</span></div>
 <div class="chartWrap"><canvas id="gyroChart" width="700" height="140"></canvas></div>
 </div>

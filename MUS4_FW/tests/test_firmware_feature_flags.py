@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.50"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.51"' in build_info
+    assert "v1.8.51" in changelog
     assert "v1.8.50" in changelog
     assert "v1.8.49" in changelog
     assert "v1.8.48" in changelog
@@ -347,6 +348,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.51") < changelog.index("## 2026-08-22 v1.8.50")
     assert changelog.index("## 2026-08-22 v1.8.50") < changelog.index("## 2026-08-22 v1.8.49")
     assert changelog.index("## 2026-08-22 v1.8.49") < changelog.index("## 2026-08-22 v1.8.48")
     assert changelog.index("## 2026-08-22 v1.8.48") < changelog.index("## 2026-08-22 v1.8.47")
@@ -2433,12 +2435,14 @@ def test_web_console_settings_view_embeds_tune_sections():
     source = firmware_source_text()
 
     # 主页：内嵌板块 HTML（默认 display:none，仅 body.embedded.settings 显示）；
-    # v1.8.50 起 iframe 改 data-src 懒加载（仅嵌入设置视图才赋值 src），其余视图不加载子页
-    assert '<div class="embedTuneSections">' in source
-    assert '<iframe class="embedTuneFrame driftFrame" data-src="/drift?embedded=1"' in source
+    # v1.8.50 起 iframe 改 data-src 懒加载（仅嵌入设置视图才赋值 src），其余视图不加载子页；
+    # v1.8.51 起去掉「漂移设置/Judge 设置」h3 分类标题与 .embedTuneSection 包装——两个 iframe 直接相接融合为一页
+    assert '<div class="embedTuneSections"><iframe class="embedTuneFrame driftFrame" data-src="/drift?embedded=1"' in source
     assert '<iframe class="embedTuneFrame judgeFrame" data-src="/judge?embedded=1"' in source
     assert 'class="embedTuneFrame driftFrame" src=' not in source
     assert 'class="embedTuneFrame judgeFrame" src=' not in source
+    assert 'class="embedTuneSection"' not in source
+    assert '.embedTuneSection h3' not in source
     assert '.embedTuneSections{display:none}' in source
     assert 'body.embedded.settings .embedTuneSections{display:block}' in source
     assert '.embedTuneFrame{display:block;width:100%;border:0' in source
@@ -2457,11 +2461,17 @@ def test_web_console_settings_view_embeds_tune_sections():
     # 主页：message 监听追加 dd-open-joystick-cal 分支（DD CC 页顶栏「手柄校准」按钮经 postMessage 打开弹窗）
     assert "else if(d.type==='dd-open-joystick-cal'){openJoystickCalModal()}" in source
 
-    # /judge 页（JUDGE 段在 DRIFT 段之前）：头部 panel 加 id 并在 embedded 时隐藏；init 检测 embedded=1
+    # /judge 页（JUDGE 段在 DRIFT 段之前）：头部 panel 加 id 并在 embedded 时隐藏；init 检测 embedded=1；
+    # v1.8.51：embedded 时撑满 iframe 宽度（去 760px 限宽），隐藏显示类区域（得分 hero、gyroZ 曲线），只留设置表单
     judge = source[source.index('WIFI_WEB_JUDGE_HTML'):source.index('WIFI_WEB_DRIFT_HTML')]
     assert 'id="judgeHeadPanel"' in judge
     assert 'body.embedded #judgeHeadPanel{display:none}' in judge
     assert "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');syncJudgeConfigInputs();" in judge
+    assert 'body.embedded{max-width:none}' in judge
+    assert 'id="judgeHero"' in judge
+    assert 'body.embedded #judgeHero{display:none}' in judge
+    assert 'id="gyroChartPanel"' in judge
+    assert 'body.embedded #gyroChartPanel{display:none}' in judge
 
     # /drift 页：embedded 时隐藏自身 headerRow（主页也有同名规则，必须切片到 DRIFT 段断言）；init 检测 embedded=1
     drift = source[source.index('WIFI_WEB_DRIFT_HTML'):]
@@ -3785,50 +3795,54 @@ def test_drift_page_theme_and_title_hints():
 
 
 def test_joystick_cal_and_rc_panel_title_hints():
-    """手柄校准弹窗与 RC Channels 校准面板的所有标题采用悬停灰字提示
-    （.titleHint + .hintSpan），与 v1.8.36 漂移调参页一致：
+    """悬停灰字提示（.titleHint + .hintSpan）只保留在标题级元素上（v1.8.51 收敛）：
 
-    - 主控制台页面补齐 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）。
-    - 弹窗大标题（cal.title）、RC Channels 折叠头（panel.rcChannels）及 12 个 rcCell
-      小标题（CH1~CH6 / OUT Steering / OUT Throttle / Mid S / Mid T / Min T / Max T）
-      全部包为标题+悬停灰字，并补齐 14 组中英 i18n 键。
+    - 主控制台页面保留 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）。
+    - 标题级保留 2 处：手柄校准弹窗大标题（cal.title.hint）、RC Channels 折叠头
+      （rc.hint.panel）。
+    - v1.8.51：CH1~CH6 / OUT / Mid / Min / Max 共 12 个 rcCell 是字段标签而非小标题，
+      其 titleHint 包装与 12 组 rc.hint.* i18n 键已全部删除（用户：字段不需要悬停特效）。
     """
     assets = (
         PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
     ).read_text(encoding="utf-8")
     console = _page_region(assets, "WIFI_WEB_CONSOLE_HTML")
 
-    # 主控制台页面补齐 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）
+    # 主控制台页面保留 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）
     assert ".titleHint{display:inline-flex;align-items:baseline" in console, "主控制台缺 titleHint 基础样式"
     assert ".hintSpan{max-width:0;opacity:0;" in console, "主控制台缺 hintSpan 折叠样式"
     assert ".titleHint:hover .hintSpan{max-width:340px;opacity:1;" in console, "主控制台缺悬停展开样式"
     assert 'html[data-theme="light"] .hintSpan{' in console, "主控制台缺 light 主题 hintSpan 颜色变体"
 
-    # 弹窗大标题
+    # 弹窗大标题（标题级，保留）
     assert '<div class="titleHint"><h3 data-i18n="cal.title">手柄校准</h3>' in console, "手柄校准弹窗大标题未包 titleHint"
     assert 'data-i18n="cal.title.hint"' in console, "弹窗标题缺 cal.title.hint 悬停提示"
 
-    # RC Channels 折叠头
+    # RC Channels 折叠头（标题级，保留）
     assert '<span class="titleHint"><span data-i18n="panel.rcChannels">RC Channels</span>' in console, "RC Channels 折叠头未包 titleHint"
     assert 'data-i18n="rc.hint.panel"' in console, "RC Channels 折叠头缺 rc.hint.panel 悬停提示"
 
-    # 12 个 rcCell 小标题
-    hint_keys = [
+    # 12 个 rcCell 字段标签：v1.8.51 起不再有悬停特效（无 titleHint 包装、无 i18n 键）
+    removed_keys = [
         "rc.hint.ch1", "rc.hint.ch2", "rc.hint.ch3", "rc.hint.ch4",
         "rc.hint.ch5", "rc.hint.ch6", "rc.hint.outSteering",
         "rc.hint.outThrottle", "rc.hint.midS", "rc.hint.midT",
         "rc.hint.minT", "rc.hint.maxT",
     ]
-    for key in hint_keys:
-        assert f'data-i18n="{key}"' in console, f"rcCell 小标题缺少悬停提示 {key}"
+    for key in removed_keys:
+        assert f'data-i18n="{key}"' not in console, f"rcCell 字段标签仍有悬停提示 {key}"
+        assert f"I18N.zh['{key}']" not in assets, f"中文 i18n 键未删除 {key}"
+        assert f"I18N.en['{key}']" not in assets, f"英文 i18n 键未删除 {key}"
+    # rcCell 标题恢复为纯 <b> 标签
+    assert '<div class="rcCell"><b>CH1 Steering</b>' in console, "CH1 字段标签应为纯 <b> 无包装"
+    assert '<div class="rcCell" style="flex:1"><b>Max T</b>' in console, "Max T 字段标签应为纯 <b> 无包装"
 
-    # 控制台页面 titleHint 包装总数：弹窗 1 + 折叠头 1 + rcCell 12 = 14
-    assert console.count('class="titleHint"') == 14, "控制台应有 14 处 titleHint（弹窗1+折叠头1+rcCell12）"
-    assert console.count('class="hintSpan"') == 14, "控制台应有 14 处 hintSpan"
+    # 控制台页面 titleHint 包装总数：弹窗 1 + 折叠头 1 = 2（rcCell 12 处已于 v1.8.51 移除）
+    assert console.count('class="titleHint"') == 2, "控制台应仅剩 2 处标题级 titleHint（弹窗1+折叠头1）"
+    assert console.count('class="hintSpan"') == 2, "控制台应仅剩 2 处 hintSpan"
 
-    # 14 组中英 i18n 键齐全
-    i18n_keys = ["cal.title.hint", "rc.hint.panel", *hint_keys]
-    for key in i18n_keys:
+    # 保留的 2 组中英 i18n 键齐全
+    for key in ["cal.title.hint", "rc.hint.panel"]:
         assert f"I18N.zh['{key}']" in assets, f"缺中文 i18n 键 {key}"
         assert f"I18N.en['{key}']" in assets, f"缺英文 i18n 键 {key}"
 

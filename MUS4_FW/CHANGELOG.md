@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.51
+
+- style(WebConsole): CC 内嵌设置视图融合漂移/Judge 为一页（去分类标题、Judge 撑满宽度、隐藏显示类区域）+ 删除 RC Channels 字段级标题的悬停灰字特效（Issue #234 后续）
+  - 背景：① RC Channels 里 CH1 Steering/CH2 Throttle 等是字段标签不是小标题，悬停灰字特效（v1.8.46 引入）不应加在它们上面；② 用户要求 CC 设置页不按「漂移设置/Judge 设置」分类，融合成一个有逻辑顺序的页面；③ Judge 板块有 760px 居中限宽，没撑满。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - RC 面板字段级特效删除：12 个 rcCell 标题（CH1~CH6 / OUT Steering / OUT Throttle / Mid S / Mid T / Min T / Max T）的 `.titleHint`+`.hintSpan` 包装解包回纯 `<b>`，对应 12 组中英 i18n 键（`rc.hint.ch1`~`ch6`/`outSteering`/`outThrottle`/`midS`/`midT`/`minT`/`maxT`）删除；保留标题级特效——手柄校准弹窗大标题（`cal.title.hint`）与 RC Channels 折叠头（`rc.hint.panel`），/drift 页与 /judge 页标题级 hint 不动（审计确认无其它字段级混入）。
+    - 融合：embedTuneSections 去掉「漂移设置」「Judge 设置」两个 h3 分类标题（连同 `.embedTuneSection h3` CSS 与 light 变体、`.embedTuneSection` 间距规则），两个子 iframe 前后相接成一页——逻辑顺序：先车辆动态参数（漂移：状态/转向修正/油门策略），后评判规则（Judge：评分阈值/基础阈值/评分参数/评分维度）。
+    - Judge 页 embedded 作用域：`body.embedded{max-width:none}` 放开 760px 限宽撑满 iframe；`#judgeHero`（得分/碰撞 hero）与 `#gyroChartPanel`（gyroZ 曲线）两个显示类区域加 id 并在 embedded 时隐藏——CC 设置页只留设置表单（显示类内容不属于设置，且 DD 主视图已有遥测图表）；车端独立 /judge 页面不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.50 → v1.8.51。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_joystick_cal_and_rc_panel_title_hints` 改为断言 12 处 rcCell 无 titleHint 包装、12 组 i18n 键已删、标题级 2 处（弹窗+折叠头）保留、控制台 titleHint 计数 14→2；`test_web_console_settings_view_embeds_tune_sections` 更新——h3 移除、judge embedded 撑宽/隐藏规则断言；版本断言 v1.8.51。
+
 ## 2026-08-22 v1.8.50
 
 - fix(WebConsole): CC 车辆设置内嵌视图的漂移/Judge 子 iframe 按内容自动撑高——消除 Judge 设置的内部滚动条，整页统一滚动（Issue #234 后续）

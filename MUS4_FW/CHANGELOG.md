@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.59
+
+- fix(WebConsole): 抑制苹果设备在 STA Wi-Fi 密码框输入时弹出「存储密码？」——密码框声明为非登录新密码并加密码管理器忽略属性
+  - 背景：STA 配网弹窗的密码框是裸 `type="password"` 输入框，Safari/iOS 把它当作登录凭据，输入后弹出系统级「是否存储此密码」；该密码是 Wi-Fi 预共享密钥、不是网站账号，保存提示无意义且打扰。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`#staPassword` 加 `autocomplete="new-password"`（告知浏览器这是设置新密码而非登录——Safari/Chrome 对 new-password 字段不弹保存提示）+ `data-1p-ignore="true"`（1Password）+ `data-lpignore="true"`（LastPass）+ `data-form-type="other"`（Dashlane 等）；`#staSsid` 加 `autocomplete="off" autocapitalize="none" spellcheck="false"`（避免被识别为登录用户名字段，顺带关闭 iOS 首字母大写与拼写检查）。眼睛切换显隐逻辑不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.57 → v1.8.59（v1.8.58 由并行会话 `Tony-dc-embedded-declutter` 分支使用，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.59；STA 弹窗测试新增两条输入框完整属性断言（autocomplete/autocapitalize/spellcheck/密码管理器忽略属性）。
+
 ## 2026-08-22 v1.8.57
 
 - feat(WebConsole): STA Wi-Fi 配置右侧「已保存网络」历史列表支持点击回填——点击一行即把该网络的 SSID 与密码填入左侧表单，直接点「连接」即可切换

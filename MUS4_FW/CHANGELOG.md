@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.52
+
+- style(WebConsole): CC 内嵌设置视图 RC Channels 折叠头压平为静态标题（常开不可折叠）+ 配网板块上移为内嵌视图最顶部板块（Issue #234 后续）
+  - 背景：① CC 内嵌设置视图里 RC Channels 是可折叠面板，折叠头按钮样式（背景/边框/箭头/hover）在内嵌场景下显得多余，用户要求压平成静态标题、内容常开不可折叠（标题文字与标题级悬停灰字 hint 保留）；② 内嵌视图（?embedded=1&settings=1&wifi=1）当前可见顺序为车辆设置→RC Channels→配网，用户要求配网板块（AP 名称配置 + STA Wi-Fi 配置）移到最顶部。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - RC 折叠头压平（`body.settings`/`body.wifi` 作用域限定，只影响内嵌 settings/wifi 视图）：新增 `body.settings #rcFold .foldHead,body.wifi #rcFold .foldHead{background:transparent;border:none;cursor:default;pointer-events:none}`、对应 `:hover` 背景透明规则、`... .foldHead .titleHint{pointer-events:auto}`（保留标题级 hintSpan 悬停灰字）与 `... .foldIcon{display:none}`（隐藏 ▸ 箭头）；作用域规则带 ID，特异性高于 `.foldHead`/`.foldHead:hover` 及 light 主题变体，无需单独 light 变体。
+    - JS 初始化：旧 `if(...settings=1...||...wifi=1...)toggleFold('rcFold')` 替换为强制展开且不可折叠逻辑——`#rcFold` 加 `open` class、foldHead 移除 `onclick` 属性（防点击/键盘触发折叠）、`aria-expanded` 置 `true`，全程空引用保护；`toggleFold()` 函数本身保留，车端独立 DC 页（无 URL 参数）rcFold 仍默认收起、点击可展开/收起。
+    - 配网板块上移：`wifi=1` 初始化分支（`openWifiApModal();openWifiStaModal();` 之后）把 `#wifiApModal`、`#wifiStaModal` 依次 `insertBefore` 到 `#settingsView` 之前（先 AP 后 STA，最终顺序 AP、STA、settingsView），合并的配网板块成为内嵌视图最顶部板块；三者均为 body 直接子节点，加空引用保护；普通 DC 页无 `wifi=1` 不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.51 → v1.8.52。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_settings_view_shows_rc_channels_panel` 更新：旧 `toggleFold('rcFold')` 初始化断言改为断言其不存在，新增强制展开 JS（`classList.add('open')`/`removeAttribute('onclick')`/`aria-expanded='true'`）、4 条压平 CSS 规则与配网板块 `insertBefore` 上移断言；版本断言 v1.8.52、CHANGELOG 顺序链补 v1.8.52 行。
+
 ## 2026-08-22 v1.8.51
 
 - style(WebConsole): CC 内嵌设置视图融合漂移/Judge 为一页（去分类标题、Judge 撑满宽度、隐藏显示类区域）+ 删除 RC Channels 字段级标题的悬停灰字特效（Issue #234 后续）

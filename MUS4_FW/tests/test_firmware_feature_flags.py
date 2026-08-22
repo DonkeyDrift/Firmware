@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.51"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.52"' in build_info
+    assert "v1.8.52" in changelog
     assert "v1.8.51" in changelog
     assert "v1.8.50" in changelog
     assert "v1.8.49" in changelog
@@ -348,6 +349,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.52") < changelog.index("## 2026-08-22 v1.8.51")
     assert changelog.index("## 2026-08-22 v1.8.51") < changelog.index("## 2026-08-22 v1.8.50")
     assert changelog.index("## 2026-08-22 v1.8.50") < changelog.index("## 2026-08-22 v1.8.49")
     assert changelog.index("## 2026-08-22 v1.8.49") < changelog.index("## 2026-08-22 v1.8.48")
@@ -2380,7 +2382,9 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
 def test_web_console_settings_view_shows_rc_channels_panel():
     """Issue #234（v1.8.41）：?settings=1 / ?wifi=1 内嵌视图选择性显示 .grid，
     只露出 Diagnostics 面板里的 #rcFold（RC Channels 校准面板，含中点 Set 与
-    油门 Min/Max 滑块），供 DD Car Connector 内嵌同屏调整 RC 校准。"""
+    油门 Min/Max 滑块），供 DD Car Connector 内嵌同屏调整 RC 校准。
+    v1.8.52 起：rcFold 折叠头在该作用域压平为静态标题（常开不可折叠），
+    且 wifi=1 时配网板块（AP+STA）上移到 settingsView 之前成为最顶部板块。"""
     source = firmware_source_text()
 
     assert 'body.settings .grid,body.wifi .grid{display:block}' in source
@@ -2393,10 +2397,25 @@ def test_web_console_settings_view_shows_rc_channels_panel():
     # 旧的整藏规则已移除（与 display:block 冲突，同特异性后者胜出会导致 grid 仍被藏）
     assert 'body.settings .grid{display:none}' not in source
     assert 'body.wifi .grid{display:none}' not in source
-    # settings/wifi 内嵌视图加载时自动展开 RC Channels 折叠面板
-    assert "if(location.search.indexOf('settings=1')>=0||location.search.indexOf('wifi=1')>=0)toggleFold('rcFold');" in source
+    # v1.8.52：settings/wifi 内嵌视图里 RC Channels 折叠头压平为静态标题——初始化强制展开且不可折叠
+    # （旧 toggleFold('rcFold') 初始化调用已移除；toggleFold 函数本身保留，车端独立 DC 页不受影响）
+    assert "if(location.search.indexOf('settings=1')>=0||location.search.indexOf('wifi=1')>=0)toggleFold('rcFold');" not in source
+    assert "rcFold.classList.add('open')" in source
+    assert "rcFold.querySelector('.foldHead')" in source
+    assert "rcHead.removeAttribute('onclick')" in source
+    assert "rcHead.setAttribute('aria-expanded','true')" in source
+    # 压平 CSS（body.settings/body.wifi 作用域限定）：透明背景/无边框/无 hover/cursor:default/pointer-events:none、
+    # 隐藏 ▸ 箭头；titleHint 重新启用 pointer-events 以保留标题级 hintSpan 悬停灰字
+    assert 'body.settings #rcFold .foldHead,body.wifi #rcFold .foldHead{background:transparent;border:none;cursor:default;pointer-events:none}' in source
+    assert 'body.settings #rcFold .foldHead:hover,body.wifi #rcFold .foldHead:hover{background:transparent}' in source
+    assert 'body.settings #rcFold .foldHead .titleHint,body.wifi #rcFold .foldHead .titleHint{pointer-events:auto}' in source
+    assert 'body.settings #rcFold .foldIcon,body.wifi #rcFold .foldIcon{display:none}' in source
     # settingsView（车辆设置标题 + 调校行）移到 .grid 之前，内嵌视图里排在 RC Channels 面板前
     assert source.index('<div id="settingsView" class="settingsView">') < source.index('<div class="grid">')
+    # v1.8.52：wifi=1 初始化时把配网两板块 insertBefore 到 settingsView 之前（先 AP 后 STA，
+    # 最终顺序 AP、STA、settingsView），配网成为内嵌视图最顶部板块；带空引用保护
+    assert "const settingsView=document.getElementById('settingsView');const wifiAp=document.getElementById('wifiApModal');const wifiSta=document.getElementById('wifiStaModal');" in source
+    assert "if(settingsView&&wifiAp&&wifiSta){settingsView.parentNode.insertBefore(wifiAp,settingsView);settingsView.parentNode.insertBefore(wifiSta,settingsView);}" in source
     # v1.8.45：融合单卡去掉 STA 卡上边框（浅色主题 .dialog 边框色 #d99a17 会在 AP/STA 之间形成一条黄杠）
     assert 'body.wifi #wifiApModal .dialog{margin:0;border-bottom:none;border-radius:14px 14px 0 0;padding-bottom:8px;box-shadow:none}' in source
     assert 'body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-top:none;border-radius:0 0 14px 14px;padding-top:4px}' in source

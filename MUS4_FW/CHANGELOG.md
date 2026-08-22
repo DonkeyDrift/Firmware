@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.39
+
+- fix(WebConsole): 删除漂移调参页（/drift）自带的深浅色切换按钮——该页应完全跟随 Drifter Console 主题（经 `?theme=` 参数传递），不应有自己的切换开关
+  - 背景：漂移页 v1.8.36 加了与控制台同款的太阳/月亮切换按钮，但该页主题是控制台三处入口以 `?theme=` 参数带过来的，页内再放一个切换键会让两边状态脱节，用户要求删掉、完全跟随控制台。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：删除漂移页 `#themeToggle` 按钮（含太阳/月亮 SVG）、JS `toggleTheme()`/`setTheme()`、zh/en `drift.theme.title` i18n 键、`.themeButton` 及 `html[data-theme="light"] .themeButton*` 全部 CSS 规则；保留防闪烁脚本、`?theme=` 优先 + 系统兜底的 `initTheme()`、整套浅色覆盖与标题悬停灰字提示；控制台主页的切换按钮不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.38 → v1.8.39。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_drift_page_theme_and_title_hints` 主题按钮断言改为否定式（`themeToggle`/`toggleTheme`/`setTheme`/`drift.theme.title` 均 `not in page`）；`test_web_console_theme_toggle` 注释更新（控制台按钮断言保留）；版本与 CHANGELOG 顺序断言升至 v1.8.39。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证生效。
+
 ## 2026-08-21 v1.8.38
 
 - style(WebConsole): 遥测曲线 Y 轴标签字体由 `bold 11px sans-serif` 改为 `12px sans-serif`（去掉粗体，与图例标签 `.legend span{font-size:12px}` 一致）

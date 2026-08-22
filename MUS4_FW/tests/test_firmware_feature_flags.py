@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.38"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.39"' in build_info
+    assert "v1.8.39" in changelog
     assert "v1.8.38" in changelog
     assert "v1.8.37" in changelog
     assert "v1.8.36" in changelog
@@ -336,6 +337,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.39") < changelog.index("## 2026-08-21 v1.8.38")
     assert changelog.index("## 2026-08-21 v1.8.38") < changelog.index("## 2026-08-21 v1.8.37")
     assert changelog.index("## 2026-08-21 v1.8.37") < changelog.index("## 2026-08-21 v1.8.36")
     assert changelog.index("## 2026-08-21 v1.8.36") < changelog.index("## 2026-08-21 v1.8.35")
@@ -3620,7 +3622,8 @@ def test_drift_page_theme_and_title_hints():
     - <head> 内有防闪烁主题脚本（读 ?theme= URL 参数，缺省按系统 prefers-color-scheme）。
     - 控制台三处 /drift 入口（Drift 卡 Tune 链接 / Diagnostics 漂移设置按钮 /
       设置视图漂移设置按钮）都携带当前主题参数，实现"跟随 Drifter Console 深浅色"。
-    - 漂移页带主题切换按钮（太阳/月亮），内存态不持久化，与控制台一致。
+    - 漂移页不自带主题切换按钮（v1.8.39 起删除）——主题完全跟随控制台
+      ?theme= 参数传递，缺省 auto 跟随系统，内存态不持久化。
     - 大标题（h1）与各级小标题（面板 .label、小节 .sectionTitle）的描述文字改为
       悬停时从标题右侧滑出的灰字提示（.titleHint + .hintSpan），参考 DonkeyDrifter
       的 group-hover 标题提示样式。
@@ -3631,15 +3634,18 @@ def test_drift_page_theme_and_title_hints():
     ).read_text(encoding="utf-8")
     page = _page_region(assets, "WIFI_WEB_DRIFT_HTML")
 
-    # 主题：防闪烁脚本 + 浅色覆盖 + 切换按钮 + 内存态 JS
+    # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（v1.8.39 起无切换按钮，完全跟随控制台 ?theme= 参数）
     assert "document.documentElement.dataset.theme" in page, "漂移页缺少防闪烁主题脚本"
     assert 'html[data-theme="light"] body{' in page, "漂移页缺少浅色主题覆盖"
-    assert 'id="themeToggle"' in page, "漂移页缺少主题切换按钮"
     assert "function initTheme()" in page, "漂移页缺少 initTheme"
-    assert "function toggleTheme()" in page, "漂移页缺少 toggleTheme"
     assert "function readUrlTheme()" in page, "漂移页缺少 ?theme= 参数解析"
     assert "function initTheme(){uiTheme=readUrlTheme()||'auto';applyTheme();" in page, "漂移页 initTheme 应以 ?theme= 参数优先、缺省 auto"
     assert "mus4.ui.theme" not in page, "漂移页主题不应写 localStorage（与控制台一致的内存态）"
+    # v1.8.39：漂移页不再自带切换按钮——主题完全跟随 Drifter Console（经 ?theme= 参数传递）
+    assert 'id="themeToggle"' not in page, "漂移页不应再有主题切换按钮（应跟随控制台）"
+    assert "function toggleTheme()" not in page, "漂移页 toggleTheme 应已删除"
+    assert "function setTheme(theme)" not in page, "漂移页 setTheme 应已删除"
+    assert "drift.theme.title" not in page, "漂移页主题按钮 i18n 键应已删除"
 
     # 控制台三处入口携带主题参数
     assert "href=\"/drift\" id=\"driftTuneLink\"" in assets, "Drift 卡 Tune 链接缺少 driftTuneLink id"
@@ -4547,7 +4553,7 @@ def test_web_console_theme_toggle():
     <head> 内防闪烁内联脚本避免首帧闪深色（不读存储、直接跟随系统）。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
-    # 头部主题单按钮：主控制台页面仅一处（漂移调参页 v1.8.36 起也有同名按钮，属各页独立实例），位于中英文切换键左边
+    # 头部主题单按钮：主控制台页面仅一处（漂移调参页 v1.8.36 曾加同名按钮，v1.8.39 已删除、改为完全跟随控制台主题），位于中英文切换键左边
     console_page = _page_region(assets, "WIFI_WEB_CONSOLE_HTML")
     assert console_page.count('id="themeToggle"') == 1
     assert assets.index('id="themeToggle"') < assets.index('data-i18n-aria="language.title"')

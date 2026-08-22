@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.46
+
+- feat(WebConsole): 手柄校准弹窗与 RC Channels 校准面板全部标题加悬停灰字提示（titleHint），样式对齐 /drift 调参页与 DD group-hover
+  - 背景：漂移调参页（v1.8.36）已把大标题/各级小标题改为悬停右侧滑出灰字提示；手柄校准弹窗（`cal.title` 大标题）与 RC Channels 校准面板（`#rcFold` 折叠头 + CH1~CH6 / OUT Steering / OUT Throttle / Mid S / Mid T / Min T / Max T 共 12 个 `.rcCell` 小标题）仍是旧样式，用户要求同款。弹窗与面板本就连同控制台主页面自动跟随深浅色，无需自带切换按钮；本次仅补提示样式。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：主控制台 `<style>` 新增 `.titleHint`/`.hintSpan`（含 `html[data-theme="light"] .hintSpan` 变体，与 /drift 页规则逐字一致）；`#joystickCalModal` 标题、`#rcFold` 折叠头与 12 个 `.rcCell` 标题全部包为 `.titleHint`+`.hintSpan`；新增 14 组中英 i18n 键（`cal.title.hint`、`rc.hint.panel`、`rc.hint.ch1`~`rc.hint.ch6`、`rc.hint.outSteering`/`outThrottle`/`midS`/`midT`/`minT`/`maxT`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.42 → v1.8.46（v1.8.43~v1.8.45 由并行会话 `session-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.46；`test_web_console_groups_rc_and_status_into_collapsible_sections` 的 rcFold 折叠头断言改为 `.titleHint` 包装后的新串；新增 `test_joystick_cal_and_rc_panel_title_hints` 断言 14 处 titleHint 包装、CSS 规则与 14 组中英 i18n 键齐全。
+
 ## 2026-08-22 v1.8.42
 
 - feat(WebConsole): DC 头部在 Kimi Code Web 与 DeepSeek Harness 之间新增「ZCode」入口按钮——点击经 launcher 端点 `POST /api/launch/zcode` 拿到网页终端 URL（`/terminal?cmd=...&title=ZCode&icon=zcode.png`），在新标签页的网页终端里运行 ZCode（TUI 编码 agent）

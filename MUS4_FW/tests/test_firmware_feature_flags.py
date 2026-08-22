@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.53"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.56"' in build_info
+    assert "v1.8.56" in changelog
     assert "v1.8.53" in changelog
     assert "v1.8.52" in changelog
     assert "v1.8.51" in changelog
@@ -350,6 +351,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-23 v1.8.56") < changelog.index("## 2026-08-22 v1.8.53")
     assert changelog.index("## 2026-08-22 v1.8.53") < changelog.index("## 2026-08-22 v1.8.52")
     assert changelog.index("## 2026-08-22 v1.8.52") < changelog.index("## 2026-08-22 v1.8.51")
     assert changelog.index("## 2026-08-22 v1.8.51") < changelog.index("## 2026-08-22 v1.8.50")
@@ -2575,6 +2577,44 @@ def test_web_console_sta_modal_defaults_host_provisioning_on():
     assert "I18N.zh['wifi.hostSendBtn']='发送到上位机'" in source
     assert "I18N.en['wifi.hostSendBtn']='Send to host'" in source
     assert "connectBtn.onclick=saveHostWifi" in source
+
+
+def test_web_console_host_wifi_status_bar_shows_host_report_state():
+    """v1.8.56：「上位机配网」状态条不再永远停在「等待...」——
+
+    STA 板块打开（onHostWifiToggle checked 分支）立即拉取 /api/host-wifi-status 并
+    5s 慢轮询；接口新增 host_ip/host_ip_age_s 字段（上位机 HOSTIP| 周期上报），
+    IDLE 分支按上报新鲜度显示「上位机在线 IP: x.x.x.x」或「等待上位机上报」。
+    """
+
+    server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+
+    # 后端：/api/host-wifi-status 新增 host_ip / host_ip_age_s（age 算法与 /api/status 一致）
+    assert 'json += ",\\"host_ip\\":";' in server
+    assert "appendJsonString(json, hostReportedIp.c_str());" in server
+    assert 'json += ",\\"host_ip_age_s\\":";' in server
+    assert "json += String(hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL);" in server
+    assert "json.reserve(224);" in server
+
+    # 前端：打开 STA 板块（toggle checked 分支）立即拉取真实状态 + 5s 慢轮询
+    assert "bar.style.display='block';pollHostWifiStatus();stopHostWifiPoll();hostWifiPollTimer=setInterval(pollHostWifiStatus,5000)" in assets
+    # 关闭 STA 弹窗停止轮询（修补轮询泄漏）
+    assert "function closeWifiStaModal(){closeWifiScanPopover();maskStaPassword();stopHostWifiPoll();wifiStaModal.classList.remove('show')}" in assets
+
+    # IDLE 分支：host_ip 非空且上报不超过 60s 视为上位机在线，否则等待上位机上报
+    assert "if(j.status==='IDLE'){if(j.host_ip&&j.host_ip_age_s<=60){lbl.textContent=t('wifi.hostStatus.hostOnline');ipEl.style.display='';ipEl.textContent='IP: '+j.host_ip}" in assets
+    assert "else{lbl.textContent=t('wifi.hostStatus.waitingHost');ipEl.style.display='none'}errEl.style.display='none'}" in assets
+    # connected/failed 分支保持现有自愈（拿到终态后停止轮询）
+    assert "stopHostWifiPoll();showToast(t('wifi.hostOkToast')+j.ip,true)" in assets
+
+    # i18n：新增 hostOnline/waitingHost 中英键，旧 idle 键不再被引用、已删除
+    assert "I18N.zh['wifi.hostStatus.hostOnline']='上位机在线'" in assets
+    assert "I18N.en['wifi.hostStatus.hostOnline']='Host online'" in assets
+    assert "I18N.zh['wifi.hostStatus.waitingHost']='等待上位机上报'" in assets
+    assert "I18N.en['wifi.hostStatus.waitingHost']='Waiting for host report'" in assets
+    assert 'data-i18n="wifi.hostStatus.waitingHost"' in assets
+    assert "wifi.hostStatus.idle" not in assets
 
 
 def test_web_console_sta_settings_support_scan_and_password_visibility():

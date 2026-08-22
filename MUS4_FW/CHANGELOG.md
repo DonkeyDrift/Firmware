@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-23 v1.8.56
+
+- fix(WebConsole): 「上位机配网」状态条永远显示「等待...」——STA 板块打开时立即拉取并 5s 慢轮询 /api/host-wifi-status，IDLE 状态改显示上位机在线/等待上报真实状态（Issue #234 后续）
+  - 根因：`openWifiStaModal()` 强制 `hostWifiToggle.checked=true` 并调 `onHostWifiToggle()`，但该函数 checked 分支只做 `bar.style.display='block'`，从不 fetch `/api/host-wifi-status`——2s 轮询只在 `saveHostWifi()`（点「发送」）后才启动。CC 内嵌视图（?embedded=1&settings=1&wifi=1）里 STA 板块常开，label 永远停在 HTML 占位文字 `wifi.hostStatus.idle`（等待...）。实际上位机在线且周期上报（Serial2 `HOSTIP|` 帧，运行时全局 `hostReportedIp`/`hostReportedIpMs`），`/api/status` 已有 `host_ip`/`host_ip_age_s`，但 host-wifi-status 接口与前端都没用它。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：`handleWifiWebHostWifiStatus()` 的 JSON 新增 `"host_ip"` 与 `"host_ip_age_s"` 字段（数据来自 `hostReportedIp`/`hostReportedIpMs`，age 算法与 `/api/status` 一致：`hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL`）；`json.reserve(160)` 加大到 224。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `onHostWifiToggle()` checked 分支末尾追加 `pollHostWifiStatus();stopHostWifiPoll();hostWifiPollTimer=setInterval(pollHostWifiStatus,5000)`——打开 STA 板块立即拉真实状态 + 5s 慢轮询保持新鲜（先停旧定时器防重复）；unchecked 分支既有 `stopHostWifiPoll()` 不动。
+    - `closeWifiStaModal()` 补 `stopHostWifiPoll()`（原关弹窗不停轮询有小泄漏；CC 内嵌视图不关弹窗，常开轮询正是预期行为）。
+    - `pollHostWifiStatus()` IDLE 分支重写：`host_ip` 非空且 `host_ip_age_s<=60` 视为上位机在线——label 显示新 i18n `wifi.hostStatus.hostOnline`（上位机在线 / Host online），`hostWifiStatusIp` 显示 `IP: x.x.x.x`，error span 隐藏；否则 label 显示新 i18n `wifi.hostStatus.waitingHost`（等待上位机上报 / Waiting for host report），ip/error span 隐藏。connecting/connected/failed 分支保持现有行为（含 connected/failed 里 `stopHostWifiPoll()` 自愈）；原 `{IDLE:...}` 状态映射表移除 IDLE 项，IDLE 改由上述专用分支处理。
+    - i18n：`wifi.hostStatus.idle` 键删除（JS 与 HTML 占位均已不再引用），新增 `wifi.hostStatus.hostOnline` 与 `wifi.hostStatus.waitingHost` 中英各一份；状态条 HTML 占位 `data-i18n` 由 `wifi.hostStatus.idle` 改为 `wifi.hostStatus.waitingHost`（首次拉取前的占位语义对齐）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.53 → v1.8.56（v1.8.54/v1.8.55 已先后被并行会话 Tony-fix-scan-popover-light-theme、Tony-sta-history-autofill 使用，撞号两次 +1）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `test_web_console_host_wifi_status_bar_shows_host_report_state`（后端新 JSON 字段/reserve 224、前端 onHostWifiToggle 立即拉取+5s 轮询、closeWifiStaModal 停轮询、IDLE 分支 host_ip/age<=60 判断、新 i18n 键存在且 idle 键删除）；版本断言 v1.8.56、CHANGELOG 顺序链补 v1.8.56 行。
+
 ## 2026-08-22 v1.8.53
 
 - style(WebConsole): CC 内嵌设置视图删掉漂移子页顶部的 Status 状态栏面板（embedded 作用域限定，Issue #234 后续）

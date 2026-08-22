@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.49"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.50"' in build_info
+    assert "v1.8.50" in changelog
     assert "v1.8.49" in changelog
     assert "v1.8.48" in changelog
     assert "v1.8.47" in changelog
@@ -346,6 +347,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.50") < changelog.index("## 2026-08-22 v1.8.49")
     assert changelog.index("## 2026-08-22 v1.8.49") < changelog.index("## 2026-08-22 v1.8.48")
     assert changelog.index("## 2026-08-22 v1.8.48") < changelog.index("## 2026-08-22 v1.8.47")
     assert changelog.index("## 2026-08-22 v1.8.47") < changelog.index("## 2026-08-22 v1.8.46")
@@ -2430,13 +2432,20 @@ def test_web_console_settings_view_embeds_tune_sections():
     影响；/drift、/judge 子页支持 embedded=1 时隐藏自身头部。"""
     source = firmware_source_text()
 
-    # 主页：内嵌板块 HTML（默认 display:none，仅 body.embedded.settings 显示）
+    # 主页：内嵌板块 HTML（默认 display:none，仅 body.embedded.settings 显示）；
+    # v1.8.50 起 iframe 改 data-src 懒加载（仅嵌入设置视图才赋值 src），其余视图不加载子页
     assert '<div class="embedTuneSections">' in source
-    assert '<iframe class="embedTuneFrame driftFrame" src="/drift?embedded=1"' in source
-    assert '<iframe class="embedTuneFrame judgeFrame" src="/judge?embedded=1"' in source
+    assert '<iframe class="embedTuneFrame driftFrame" data-src="/drift?embedded=1"' in source
+    assert '<iframe class="embedTuneFrame judgeFrame" data-src="/judge?embedded=1"' in source
+    assert 'class="embedTuneFrame driftFrame" src=' not in source
+    assert 'class="embedTuneFrame judgeFrame" src=' not in source
     assert '.embedTuneSections{display:none}' in source
     assert 'body.embedded.settings .embedTuneSections{display:block}' in source
     assert '.embedTuneFrame{display:block;width:100%;border:0' in source
+    # v1.8.50：子 iframe 按内容自动撑高（无内部滚动条），仅 embedded+settings 视图初始化
+    assert 'function initEmbedTuneFrames()' in source
+    assert 'new ResizeObserver(fit)' in source
+    assert "if(document.body.classList.contains('embedded')&&document.body.classList.contains('settings'))initEmbedTuneFrames();" in source
     # 主页：两个跳转按钮保留 id（v1.8.47 引入）；v1.8.48 起整个「车辆设置」标题与「调校」行在
     # body.embedded.settings 作用域整行隐藏（含手柄校准按钮——已移至 DD CC 页顶栏）
     assert 'id="driftSettingsBtn"' in source

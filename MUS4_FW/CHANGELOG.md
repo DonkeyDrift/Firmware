@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.50
+
+- fix(WebConsole): CC 车辆设置内嵌视图的漂移/Judge 子 iframe 按内容自动撑高——消除 Judge 设置的内部滚动条，整页统一滚动（Issue #234 后续）
+  - 背景：v1.8.47 的内嵌子 iframe 用固定高度（drift 820px / judge 1000px），Judge 页内容超出后出现独立的内部滚动条，用户要求在整页里完全显示、统一滚动。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - JS 新增 `initEmbedTuneFrames()`：子 iframe load 后按内容高度自动撑高——同源 iframe 直接读 `contentDocument` 的 body/documentElement scroll/offset 高度取最大（+2px 防 1px 滚动），立即 + 400ms + 1600ms 三次 fit 覆盖异步内容，并用 `ResizeObserver` 持续跟踪内容高度变化；仅高度变化时才写 style，收敛无循环。
+    - 懒加载：两个子 iframe 的 `src` 改为 `data-src`，仅 `body.embedded.settings`（CC 车辆设置内嵌视图）才由 init 赋值加载——其它视图（车端独立 DC 主页、DD 嵌入主视图）不再隐藏加载 /drift /judge，消除子页 250ms 轮询/WS 对 ESP32 的无效占用（v1.8.47 引入的隐患）。
+    - CSS：`.embedTuneFrame` 加 `overflow:hidden`；820px/1000px 固定高度保留为加载前占位。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.49 → v1.8.50。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_settings_view_embeds_tune_sections` 更新——iframe 断言改 `data-src`，新增 `initEmbedTuneFrames()` / `ResizeObserver` / 懒加载守卫（`classList.contains('embedded')&&document.body.classList.contains('settings')` 才调用）断言；版本断言 v1.8.50。
+
 ## 2026-08-22 v1.8.49
 
 - feat(WebConsole): CC 车辆设置内嵌视图删「车辆设置」标题与「调校」行框——手柄校准按钮移至 DD CC 页顶栏，经 postMessage 打开校准弹窗（Issue #234 后续）

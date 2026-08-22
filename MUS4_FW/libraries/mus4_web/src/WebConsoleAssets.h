@@ -59,7 +59,7 @@ html[data-theme="light"] .hintSpan{color:#5b6b7d}
 <div class="headerRow"><a class="logoLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener"><img class="headerLogo" src="/favicon.png" alt="Drifter Console"></a><h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1><a class="navTab" data-i18n="button.enterDonkey" id="enterDonkeyBtn" href="http://192.168.3.41:8090/" target="_blank" rel="noopener">Donkey</a><a class="navTab" data-i18n="button.enterDonkeyDrifter" id="enterDonkeyDrifterBtn" href="http://192.168.3.41:8090/launch/drive" target="_blank" rel="noopener">DonkeyDrifter</a><button type="button" class="navTabWeak" id="openKimiCodeWebBtn" onclick="openKimiCodeWeb()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path><path d="M20 3v4"></path><path d="M22 5h-4"></path><path d="M4 17v2"></path><path d="M5 18H3"></path></svg><span data-i18n="button.openKimiCodeWeb">Kimi Code Web</span></button><button type="button" class="navTabWeak" id="openZCodeBtn" onclick="openZCode()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 16 4-4-4-4"></path><path d="m6 8-4 4 4 4"></path><path d="m14.5 4-5 16"></path></svg><span data-i18n="button.openZCode">ZCode</span></button><button type="button" class="navTabWeak" id="openDshBtn" onclick="openDsh()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"></path><path d="M6.453 15h11.094"></path><path d="M8.5 2h7"></path></svg><span data-i18n="button.openDsh">DeepSeek Harness</span></button><a class="ghLink" href="https://github.com/DonkeyDrift/Firmware" target="_blank" rel="noopener" title="DonkeyDrift/Firmware on GitHub" aria-label="GitHub: DonkeyDrift/Firmware"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a><span class="version" id="versionLabel">--</span><span class="rowBreak br1"></span><button type="button" id="muteToggle" class="muteButton" onclick="toggleMute()" aria-label="静音" data-i18n-aria="mute.title"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><g class="icoSound"><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.6 5.4a9 9 0 0 1 0 13.2"/></g><g class="icoMute"><line x1="16" y1="9" x2="22" y2="15"/><line x1="22" y1="9" x2="16" y2="15"/></g></svg></button><button type="button" id="themeToggle" class="themeButton" onclick="toggleTheme()" aria-label="主题" data-i18n-aria="theme.title"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="icoMoon"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></g><g class="icoSun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></g></svg></button><button type="button" id="langToggle" class="langButton" onclick="toggleLanguage()" aria-label="语言" data-i18n-aria="language.title">中</button><span class="rowBreak br2"></span><a href="/update" class="otaLink" data-i18n="button.ota">OTA</a><button type="button" id="devModeToggle" class="devHint" onclick="toggleDevModeFromSwitch()" role="switch" aria-checked="false">DEV</button><span class="rowBreak br3"></span></div>
 <div id="settingsView" class="settingsView">
 <h2 class="setTitle" data-i18n="settings.title">车辆设置</h2>
-<div class="setRow"><h3 data-i18n="settings.tuning">调校</h3><div class="setActions"><button type="button" onclick="location.href='/drift?theme='+resolvedTheme()" data-i18n="button.driftSettings">漂移设置</button><button type="button" onclick="location.href='/judge'" data-i18n="settings.judge">Judge 设置</button><button type="button" onclick="openJoystickCalModal()" data-i18n="button.joystickCal">手柄校准</button></div></div>
+<div class="setRow"><h3 data-i18n="settings.tuning">调校</h3><div class="setActions"><button type="button" onclick="location.href='/drift?theme='+resolvedTheme()" data-i18n="button.driftSettings">漂移设置</button><button type="button" onclick="location.href='/judge?theme='+resolvedTheme()" data-i18n="settings.judge">Judge 设置</button><button type="button" onclick="openJoystickCalModal()" data-i18n="button.joystickCal">手柄校准</button></div></div>
 </div>
 <div class="grid">
 <section class="panel wide">
@@ -525,6 +525,7 @@ static const char WIFI_WEB_JUDGE_HTML[] PROGMEM = R"rawliteral(
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" type="image/png" href="/favicon.png">
 <title>Drift Judge</title>
+<script>try{const m=/[?&]theme=(light|dark)(?:&|$)/.exec(window.location.search);document.documentElement.dataset.theme=m?m[1]:(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){}</script>
 <style>
 h1{font-size:24px;margin:0 0 6px}
 body{font-family:system-ui,sans-serif;margin:16px auto;max-width:760px;background:#101318;color:#e8edf2;padding:0 12px}
@@ -584,6 +585,20 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .field input{background:#0f1720;border:1px solid #2b3441;border-radius:10px;color:#e8edf2;padding:10px 12px;font:inherit}
 .tuneActions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
 #judgeConfigStatus{font-size:12px}
+.titleHint{display:inline-flex;align-items:baseline;cursor:default;width:fit-content;max-width:100%}.hintSpan{max-width:0;opacity:0;overflow:hidden;white-space:nowrap;transition:all .3s ease-in-out;font-size:12px;font-weight:400;color:#8fa1b5;text-transform:none;letter-spacing:0}.titleHint:hover .hintSpan{max-width:340px;opacity:1;margin-left:12px}
+html[data-theme="light"] body{background:#eef1f5;color:#1a2330}
+html[data-theme="light"] a{color:#0c9bd6}
+html[data-theme="light"] button{background:#0c9bd6;color:#fff;border-color:#0c9bd6}
+html[data-theme="light"] button.alt{background:#fff;color:#1a2330;border-color:#ccd5df}
+html[data-theme="light"] .muted,html[data-theme="light"] .label,html[data-theme="light"] .sub,html[data-theme="light"] .mini,html[data-theme="light"] .sectionDesc,html[data-theme="light"] .fieldHint,html[data-theme="light"] .summaryItem .k,html[data-theme="light"] .scoreExplain,html[data-theme="light"] .dimTrend{color:#5b6b7d}
+html[data-theme="light"] .hintSpan{color:#5b6b7d}
+html[data-theme="light"] .panel,html[data-theme="light"] .heroCard{background:#fff;border-color:#d5dce4}
+html[data-theme="light"] .card,html[data-theme="light"] .summaryItem,html[data-theme="light"] .field,html[data-theme="light"] .statusPill,html[data-theme="light"] .collision{background:#f4f6f9;border-color:#d5dce4}
+html[data-theme="light"] .field input{background:#fff;border-color:#c3ccd6;color:#1a2330}
+html[data-theme="light"] .sectionTitle,html[data-theme="light"] .fieldTitle,html[data-theme="light"] .dimName{color:#1a2330}
+html[data-theme="light"] .bar,html[data-theme="light"] .dimBar{background:#d5dce4}
+html[data-theme="light"] .chartWrap{background:#f4f6f9;border-color:#d5dce4}
+html[data-theme="light"] .tuneSection{border-top-color:#d5dce4}
 @media (max-width:640px){body{max-width:560px}.hero,.grid,.metaGrid,.tuneGrid,.summaryGrid{grid-template-columns:1fr}.heroValue{font-size:42px}.scoreValue{font-size:32px}.dimRow{grid-template-columns:74px 1fr 20px 40px}}
 </style>
 </head>
@@ -591,8 +606,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 <div class="panel">
 <div class="panelHead">
 <div>
-<h1>Drift Judge</h1>
-<div class="muted">WebSocket first / pseudoSpeed monitor-first scoring</div>
+<div class="titleHint"><h1>Drift Judge</h1><span class="hintSpan">WebSocket first / pseudoSpeed monitor-first scoring</span></div>
 </div>
 <div class="row">
 <div id="statusPill" class="statusPill statusWaiting"><span class="statusDot"></span><span id="status">connecting...</span></div>
@@ -624,14 +638,13 @@ button:disabled{opacity:.5;cursor:not-allowed}
 </div>
 </div>
 <div class="panel">
-<div class="label" data-i18n="judge.gyroChartLabel">gyroZ 曲线</div>
+<div class="titleHint"><span class="label" data-i18n="judge.gyroChartLabel">gyroZ 曲线</span><span class="hintSpan" data-i18n="judge.gyroChartHint">实时偏航角速度曲线</span></div>
 <div class="chartWrap"><canvas id="gyroChart" width="700" height="140"></canvas></div>
 </div>
 <div class="panel">
 <div class="panelHead">
 <div>
-<div class="label" data-i18n="judge.tuneLabel">评分阈值调参</div>
-<div class="muted" data-i18n="judge.tuneDesc">基础阈值管判定边界，评分参数管评分手感</div>
+<div class="titleHint"><span class="label" data-i18n="judge.tuneLabel">评分阈值调参</span><span class="hintSpan" data-i18n="judge.tuneDesc">基础阈值管判定边界，评分参数管评分手感</span></div>
 </div>
 <div id="judgeConfigCurrent" class="muted" data-i18n="judge.config.loading">读取设备配置中...</div>
 </div>
@@ -642,8 +655,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 <div class="summaryItem"><div class="k" data-i18n="judge.summary.collisionPenalty">碰撞扣分</div><div class="v">--</div></div>
 </div>
 <div class="tuneSection">
-<div class="sectionTitle" data-i18n="judge.section.thresholds">基础阈值</div>
-<div class="sectionDesc" data-i18n="judge.section.thresholdsDesc">先调判定边界，再看评分手感。</div>
+<div class="titleHint"><span class="sectionTitle" data-i18n="judge.section.thresholds">基础阈值</span><span class="hintSpan" data-i18n="judge.section.thresholdsDesc">先调判定边界，再看评分手感。</span></div>
 <div class="tuneGrid" style="margin-top:12px">
 <label class="field"><span class="fieldTitle" data-i18n="judge.field.collisionThreshold">碰撞阈值</span><span class="fieldHint" data-i18n="judge.field.collisionThresholdHint">越小越容易触发碰撞。</span><input id="collisionThresholdInput" type="number" step="0.1"></label>
 <label class="field"><span class="fieldTitle" data-i18n="judge.field.bigTurnThreshold">大弯阈值</span><span class="fieldHint" data-i18n="judge.field.bigTurnThresholdHint">越小越容易进入大弯区。</span><input id="bigTurnThresholdInput" type="number" step="0.1"></label>
@@ -655,8 +667,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 <div id="judgeConfigStatus" class="muted" data-i18n="judge.config.note">保存后仅影响后续样本，不回溯重算。</div>
 </div>
 <div class="tuneSection">
-<div class="sectionTitle" data-i18n="judge.section.scoring">评分参数</div>
-<div class="sectionDesc" data-i18n="judge.section.scoringDesc">这一组控制评分灵敏度，数值越大通常越敏感。</div>
+<div class="titleHint"><span class="sectionTitle" data-i18n="judge.section.scoring">评分参数</span><span class="hintSpan" data-i18n="judge.section.scoringDesc">这一组控制评分灵敏度，数值越大通常越敏感。</span></div>
 <div class="tuneGrid" style="margin-top:12px">
 <label class="field"><span class="fieldTitle" data-i18n="judge.field.collisionPenalty">碰撞扣分</span><span class="fieldHint" data-i18n="judge.field.collisionPenaltyHint">每次碰撞扣多少分。</span><input id="collisionPenaltyInput" type="number" step="0.1"></label>
 <label class="field"><span class="fieldTitle" data-i18n="judge.field.turnSmoothnessWeight">转弯平滑敏感度</span><span class="fieldHint" data-i18n="judge.field.turnSmoothnessWeightHint">越大越容易因为抖动掉分。</span><input id="turnSmoothnessWeightInput" type="number" step="0.1"></label>
@@ -671,8 +682,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 <div class="panel">
 <div class="panelHead">
 <div>
-<div class="label" data-i18n="judge.dimLabel">评分维度</div>
-<div class="muted" data-i18n="judge.dimDesc">监控优先，但保留实时总分与 6 维条</div>
+<div class="titleHint"><span class="label" data-i18n="judge.dimLabel">评分维度</span><span class="hintSpan" data-i18n="judge.dimDesc">监控优先，但保留实时总分与 6 维条</span></div>
 </div>
 <div class="controls">
 <button id="startBtn" onclick="startRun()" data-i18n="judge.button.start">开始计分</button>
@@ -696,6 +706,7 @@ I18N.zh['judge.backLink']='返回 Drifter Console';I18N.en['judge.backLink']='Ba
 I18N.zh['judge.pseudoSub']='代理速度 / 动态强度';I18N.en['judge.pseudoSub']='Proxy speed / dynamic intensity';
 I18N.zh['judge.totalScoreLabel']='总分';I18N.en['judge.totalScoreLabel']='Total Score';
 I18N.zh['judge.gyroChartLabel']='gyroZ 曲线';I18N.en['judge.gyroChartLabel']='gyroZ Curve';
+I18N.zh['judge.gyroChartHint']='实时偏航角速度曲线';I18N.en['judge.gyroChartHint']='Live gyroZ trace';
 I18N.zh['judge.tuneLabel']='评分阈值调参';I18N.en['judge.tuneLabel']='Scoring Threshold Tuning';
 I18N.zh['judge.tuneDesc']='基础阈值管判定边界，评分参数管评分手感';I18N.en['judge.tuneDesc']='Base thresholds set the decision boundaries; scoring parameters shape the scoring feel';
 I18N.zh['judge.dimLabel']='评分维度';I18N.en['judge.dimLabel']='Scoring Dimensions';
@@ -773,6 +784,13 @@ I18N.zh['judge.reason.throttleStability']='油门稳定：最近油门波动偏�
 I18N.zh['judge.collision.triggerPrefix']='碰撞触发 (-';I18N.en['judge.collision.triggerPrefix']='Collision triggered (-';
 I18N.zh['judge.collision.ok']='状态正常';I18N.en['judge.collision.ok']='Status OK';
 let uiLang=readStoredLanguage();
+let uiTheme='auto';
+function readUrlTheme(){try{const m=/[?&]theme=(light|dark)(?:&|$)/.exec(window.location.search);if(m)return m[1]}catch(e){}return null}
+function systemTheme(){try{return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){return 'dark'}}
+function resolvedTheme(){return uiTheme==='auto'?systemTheme():(uiTheme==='light'?'light':'dark')}
+function readParentTheme(){try{const t=window.parent&&window.parent.document&&window.parent.document.documentElement.dataset.theme;return t==='light'||t==='dark'?t:null}catch(e){return null}}
+function applyTheme(){document.documentElement.dataset.theme=resolvedTheme();drawChart()}
+function initTheme(){uiTheme=readUrlTheme()||readParentTheme()||'auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}
 let judgeConfigCurrentKey='judge.config.loading',judgeConfigStatusState={key:'judge.config.note',kind:'',detail:''};
 function normalizeLanguage(lang){return lang==='en'?'en':'zh'}
 function readUrlLanguage(){try{const m=/[?&]lang=(zh|en)(?:&|$)/.exec(window.location.search);if(m)return m[1]}catch(e){}return null}function readStoredLanguage(){try{const v=localStorage.getItem(LANG_STORAGE_KEY);return v==='zh'||v==='en'?v:detectBrowserLanguage()}catch(e){return detectBrowserLanguage()}}
@@ -880,7 +898,7 @@ async function loadJudgeConfig(){try{const r=await fetch('/api/judge-config',{ca
 async function saveJudgeConfig(){const config=readJudgeConfigForm();if(!judgeConfigFormValid(config)){setJudgeConfigStatus('judge.config.invalid','err');return}const body=new URLSearchParams({collisionThreshold:config.collisionThreshold.toFixed(2),bigTurnThreshold:config.bigTurnThreshold.toFixed(2),windowSize:String(config.windowSize),collisionPenalty:config.collisionPenalty.toFixed(1),turnSmoothnessWeight:config.turnSmoothnessWeight.toFixed(1),rangeMatchWeight:config.rangeMatchWeight.toFixed(1),gyroStabilityWeight:config.gyroStabilityWeight.toFixed(1),bigTurnStabilityWeight:config.bigTurnStabilityWeight.toFixed(1),speedStabilityWeight:config.speedStabilityWeight.toFixed(1),throttleStabilityWeight:config.throttleStabilityWeight.toFixed(1)});try{setJudgeConfigBusy(true);const r=await fetch('/api/judge-config',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:body.toString()});const text=await r.text();let payload={};try{payload=JSON.parse(text)}catch(e){}if(!r.ok)throw new Error(payload.error||'save_failed');applyJudgeConfigPayload(payload);setJudgeConfigStatus('judge.config.saved','ok')}catch(e){setJudgeConfigStatus('judge.config.saveFailed','err',e.message||'save_failed')}finally{setJudgeConfigBusy(false)}}
 async function resetJudgeConfigToDefault(){try{setJudgeConfigBusy(true);const r=await fetch('/api/judge-config/reset',{method:'POST'});const text=await r.text();let payload={};try{payload=JSON.parse(text)}catch(e){}if(!r.ok)throw new Error(payload.error||'reset_failed');applyJudgeConfigPayload(payload);setJudgeConfigStatus('judge.config.resetOk','ok')}catch(e){setJudgeConfigStatus('judge.config.resetFailed','err',e.message||'reset_failed')}finally{setJudgeConfigBusy(false)}}
 function pushChartValue(value){chartData.push(Number(value||0));if(chartData.length>CHART_MAX_POINTS)chartData.shift();drawChart()}
-function drawChart(){const w=chartCanvas.width,h=chartCanvas.height;chartCtx.clearRect(0,0,w,h);chartCtx.fillStyle='#0f1720';chartCtx.fillRect(0,0,w,h);chartCtx.strokeStyle='#223042';chartCtx.lineWidth=1;for(let i=0;i<5;i++){const y=Math.round(i*(h-1)/4)+.5;chartCtx.beginPath();chartCtx.moveTo(0,y);chartCtx.lineTo(w,y);chartCtx.stroke()}if(chartData.length<2)return;chartCtx.strokeStyle='#5cc8ff';chartCtx.lineWidth=2;chartCtx.beginPath();const maxAbs=3.5;for(let i=0;i<chartData.length;i++){const x=(i*(w-1))/Math.max(1,CHART_MAX_POINTS-1);const y=h/2-clamp(chartData[i],-maxAbs,maxAbs)*(h*0.42/maxAbs);if(i===0)chartCtx.moveTo(x,y);else chartCtx.lineTo(x,y)}chartCtx.stroke()}
+function drawChart(){const w=chartCanvas.width,h=chartCanvas.height;chartCtx.clearRect(0,0,w,h);const light=resolvedTheme()==='light';chartCtx.fillStyle=light?'#f4f6f9':'#0f1720';chartCtx.fillRect(0,0,w,h);chartCtx.strokeStyle=light?'#d5dce4':'#223042';chartCtx.lineWidth=1;for(let i=0;i<5;i++){const y=Math.round(i*(h-1)/4)+.5;chartCtx.beginPath();chartCtx.moveTo(0,y);chartCtx.lineTo(w,y);chartCtx.stroke()}if(chartData.length<2)return;chartCtx.strokeStyle=light?'#0c9bd6':'#5cc8ff';chartCtx.lineWidth=2;chartCtx.beginPath();const maxAbs=3.5;for(let i=0;i<chartData.length;i++){const x=(i*(w-1))/Math.max(1,CHART_MAX_POINTS-1);const y=h/2-clamp(chartData[i],-maxAbs,maxAbs)*(h*0.42/maxAbs);if(i===0)chartCtx.moveTo(x,y);else chartCtx.lineTo(x,y)}chartCtx.stroke()}
 function renderScore(){
   const score=Math.round(clamp(scoreState.totalScore,0,100));
   totalScoreEl.textContent=String(score);
@@ -934,7 +952,7 @@ function dataWsUrl(){return(location.protocol==='https:'?'wss:':'ws:')+'//'+loca
 function scheduleDataWsReconnect(){if(dataWsReconnectTimer)return;dataWsReconnectTimer=setTimeout(()=>{dataWsReconnectTimer=0;connectJudgeSocket();dataWsReconnectDelay=Math.min(8000,dataWsReconnectDelay*2)},dataWsReconnectDelay)}
 function connectJudgeSocket(){try{if(dataWs&&dataWs.readyState!==WebSocket.CLOSED)return;if(dataWs){dataWs.onclose=null;dataWs.onerror=null;try{dataWs.close()}catch(e){}}const ws=new WebSocket(dataWsUrl());dataWs=ws;ws.binaryType='arraybuffer';ws.onopen=()=>{if(dataWs!==ws){ws.close();return}dataWsConnected=true;dataWsReconnectDelay=1000;setStatus('online / ws','statusOnline');ws.send('since:'+lastSeq)};ws.onmessage=e=>{if(dataWs!==ws)return;try{if(e.data instanceof ArrayBuffer){handleDataPayload(decodeBinaryDataPayload(e.data),'ws');return}if(e.data instanceof Blob){e.data.arrayBuffer().then(b=>{if(dataWs===ws)handleDataPayload(decodeBinaryDataPayload(b),'ws')}).catch(()=>setStatus('offline','statusOffline'));return}if(typeof e.data==='string'){const j=JSON.parse(e.data);if(j&&j.type==='data')handleDataPayload(j,'ws')}}catch(err){setStatus('offline','statusOffline')}};ws.onclose=()=>{if(dataWs!==ws)return;dataWsConnected=false;dataWs=null;setStatus('offline','statusOffline');scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollJudgeData,500)};ws.onerror=()=>{if(dataWs!==ws)return;dataWsConnected=false;try{ws.close()}catch(e){}}}catch(e){dataWsConnected=false;dataWs=null;setStatus('offline','statusOffline');scheduleDataWsReconnect();if(!dataPolling)setTimeout(pollJudgeData,500)}}
 async function pollJudgeData(){if(dataWsConnected)return;if(dataPolling)return;dataPolling=true;let delay=160;try{const r=await fetch('/api/data?since='+lastSeq,{cache:'no-store'});const j=await r.json();handleDataPayload(j,'poll');delay=(j&&j.points&&j.points.length)?80:140}catch(e){setStatus('offline','statusOffline');delay=220}finally{dataPolling=false;if(!dataWsConnected)setTimeout(pollJudgeData,delay)}}
-syncJudgeConfigInputs();drawChart();renderScore();initLanguage();loadJudgeConfig();connectJudgeSocket();setTimeout(()=>{if(!dataWsConnected)pollJudgeData()},1200);
+syncJudgeConfigInputs();initTheme();drawChart();renderScore();initLanguage();loadJudgeConfig();connectJudgeSocket();setTimeout(()=>{if(!dataWsConnected)pollJudgeData()},1200);
 </script>
 </body>
 </html>

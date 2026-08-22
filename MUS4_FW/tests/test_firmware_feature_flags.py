@@ -2633,7 +2633,11 @@ def test_web_console_host_wifi_status_bar_shows_host_report_state():
     assert "I18N.en['wifi.hostStatus.hostOnline']='Host online'" in assets
     assert "I18N.zh['wifi.hostStatus.waitingHost']='等待上位机上报'" in assets
     assert "I18N.en['wifi.hostStatus.waitingHost']='Waiting for host report'" in assets
-    assert 'data-i18n="wifi.hostStatus.waitingHost"' in assets
+    # 状态条 label 不走 data-i18n：initLanguage() 异步 fetch /api/language 后 applyLanguage()
+    # 会按 data-i18n 重写 textContent，把首轮轮询已显示的「上位机在线」覆盖回占位文字（最长 5s 才自愈）——
+    # label 是状态驱动元素（与 refreshDynamicLabels 管辖的按钮同类），占位文字硬编码，首轮轮询 <1s 即被真实状态替换
+    assert 'id="hostWifiStatusLabel" style="color:#8fa1b5">等待上位机上报</b>' in assets
+    assert 'data-i18n="wifi.hostStatus.waitingHost"' not in assets
     assert "wifi.hostStatus.idle" not in assets
 
 

@@ -10,6 +10,7 @@
     - `closeWifiStaModal()` 补 `stopHostWifiPoll()`（原关弹窗不停轮询有小泄漏；CC 内嵌视图不关弹窗，常开轮询正是预期行为）。
     - `pollHostWifiStatus()` IDLE 分支重写：`host_ip` 非空且 `host_ip_age_s<=60` 视为上位机在线——label 显示新 i18n `wifi.hostStatus.hostOnline`（上位机在线 / Host online），`hostWifiStatusIp` 显示 `IP: x.x.x.x`，error span 隐藏；否则 label 显示新 i18n `wifi.hostStatus.waitingHost`（等待上位机上报 / Waiting for host report），ip/error span 隐藏。connecting/connected/failed 分支保持现有行为（含 connected/failed 里 `stopHostWifiPoll()` 自愈）；原 `{IDLE:...}` 状态映射表移除 IDLE 项，IDLE 改由上述专用分支处理。
     - i18n：`wifi.hostStatus.idle` 键删除（JS 与 HTML 占位均已不再引用），新增 `wifi.hostStatus.hostOnline` 与 `wifi.hostStatus.waitingHost` 中英各一份；状态条 HTML 占位 `data-i18n` 由 `wifi.hostStatus.idle` 改为 `wifi.hostStatus.waitingHost`（首次拉取前的占位语义对齐）。
+    - 状态条 label 移除 `data-i18n`（首轮车上 playwright 验证发现的覆盖竞态：`initLanguage()` 异步 fetch `/api/language` 后 `applyLanguage()` 按 `data-i18n` 重写全部占位元素 textContent，会把首轮轮询已显示的「上位机在线」覆盖回「等待上位机上报」、最长 5s 后才由下一轮轮询自愈；label 为状态驱动元素（与 `refreshDynamicLabels()` 管辖的按钮同类），不走 data-i18n，占位文字保留硬编码「等待上位机上报」，首轮轮询 <1s 即被真实状态替换）。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.53 → v1.8.58（并行会话接连占号：v1.8.54 扫描弹层浅色修复、v1.8.57 STA 历史回填，v1.8.55/v1.8.56 被对方先占后弃而跳过，撞号四次 +1）。
   - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `test_web_console_host_wifi_status_bar_shows_host_report_state`（后端新 JSON 字段/reserve 224、前端 onHostWifiToggle 立即拉取+5s 轮询、closeWifiStaModal 停轮询、IDLE 分支 host_ip/age<=60 判断、新 i18n 键存在且 idle 键删除）；版本断言 v1.8.58、CHANGELOG 顺序链补 v1.8.58 行。
 

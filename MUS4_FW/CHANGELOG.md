@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-22 v1.8.44
+
+- feat(WebConsole): DD 内嵌主视图（`?embedded=1`）隐藏设置类板块/入口——已全部移至 DD Car Connector 的车辆设置（Issue #234 后续）
+  - 背景：DD Car Connector 已 1:1 内嵌车端设置（`?embedded=1&settings=1&wifi=1`：调校/RC 校准/AP/STA 配网），用户要求 DD 的 Drifter Console 嵌入页（`?embedded=1` 主视图）不再重复出现这些设置；车端独立 DC 页面（无参数直连）保持不动。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS 新增 4 条守卫规则 `body.embedded:not(.settings):not(.wifi) #rcFold / #diagSettingsRow / #networkGear / #driftTuneLink{display:none}`——隐藏 RC Channels 校准面板、手柄校准+漂移设置按钮行、Network 卡 ⚙ 配网入口、Drift 卡 Tune 链接。`:not(.settings):not(.wifi)` 守卫必不可少：CC 的车辆设置 iframe URL 同样带 `embedded=1`，无守卫会把 CC 视图里的 rcFold 一起藏掉。
+    - 诊断面板里原无 id 的「Calibrate Joystick + 漂移设置」按钮行加 `id="diagSettingsRow"` 供定点隐藏。
+    - 主视图保留：状态卡（Mode/Park/Drift/Voltage/Network 显示）、遥测图表、串口终端、STATUS Details——纯显示/驾驶内容不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.42 → v1.8.44（v1.8.43 为其它会话基于旧基点的 RC 面板+配网融合构建、正在车上运行且未以该形态回本仓库，跳号避免撞号；其内容已含在本地 Tony 中，本次构建基于本地 Tony 1e5e398、不落后）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_web_console_embedded_main_view_hides_settings_panels`（4 条守卫规则、按钮行 id、禁止不带 `:not` 的裸 `body.embedded` 隐藏规则）；版本断言更新至 v1.8.44。
+
 ## 2026-08-22 v1.8.42
 
 - feat(WebConsole): DC 头部在 Kimi Code Web 与 DeepSeek Harness 之间新增「ZCode」入口按钮——点击经 launcher 端点 `POST /api/launch/zcode` 拿到网页终端 URL（`/terminal?cmd=...&title=ZCode&icon=zcode.png`），在新标签页的网页终端里运行 ZCode（TUI 编码 agent）

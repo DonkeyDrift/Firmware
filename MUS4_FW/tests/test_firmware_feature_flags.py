@@ -274,7 +274,9 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.42"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.44"' in build_info
+    assert "v1.8.44" in changelog
+    # 注意：v1.8.43 被有意跳过（其它会话基于旧基点的构建正在车上运行、未以该形态回本仓库）
     assert "v1.8.42" in changelog
     assert "v1.8.41" in changelog
     assert "v1.8.39" in changelog
@@ -339,6 +341,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-22 v1.8.44") < changelog.index("## 2026-08-22 v1.8.42")
     assert changelog.index("## 2026-08-22 v1.8.42") < changelog.index("## 2026-08-22 v1.8.41")
     assert changelog.index("## 2026-08-22 v1.8.41") < changelog.index("## 2026-08-22 v1.8.39")
     assert changelog.index("## 2026-08-22 v1.8.39") < changelog.index("## 2026-08-21 v1.8.38")
@@ -2383,6 +2386,29 @@ def test_web_console_settings_view_shows_rc_channels_panel():
     # v1.8.42：wifi 内嵌视图里 AP/STA 两个配网板块融合为单卡片（上卡去底边/底圆角，下卡去顶圆角）
     assert 'body.wifi #wifiApModal .dialog{margin:0;border-bottom:none;border-radius:14px 14px 0 0;padding-bottom:8px;box-shadow:none}' in source
     assert 'body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-radius:0 0 14px 14px;padding-top:4px}' in source
+
+
+def test_web_console_embedded_main_view_hides_settings_panels():
+    """Issue #234 后续（v1.8.44）：DD 内嵌主视图（?embedded=1 且无 settings/wifi 参数）
+    隐藏设置类板块/入口——RC Channels 校准面板（#rcFold）、手柄校准/漂移设置按钮行
+    （#diagSettingsRow）、Network 卡 ⚙ 配网入口（#networkGear）、Drift 卡 Tune 链接
+    （#driftTuneLink）——这些已全部移至 DD Car Connector 的车辆设置。
+    规则必须带 :not(.settings):not(.wifi) 守卫，避免误伤 DD Car Connector 的
+    settings/wifi 内嵌视图（其 URL 同样带 embedded=1）；车端独立 DC 页面（无参数）不受影响。"""
+    source = firmware_source_text()
+
+    guard = 'body.embedded:not(.settings):not(.wifi)'
+    assert f'{guard} #rcFold{{display:none}}' in source
+    assert f'{guard} #diagSettingsRow{{display:none}}' in source
+    assert f'{guard} #networkGear{{display:none}}' in source
+    assert f'{guard} #driftTuneLink{{display:none}}' in source
+    # 按钮行加了 id 供 CSS 定点隐藏（原本是无 id 的裸 div）
+    assert '<div id="diagSettingsRow" style="margin:10px 0">' in source
+    # 守卫必须存在：不允许出现不带 :not 的裸 body.embedded 隐藏规则（会误伤 settings/wifi 内嵌视图里的 rcFold）
+    assert 'body.embedded #rcFold{display:none}' not in source
+    assert 'body.embedded #diagSettingsRow{display:none}' not in source
+    assert 'body.embedded #networkGear{display:none}' not in source
+    assert 'body.embedded #driftTuneLink{display:none}' not in source
 
 
 def test_web_console_status_parser_preserves_quoted_values_with_spaces():

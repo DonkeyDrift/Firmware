@@ -8,7 +8,7 @@
     - 主页尾部 init 同步段（wifi 分支之后、rcFold 压平块之前）新增：`settings=1` 时把整个 `#diagnosticsPanel`（settings 作用域只露出 `#rcFold`）`insertBefore` 到 `#settingsView` 之前，带 `settingsView&&diagPanel&&settingsView.parentNode` 空引用保护；同步段在 preinit 隐藏期内执行，无重排闪烁。
     - `initEmbedTuneFrames()` 的 `fit()` 高度公式修复间隙根因：原取 `Math.max(body.scrollHeight, body.offsetHeight, documentElement.scrollHeight, documentElement.offsetHeight)`，而 `documentElement.scrollHeight` 被 iframe 自身视口高度钳制（≥占位高 820px）——内容较短的漂移子页实测底部多出 ~158px 空白。改为只量 `body`（scrollHeight/offsetHeight 取大）+ `getComputedStyle` 的上下外边距，+2px 余量不变。
     - drift 子页：`body.embedded{margin-top:0;margin-bottom:10px}`——embedded 下上边距清零（与上方 RC 板块的间距由父页面板 padding 提供）、下边距 12px→10px 对齐板块间距。
-    - judge 子页：`body.embedded{max-width:none}` → `body.embedded{max-width:none;margin-top:0}`——`margin:16px auto` 的 16px 顶边距在融合页里与漂移 iframe 底部空白叠加成大间隙，embedded 下清零。
+    - judge 子页：`body.embedded{max-width:none}` → `body.embedded{max-width:none;margin-top:0}`——`margin:16px auto` 的 16px 顶边距在融合页里与漂移 iframe 底部空白叠加成大间隙，embedded 下清零；另加 `body.embedded .panel{margin-top:0}`——embedded 下头部/hero/gyroZ 面板全隐藏后，「评分阈值调参」面板 `margin:12px 0` 的 12px 顶边距成为首个可见面板的上间隙来源，一并清零。
     - playwright 实测（车上 v1.8.63 → 本版）：「保存漂移配置」按钮行底部到 Judge 首个板块顶部间距 174px → 22px（目标 ≤24px、与其他板块间距 10~14px 一致：面板 padding 10 + 下边距 10 + 2px 余量）。
   - DD 侧（DonkeyDrift 仓库 `Tony-cc-declutter` 分支同步提交）：`web_ui/frontend/src/components/CarSettingsPanel.tsx` iframe src 去掉 `&wifi=1`（`?embedded=1&settings=1&wifi=1` → `?embedded=1&settings=1`）+ 顶部注释更新；`CarSettingsPanel.test.tsx` 断言同步。车端独立 DC 页面与固件 `wifi=1` 能力本身不动。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.63 → v1.8.64（先合并本地 Tony 的 v1.8.62/v1.8.63 后 +1；枚举全部本地分支最高为 v1.8.63）。

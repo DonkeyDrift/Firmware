@@ -2547,7 +2547,10 @@ def test_web_console_settings_view_embeds_tune_sections():
     assert 'body.embedded #judgeHeadPanel{display:none}' in judge
     assert "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');syncJudgeConfigInputs();" in judge
     assert 'body.embedded{max-width:none;margin-top:0}' in judge
-    # v1.8.64：embedded 下上边距清零（原 margin:16px auto 的 16px 顶边距在融合页形成大间隙）
+    # v1.8.64：embedded 下上边距清零（原 margin:16px auto 的 16px 顶边距在融合页形成大间隙）；
+    # .panel 的 margin:12px 0 顶边距同样清零（embedded 下头部/hero/gyro 面板全隐藏后，
+    # 「评分阈值调参」面板的 12px 顶边距成为唯一可见面板的上间隙来源）
+    assert 'body.embedded .panel{margin-top:0}' in judge
     assert 'id="judgeHero"' in judge
     assert 'body.embedded #judgeHero{display:none}' in judge
     assert 'id="gyroChartPanel"' in judge

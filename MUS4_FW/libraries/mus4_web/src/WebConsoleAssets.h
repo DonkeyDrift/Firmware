@@ -595,6 +595,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 body.embedded #judgeHeadPanel{display:none}
 /* CC 内嵌视图：judge 页撑满 iframe 宽度（去 760px 居中限宽），并隐藏显示类区域（得分 hero、gyroZ 曲线），只留设置表单 */
 body.embedded{max-width:none;margin-top:0}
+body.embedded .panel{margin-top:0}
 body.embedded #judgeHero{display:none}
 body.embedded #gyroChartPanel{display:none}
 .titleHint{display:inline-flex;align-items:baseline;cursor:default;width:fit-content;max-width:100%}.hintSpan{max-width:0;opacity:0;overflow:hidden;white-space:nowrap;transition:all .3s ease-in-out;font-size:12px;font-weight:400;color:#8fa1b5;text-transform:none;letter-spacing:0}.titleHint:hover .hintSpan{max-width:340px;opacity:1;margin-left:12px}

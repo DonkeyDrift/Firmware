@@ -1,5 +1,708 @@
 # CHANGELOG.md
 
+## 2026-08-23 v1.8.65
+
+- style(WebConsole): CC 内嵌设置视图 UI 对齐 DonkeyDrifter 原生风格（Issue #234 后续）
+  - 背景：用户要求 CC 设置视图里的小标题（RC Channels / 转向修正 / 油门策略 / 评分阈值调参 / 评分参数 / 评分维度）与卡片观感向 DD 的 Drive / Tub Manager / Trainer 页看齐。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（三切片 CONSOLE/DRIFT/JUDGE 各注入 `#dd-embed-native` 样式块，全部 `body.embedded` 作用域，独立页不动）：
+    - 小标题 DD 化：6 个板块标题 `font-weight:600` + `letter-spacing:-0.02em` + 15px，深色 `#e4e7eb` / 浅色 `#1a2330`；标题前加 18px 线性图标（lucide sliders-horizontal，`mask`+`currentColor` 跟随标题色），既有悬停灰字副标题（titleHint/hintSpan）保留——与 DD `SectionCardTitle` 同构。
+    - 卡片 DD 化：`.panel`/`.rcCell`/`.summaryItem`/`.field`/`.card` 圆角统一 8px（DD `rounded-lg`）；浅色主题下单元格/字段卡白底 `#fff` + 细框 `#ccd5df`（对齐 DD `theme-light` 卡片），输入框同步；深色沿用既有近似 DD 深色面板。
+    - 子 iframe 主题透传：`initEmbedTuneFrames()` 给 `/drift?embedded=1`、`/judge?embedded=1` 的 src 追加 `&theme=<父页 data-theme>`，使漂移/Judge 子页跟随主视图（DD 经 `?theme=` 传入）的显式主题，避免系统主题与 DD 手动主题不一致时子页错色。
+    - CSS 嵌套修复：首轮 OTA 后 playwright 验证发现 `<style id="dd-embed-native">` 被前一个 `<style>` 块吞没（HTML 原始文本模式不认嵌套 style 标签，整块 CSS 被当作文本），base 规则（font-weight:600 等）丢失；修复为在 `<style id="dd-embed-native">` 前插 `</style>` 关闭前块，并把尾部多余的 `</style></style>` 改为单个 `</style>`（三切片同款）。
+    - `::before` 图标选择器修复：同轮验证发现 `::before` 伪元素只加在选择器列表最后一项，前 5 个标题选择器没带 `::before` 导致 mask 图标不渲染；修复为每个选择器都加 `::before`（三切片同款）。
+    - 初始化顺序修复：`initEmbedTuneFrames()` 原在 `initTheme()` 之前调用，读取 `document.documentElement.getAttribute('data-theme')` 时主题尚未应用（恒取系统默认 light），子 iframe 永远加载 `theme=light`；修复为把 `initEmbedTuneFrames()` 移到 `initTheme()` 之后（主页 console 切片，drift/judge 子页本就有 `readUrlTheme` 不受影响）。
+    - 控制台切片 `readUrlTheme()`：新增函数读 `?theme=light|dark` URL 参数（drift/judge 切片本就有，console 切片此前缺失），`initTheme()` 改为 `uiTheme=readUrlTheme()||'auto'`——使 DD 经 iframe URL 传入的显式主题在控制台主页也生效。
+  - DD 侧 `CarSettingsPanel.tsx`：iframe src 由 `?embedded=1&settings=1` 改为 `&lang=<lang>&theme=<light|dark>`（lang 取 useTranslation、theme 取 useResolvedTheme），theme 变化经 `key` 触发 iframe 重载；注释与测试同步。
+  - 测试：`tests/test_firmware_feature_flags.py` 新增 `#dd-embed-native` 注入断言（三切片各一）、`initEmbedTuneFrames` 主题透传断言、版本断言 v1.8.65、CHANGELOG 顺序链补 v1.8.65；CSS 断言带 `!important`、console 切片 `initTheme` 断言改 `readUrlTheme()||'auto'`。
+  - 车上验证：playwright（headless Chromium）24/24 全过——两主题下主页面 font-weight=600、`::before` mask 图标渲染（SVG data URI）、深色 color=#e4e7eb / 浅色 #1a2330、`.panel` border-radius=8px、`html[data-theme]` 跟随 `?theme=`；drift/judge 子 iframe 主题跟随父页（dark→dark / light→light）、子 iframe 标题 font-weight=600 + mask 图标同在。
+
+## 2026-08-23 v1.8.64
+
+- feat(WebConsole): DD Car Connector 内嵌设置视图布局调整——RC Channels 置顶为第一板块、收紧漂移/Judge 子 iframe 间的过大间隙（配合 DD 侧 iframe 去掉 `&wifi=1`，配网板块不再进入该视图）
+  - 布局顺序：`?embedded=1&settings=1` 最终可见顺序由「漂移 → Judge → RC Channels」改为「RC Channels → 漂移 → Judge」；settings+wifi 视图（DD 已不用）变为 AP、STA、RC、设置，不苛求。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主页尾部 init 同步段（wifi 分支之后、rcFold 压平块之前）新增：`settings=1` 时把整个 `#diagnosticsPanel`（settings 作用域只露出 `#rcFold`）`insertBefore` 到 `#settingsView` 之前，带 `settingsView&&diagPanel&&settingsView.parentNode` 空引用保护；同步段在 preinit 隐藏期内执行，无重排闪烁。
+    - `initEmbedTuneFrames()` 的 `fit()` 高度公式修复间隙根因：原取 `Math.max(body.scrollHeight, body.offsetHeight, documentElement.scrollHeight, documentElement.offsetHeight)`，而 `documentElement.scrollHeight` 被 iframe 自身视口高度钳制（≥占位高 820px）——内容较短的漂移子页实测底部多出 ~158px 空白。改为只量 `body`（scrollHeight/offsetHeight 取大）+ `getComputedStyle` 的上下外边距，+2px 余量不变。
+    - drift 子页：`body.embedded{margin-top:0;margin-bottom:10px}`——embedded 下上边距清零（与上方 RC 板块的间距由父页面板 padding 提供）、下边距 12px→10px 对齐板块间距。
+    - judge 子页：`body.embedded{max-width:none}` → `body.embedded{max-width:none;margin-top:0}`——`margin:16px auto` 的 16px 顶边距在融合页里与漂移 iframe 底部空白叠加成大间隙，embedded 下清零；另加 `body.embedded .panel{margin-top:0}`——embedded 下头部/hero/gyroZ 面板全隐藏后，「评分阈值调参」面板 `margin:12px 0` 的 12px 顶边距成为首个可见面板的上间隙来源，一并清零。
+    - playwright 实测（车上 v1.8.63 → 本版）：「保存漂移配置」按钮行底部到 Judge 首个板块顶部间距 174px → 22px（目标 ≤24px、与其他板块间距 10~14px 一致：面板 padding 10 + 下边距 10 + 2px 余量）。
+  - DD 侧（DonkeyDrift 仓库 `Tony-cc-declutter` 分支同步提交）：`web_ui/frontend/src/components/CarSettingsPanel.tsx` iframe src 去掉 `&wifi=1`（`?embedded=1&settings=1&wifi=1` → `?embedded=1&settings=1`）+ 顶部注释更新；`CarSettingsPanel.test.tsx` 断言同步。车端独立 DC 页面与固件 `wifi=1` 能力本身不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.63 → v1.8.64（先合并本地 Tony 的 v1.8.62/v1.8.63 后 +1；枚举全部本地分支最高为 v1.8.63）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_settings_view_shows_rc_channels_panel` 新增 diagnosticsPanel 前移断言（空引用保护、执行顺序在 wifi 分支后/rcFold 压平前）；`test_web_console_settings_view_embeds_tune_sections` 新增 fit() 新公式与旧 documentElement 公式移除断言、judge `margin-top:0`、drift embedded 边距断言；版本断言 v1.8.64、CHANGELOG 顺序链补 v1.8.64~v1.8.58 行。
+
+## 2026-08-23 v1.8.63
+
+- fix(WebConsole): STA 上位机配网两处修复——配网成功后「发送到上位机」按钮变为「完成」；密码框为掩码占位时先取真实明文再发送，修复上位机收到"点点点"导致 nmcli 配网失败
+  - 背景①（按钮文案）：上位机配网成功（状态条显示「已连接 IP: x.x.x.x」）后，主按钮仍停留在「发送到上位机」，用户不知道流程已结束、以为要再点一次。
+  - 背景②（掩码密码）：ESP32 已存过 STA 密码时，密码框由 `renderStaPasswordState()` 填入 `*` 掩码占位（`staPasswordPlaceholder=true`、`staPasswordDirty=false`）；`saveHostWifi()` 此前直接取 `staPassword.value` 组 `WIFI|ssid|pwd` 串口帧发给上位机，用户不改密码直接发送时上位机收到字面量 `********`，nmcli 用掩码当密码配网必败。ESP32 直连路径 `saveWifiSta()` 有 `keep_password` 兜底，但上位机 nmcli 必须要明文，无等价兜底。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `saveHostWifi()`：`!staPasswordDirty && staPasswordPlaceholder`（框内是掩码占位、用户未改过）时先取真实明文再发送——优先 `fetch('/api/wifi-sta/password?ssid='+encodeURIComponent(ssid))`（v1.8.57 引入的历史条目密码分支，SSID 被手改后仍能取到对应网络的密码），未命中回退 `fetchSavedStaPassword()`（当前已存 STA 密码，覆盖"打开弹窗直接发送"主路径）；两路都失败时报错并中止发送，不再发出掩码。
+    - `pollHostWifiStatus()` connected 分支：状态转「已连接」时把 `staConnectBtn` 文案改为新 i18n `wifi.hostDoneBtn`（完成 / Done）、`onclick` 改为 `closeWifiStaModal`——点击即关闭弹窗；CC 内嵌视图（`body.wifi` CSS 使弹窗 `display:block` 常驻）点击仅移除 `show` 类、面板不消失。
+    - 新增 `resetStaConnectBtn()` 辅助函数（上位机模式下把按钮恢复为「发送到上位机」+`saveHostWifi`），在三处"用户要配另一个网络"的入口调用：`selectWifiHistory()`（点历史条目）、`selectWifiSsid()`（扫描弹层选 SSID）、密码框 `input` 监听；弹窗重开/开关切换由 `onHostWifiToggle()` 既有逻辑复位。
+    - i18n：新增 `wifi.hostDoneBtn` 中英键。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.62 → v1.8.63。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.63；新增 `test_web_console_host_wifi_done_button_and_plaintext_password`（`wifi.hostDoneBtn` 中英键、connected 分支按钮改写、掩码占位时两路明文拉取与中止、`resetStaConnectBtn` 定义与三处调用）。
+
+## 2026-08-23 v1.8.62
+
+- fix(WebConsole): AP 名称配置弹窗的前缀规则提示行改为按需显示——默认隐藏，仅在用户输入了不符合规范的前缀字符时提示
+  - 背景：`#apNotice` 提示行（「前缀仅限大小写字母和数字，不超过6位；后缀固定为"-ESP"。保存后会重启 AP…」）此前在弹窗中常显，占视觉空间；规则本身已由输入框实时剔除非法字符兜底，常显提示没有必要。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#apNotice` 加 `style="display:none"` 默认隐藏；`openWifiApModal()` 每次打开弹窗时重置为隐藏态。
+    - `updateApPreview()`：比对本次输入的原始值与剔除非法字符（`[^A-Za-z0-9]`）后的值——剔除了字符（`raw!==clean`）即显示提示行，未剔除（全合法或清空）则保持隐藏；整段显隐逻辑包在 `if(!apSaving)` 内，避免保存流程中输入把保存中/失败消息抹掉。
+    - `saveWifiAp()`：无效输入（`wifi.apInvalid`）、保存中（`wifi.apSavingNotice`）、保存失败（`wifi.apInvalid`/`wifi.apSaveFailed`）三处设置文案时同时强制显示提示行，保存流程消息可见性不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.59 → v1.8.62（v1.8.60、v1.8.61 由并行会话 `Tony-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.62；`test_web_console_ap_ssid_modal_and_api_are_present` 新增 `#apNotice` 默认隐藏 marker（`style="display:none"`）、非法字符比较逻辑（`raw!==clean`）与显隐赋值（`apNotice.style.display`）断言。
+
+## 2026-08-23 v1.8.61
+
+- fix(WebConsole): 修复 DC 首屏揭开太慢、CC iframe 场景偶发卡死纯黑屏——`initLanguage()` 改「同步先应用+揭示，后台再对齐服务器偏好」，揭示不再依赖任何网络请求
+  - 根因：v1.8.60 的 preinit 隐藏机制把揭示时机挂在异步 `fetch('/api/language')` 之后——`initLanguage()` 先 await 语言请求再 `applyLanguage()`+移除 preinit；ESP32 单线程 Web 服务在 CC 场景要串行伺候 139KB 主页 + drift/judge 两个子 iframe + 三个语言请求 + 状态轮询 + WS，语言请求排队期间整页 `visibility:hidden`（透出 DD 深色背景即成纯黑屏）；playwright 实测裸车页与 DD 8001 iframe 在车空闲时正常（约 0.75~1s 揭示），拥塞时揭示被无限拖后，今日还观察到一次车辆自发重启（约 1 分钟自恢复），加载中断进一步放大该问题。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（三切片 `WIFI_WEB_CONSOLE_HTML`/`WIFI_WEB_DRIFT_HTML`/`WIFI_WEB_JUDGE_HTML` 同款修改，UPDATE 页无 preinit 机制不动）：
+    - `initLanguage()` 重写为两段：同步段 `readUrlLanguage()` → `readStoredLanguage()` → `detectBrowserLanguage()` 取语言后立即 `applyLanguage(lang)` + `document.body.classList.remove('preinit')`——首帧即正确语言（localStorage 缓存或 navigator 检测覆盖绝大多数情况），揭示不再等任何网络请求；函数保持 `async` 签名但内部已无 await。
+    - 后台对齐段：仅当无 URL `?lang=` 参数时（保持原语义优先级 URL 参数 > 服务器偏好 > 本地缓存/浏览器检测），异步 `fetch('/api/language',{cache:'no-store'})`，成功且服务器语言与当前 `uiLang` 不同才 `writeStoredLanguage(srv)`+`applyLanguage(srv)` 重新应用（`auto` 仍映射 `detectBrowserLanguage()`，保留原 writeStoredLanguage 副作用）；`.catch(()=>{})` 吞掉失败——服务器偏好像原来一样最终生效，但不再阻塞首屏。
+    - `<body>` 后早期内联脚本与 2s 兜底定时器保留不动（init 出错或 JS 异常时仍强制揭示）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.60 → v1.8.61（全本地分支枚举最高为 v1.8.60，+1）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_preinit_reveal_no_first_paint_flash` 语义更新：断言揭示在同步 `applyLanguage` 后立即发生（不再有 `await fetch` 先于揭示）、后台对齐段存在（`if(!urlLang){fetch(...)` + 差异才 re-apply + catch 吞掉）、URL 参数优先保持、2s 兜底与早期脚本不动；版本断言 v1.8.61、CHANGELOG 顺序链补 v1.8.61 行。
+
+## 2026-08-23 v1.8.60
+
+- fix(WebConsole): 消除 DC 页面首屏两种闪烁——CC 内嵌视图先闪完整控制台再切设置视图、先闪英文再刷中文
+  - 根因：三个 HTML 切片（`WIFI_WEB_CONSOLE_HTML`/`WIFI_WEB_DRIFT_HTML`/`WIFI_WEB_JUDGE_HTML`）的 `embedded`/`settings`/`wifi` body 类与 `initLanguage()` 都在尾部 init 脚本才执行——139KB 主页在类应用前已按完整控制台渲染（首闪）；`initLanguage()` 是 async，先 `fetch('/api/language')` 再 `applyLanguage(lang)` 同步替换全部 data-i18n 文本，fetch 往返期间整页英文（二闪）。CC 视图里的漂移/Judge 子 iframe（`/drift?embedded=1`、`/judge?embedded=1`）同模式同问题。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（三切片同款修复，UPDATE 页不动）：
+    - `<body>` 标签后（任何可见元素之前）插入微型同步脚本：按 `location.search` 立即给 body 加 `preinit` + `embedded` 类（主页另有 `settings`/`wifi` 类；drift/judge 无 settings/wifi 视图只加 embedded），并 `setTimeout(remove preinit,2000)` 兜底 + try/catch（防 init 出错页面永远空白）。首帧即有正确视图类，完整控制台不再闪现。
+    - 各切片 CSS 前部新增 `body.preinit{visibility:hidden}`——选 visibility 而非 display:none：隐藏期间布局/ResizeObserver/canvas DPR 测量照常工作。
+    - `initLanguage()` 内 `applyLanguage(lang)` 之后追加 `document.body.classList.remove('preinit')`——中文应用前页面不可见，英文不再闪现；fetch 失败走 catch→localStorage→applyLanguage 照常显示，2s 兜底强制显示。
+    - 尾部 init 里原有 `classList.add('embedded')` 等赋值保留（幂等保险），wifi 分支 `openWifiApModal()/openWifiStaModal()` 等逻辑不动。
+  - `initTheme()` 核查：三切片均为同步函数（`uiTheme=...;applyTheme()` + matchMedia 监听，无 fetch），且尾部 init 中同步先于 `initLanguage()` 的 await 完成，preinit 隐藏期已覆盖——无主题闪烁隐患，未改动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.59 → v1.8.60（v1.8.59 由本地 Tony 的 STA 密码框修复占用，+1 防撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `test_web_console_preinit_reveal_no_first_paint_flash`（三切片早期脚本紧贴 `<body>` 后且内容含 preinit/embedded 赋值与 2s 兜底、主页另有 settings/wifi 赋值而 drift/judge 没有、preinit CSS 在首个 style 块内、initLanguage 内 reveal、尾部原有类赋值与 wifi 弹窗逻辑保留、UPDATE 页不含 preinit）；版本断言 v1.8.60、CHANGELOG 顺序链补 v1.8.60 行。
+
+## 2026-08-23 v1.8.58
+
+- fix(WebConsole): 「上位机配网」状态条永远显示「等待...」——STA 板块打开时立即拉取并 5s 慢轮询 /api/host-wifi-status，IDLE 状态改显示上位机在线/等待上报真实状态（Issue #234 后续）
+  - 根因：`openWifiStaModal()` 强制 `hostWifiToggle.checked=true` 并调 `onHostWifiToggle()`，但该函数 checked 分支只做 `bar.style.display='block'`，从不 fetch `/api/host-wifi-status`——2s 轮询只在 `saveHostWifi()`（点「发送」）后才启动。CC 内嵌视图（?embedded=1&settings=1&wifi=1）里 STA 板块常开，label 永远停在 HTML 占位文字 `wifi.hostStatus.idle`（等待...）。实际上位机在线且周期上报（Serial2 `HOSTIP|` 帧，运行时全局 `hostReportedIp`/`hostReportedIpMs`），`/api/status` 已有 `host_ip`/`host_ip_age_s`，但 host-wifi-status 接口与前端都没用它。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：`handleWifiWebHostWifiStatus()` 的 JSON 新增 `"host_ip"` 与 `"host_ip_age_s"` 字段（数据来自 `hostReportedIp`/`hostReportedIpMs`，age 算法与 `/api/status` 一致：`hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL`）；`json.reserve(160)` 加大到 224。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `onHostWifiToggle()` checked 分支末尾追加 `pollHostWifiStatus();stopHostWifiPoll();hostWifiPollTimer=setInterval(pollHostWifiStatus,5000)`——打开 STA 板块立即拉真实状态 + 5s 慢轮询保持新鲜（先停旧定时器防重复）；unchecked 分支既有 `stopHostWifiPoll()` 不动。
+    - `closeWifiStaModal()` 补 `stopHostWifiPoll()`（原关弹窗不停轮询有小泄漏；CC 内嵌视图不关弹窗，常开轮询正是预期行为）。
+    - `pollHostWifiStatus()` IDLE 分支重写：`host_ip` 非空且 `host_ip_age_s<=60` 视为上位机在线——label 显示新 i18n `wifi.hostStatus.hostOnline`（上位机在线 / Host online），`hostWifiStatusIp` 显示 `IP: x.x.x.x`，error span 隐藏；否则 label 显示新 i18n `wifi.hostStatus.waitingHost`（等待上位机上报 / Waiting for host report），ip/error span 隐藏。connecting/connected/failed 分支保持现有行为（含 connected/failed 里 `stopHostWifiPoll()` 自愈）；原 `{IDLE:...}` 状态映射表移除 IDLE 项，IDLE 改由上述专用分支处理。
+    - i18n：`wifi.hostStatus.idle` 键删除（JS 与 HTML 占位均已不再引用），新增 `wifi.hostStatus.hostOnline` 与 `wifi.hostStatus.waitingHost` 中英各一份；状态条 HTML 占位 `data-i18n` 由 `wifi.hostStatus.idle` 改为 `wifi.hostStatus.waitingHost`（首次拉取前的占位语义对齐）。
+    - 状态条 label 移除 `data-i18n`（首轮车上 playwright 验证发现的覆盖竞态：`initLanguage()` 异步 fetch `/api/language` 后 `applyLanguage()` 按 `data-i18n` 重写全部占位元素 textContent，会把首轮轮询已显示的「上位机在线」覆盖回「等待上位机上报」、最长 5s 后才由下一轮轮询自愈；label 为状态驱动元素（与 `refreshDynamicLabels()` 管辖的按钮同类），不走 data-i18n，占位文字保留硬编码「等待上位机上报」，首轮轮询 <1s 即被真实状态替换）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.53 → v1.8.58（并行会话接连占号：v1.8.54 扫描弹层浅色修复、v1.8.57 STA 历史回填，v1.8.55/v1.8.56 被对方先占后弃而跳过，撞号四次 +1）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `test_web_console_host_wifi_status_bar_shows_host_report_state`（后端新 JSON 字段/reserve 224、前端 onHostWifiToggle 立即拉取+5s 轮询、closeWifiStaModal 停轮询、IDLE 分支 host_ip/age<=60 判断、新 i18n 键存在且 idle 键删除）；版本断言 v1.8.58、CHANGELOG 顺序链补 v1.8.58 行。
+
+## 2026-08-22 v1.8.59
+
+- fix(WebConsole): 抑制苹果设备在 STA Wi-Fi 密码框输入时弹出「存储密码？」——密码框声明为非登录新密码并加密码管理器忽略属性
+  - 背景：STA 配网弹窗的密码框是裸 `type="password"` 输入框，Safari/iOS 把它当作登录凭据，输入后弹出系统级「是否存储此密码」；该密码是 Wi-Fi 预共享密钥、不是网站账号，保存提示无意义且打扰。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`#staPassword` 加 `autocomplete="new-password"`（告知浏览器这是设置新密码而非登录——Safari/Chrome 对 new-password 字段不弹保存提示）+ `data-1p-ignore="true"`（1Password）+ `data-lpignore="true"`（LastPass）+ `data-form-type="other"`（Dashlane 等）；`#staSsid` 加 `autocomplete="off" autocapitalize="none" spellcheck="false"`（避免被识别为登录用户名字段，顺带关闭 iOS 首字母大写与拼写检查）。眼睛切换显隐逻辑不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.57 → v1.8.59（v1.8.58 由并行会话 `Tony-dc-embedded-declutter` 分支使用，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.59；STA 弹窗测试新增两条输入框完整属性断言（autocomplete/autocapitalize/spellcheck/密码管理器忽略属性）。
+
+## 2026-08-22 v1.8.57
+
+- feat(WebConsole): STA Wi-Fi 配置右侧「已保存网络」历史列表支持点击回填——点击一行即把该网络的 SSID 与密码填入左侧表单，直接点「连接」即可切换
+  - 背景：历史列表（`wifiHistoryList`）此前只展示 + 单条删除，切换已存网络要手动重输 SSID 和密码。历史条目本就存了密码（NVS `sta_h{0..4}p`），但公开的历史列表 API 按设计只输出 `password_set` 标志、从不出明文。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：`handleWifiWebStaPassword()` 新增 `?ssid=` 参数分支——传 SSID 时经 `findWifiStaHistoryEntry()` 返回该历史条目的 `password_set`/`password_len`/密码明文（与该端点既有「当前配置密码」分支同一鉴权：控制台认证或 DEV 模式，安全等级不变）；未命中历史返回 404 `not_found`。不传 `ssid` 时行为完全不变。历史列表公开 GET 仍只输出 `password_set` 标志、不含明文。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - JS 新增 `selectWifiHistory(ssid,passwordSet)`：填 `staSsid`；`password_set` 为真时 `fetch('/api/wifi-sta/password?ssid='+encodeURIComponent(ssid))` 取回密码填入密码框（填真实密码而非占位星号，`staPasswordDirty=true` 使保存时显式发送该密码，避免错用当前配置的 keep_password），开放网络则清空密码框；重置眼睛可见态/占位态/已取密码缓存，焦点落到「连接」按钮。
+    - `refreshWifiHistory()`：历史行加 `onclick` 调 `selectWifiHistory()`、加 `title` 悬停提示；删除按钮 `onclick` 改带 `ev.stopPropagation()`，点 🗑 不再误触发行回填。
+    - CSS：`.histRow` 加 `cursor:pointer` 表明可点。
+    - i18n：新增 `wifi.historyFill` 中英键（「点击填充 SSID 与密码」/「Click to fill SSID and password」）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.54 → v1.8.57（v1.8.55、v1.8.56 先后被并行会话 `Tony-dc-embedded-declutter` 分支提交使用，两次跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.57；`test_web_console_wifi_sta_history_ui` 新增回填断言（`selectWifiHistory` 定义/行 onclick/stopPropagation/`?ssid=` 拉取/cursor:pointer/`wifi.historyFill` 中英键）；`test_web_console_sta_password_endpoint_is_protected_and_public_state_has_no_secret` 新增 `?ssid=` 分支断言（arg 读取/history 查找/404/明文仅在该鉴权端点输出）。
+
+## 2026-08-22 v1.8.54
+
+- fix(WebConsole): 修复 STA Wi-Fi 配置「搜索网络」扫描弹层在浅色模式下仍为深色——浅色主题 CSS 选择器列表漏了一个逗号
+  - 背景：主控制台浅色主题块中 `html[data-theme="light"] .scanPopover` 与紧随其后的 `html[data-theme="light"] .foldHead` 之间漏写逗号，被拼成无效选择器 `.scanPopoverhtml[data-theme="light"] .foldHead`（`scanpopoverhtml` 元素不存在），整条声明对扫描弹层与折叠头均不生效；浅色模式下 STA 配网点 ⌕ 打开的扫描弹层仍是深色底 `#111820` + 蓝边 `#5cc8ff`。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.scanPopoverhtml[data-theme="light"] .foldHead` 改为 `.scanPopover,html[data-theme="light"] .foldHead`（插入一个逗号），恢复 `.scanPopover` 浅色覆盖（浅底 `#f4f6f9`、浅边框 `#d5dce4`、深文字 `#1f3a52`），同时恢复 `.foldHead`（RC Channels / STATUS Details 折叠头）的浅色底色。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.48 → v1.8.54（v1.8.49~v1.8.53 由并行会话 `Tony-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.54；新增 `test_sta_scan_popover_light_theme_selector` 断言修复后的 `.scanPopover,html[data-theme="light"] .foldHead{` 选择器存在且无效拼接 `scanPopoverhtml` 不再出现。
+
+## 2026-08-22 v1.8.53
+
+- style(WebConsole): CC 内嵌设置视图删掉漂移子页顶部的 Status 状态栏面板（embedded 作用域限定，Issue #234 后续）
+  - 背景：CC 车辆设置内嵌视图（?embedded=1&settings=1&wifi=1）里漂移子 iframe 顶部有一条 Status 状态栏（Enabled/Active/Yaw Error/Throttle Mode 四项实时状态，中文显示 关/待命/0.00/直通）——显示类内容不属于设置（DD 主视图已有遥测），用户要求「把最上面的状态栏删掉」；车端独立 /drift 页面保持原样完整显示。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（WIFI_WEB_DRIFT_HTML 切片）：做法与 v1.8.51 judge 页 `#judgeHero`/`#gyroChartPanel` 隐藏完全一致——漂移页 body 起点 headerRow 之后的第一个 `.panel`（Status 面板，含 `drift.status.label` 标题与 `stateEnabled`/`stateActive`/`stateYawError`/`stateThrottleMode` 四个 summaryItem）加 `id="driftStatusPanel"`；既有 `body.embedded .headerRow{display:none}` 规则旁新增 `body.embedded #driftStatusPanel{display:none}`。漂移页 JS 仍正常更新这些元素，纯 CSS 隐藏不影响运行；CC 内嵌视图里 `initEmbedTuneFrames()` 的 ResizeObserver 会自动收掉子 iframe 高度。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.52 → v1.8.53。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_settings_view_embeds_tune_sections` 的 DRIFT 段断言新增 `id="driftStatusPanel"` 与 `body.embedded #driftStatusPanel{display:none}` 两项；版本断言 v1.8.53、CHANGELOG 顺序链补 v1.8.53 行。
+
+## 2026-08-22 v1.8.52
+
+- style(WebConsole): CC 内嵌设置视图 RC Channels 折叠头压平为静态标题（常开不可折叠）+ 配网板块上移为内嵌视图最顶部板块（Issue #234 后续）
+  - 背景：① CC 内嵌设置视图里 RC Channels 是可折叠面板，折叠头按钮样式（背景/边框/箭头/hover）在内嵌场景下显得多余，用户要求压平成静态标题、内容常开不可折叠（标题文字与标题级悬停灰字 hint 保留）；② 内嵌视图（?embedded=1&settings=1&wifi=1）当前可见顺序为车辆设置→RC Channels→配网，用户要求配网板块（AP 名称配置 + STA Wi-Fi 配置）移到最顶部。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - RC 折叠头压平（`body.settings`/`body.wifi` 作用域限定，只影响内嵌 settings/wifi 视图）：新增 `body.settings #rcFold .foldHead,body.wifi #rcFold .foldHead{background:transparent;border:none;cursor:default;pointer-events:none}`、对应 `:hover` 背景透明规则、`... .foldHead .titleHint{pointer-events:auto}`（保留标题级 hintSpan 悬停灰字）与 `... .foldIcon{display:none}`（隐藏 ▸ 箭头）；作用域规则带 ID，特异性高于 `.foldHead`/`.foldHead:hover` 及 light 主题变体，无需单独 light 变体。
+    - JS 初始化：旧 `if(...settings=1...||...wifi=1...)toggleFold('rcFold')` 替换为强制展开且不可折叠逻辑——`#rcFold` 加 `open` class、foldHead 移除 `onclick` 属性（防点击/键盘触发折叠）、`aria-expanded` 置 `true`，全程空引用保护；`toggleFold()` 函数本身保留，车端独立 DC 页（无 URL 参数）rcFold 仍默认收起、点击可展开/收起。
+    - 配网板块上移：`wifi=1` 初始化分支（`openWifiApModal();openWifiStaModal();` 之后）把 `#wifiApModal`、`#wifiStaModal` 依次 `insertBefore` 到 `#settingsView` 之前（先 AP 后 STA，最终顺序 AP、STA、settingsView），合并的配网板块成为内嵌视图最顶部板块；三者均为 body 直接子节点，加空引用保护；普通 DC 页无 `wifi=1` 不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.51 → v1.8.52。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_settings_view_shows_rc_channels_panel` 更新：旧 `toggleFold('rcFold')` 初始化断言改为断言其不存在，新增强制展开 JS（`classList.add('open')`/`removeAttribute('onclick')`/`aria-expanded='true'`）、4 条压平 CSS 规则与配网板块 `insertBefore` 上移断言；版本断言 v1.8.52、CHANGELOG 顺序链补 v1.8.52 行。
+
+## 2026-08-22 v1.8.51
+
+- style(WebConsole): CC 内嵌设置视图融合漂移/Judge 为一页（去分类标题、Judge 撑满宽度、隐藏显示类区域）+ 删除 RC Channels 字段级标题的悬停灰字特效（Issue #234 后续）
+  - 背景：① RC Channels 里 CH1 Steering/CH2 Throttle 等是字段标签不是小标题，悬停灰字特效（v1.8.46 引入）不应加在它们上面；② 用户要求 CC 设置页不按「漂移设置/Judge 设置」分类，融合成一个有逻辑顺序的页面；③ Judge 板块有 760px 居中限宽，没撑满。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - RC 面板字段级特效删除：12 个 rcCell 标题（CH1~CH6 / OUT Steering / OUT Throttle / Mid S / Mid T / Min T / Max T）的 `.titleHint`+`.hintSpan` 包装解包回纯 `<b>`，对应 12 组中英 i18n 键（`rc.hint.ch1`~`ch6`/`outSteering`/`outThrottle`/`midS`/`midT`/`minT`/`maxT`）删除；保留标题级特效——手柄校准弹窗大标题（`cal.title.hint`）与 RC Channels 折叠头（`rc.hint.panel`），/drift 页与 /judge 页标题级 hint 不动（审计确认无其它字段级混入）。
+    - 融合：embedTuneSections 去掉「漂移设置」「Judge 设置」两个 h3 分类标题（连同 `.embedTuneSection h3` CSS 与 light 变体、`.embedTuneSection` 间距规则），两个子 iframe 前后相接成一页——逻辑顺序：先车辆动态参数（漂移：状态/转向修正/油门策略），后评判规则（Judge：评分阈值/基础阈值/评分参数/评分维度）。
+    - Judge 页 embedded 作用域：`body.embedded{max-width:none}` 放开 760px 限宽撑满 iframe；`#judgeHero`（得分/碰撞 hero）与 `#gyroChartPanel`（gyroZ 曲线）两个显示类区域加 id 并在 embedded 时隐藏——CC 设置页只留设置表单（显示类内容不属于设置，且 DD 主视图已有遥测图表）；车端独立 /judge 页面不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.50 → v1.8.51。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_joystick_cal_and_rc_panel_title_hints` 改为断言 12 处 rcCell 无 titleHint 包装、12 组 i18n 键已删、标题级 2 处（弹窗+折叠头）保留、控制台 titleHint 计数 14→2；`test_web_console_settings_view_embeds_tune_sections` 更新——h3 移除、judge embedded 撑宽/隐藏规则断言；版本断言 v1.8.51。
+
+## 2026-08-22 v1.8.50
+
+- fix(WebConsole): CC 车辆设置内嵌视图的漂移/Judge 子 iframe 按内容自动撑高——消除 Judge 设置的内部滚动条，整页统一滚动（Issue #234 后续）
+  - 背景：v1.8.47 的内嵌子 iframe 用固定高度（drift 820px / judge 1000px），Judge 页内容超出后出现独立的内部滚动条，用户要求在整页里完全显示、统一滚动。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - JS 新增 `initEmbedTuneFrames()`：子 iframe load 后按内容高度自动撑高——同源 iframe 直接读 `contentDocument` 的 body/documentElement scroll/offset 高度取最大（+2px 防 1px 滚动），立即 + 400ms + 1600ms 三次 fit 覆盖异步内容，并用 `ResizeObserver` 持续跟踪内容高度变化；仅高度变化时才写 style，收敛无循环。
+    - 懒加载：两个子 iframe 的 `src` 改为 `data-src`，仅 `body.embedded.settings`（CC 车辆设置内嵌视图）才由 init 赋值加载——其它视图（车端独立 DC 主页、DD 嵌入主视图）不再隐藏加载 /drift /judge，消除子页 250ms 轮询/WS 对 ESP32 的无效占用（v1.8.47 引入的隐患）。
+    - CSS：`.embedTuneFrame` 加 `overflow:hidden`；820px/1000px 固定高度保留为加载前占位。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.49 → v1.8.50。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_settings_view_embeds_tune_sections` 更新——iframe 断言改 `data-src`，新增 `initEmbedTuneFrames()` / `ResizeObserver` / 懒加载守卫（`classList.contains('embedded')&&document.body.classList.contains('settings')` 才调用）断言；版本断言 v1.8.50。
+
+## 2026-08-22 v1.8.49
+
+- feat(WebConsole): CC 车辆设置内嵌视图删「车辆设置」标题与「调校」行框——手柄校准按钮移至 DD CC 页顶栏，经 postMessage 打开校准弹窗（Issue #234 后续）
+  - 背景：内嵌设置视图里漂移/Judge 设置已默认展开（v1.8.47），调校行只剩手柄校准一个按钮；用户要求把该按钮移到 DD CC 页顶部「重新扫描」右边，并删掉「车辆设置」标题与「调校」行框。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS（`body.embedded.settings` 作用域限定）：新增 `body.embedded.settings #settingsView .setTitle{display:none}` 与 `body.embedded.settings #settingsView .setRow{display:none}`——「车辆设置」标题与「调校」行（含两个跳转按钮与手柄校准按钮）整行隐藏；v1.8.47 的 `#driftSettingsBtn/#judgeSettingsBtn{display:none}` 规则已被 setRow 整行隐藏覆盖，移除。车端独立 DC 页面与独立设置视图（无 embedded）保持原样。
+    - JS：既有 `window.addEventListener('message', ...)`（dd-console-mute-changed / dd-open-wifi-sta / dd-open-wifi-ap）追加 `dd-open-joystick-cal` 分支——收到 DD CC 页顶栏「手柄校准」按钮的 postMessage 后调用 `openJoystickCalModal()`，弹窗在内嵌 iframe 可视区内居中打开。
+  - DD 侧配套（DonkeyDrift 仓库 `Tony-cc-declutter` 分支）：`CarSettingsPanel.tsx` 顶栏「重新扫描」右侧新增「手柄校准」按钮，点击 postMessage `{type:'dd-open-joystick-cal'}` 到内嵌 iframe（沿用 DrifterConsolePage 静音同步的同款 postMessage 通道）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.47 → v1.8.49（v1.8.48 由并行会话的 Judge 页主题跟随条目占用，跳号避撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_settings_view_embeds_tune_sections` 更新——按钮隐藏规则断言替换为 setTitle/setRow 整行隐藏断言，新增 `dd-open-joystick-cal` 监听分支断言；版本断言 v1.8.49。
+
+## 2026-08-22 v1.8.48
+
+- feat(WebConsole): Drift Judge 页（/judge）跟随 Drifter Console 深浅色主题，全部标题改为悬停灰字提示（titleHint），样式对齐 /drift 调参页
+  - 背景：/judge 页 CSS 全部硬编码深色且无 `?theme=` 支持，从 DD Car Connector 内嵌视图或控制台「Judge 设置」进入始终是黑界面；大小标题也没有 v1.8.36 漂移页的悬停灰字提示。本次只补主题跟随与标题提示两点；页内「返回 Drifter Console」链接保留（本次未要求删除），页内本无主题切换按钮、不新增。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主题跟随：`<head>` 内新增防闪烁脚本（读 `?theme=` URL 参数，缺省按系统 `prefers-color-scheme`，与 /drift 页逐字一致）；`<style>` 新增 `html[data-theme="light"]` 全量浅色覆盖（body/a/button/button.alt/muted/label/sub/mini/sectionDesc/fieldHint/summaryItem .k/scoreExplain/dimTrend/panel/heroCard/card/summaryItem/field/statusPill/collision/field input/sectionTitle/fieldTitle/dimName/bar/dimBar/chartWrap/tuneSection）；JS 新增 `uiTheme`/`readUrlTheme()`/`systemTheme()`/`resolvedTheme()`/`readParentTheme()`/`applyTheme()`/`initTheme()` 内存态主题（不写 localStorage），`initTheme()` 以 `?theme=` 参数优先、无参数且处于同源 iframe（CC 内嵌视图 `/judge?embedded=1`）时读父页 `documentElement.dataset.theme` 跟随 Drifter Console 当前主题、再缺省 auto 跟随系统；初始化序列调用 `initTheme()`；`drawChart()` 图表底色/网格线/曲线色改按 `resolvedTheme()` 取色（浅色 `#f4f6f9`/`#d5dce4`/`#0c9bd6`，深色不变）。
+    - 控制台入口：设置视图调校行「Judge 设置」按钮 `location.href='/judge'` 改为 `location.href='/judge?theme='+resolvedTheme()`（与漂移设置入口同款）。
+    - 标题悬停灰字：`<style>` 新增 `.titleHint`/`.hintSpan`（含 `html[data-theme="light"] .hintSpan` 变体，与 /drift 页规则逐字一致）；6 处标题包为 titleHint——h1「Drift Judge」（原副标题转为 hintSpan）、gyroZ 曲线（新增 `judge.gyroChartHint` 中英键「实时偏航角速度曲线」/「Live gyroZ trace」）、评分阈值调参（`judge.tuneDesc` 由 muted 副行转为 hintSpan）、基础阈值（`judge.section.thresholdsDesc` 由 sectionDesc 转为 hintSpan）、评分参数（`judge.section.scoringDesc` 同）、评分维度（`judge.dimDesc` 由 muted 副行转为 hintSpan）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.46 → v1.8.48（v1.8.47 由并行会话 `session-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.48；新增 `test_judge_page_theme_and_title_hints` 断言防闪烁脚本/浅色覆盖/内存态主题 JS（无 localStorage、无切换按钮、`readParentTheme()` 同源父页主题跟随）/drawChart 主题取色/6 处 titleHint 与 hintSpan/悬停 CSS/`judge.gyroChartHint` 中英键/控制台 `/judge?theme=` 入口。
+
+## 2026-08-22 v1.8.47
+
+- feat(WebConsole): CC 车辆设置内嵌视图（`?embedded=1&settings=1&wifi=1`）默认展开漂移设置与 Judge 设置——两个跳转按钮改为同页内嵌子 iframe 板块（Issue #234 后续）
+  - 背景：CC 内嵌设置视图里「漂移设置 / Judge 设置」此前是两个跳转按钮，点击会把整个 iframe 导航走；用户要求这两个设置默认展开、直接可见可调。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主页 settingsView 调校行：「漂移设置」「Judge 设置」按钮加 `id="driftSettingsBtn"` / `id="judgeSettingsBtn"`；行后新增 `<div class="embedTuneSections">`，含两个内嵌子板块（h3 标题复用既有 i18n 键 `button.driftSettings` / `settings.judge` + `<iframe class="embedTuneFrame" src="/drift?embedded=1">` / `src="/judge?embedded=1"`）。
+    - 主页 CSS（`body.embedded.settings` 作用域限定）：`.embedTuneSections{display:none}` 默认隐藏、`body.embedded.settings .embedTuneSections{display:block}` 只在 CC 车辆设置内嵌视图显示；同作用域隐藏 `driftSettingsBtn`/`judgeSettingsBtn` 两个跳转按钮（「手柄校准」按钮保留，弹窗本就内联可用）；iframe 全宽无边框圆角 10px、深色底 `#101318`，driftFrame 高 820px / judgeFrame 高 1000px。
+    - /drift 页：新增 `body.embedded .headerRow{display:none}`，init 开头加 `embedded=1` 检测置 `body.embedded` class——子 iframe 内隐藏自身头部。
+    - /judge 页：头部 panel 加 `id="judgeHeadPanel"`，新增 `body.embedded #judgeHeadPanel{display:none}`，init 开头同样加 embedded class 检测。
+    - 车端独立 DC 页面与独立设置视图完全不动：内嵌板块仅在 `body.embedded.settings` 显示；主题/语言无需传参——子 iframe 与车主页同源同 localStorage，主题走系统检测自动跟随。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.45 → v1.8.47（v1.8.46 由并行会话的 titleHint 条目占用，跳号避撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_web_console_settings_view_embeds_tune_sections`（内嵌板块 HTML/CSS 规则、两个按钮 id 与隐藏规则、drift/judge 子页 embedded 守卫与 init 检测——按 `WIFI_WEB_*_HTML` 切片断言避免与主页同名规则混淆）；版本断言 v1.8.47。
+
+## 2026-08-22 v1.8.46
+
+- feat(WebConsole): 手柄校准弹窗与 RC Channels 校准面板全部标题加悬停灰字提示（titleHint），样式对齐 /drift 调参页与 DD group-hover
+  - 背景：漂移调参页（v1.8.36）已把大标题/各级小标题改为悬停右侧滑出灰字提示；手柄校准弹窗（`cal.title` 大标题）与 RC Channels 校准面板（`#rcFold` 折叠头 + CH1~CH6 / OUT Steering / OUT Throttle / Mid S / Mid T / Min T / Max T 共 12 个 `.rcCell` 小标题）仍是旧样式，用户要求同款。弹窗与面板本就连同控制台主页面自动跟随深浅色，无需自带切换按钮；本次仅补提示样式。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：主控制台 `<style>` 新增 `.titleHint`/`.hintSpan`（含 `html[data-theme="light"] .hintSpan` 变体，与 /drift 页规则逐字一致）；`#joystickCalModal` 标题、`#rcFold` 折叠头与 12 个 `.rcCell` 标题全部包为 `.titleHint`+`.hintSpan`；新增 14 组中英 i18n 键（`cal.title.hint`、`rc.hint.panel`、`rc.hint.ch1`~`rc.hint.ch6`、`rc.hint.outSteering`/`outThrottle`/`midS`/`midT`/`minT`/`maxT`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.42 → v1.8.46（v1.8.43~v1.8.45 由并行会话 `session-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.46；`test_web_console_groups_rc_and_status_into_collapsible_sections` 的 rcFold 折叠头断言改为 `.titleHint` 包装后的新串；新增 `test_joystick_cal_and_rc_panel_title_hints` 断言 14 处 titleHint 包装、CSS 规则与 14 组中英 i18n 键齐全。
+
+## 2026-08-22 v1.8.45
+
+- style(WebConsole): wifi 内嵌融合单卡去掉 STA 卡上边框——消除 AP/STA 之间的黄色横杠
+  - 背景：浅色主题下 `.dialog` 边框色为 `#d99a17`（金色），AP/STA 融合时只去了 AP 卡底边，STA 卡顶边残留，两卡之间出现一条黄杠（DD Car Connector 车辆设置内嵌视图可见）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`body.wifi #wifiStaModal .dialog` 规则加 `border-top:none`，AP/STA 两卡背景无缝相接成真正单卡；深色主题同步生效（同规则覆盖）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.44 → v1.8.45。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 融合单卡断言更新为含 `border-top:none` 的 STA 规则；版本断言 v1.8.45。
+
+## 2026-08-22 v1.8.44
+
+- feat(WebConsole): DD 内嵌主视图（`?embedded=1`）隐藏设置类板块/入口——已全部移至 DD Car Connector 的车辆设置（Issue #234 后续）
+  - 背景：DD Car Connector 已 1:1 内嵌车端设置（`?embedded=1&settings=1&wifi=1`：调校/RC 校准/AP/STA 配网），用户要求 DD 的 Drifter Console 嵌入页（`?embedded=1` 主视图）不再重复出现这些设置；车端独立 DC 页面（无参数直连）保持不动。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS 新增 4 条守卫规则 `body.embedded:not(.settings):not(.wifi) #rcFold / #diagSettingsRow / #networkGear / #driftTuneLink{display:none}`——隐藏 RC Channels 校准面板、手柄校准+漂移设置按钮行、Network 卡 ⚙ 配网入口、Drift 卡 Tune 链接。`:not(.settings):not(.wifi)` 守卫必不可少：CC 的车辆设置 iframe URL 同样带 `embedded=1`，无守卫会把 CC 视图里的 rcFold 一起藏掉。
+    - 诊断面板里原无 id 的「Calibrate Joystick + 漂移设置」按钮行加 `id="diagSettingsRow"` 供定点隐藏。
+    - 主视图保留：状态卡（Mode/Park/Drift/Voltage/Network 显示）、遥测图表、串口终端、STATUS Details——纯显示/驾驶内容不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.42 → v1.8.44（v1.8.43 为其它会话基于旧基点的 RC 面板+配网融合构建、正在车上运行且未以该形态回本仓库，跳号避免撞号；其内容已含在本地 Tony 中，本次构建基于本地 Tony 1e5e398、不落后）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_web_console_embedded_main_view_hides_settings_panels`（4 条守卫规则、按钮行 id、禁止不带 `:not` 的裸 `body.embedded` 隐藏规则）；版本断言更新至 v1.8.44。
+
+## 2026-08-22 v1.8.42
+
+- feat(WebConsole): DC 头部在 Kimi Code Web 与 DeepSeek Harness 之间新增「ZCode」入口按钮——点击经 launcher 端点 `POST /api/launch/zcode` 拿到网页终端 URL（`/terminal?cmd=...&title=ZCode&icon=zcode.png`），在新标签页的网页终端里运行 ZCode（TUI 编码 agent）
+  - 背景：DC 头部已有 Kimi Code Web / DeepSeek Harness 两个弱化入口；ZCode 为 TUI agent，复用 launcher 的 `/terminal?cmd=` 网页终端机制，入口即开即得、端点毫秒级返回，无需冷启动等待。该改动最初在功能分支 Tony-zcode-entry 上完成但未及提交，后被基于更新 Tony 的 v1.8.41 编译刷车覆盖丢失，本次在最新 Tony 上恢复并重发。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 头部按钮：`openKimiCodeWebBtn` 与 `openDshBtn` 之间插入 `openZCodeBtn`（`class="navTabWeak"`，lucide Code2 内联 SVG 图标 14×14 `stroke="currentColor"`，两条 chevron 加一条斜线 path，与邻居同款；`<span data-i18n="button.openZCode">ZCode</span>`）。
+    - JS：`openDsh()` 之后新增 `openZCode()`，逐行镜像 `openDsh()`（防重入标志 `zCodeLaunching` → `window.open('about:blank')` 占住新标签 → 禁用按钮切 Launching 文案 → AbortController + fetch POST `http://<launcherIp>:8090/api/launch/zcode` → 成功 `newTab.location.href=j.url` → 失败关标签 + showToast → finally 恢复）；超时 15s（端点无子进程、即时返回，不同于 kimi 的 120s 冷启动）。
+    - i18n：zh/en 各在 dsh 组之后新增 `button.openZCode` / `button.openZCodeLaunching` / `toast.zCodeFailed` / `toast.zCodeTimeout` 四键（措辞镜像 dsh 组）。
+    - 移动端 CSS（`@media (max-width:820px)` 的显式 `order` 链）：`#openZCodeBtn{order:9}` 插入 kimi(8) 之后，`#openDshBtn` 及后续元素 order 顺移 +1（v1.8.7 同款处理，避免窄屏下新按钮以默认 order:0 掉到头部最前）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.39 → v1.8.42（v1.8.40/v1.8.41 由其它会话基于更新 Tony 编译刷车使用，未回本仓库，故跳号对齐车上实际版本之后）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_header_entry_buttons` 位置链断言改为 `h1 < donkey < drifter < kimi < zcode < dsh < gh`，新增 `openZCodeBtn` 按钮/`openZCode()` 函数/`/api/launch/zcode` 路径/15000 超时/i18n 四键中英文案/lucide Code2 图标路径等断言块，`class="navTabWeak"` 计数 2 → 3；`test_web_console_mobile_header_layout` 同步 order 顺移断言；版本与 CHANGELOG 顺序断言升至 v1.8.42。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证生效（api/status version=v1.8.42，首页 HTML 含 zcode 入口）。
+
+## 2026-08-22 v1.8.41
+
+- feat(WebConsole): `?settings=1` / `?wifi=1` 内嵌视图新增 RC Channels 校准面板（Issue #234），DD Car Connector 内嵌视图可同屏调整 RC 校准
+  - 背景：DD Car Connector 的车辆设置内嵌视图（iframe `?embedded=1&settings=1&wifi=1`）此前只有「调校 + AP 名称配置 + STA Wi-Fi 配置」；用户要求把 Drifter Console 的 RC Channel 诊断面板（含舵机/油门中点 Set 按钮、油门 Min/Max 滑块等校准控件）也搬进内嵌视图，主题/静音/语言、OTA、DEV 仍不搬。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS：`body.settings .grid{display:none}` / `body.wifi .grid{display:none}` 整藏规则改为选择性显示——`body.settings .grid,body.wifi .grid{display:block}`；`... .grid>section.panel{display:none}` 藏全部面板 section；`... #diagnosticsPanel{display:block}`（ID 高特异性）只留 Diagnostics 面板；`... #diagnosticsPanel>div{display:none}` 藏其直接子 div；`... #diagnosticsPanel #rcFold{display:block}`（双 ID 最高特异性）只露出 `#rcFold`（RC Channels），`#statusFold`（STATUS Details，纯显示）、手柄校准按钮行、`#joystickCalStatus` 仍隐藏。另补 `body.settings #serialPanel,body.wifi #serialPanel{display:none}`——基础规则 `#serialPanel{display:flex}`（ID 特异性 (1,0,0) 高于 `.grid>section.panel` 的 (0,3,2)）会穿透整藏把终端面板顶出来，须按 ID 单独藏（无头浏览器实测发现）。
+    - HTML：`#settingsView` 板块（车辆设置标题 + 调校行）由 `.grid` 之后移到 `.grid` 之前，内嵌视图顺序变为「车辆设置/调校 → RC Channels → AP 名称配置 → STA Wi-Fi 配置」；主控台页面 settingsView 默认 `display:none`，移动对主页面零影响。调校行「漂移设置」按钮沿用 v1.8.36 的 `location.href='/drift?theme='+resolvedTheme()`（rebase 时保留主题跟随改动）。
+    - JS init：新增 `if(...settings=1...||...wifi=1...)toggleFold('rcFold')`——内嵌视图加载时自动展开 RC Channels 折叠面板，校准控件直接可见（主控台页面无参数、不受影响）。
+    - rcFold 留在 `.grid` 内不移位，`updateState` 按 id 实时更新通道值/中点值逻辑零改动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.38 → v1.8.41（v1.8.37/v1.8.38 均被并行会话条目顺移占用，跳号避开当日多会话版本碰撞；v1.8.40 为本功能中间构建，未合入）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本与 CHANGELOG 顺序断言升至 v1.8.41；新增 `test_web_console_settings_view_shows_rc_channels_panel` 断言上述 CSS 规则（含 `#serialPanel` 按 ID 整藏）、init 自动展开与 settingsView 前移位置。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证 v1.8.41 生效（无头浏览器实测内嵌视图：settingsView/rcFold/两个配网板块可见，statusFold/chartPanel/serialPanel 隐藏，RC 通道值实时刷新）。
+- style(WebConsole): `?wifi=1` 内嵌视图中「AP 名称配置」与「STA Wi-Fi 配置」两个板块融合为单卡片（Issue #234 后续）
+  - 背景：DD Car Connector 内嵌视图里 AP/STA 两个配网板块是两张独立卡片（14px 圆角 + 黄边 + 阴影，中间 14px 间隔），用户要求放在一起、融合成一个板块。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（纯 CSS，仅 `body.wifi` 作用域，主控台页面的配网弹窗不受影响）：AP 卡 `margin:0;border-bottom:none;border-radius:14px 14px 0 0;padding-bottom:8px;box-shadow:none`；STA 卡 `margin:0 0 14px;border-radius:0 0 14px 14px;padding-top:4px`——两卡上下拼接成一张 14px 圆角单卡，两个 h2（AP 名称配置 / STA Wi-Fi 配置）保留为卡内分节标题。
+  - `libraries/mus4_core/src/BuildInfo.h`：分支内曾记为 v1.8.41 → v1.8.42；合入 Tony 时 v1.8.42 已由 ZCode 入口条目（上方）占用，本改动作为 Issue #234 同一提交的一部分并入本 v1.8.41 条目，版本不再变动。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本与 CHANGELOG 顺序断言保持 v1.8.42（ZCode）> v1.8.41（本条目）链；`test_web_console_settings_view_shows_rc_channels_panel` 增加融合 CSS 断言。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车 + 无头浏览器截图实测融合效果。
+
+## 2026-08-22 v1.8.39
+
+- fix(WebConsole): 删除漂移调参页（/drift）自带的深浅色切换按钮——该页应完全跟随 Drifter Console 主题（经 `?theme=` 参数传递），不应有自己的切换开关
+  - 背景：漂移页 v1.8.36 加了与控制台同款的太阳/月亮切换按钮，但该页主题是控制台三处入口以 `?theme=` 参数带过来的，页内再放一个切换键会让两边状态脱节，用户要求删掉、完全跟随控制台。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：删除漂移页 `#themeToggle` 按钮（含太阳/月亮 SVG）、JS `toggleTheme()`/`setTheme()`、zh/en `drift.theme.title` i18n 键、`.themeButton` 及 `html[data-theme="light"] .themeButton*` 全部 CSS 规则；保留防闪烁脚本、`?theme=` 优先 + 系统兜底的 `initTheme()`、整套浅色覆盖与标题悬停灰字提示；控制台主页的切换按钮不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.38 → v1.8.39。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_drift_page_theme_and_title_hints` 主题按钮断言改为否定式（`themeToggle`/`toggleTheme`/`setTheme`/`drift.theme.title` 均 `not in page`）；`test_web_console_theme_toggle` 注释更新（控制台按钮断言保留）；版本与 CHANGELOG 顺序断言升至 v1.8.39。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证生效。
+
+## 2026-08-21 v1.8.38
+
+- style(WebConsole): 遥测曲线 Y 轴标签字体由 `bold 11px sans-serif` 改为 `12px sans-serif`（去掉粗体，与图例标签 `.legend span{font-size:12px}` 一致）
+  - 背景：用户反馈 Y 轴数字（1 / 0.75 / 0.5 等）字体偏粗，要求改为与右下角 Steering / GyroZ 标签相同的字体风格。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`draw()` 函数中 `ctx.font='bold 11px sans-serif'` → `ctx.font='12px sans-serif'`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.37 → v1.8.38。
+  - 注：本条目原为本地 Tony 上的 v1.8.37，Tony 本地/远端分叉 reconciled 合并时顺移至 v1.8.38（v1.8.36 由远端漂移页主题条目占用）。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证生效。
+
+## 2026-08-21 v1.8.37
+
+- fix(WebConsole): 修复 Diagnostics 面板内 rcFold foldBody 末尾多余 `</div>` 导致浏览器提前关闭 `.grid` 容器，使手柄校准按钮、方向状态文本、STATUS Details 折叠面板被移到 `<body>` 下而非 `#diagnosticsPanel` 内部，造成左侧未与 Mode 卡片和遥测曲线对齐
+  - 根因：`libraries/mus4_web/src/WebConsoleAssets.h` 第 71 行末尾有 6 个 `</div>` 但只需 5 个（内层 flex / rcCell / 外层 flex / foldBody / rcFold），多出的 `</div>` 被 HTML 解析器用于关闭 `.grid` 容器，后续元素溢出到 `<body>`。
+  - 修复：删除末尾多余的 1 个 `</div>`（`</div></div></div></div></div></div>` → `</div></div></div></div></div>`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.36 → v1.8.37。
+  - 注：本条目原为本地 Tony 上的 v1.8.36，Tony 本地/远端分叉 reconciled 合并时顺移至 v1.8.37（v1.8.36 由远端漂移页主题条目占用）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本与 CHANGELOG 顺序断言升至 v1.8.37。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证生效。
+
+## 2026-08-21 v1.8.36
+
+- feat(WebConsole): 漂移调参页（/drift）跟随 Drifter Console 深浅色主题 + 全部标题改为悬停灰字提示 + 删除「返回 Drifter Console」链接
+  - 背景：漂移调参页此前仅深色硬编码，与控制台深浅色不一致；页头有「返回 Drifter Console」链接用户要求删掉；标题下的描述文字（Status/Steering Correction/Throttle Strategy 及 h1 版本小字）常显占空间，用户要求参考 DonkeyDrifter 的小标题样式——光标悬停时灰字从标题右侧滑出。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主题：`<head>` 加防闪烁脚本（优先读 `?theme=light|dark` URL 参数，缺省按系统 `prefers-color-scheme`）；新增整套 `html[data-theme="light"]` 浅色覆盖（body/panel/summaryItem/field/input/button/a/muted/hintSpan/themeButton）；新增主题切换按钮（`#themeToggle` 太阳/月亮 SVG，与控制台同款样式）；JS 新增 `readUrlTheme/systemTheme/resolvedTheme/applyTheme/toggleTheme/setTheme/initTheme`（内存态、不写 localStorage，与控制台 v1.8.27 决策一致），`initTheme()` 加入初始化链。
+    - 跟随控制台：控制台三处 /drift 入口携带当前主题——Drift 卡 Tune 链接加 `id="driftTuneLink"`，`applyTheme()` 内同步其 `href='/drift?theme='+resolvedTheme()`；Diagnostics 漂移设置按钮 `window.open('/drift?theme='+resolvedTheme(),'_blank')`；设置视图漂移设置按钮 `location.href='/drift?theme='+resolvedTheme()`。
+    - 标题悬停提示：新增 `.titleHint`（inline-flex 容器）+ `.hintSpan`（`max-width:0;opacity:0` 收起，`.titleHint:hover` 时 `max-width:340px;opacity:1;margin-left:12px` 滑出，`transition:all .3s ease-in-out`）样式；h1+版本小字、Status、Steering Correction、Throttle Strategy 共 4 处标题改造，原常显描述文字移入 hintSpan。
+    - 删除 `<a href="/" data-i18n="drift.backLink">` 返回链接及 zh/en `drift.backLink` 键；新增 `drift.theme.title` zh「主题」/ en「Theme」。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.35 → v1.8.36。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——Tune 链接断言加 `id="driftTuneLink"`；`test_drift_settings_button_next_to_joystick_calibration` 断言改为携带主题参数的 `window.open('/drift?theme='+resolvedTheme(),'_blank')`；新增 `test_drift_page_theme_and_title_hints`（防闪烁脚本/浅色覆盖/切换按钮/内存态/三处入口主题参数/4 处 titleHint+hintSpan/backLink 删除断言）；版本与 CHANGELOG 顺序断言升至 v1.8.36。
+
+## 2026-08-21 v1.8.35
+
+- style(WebConsole): 删除 Drifter Console 主控台页面 4 个面板组的外框（border / background / border-radius），保留内含子元素各自样式
+  - 背景：用户反馈 Drifter Console 页面中 4 个 `.panel` 面板组（状态卡片 Mode/Park/Drift/Voltage/Network、遥测曲线 chartPanel、终端 serialPanel、RC Channels diagnosticsPanel）外面的边框框线使界面冗余，要求删掉外框、保留内部卡片/曲线/终端/RC 单元格各自的样式。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 深色主题 `.panel` 规则：`background:#171c24;border:1px solid #2b3441;border-radius:8px;padding:10px` → `background:transparent;border:none;border-radius:0;padding:10px`（保留 padding 提供内容呼吸空间，`.grid` 的 `gap:10px` 提供面板间距）。
+    - 浅色主题覆盖 `html[data-theme="light"] .panel`：`background:#fff;border-color:#d5dce4` → `background:transparent;border:none`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.34 → v1.8.35。
+  - 不影响范围：`/drift`（Drift Assist Tuning）和 `/judge`（Drift Judge）页面有各自独立的 `.panel` CSS，不受影响；面板内部 `.stateCard`、`.rcCell`、`.foldHead`、chart canvas、`#terminalWrap` 等保留各自边框/背景。
+  - `arduino-cli.py -c` 编译通过，OTA 刷车验证 v1.8.35 生效。
+
+## 2026-08-21 v1.8.34
+
+- fix(WebConsole): Diagnostics 面板「漂移设置」按钮硬编码过时 IP `http://192.168.3.150/drift` 导致点击后页面打不开——改为相对路径 `window.open('/drift','_blank')`，跳转到 ESP32 自身的 `/drift` 页面
+  - 背景：v1.8.28 新增 `?settings=1` 设置视图时，Settings 视图的漂移设置按钮已正确使用 `location.href='/drift'` 跳转到 ESP32 自身页面；但 Diagnostics 面板（主视图）的同名按钮仍沿用 v1.7.56 时代的硬编码上位机 IP `192.168.3.150`，该 IP 已过时且上位机无 `/drift` 路由，两辆车点击后均打不开页面。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：第 64 行 `onclick="window.open('http://192.168.3.150/drift','_blank')"` → `onclick="window.open('/drift','_blank')"`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.33 → v1.8.34。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_drift_settings_button_next_to_joystick_calibration` 的 docstring 与断言由 `http://192.168.3.150/drift` 改为 `window.open('/drift','_blank')`；版本一致性与 CHANGELOG 顺序断言升至 v1.8.34。
+
+## 2026-08-21 v1.8.33
+
+- feat(WebConsole): 新增 `?wifi=1` 内嵌配网板块视图——把 STA/AP 配网弹窗以静态板块形式直接呈现，供 DD Car Connector 1:1 内嵌（Issue #234）
+  - 背景：DD 的 Car Connector 此前只在顶部放「STA 配置 / AP 名称」两个按钮，点按经 postMessage 打开车端配网弹窗；用户希望像 Drifter Console 那样把完整配网板块（SSID 输入 / 扫描 / 密码 / 上位机配网 / 历史 / AP 前缀预览）直接铺在页面里，而不是一个按键。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS 新增 `body.wifi` 规则——隐藏 `.grid` / `.headerRow` / `.fabToggle` / `.fabActions`；把 `#wifiApModal`、`#wifiStaModal` 由 `position:fixed` 遮罩弹窗改为 `position:static;display:block;background:transparent` 的静态板块，`.dialog` 改 `width:100%;max-width:640px;margin:0 0 14px`；隐藏两个配网弹窗的首个「取消」按钮（板块模式下无需关闭）。
+    - JS init 增加 `if(location.search.indexOf('wifi=1')>=0){document.body.classList.add('wifi');openWifiApModal();openWifiStaModal();}`——加载时自动 open 两个配网表单并填充字段（复用既有 refresh 逻辑，1:1 车端表单）。
+    - `?wifi=1` 与 `?settings=1` 可叠加：DD 侧 iframe 用 `?embedded=1&settings=1&wifi=1` 同屏显示「调校（漂移 / Judge / 手柄校准）」+「AP 名称配置」+「STA Wi-Fi 配置」三个板块；DEV / OTA 仍不在该视图内（顶栏 `body.embedded` 隐藏、settingsView 无 system 行）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.32 → v1.8.33。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本与 CHANGELOG 顺序断言升至 v1.8.33；`python3 -m pytest tests/ -q` 全绿。
+  - 注：配套 DD 侧 CarSettingsPanel iframe 改用 `&wifi=1`、删除 postMessage 按钮在 DonkeyDrift 仓库同日条目；收尾后 OTA 刷车验证。
+
+## 2026-08-21 v1.8.32
+
+- fix(WebConsole): 移除 DC 头部「C Code」入口按钮及其全部配套代码（JS / i18n / 移动端 order / 测试断言），恢复为 Kimi Code Web + DeepSeek Harness 两个弱化入口
+  - 背景：C Code 入口（v1.8.31 引入）经实际使用后用户决定移除；Claude Code 无官方 web UI，复用 launcher 网页终端的方案体验不佳，遂删除。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：删除 `#openCCodeBtn` 按钮 HTML（含 lucide Terminal 图标）、`openCCode()` JS 函数（含 `cCodeLaunching` 防重入标志）、zh/en 各 4 个 i18n 键（`button.openCCode` / `button.openCCodeLaunching` / `toast.cCodeFailed` / `toast.cCodeTimeout`）；移动端 `@media(max-width:820px)` order 链删除 `#openCCodeBtn{order:9}` 并将后续元素 order 各减 1（`#openDshBtn` 10→9、`.br2` 11→10、`.headerRow .otaLink` 13→12、`#muteToggle` 14→13、`#devModeToggle` 15→14、`.br3` 16→15、`#themeToggle` 17→16、`#langToggle` 18→17）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.31 → v1.8.32。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_header_entry_buttons` 位置链断言改回 `h1 < donkey < drifter < kimi < dsh < gh`（删除 `ccode_pos`），删除 C Code 按钮/函数/路径/超时/i18n 断言块，`class="navTabWeak"` 计数 3 → 2，删除 Terminal 图标 `M12 19h8` 断言；`test_web_console_mobile_header_layout` order 断言同步还原；版本与 CHANGELOG 顺序断言升至 v1.8.32。两文件 165 项单测全部通过，`arduino-cli.py -c` 编译通过。
+  - 注：配套 DD 侧入口移除在 DonkeyDrift 仓库同日条目（C Code 入口移除）；收尾后 OTA 刷车验证。
+
+## 2026-08-21 v1.8.31
+
+- feat(WebConsole): DC 头部在 Kimi Code Web 与 DeepSeek Harness 之间新增「C Code」入口按钮——点击经 launcher 新端点 `POST /api/launch/claude-code` 拿到网页终端 URL（`/terminal?cmd=cd <工作区> && claude`），在新标签页的网页终端里运行 Claude Code
+  - 背景：DD 标签栏与 DC 头部已有 Kimi Code Web / DeepSeek Harness 两个弱化入口，用户要求在其间加入 C Code（Claude Code）；Claude Code 无官方 web UI，故复用 launcher 的 `/terminal?cmd=` 网页终端机制（菜单 8/9/10 同款），入口即开即得、端点毫秒级返回，无需冷启动等待。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 头部按钮：`openKimiCodeWebBtn` 与 `openDshBtn` 之间插入 `openCCodeBtn`（`class="navTabWeak"`，lucide Terminal 内联 SVG 图标 14×14 `stroke="currentColor"`，与邻居同款；`<span data-i18n="button.openCCode">C Code</span>`）。
+    - JS：`openKimiCodeWeb()` 与 `openDsh()` 之间新增 `openCCode()`，逐行镜像 `openDsh()`（防重入标志 `cCodeLaunching` → `window.open('about:blank')` 占住新标签 → 禁用按钮切 Launching 文案 → AbortController + fetch POST `http://<launcherIp>:8090/api/launch/claude-code` → 成功 `newTab.location.href=j.url` → 失败关标签 + showToast → finally 恢复）；超时 15s（端点无子进程、即时返回，不同于 kimi 的 120s 冷启动）。
+    - i18n：zh/en 各在 kimiCodeWeb 组与 dsh 组之间新增 `button.openCCode` / `button.openCCodeLaunching` / `toast.cCodeFailed` / `toast.cCodeTimeout` 四键（措辞镜像 dsh 组）。
+    - 移动端 CSS（`@media (max-width:820px)` 的显式 `order` 链）：`#openCCodeBtn{order:9}` 插入 kimi(8) 之后，`#openDshBtn` 及后续元素 order 顺移 +1（v1.8.7 加 dsh 时的同款处理，避免窄屏下新按钮以默认 order:0 掉到头部最前）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.30 → v1.8.31（避让并行会话已合入的 v1.8.30）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_header_entry_buttons` 位置链断言改为 `h1 < donkey < drifter < kimi < ccode < dsh < gh`，新增 `openCCodeBtn` 按钮/`openCCode()` 函数/`/api/launch/claude-code` 路径/15000 超时/i18n 四键中英文案/lucide Terminal 图标路径（`M12 19h8`）等断言块，`class="navTabWeak"` 计数 2 → 3；`test_web_console_mobile_header_layout` 同步 order 顺移断言；版本与 CHANGELOG 顺序断言升至 v1.8.31。两文件 165 项单测全部通过，`arduino-cli.py -c` 编译通过。
+  - 注：配套 launcher 端点与 DD 侧按钮在 DonkeyDrift 仓库同日条目（C Code 入口）；收尾后 OTA 刷车验证。
+
+## 2026-08-21 v1.8.30
+- fix(WebConsole): Car Connector 内嵌 DC 的 `?settings=1` 设置视图删掉「系统（OTA/开发模式）」与「Wi-Fi 配网」两行，改为由 DonkeyDrifter 侧把「连接/配网」融合成一个板块
+  - 背景：用户反馈 Car Connector 里嵌入的 DC 设置视图，「系统」行（OTA + 开发模式）太突兀、不该占一整行；「配网」则与 DD 侧 Car Connector 顶部的「连接（设备发现/选择）」在功能上重复，应融合成一个板块。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#settingsView` 删除「Wi-Fi 配网」setRow 与「系统」setRow，只保留「调校」（漂移设置 / Judge 设置 / 手柄校准）。
+    - `window.addEventListener('message',…)` 新增 `dd-open-wifi-sta` → `openWifiStaModal()`、`dd-open-wifi-ap` → `openWifiApModal()`，供 DD 侧顶部配网按钮经 postMessage 打开车端 STA/AP 配置弹窗（弹窗仍渲染在 iframe 内，1:1 车端 UI）。
+    - `renderDevMode` 删除已失效的 `#devModeToggleSettings` 同步（该元素随「系统」行一并删除）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.29 → v1.8.30。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言升至 v1.8.30，并新增 v1.8.30 在 v1.8.29 之前的顺序断言。
+
+## 2026-08-21 v1.8.29
+
+- fix(WebConsole): 终端全屏后四周白边——`#terminalWrap` 全屏态去掉 `padding`/`border-radius` 并统一深色背景，删除亮色主题的全屏浅色背景覆盖，使终端 iframe 全屏铺满、无白边
+  - 背景：终端全屏时 `#terminalWrap` 仍带 `padding:8px`，且亮色主题下 `html[data-theme="light"] #terminalWrap:fullscreen` 背景为 `#eef1f5`（近白），把深色终端 iframe 四周衬成白边。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#terminalWrap:fullscreen` 由 `{background:#101318;height:auto;min-height:0;max-height:none}` 改为 `{background:#101318;height:auto;min-height:0;max-height:none;padding:0;border-radius:0}`，全屏铺满、无内边距与圆角。
+    - 删除 `html[data-theme="light"] #terminalWrap:fullscreen{background:#eef1f5}` 覆盖规则，全屏统一走深色背景（终端本身为深色主题）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.28 → v1.8.29。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——终端全屏断言改为「`#terminalWrap:fullscreen` 含 `padding:0;border-radius:0`；不再存在 `html[data-theme="light"] #terminalWrap:fullscreen`」；版本与 CHANGELOG 顺序断言升至 v1.8.29。
+
+## 2026-08-21 v1.8.28
+
+- feat(WebConsole): DC 新增「仅设置」视图（`?settings=1`），供 DonkeyDrifter 的 Car Connector 页面只嵌入车辆设置板块，而非整个 DC 主页
+  - 背景：Car Connector 之前用 iframe 嵌入了整个 DC 主页（Mode/Park/Drift/电池等显示卡全带进来），用户指出这些是「显示」而非「设置」；正确需求是只把设置类板块（WiFi 配网、OTA、开发模式、漂移设置、Judge、手柄校准）放进 Car Connector。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `<style>` 新增 `.settingsView` 与 `body.settings` 相关样式：默认隐藏 `#settingsView`，`body.settings` 时显示 `#settingsView` 并隐藏 `.grid` / `.headerRow` / `.fabToggle` / `.fabActions`。
+    - `.grid` 闭合后新增 `<div id="settingsView" class="settingsView">`：标题「车辆设置」+ 三组 setRow——WiFi（STA Wi-Fi 配置 / AP 名称配置）、系统（OTA / 开发模式开关 `#devModeToggleSettings`）、调校（漂移设置 / Judge 设置 / 手柄校准）。
+    - URL 检测：`location.search` 含 `settings=1` 时 `document.body.classList.add('settings')`。
+    - `renderDevMode` 同步更新 `#devModeToggleSettings` 的开/关态与 aria-checked。
+    - i18n 新增 `settings.title` / `settings.wifi` / `settings.system` / `settings.tuning` / `settings.judge` / `settings.dev`（zh/en）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.27 → v1.8.28。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言升至 v1.8.28，并新增 v1.8.28 在 v1.8.27 之前的顺序断言。
+
+## 2026-08-20 v1.8.27
+
+- fix(WebConsole): DC 深浅色手动切换改为仅内存态、不写 localStorage——修复「手动切换后刷新仍保持所选主题，无法重新跟随系统」的问题，使 DC 与 Donkey / DonkeyDrifter 三页一致：默认跟随系统、每次进入/刷新都重新按浏览器 prefers-color-scheme 解析
+  - 背景：DC 原先把主题选择持久化到 `localStorage['mus4.ui.theme']`，手动点过太阳/月亮后刷新仍保持所选主题、不再跟随系统；Donkey 与 DonkeyDrifter 已改为不持久化，DC 需对齐。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 删除 `THEME_STORAGE_KEY`（`mus4.ui.theme`）常量与 `readStoredTheme()` / `writeStoredTheme()` 两个函数。
+    - `setTheme(theme)` 由 `uiTheme=theme;writeStoredTheme(uiTheme);applyTheme()` 改为 `uiTheme=theme;applyTheme()`（只改内存态）。
+    - `initTheme()` 由 `uiTheme=readStoredTheme();applyTheme();…` 改为 `uiTheme='auto';applyTheme();…`（默认跟随系统，不读存储）。
+    - 头部防闪烁内联脚本由「按 localStorage 预置 data-theme」改为「直接按 matchMedia 预置 data-theme」，不读任何存储。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.25 → v1.8.27（避让并行会话已占用的 v1.8.26）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——主题断言改为「无 THEME_STORAGE_KEY / readStoredTheme / writeStoredTheme / localStorage 读取，setTheme/initTheme 精确为内存态写法，防闪烁脚本为新 matchMedia 版本」；版本与 CHANGELOG 顺序断言升至 v1.8.27（跳号 v1.8.26），并补上 v1.8.25 条目（修正 v1.8.25 提交漏改版本断言的既有问题）。
+
+## 2026-08-20 v1.8.26
+
+- feat(WebConsole): DC 内嵌于 DonkeyDrifter 时经 postMessage 即时同步 DD 顶栏静音键——配合 DD 侧 `ConsoleMuteButton` 切换成功后广播 `dd-console-mute-changed` 事件，实现「在 DD 上改静音、内嵌 DC 立马变」，无需等 5s 轮询或手动刷新
+  - 背景：此前静音虽已双向同步（Issue #117），但靠两边各自每 5s 轮询 `/api/mute`，DD 切换后内嵌 DC 最迟 5s 才更新；本次改为 DD 切换成功即广播 DOM 事件 → `DrifterConsolePage` 对 iframe `contentWindow.postMessage({type:'dd-console-mute-changed',muted:<bool>})` → DC 直接更新图标，不重载 iframe、不丢曲线/终端状态（静音是高频轻量操作，重载体验差）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`toggleMute` 后新增 `window.addEventListener('message',function(e){…d.type==='dd-console-mute-changed'…uiMuted=!!d.muted;renderMuteButton()})`，识别 DD 转发来的静音消息即时更新；保留 `setInterval(initMute,5000)` 作为兜底纠偏。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.25 → v1.8.26。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 静音按钮 UI 测试新增 `dd-console-mute-changed` 与 `message` 监听断言；版本一致性测试由 v1.8.24 修正到 v1.8.26 并补上 v1.8.25 条目断言（顺带修复 v1.8.25 lang-sync 合入时遗漏的版本测试更新）。
+
+## 2026-08-20 v1.8.25
+
+- feat(WebConsole): DC 内嵌在 DonkeyDrifter 时经 iframe src 的 `?lang=` 跟随 DD 语言——修复「DD 已切英文、内嵌 Drifter Console 仍是中文」的跨源语言不同步问题
+  - 背景：DD（:8000）顶栏切换语言只写 DD 自己 origin 的 `localStorage`，内嵌 DC（车端 :80）的 `initLanguage` 读的是车端 `/api/language` + 自己 origin 的 `localStorage`，两边各自独立，DD 切语言不会传导到内嵌 DC。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `readUrlLanguage()`（解析 `?lang=zh|en`），`initLanguage` 改为 `let lang=readUrlLanguage();if(!lang){…fetch /api/language…}`，即 `?lang=` 优先级最高、无参数时再走车端 `/api/language`/localStorage；console / drift / judge / ota 四处内嵌页的 `initLanguage` 同步修改。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.24 → v1.8.25。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_web_console_reads_dd_lang_url_param`（断言 `readUrlLanguage`/`window.location.search`/`lang=(zh|en)`/`let lang=readUrlLanguage()`）；全量 326 passed。
+
+## 2026-08-20 v1.8.24
+
+- style(WebConsole): DC 头部 OTA 按钮与 DEV 开关复刻 DonkeyDrifter 顶栏 `ConsoleOtaButton` / `ConsoleDevToggle`——把上一版恢复的「OTA 文字链接 + DEV 滑珠开关」统一改成 DD 同款文字胶囊（32px 高 / 12px 内边距 / 圆角全胶囊 / 深色 `#111820` 底 + `#344154` 边框 + inset 内圈 + `#b9c5d3` 字色），DEV 开启态用 `rgba(92,200,255,.25)` 青底 + `#5cc8ff` 边框/内圈/字色三层高亮，与 DD 完全一致
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 中 `<a href="/update" class="otaLink"><button class="otaButton">OTA</button></a>` 改为 `<a href="/update" class="otaLink" data-i18n="button.ota">OTA</a>`（去掉非法嵌套的 button，链接直接作为文字胶囊）；`<label class="toggleSwitch devHint" id="devModeToggle"><input id="devModeCheck" ...><span class="slider"></span></label>` 改为 `<button type="button" id="devModeToggle" class="devHint" onclick="toggleDevModeFromSwitch()" role="switch" aria-checked="false">DEV</button>`。
+    - 深色 CSS：`.otaLink` 由透明文字链接改为胶囊（`display:inline-flex;height:32px;padding:0 12px;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3;font-size:12px;font-weight:600`，hover 转 `#5cc8ff`）；新增 `#devModeToggle` 同款胶囊 + `#devModeToggle.devOn` 青底三层高亮；删除 `.otaButton` 与 `#devModeToggle .slider`/`input:checked+.slider` 系列滑珠规则。
+    - 浅色 CSS：`.otaLink` / `#devModeToggle` 用 `#f4f6f9` 底 + `#ccd5df` 边框 + inset `#d5dce4` + `#3f4f63` 字色（hover `#0c9bd6`），`devOn` 态与深色一致用 `#5cc8ff`。
+    - JS：新增 `let uiDevMode=false`；`renderDevMode` 改为 `classList.toggle('devOn')` + 同步 `aria-checked`；`toggleDevModeFromSwitch` 改按 `uiDevMode` 判断（关→直接 `setDevMode(false)`、开→弹确认）；移除死代码 `devModeCheck` 常量与 `requestDevModeToggle`；init 增加 `setInterval(refreshDevMode,5000)` 与 DD 每 5s 轮询同步 DEV 状态。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.23 → v1.8.24。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——DEV 断言改为文字胶囊结构（`role="switch"`/`devOn`/`uiDevMode`），`.otaButton`/`devModeCheck`/`requestDevModeToggle` 改为 `not in`，OTA/DEV 头部/浅色断言改为 `.otaLink`/`#devModeToggle` 胶囊规则，版本与 CHANGELOG 顺序断言升至 v1.8.24。
+
+## 2026-08-20 v1.8.23
+
+- fix(WebConsole): 恢复 DC 头部 OTA 按钮与 DEV 开关——上一版（v1.8.17）将 Donkey/OTA/DEV 移至 DonkeyDrifter 顶栏时误移走了用户仍需在 DC 头部直接操作的 OTA 与 DEV，现把两者加回（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 语言按钮后恢复 `<span class="rowBreak br2"></span><a href="/update" class="otaLink"><button class="otaButton" data-i18n="button.ota">OTA</button></a><label class="toggleSwitch devHint" id="devModeToggle"><input type="checkbox" id="devModeCheck" onchange="toggleDevModeFromSwitch()"><span class="slider"></span></label><span class="rowBreak br3"></span>`。
+    - 恢复 DEV 确认弹窗 `#devModeModal`、DEV 相关 JS（`devModeCheck`/`devModeModal` 引用与 `renderDevMode`/`toggleDevModeFromSwitch`/`refreshDevMode`/`requestDevModeToggle`/`closeDevModeModal`/`setDevMode` 函数）、init 里的 `refreshDevMode()`。
+    - 恢复 OTA/DEV 深浅两主题 CSS：`.otaLink`/`.otaButton`/`#devModeToggle` 及移动端 order（`.br2{order:10}`、`.headerRow .otaLink{order:12}`、`#devModeToggle{order:14;margin-left:auto}`、`.br3{order:15}`）。
+    - `_applyLauncherStatus` 恢复 `enterDonkeyBtn` 动态 href 改写（与 Donkey 入口配套）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.22 → v1.8.23。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——OTA/DEV 头部断言由 `not in` 改回 `in`，移动端布局恢复 4 行（br2/br3/OTA/DEV order 断言），浅色 otaButton 断言恢复，版本与 CHANGELOG 顺序断言升至 v1.8.23。
+
+## 2026-08-20 v1.8.22
+
+- style(WebConsole): DC 顶栏静音键静音激活态复刻 DonkeyDrifter 顶栏 `ConsoleMuteButton`——激活时改用 `rgba(92,200,255,.1)` 半透明青底 + `#5cc8ff` 边框/inset 内圈/图标字色（深浅两主题一致，浅色不再用 `#0c9bd6`），与 DD 静音键视觉完全一致
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：深色 `.muteButton.muted` 由仅改字色 `#5cc8ff` 扩为 `background:rgba(92,200,255,.1);border-color:#5cc8ff;box-shadow:inset 0 0 0 1px #5cc8ff;color:#5cc8ff`；浅色 `html[data-theme="light"] .muteButton.muted` 同步改为同款 `#5cc8ff` 三层高亮（原 `#0c9bd6`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.20 → v1.8.22。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——深浅两套 `.muteButton.muted` 断言更新为新三层高亮写法，版本与 CHANGELOG 顺序断言升至 v1.8.22。
+
+## 2026-08-19 v1.8.20
+
+- fix(WebConsole): 恢复 Drifter Console 主页面 header 行显示——上一版 v1.8.19 误把车端 DC 标题栏整行隐藏，现改为仅在 DD 嵌入（URL 带 `?embedded=1`）时经 `body.embedded` 隐藏，直接访问车端 DC 时标题栏照常显示（Issue #234）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主 DC 页 `.headerRow` 由 `display:none` 恢复为 `display:flex`。
+    - 新增 CSS 规则 `body.embedded .headerRow{display:none}`。
+    - 主 DC 页脚本初始化前加 `if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded')`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.19 → v1.8.20。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言升至 v1.8.20、顺序断言补 v1.8.20；header 断言恢复 `display:flex` 并新增 `body.embedded .headerRow{display:none}` 断言。
+  - 注：DD 侧 iframe 改用 `http://<ip>/?embedded=1` 加载，配套改动见 DonkeyDrift 仓库当日条目。
+
+## 2026-08-19 v1.8.19
+
+- style(WebConsole): 隐藏 Drifter Console 主页面 header 行（头像/标题/GitHub 图标/深浅色开关/OTA/DEV 开关整行不再显示），版本号改由 DonkeyDrifter 连接条「连接」按钮右侧显示（Issue #234）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：主 DC 页（`/`）`.headerRow` 由 `display:flex;align-items:center` 改为 `display:none`，视觉删除但保留 DOM 供 JS 引用（`versionLabel`/`enterDonkeyBtn`/静音/OTA/DEV 等元素仍被 getElementById 引用）；`/drift` 页 `.headerRow` 保持原样。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.18 → v1.8.19。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言升至 v1.8.19，CHANGELOG 顺序断言补 `v1.8.19 < v1.8.18`。
+  - 注：DD 侧配套改动见 DonkeyDrift 仓库当日条目（Drifter Console 连接条「连接」按钮右侧显示车端固件版本号）。
+
+## 2026-08-19 v1.8.18
+
+- fix(WebConsole): 恢复 DC 顶栏 Donkey 入口——上一版（v1.8.17）将 Donkey/OTA/DEV 移至 DonkeyDrifter 顶栏时误移走了用户仍需的 Donkey 快捷入口，现把 Donkey 加回 DonkeyDrifter 左侧（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 在 `<h1>` 后、DonkeyDrifter 前恢复 `<a class="navTab" data-i18n="button.enterDonkey" id="enterDonkeyBtn" href="http://192.168.3.41:8090/" target="_blank" rel="noopener">Donkey</a>`。
+    - 移动端 `@media (max-width:820px)` 恢复 `#enterDonkeyBtn{order:6}`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.17 → v1.8.18。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`enterDonkeyBtn` 与 `.navTab` 数量断言恢复为存在/2，移动端 order 断言恢复，版本断言升至 v1.8.18 且顺序断言补 v1.8.18。
+
+## 2026-08-19 v1.8.17
+
+- feat(WebConsole): DC 头部 Donkey / OTA / DEV 三控件移至 DonkeyDrifter 顶栏，DC 侧只保留导航入口与状态控件，静音键补 5s 轮询实现与 DD 双向同步
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - headerRow 移除「Donkey」入口 `enterDonkeyBtn`（DonkeyDrifter / Kimi Code Web / DeepSeek Harness 保留）、OTA 链接 `.otaLink`（`/update`）、DEV 开关 `#devModeToggle` 及对应 `br2`/`br3` 换行。
+    - 清理死代码：`enterDonkeyBtn` 的 `_applyLauncherStatus` 动态 href 改写、DEV 相关 JS（`devModeCheck`/`devModeModal`/`renderDevMode`/`toggleDevModeFromSwitch`/`refreshDevMode`/`requestDevModeToggle`/`closeDevModeModal`/`setDevMode`）、`devModeModal` 确认弹窗 HTML、`#devModeToggle`/`.otaLink`/`.otaButton` 深浅两主题 CSS。
+    - init 增加 `setInterval(initMute,5000);`，静音状态 5s 轮询 `/api/mute`，与 DD 顶栏静音键双向同步（DC 侧改动会被 DD 轮询到，反之亦然）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.16 → v1.8.17。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——DEV 开关/OTA 按钮头部断言改为 `not in`，`test_web_console_mobile_header_layout` 改为 3 行布局（无 br2/br3/Donkey/OTA/DEV），入口按钮位置与 `.navTab` 计数（2→1）更新，版本与 CHANGELOG 顺序断言升至 v1.8.17。
+
+## 2026-08-19 v1.8.16
+
+- style(WebConsole): DC 顶栏 Donkey / DonkeyDrifter 字体渲染对齐 DD 导航——补 `font-synthesis:none` 阻止 500 字重被浏览器合成加粗，`text-rendering:optimizeLegibility` + `-webkit-font-smoothing:antialiased` + `-moz-osx-font-smoothing:grayscale` 让字形更细更清晰（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.headerRow` 追加上述四条渲染属性，使 4 个入口标签继承 DD 导航同款抗锯齿/字形合成策略。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`.headerRow` 断言补 `font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale`。
+
+- style(WebConsole): DC 顶栏入口标签彻底复刻 DD 两类标签结构——Donkey / DonkeyDrifter 为 14px 功能标签，Kimi Code Web / DeepSeek Harness 改为 12px 弱化标签并内嵌 lucide 图标（Sparkles / FlaskConical），与 DD 高级入口完全一致（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 新增 `.navTabWeak` 深色规则：`color:#6b7d90;font-size:0.75rem;font-weight:500;line-height:1rem;display:inline-flex;align-items:center;gap:4px`，hover `#b9c5d3`；新增浅色 `html[data-theme="light"] .navTabWeak`：`color:#7c8da0`，hover `#3f4f63`。
+    - KCW/DSH 两个 `<button>` 由 `class="navTab"` 改为 `class="navTabWeak"`，图标 `<svg>` 与文字拆为 `<span data-i18n=...>`，按钮自身移除 `data-i18n`，避免 `applyLanguage` 用 `textContent` 覆盖清掉内嵌图标。
+    - `openKimiCodeWeb()`/`openDsh()` 的 loading/复位文案由 `btn.textContent=...` 改为 `btn.querySelector('span[data-i18n]').textContent=...`，点击后图标不再消失。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `.navTabWeak` 深浅色断言、`class="navTabWeak"` 数量 2、KCW/DSH 内嵌图标 SVG 路径断言；`class="navTab"` 数量由 4 改为 2。
+
+- style(WebConsole): 静音按键 `.muteButton` 与相邻深浅色切换 `.themeButton` / 语言切换按钮样式统一——改为 32×32 圆形、同款底色/边框/内阴影与 hover 反馈，深浅两主题对齐（Issue #117）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 深色 `.muteButton`：`height:24px;min-width:28px;padding:0 6px;border:none;background:transparent;color:#8fa1b5` → `width:32px;height:32px;min-width:0;padding:0;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3`；保留 `margin-left:auto` 右推布局。
+    - 深色 `.muteButton:hover`：`color:#5cc8ff` → `color:#e8edf2`，与主题按钮 hover 一致；`.muteButton.muted` 保持 `color:#5cc8ff` 作为静音激活态。
+    - 浅色 `html[data-theme="light"] .muteButton`：`background:transparent` → `background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4;color:#3f4f63`，并新增 hover `color:#1a2330`、muted `color:#0c9bd6`；从 `html[data-theme="light"] .ghLink:hover,...` 合并规则中移出静音键的 hover/muted 着色。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.15 → v1.8.16。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——静音键深色 32×32 圆形样式与 hover 断言、浅色 `.muteButton` 底色/边框/内阴影/hover/muted 断言，版本断言升至 v1.8.16 且顺序断言补 v1.8.16。
+
+- style(WebConsole): DC 顶栏标题与入口标签改回 DD theme-mus4 实际渲染值（上一轮误按 Tailwind 默认色板，字号/字色/字体/行高均与 DD 皮肤不一致），并修复 Kimi Code Web / DeepSeek Harness 两个 `<button>` 标签字体被浏览器 UA 样式覆盖为 Arial 的问题（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 标题 `h1`：`font-size:20px` → `1.25rem`，补 `line-height:1.75rem`（DD text-xl），深色字色 `#f4f4f5` → `#e8edf2`（DD theme-mus4 `text-zinc-100`）。
+    - 字体栈：`.headerRow` 由 `ui-sans-serif,system-ui,sans-serif` 改为 DD theme-mus4 `.font-sans` 实值 `system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif`。
+    - 深色 `.navTab`：字色 `#a1a1aa` → `#8fa1b5`（DD theme-mus4 `text-zinc-400`），hover `#22d3ee` → `#8bdcff`（`hover:text-cyan-400`）；`font-size:14px` → `0.875rem`、`line-height:1` → `1.25rem`（DD text-sm）；补 `font-family:inherit` 让 `<button>` 标签继承 `.headerRow` 的完整字体栈，与 `<a>` 标签一致。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——标题/`.navTab` 深色断言更新为 theme-mus4 实值并补 `font-family:inherit`。
+
+## 2026-08-19 v1.8.15
+
+- style(WebConsole): DC 顶栏标题与入口标签的字号/字色/间距进一步对齐 DD 主导航——标题 text-xl 20px + font-bold 700 + zinc-100 前景色，入口标签 zinc-400 前景色 + cyan-400 hover，标题↔功能 32px、功能↔功能 24px（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `h1` 字号 22px → 20px 并显式 `font-weight:700`；`.headerRow` 追加 `font-family:ui-sans-serif,system-ui,sans-serif`。
+    - 新增 `.headerRow h1{color:#f4f4f5;margin:0 20px 0 0}`：标题↔功能间距 = gap 12px + margin-right 20px = 32px（对齐 DD `mr-8`）。
+    - 深色 `.navTab` 前景色 `#8fa1b5` → `#a1a1aa`（DD zinc-400），hover `#8bdcff` → `#22d3ee`（DD cyan-400），并追加 `margin-right:12px`：功能↔功能间距 = gap 12px + 12px = 24px（对齐 DD `space-x-6`）。
+    - 新增浅色 `html[data-theme="light"] .headerRow h1{color:#1a2330}` 保持浅色标题可读。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.14 → v1.8.15。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——标题字号/字色/间距断言，`.navTab` 深色前景色/hover/间距断言更新，版本断言升至 v1.8.15 且顺序断言补 v1.8.14。
+
+## 2026-08-19 v1.8.14
+
+- style(WebConsole): DC 顶栏 Donkey / DonkeyDrifter / Kimi Code Web / DeepSeek Harness 四个入口标签复刻 DD 主导航标签样式（14px / 500 字重 / 弱化前景色，hover 用主题强调色，无框无底无内边距），仅保留这 4 个入口（Issue #108 续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 新增 `.navTab` 深色规则：`color:#8fa1b5;font-size:14px;font-weight:500;background:transparent;border:none;padding:0;line-height:1;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer`，hover `color:#8bdcff`。
+    - 新增浅色 `html[data-theme="light"] .navTab`：`color:#5b6b7d`，hover `color:#0a7eb2`。
+    - 4 个入口按钮 `class="otaButton"` → `class="navTab"`；`.headerRow` 的 34px 高规则只保留 `.headerRow .otaLink .otaButton`（OTA 按钮），不再覆盖入口标签。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.13 → v1.8.14。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `.navTab` 深浅色断言，入口按钮 class 断言改为 navTab，34px 规则断言改为仅 OTA，版本断言升至 v1.8.14。
+
+## 2026-08-19 v1.8.13
+
+- fix(WebConsole): DC 顶栏 Donkey / DonkeyDrifter / Kimi Code Web / DeepSeek Harness / OTA 等入口按钮去掉蓝色胶囊框，统一为无框透明样式，深浅两主题下可读且 hover 反馈正常（Issue #108）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 深色 `.otaButton` 基础规则：`background:#5cc8ff;color:#061019;border-color:#5cc8ff` → `background:transparent;color:#e8edf2;border-color:transparent`，去掉蓝色背景与蓝色边框，文字改主题前景色。
+    - 深色 `.otaButton:hover`：`background:#8bdcff` → `color:#5cc8ff`，hover 仅改文字色，不再填充蓝色。
+    - 浅色 `html[data-theme="light"] .otaButton`：`background:#5cc8ff;color:#061019;border-color:#5cc8ff` → `background:transparent;color:#1a2330;border-color:transparent`。
+    - 浅色 hover 规则拆分：原 `html[data-theme="light"] .otaButton:hover,html[data-theme="light"] .rcSetBtn:hover{background:#3aa8dd}` 改为 `.otaButton:hover` 仅 `color:#0c9bd6`，`.rcSetBtn:hover` 保持 `background:#3aa8dd` 不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.12 → v1.8.13。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`.otaButton` 基础/浅色断言改为透明无框样式，版本断言升至 v1.8.13。
+
+## 2026-08-18 v1.8.12
+
+- feat(FW): 支持通过命令设置车控模式（手动/半自动/全自动），与遥控器切换双向兼容（Issue #111）
+  - `libraries/mus4_control/src/ControlMixer.h` / `ControlMixer.cpp`：新增 `setCarModeCommand(mode)`；`mode_change()` 改为后到者生效仲裁——新增 `hostMode`（上位机覆盖，-1=无）与 `lastRcMode`（上次生效的 RC 派生模式），遥控器开关位置变化时清覆盖并让遥控器生效，否则维持上位机命令；提取 `applyMode()` 统一写 `car_output.mode` 并触发蜂鸣器。
+  - `libraries/mus4_command/src/CommandDispatcher.cpp`：新增 `MODE <m>` / `MODE:<m>` 命令（m∈{0,1,2}），成功回 `ACK:MODE <m>`、非法值回 `NACK:MODE_INVALID`；因 `dispatchCommandLine()` 为 Serial/无线/Web `/api/cmd` 共用入口，命令对所有通道生效。
+  - `libraries/mus4_command/src/WirelessConsole.cpp`：新增 `isWirelessModeCommand()`；`isWirelessCommandAllowed()` 对模式命令放行（需认证，Park Locked 下也允许切模式，油门仍由既有 Park/emergencyStop 钳 0）。
+  - `MUS4_FW.ino`：`M<m>:P<p>` 帧由「仅 MANUAL」提升为「所有模式，状态变化 + 1Hz 心跳」发送（从 MANUAL-only 的 T<S> 块中提出），使上位机在非 MANUAL 模式下也能收到模式/驻车变化。
+  - `README.md` / `README.zh-CN.md`：串口协议输入帧新增 `MODE <m>`；`M:P` 行改为所有模式发送。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.11 → v1.8.12。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增模式命令/仲裁/M:P 全模式断言，版本断言升至 v1.8.12。
+
+## 2026-08-18 v1.8.11
+
+- fix(WebConsole): 删除 DC 顶栏 LED 闪烁颜色 RGB 切换按键，空闲闪烁固定为 RGB 三色全选（mask=7）且不可修改（Issue #107）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 删除顶栏 `#ledBlinkTabs` 红/绿/蓝多选控件（HTML 及 `#ledBlinkTabs` 容器 34px 覆写、三条选中配色/悬停规则、`order:11` 定位）；共享胶囊样式 `.langTabs` 保留不动。
+    - 删除 `uiLedBlinkMask` / `LED_BLINK_TAB_COLORS` / `renderLedBlinkTabs()` / `initLedBlink()` / `toggleLedBlinkColor(bit)` 及启动链中的 `initLedBlink();` 调用。
+    - i18n 删除 `led.title` / `led.red` / `led.green` / `led.blue` 中英词条。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：删除 `GET/POST /api/led-blink` 两条路由与 `handleWifiWebLedBlinkGet/Set` 两个处理器及 `#include "LedBlinkPreference.h"`。
+  - `libraries/mus4_core/src/LedBlinkPreference.h` / `LedBlinkPreference.cpp`：移除 NVS 持久化（`loadLedBlinkPreference` / `saveLedBlinkPreference` / Preferences），`getLedBlinkMask()` 恒返回 7；空闲（手动 + Park）三色交替闪烁仍由 ControlMixer 读取该掩码、LedStatus 应用，逻辑不变。
+  - `MUS4_FW.ino`：删除 `setup()` 中的 `loadLedBlinkPreference();` 调用及 `#include "LedBlinkPreference.h"`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.10 → v1.8.11。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——响应式 order 测试删除 `#ledBlinkTabs{order:11}` 断言（注释同步改为「OTA + 静音」）；`test_web_console_theme_toggle` 删除 themeToggle 与 ledBlinkTabs 的相对顺序断言；`test_web_console_led_blink_color_selector` 重写为「前端控件/逻辑/词条与后端接口/持久化全部移除、`getLedBlinkMask()` 恒返回 7、ControlMixer/LedStatus 仍驱动空闲闪烁」断言；版本断言升至 v1.8.11。全量 163 passed。
+
+## 2026-08-18 v1.8.10
+
+- fix(WebConsole): DC 终端板块不再长时间停留在「正在连接上位机终端」——首探前先等待真实上报 IP，消除用默认回退 IP 首探必败的窗口
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `addTerminalTab()`：改为先完成标签 UI 创建与选中，再 `_fetchLauncherIp().then(()=>probeTerminal(term))` 首探——原实现首探在页面加载时往往先于 `/api/status` 返回执行，用脚本默认回退值 `192.168.3.41`（DHCP 漂移后已失联）探测必然失败，用户看到长时间 loading 后才靠 4s 重试自愈；真机网络环境下叠加首探 10s 超时即表现为"一直连不上"。
+    - `probeTerminal()`：探测超时由 10000ms 缩短为 5000ms，配合 4s 自动重试更快收敛。
+    - `termFailHint()`：从未收到 host_ip 上报（`_launcherIpAge===-1`，仍为默认回退值）时直接返回 `terminal.unknownIp` 提示，不再拼出误导性的回退地址链接。
+    - i18n 新增 `terminal.unknownIp` 中英词条。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.9 → v1.8.10。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——首探断言更新为 `_fetchLauncherIp().then(()=>probeTerminal(term))`；超时断言 10000 → 5000；新增 `terminal.unknownIp` 词条与 `termFailHint` IP 未知分支断言；版本断言升至 v1.8.10、CHANGELOG 顺序链延伸至 v1.8.10。
+
+## 2026-08-18 v1.8.9
+
+- feat(WebConsole): DC 顶栏「Drifter Console」标题文字可点击跳转官网，效果与点击 logo 图标一致（Issue #179，跨仓库功能：DD/DC/D 三页面标题可点）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主标题 `<h1 data-i18n="app.title">Drifter Console</h1>` 改为 `<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>`——`data-i18n` 随文字移到 `<a>` 上（i18n 用 textContent 赋值，包裹层不劫持），语言切换正常；与 logo 链接同 URL、新标签页打开。
+    - CSS 新增 `.titleLink{color:inherit;text-decoration:none}`：颜色继承 h1、无下划线，深浅主题下文字样式均与原纯文本一致。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.8 → v1.8.9。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——logo 测试、GitHub 链接顺序测试、入口按钮位置测试中三处 `<h1 data-i18n=...>` 断言更新为新的 `<a class="titleLink">` 结构并新增 titleLink HTML/CSS 断言；版本断言升至 v1.8.9、CHANGELOG 顺序链延伸至 v1.8.9。全量 163 passed。
+  - DD（DonkeyDrifter Web UI）与 D（Donkey 启动页）两侧同类改动在 DonkeyDrift 仓库同步提交（`web_ui/frontend/src/components/Layout.tsx`、`donkeycar/launcher/server.py`）。
+
+## 2026-08-18 v1.8.8
+
+- fix(WebConsole): DC「进入 DD」（DonkeyDrifter）按钮改为直达启动中转页，中间不再显示 Donkey 启动菜单页（Issue #103）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`enterDonkeyDrifterBtn` 两处指向从 `http://<ip>:8090/#drive` 改为 `http://<ip>:8090/launch/drive`——headerRow 静态初值（`192.168.3.41`）与 `_applyLauncherStatus()` 动态改写。`/launch/drive` 为 launcher 现成 GET 端点，返回极简跳转页（spinner + 同源 POST `/api/launch/drive` + 轮询 vite 就绪后重定向），全程不渲染 Donkey 菜单页；原 `#drive` 路径需先渲染菜单页再由其 JS 检测 hash 自动触发 6 号启动，中间页即用户所见问题。
+  - 「Donkey」按钮（`:8090/`）保持不动。
+  - 历史：v1.7.62 曾因 Safari 无法加载 `/launch/drive` 改用 `#drive`；此后 `LAUNCH_DRIVE_HTML` 已改轮询就绪后重定向（DonkeyDrift 侧），且 `/terminal` 等非标准路径 Safari 下正常，判定根因已消除，本次改回。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.7 → v1.8.8。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`#drive` 断言改为 `:8090/launch/drive` 出现 2 次（静态 + 动态）且 `:8090/#drive` 不再出现；版本断言升至 v1.8.8、CHANGELOG 顺序链延伸至 v1.8.8。
+
+## 2026-08-18 v1.8.7
+
+- feat(WebConsole): DC 顶栏新增「DeepSeek Harness」入口按钮，与 DonkeyDrifter Web UI（DD）侧同款（Issue #164 后续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 顶栏「Kimi Code Web」右侧新增 `#openDshBtn`（`button.openDsh`，文案「DeepSeek Harness」），交互与 Kimi Code Web 按钮完全同款：沿用 `_launcherIp`（`/api/status` 的 `host_ip`），点击 `POST http://<host>:8090/api/launch/dsh`（launcher 侧转发的 DSH 启动端点），同步上下文先开 `about:blank` 句柄，成功后导航 `j.url`、失败关闭并走 toast 提示；`AbortController` 120s 超时；等待态禁用按钮并切换启动中文案（`button.openDshLaunching`）。
+    - i18n 中英各新增 4 条：`button.openDsh` / `button.openDshLaunching` / `toast.dshFailed` / `toast.dshTimeout`。
+    - CSS：34px 高度规则追加 `#openDshBtn`；窄屏（max-width:820px）第 2 行插入 DSH 按钮 `order:9`，后续元素（br2/ledBlink/OTA/静音/DEV/br3/主题/语言）顺移 +1 至 10–17。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.6 → v1.8.7。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——34px 规则与窄屏 order 断言更新（含 `#openDshBtn{order:9}` 顺移链）；`test_web_console_header_entry_buttons` 新增 DSH 按钮 HTML 位置（kimi 之后、GitHub 链接之前）、`openDsh()`/`:8090/api/launch/dsh`/`dshLaunching` 与中英 i18n 词条断言；版本断言升至 v1.8.7、CHANGELOG 顺序链延伸至 v1.8.7。
+  - DSH 启动端点与 launcher 侧修复（设置页 403 权限补丁、缺省 cwd 进 Projects）在 DonkeyDrift 仓库同步提交。
+
+## 2026-08-17 v1.8.6
+
+- fix(WebConsole): DC 终端 loading 态加 10s 超时兜底，不再无限期停留在「正在连接上位机终端…」（Issue #101）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`probeTerminal()` 改为带超时的探测——`AbortController` + `setTimeout(...,10000)`，`no-cors` fetch 因上位机 IP 不可达长时间挂起（TCP 无响应、reject 也不来）时 10s 未落定一律按 fail 处理，复用既有的失败提示（含 staleIp 年龄标注）与 `scheduleTermRetry()` 每 4s 自动重试；引入探测序号 `term._probe` 防止旧探测的迟到结果覆盖新探测的状态（超时转 fail 后，迟到的成功也不会误把标签置回 ok）。
+  - 上位机终端页内层 WS 连接超时在 DonkeyDrift 仓库同步修复（DonkeyDrift `donkeycar/launcher/terminal_static/terminal.html`，Issue #101 补充线索第 2 层）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.5 → v1.8.6。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 终端测试新增 #101 断言（探测序号/AbortController 超时/signal/序号守卫/done 分发）；版本断言升至 v1.8.6、CHANGELOG 顺序链延伸至 v1.8.6。全量 163 passed。
+
+## 2026-08-17 v1.8.5
+
+- style(WebConsole): 三页面（DC/D/DD）语言按钮配色统一为 DC/D 主题按钮（深浅切换）样式（Issue #92 后续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.langButton` 从 DD 原生 zinc 配色（#27272a 底、#3f3f46 边框、#d4d4d8 字色、hover #f4f4f5；浅色 #f4f4f5/#d4d4d8/#52525b/#18181b）改为 DC/D 主题按钮（`.themeButton`）配色——深色 `background:#111820` + `border:1px solid #344154` + `box-shadow:inset 0 0 0 1px #2b3441` 内圈、字色 `#b9c5d3`、hover `#e8edf2`；浅色 `background:#f4f6f9` + `border-color:#ccd5df` + 内圈 `#d5dce4`、字色 `#3f4f63`、hover `#1a2330`；32×32 圆形、字体栈、字号/字重与切换逻辑均保持不变，仅换配色；hover 规则的 background 锁定同步换为 #111820/#f4f6f9。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.4 → v1.8.5。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `.langButton` CSS 精确串断言（深/浅四条）更新为主题按钮配色串；`test_firmware_version_is_current_and_changelog_is_ordered` 版本断言升至 v1.8.5、CHANGELOG 顺序链延伸至 v1.8.5。全量 163 passed。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.5 build="Aug 17 2026 09:52:02"`；无头浏览器实测深浅两主题下 `#langToggle` 与 `#themeToggle` 计算样式逐值一致（bg/border/inset 内圈/字色/32×32）。
+
+## 2026-08-17 v1.8.4
+
+- fix(WebConsole): DC 深浅主题切换按钮与 DD 主题按钮逐值统一——三处（DC / D 启动页 / DD）按钮一模一样（DD Issue #140 后续）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#themeToggle`（`.themeButton`）视觉从透明幽灵胶囊（24px 高、无背景无边框、图标色 `#8fa1b5`、hover 青 `#5cc8ff`）改为 DD 主题按钮的实际渲染规格（DD 的 Tailwind 类经 `theme-mus4.css`/`theme-light.css` 重映射后的值）：32×32 圆形（`border-radius:9999px`），深色 `background:#111820` + `border:1px solid #344154` + `box-shadow:inset 0 0 0 1px #2b3441` 内描边，图标色 `#b9c5d3`、hover `#e8edf2`；浅色 `background:#f4f6f9` + `border-color:#ccd5df` + 内描边 `#d5dce4`，图标色 `#3f4f63`、hover `#1a2330`。
+    - 图标从 feather 路径换为 lucide Moon/Sun（与 DD `ThemeSwitcher.tsx`、D 启动页 `server.py` 完全相同的路径数据）：月亮 `M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z`，太阳 circle r=4 + 8 条独立射线 path；16px、stroke-width 2、`stroke="currentColor"` 不变。
+    - 逻辑不动：单击深/浅互切、`mus4.ui.theme` 持久化、默认跟随浏览器 `prefers-color-scheme`、深色显月亮/浅色显太阳均保持 v1.8.3 行为。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.3 → v1.8.4。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_theme_toggle` 的 CSS 断言更新为 DD 规格逐值串（含浅色 `color:#3f4f63`、hover `#1a2330`），新增 lucide 图标路径断言；`test_firmware_version_is_current_and_changelog_is_ordered` 版本断言升至 v1.8.4，CHANGELOG 顺序链延伸至 v1.8.4。
+
+## 2026-08-17 v1.8.3
+
+- style(WebConsole): 语言按钮字体逐值复刻 DD（#92 返工：字体栈补齐 + 车上旧样式根因修复）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.langButton` 补 DD `index.css` :root 完整字体栈（`-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji"`）及 `font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale`，抵消 DC 页面级 `system-ui,sans-serif` 与基础 `button` 规则的字体继承，按钮渲染字体与 DD 完全一致。
+  - 车上"无边框/24px/透明底"假象根因：另一并行工作区分支于 08:46 用未合入新样式的中间固件 OTA 覆盖了车辆（此前 08:36 已刷入正确样式），源码与 specificity 均无问题；本轮重编译 v1.8.3（build 09:06:41）OTA 刷回，无头浏览器实测计算样式确认 32×32、1px #3f3f46 边框、#27272a 底、#d4d4d8 字色、600 字重、DD 字体栈（深浅两主题分别验证）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `.langButton` CSS 精确串断言更新为含字体栈的新串，全量 163 passed。
+- style(WebConsole): 三页面（DC/D/DD）语言切换按钮样式统一为 DD 原生样式（GitHub Issue #92 后续统一）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`.langButton` 从 DC 自有样式（24px 高、透明底、无边框、#8fa1b5 字色、12px/800）改为逐值复刻 DD `LanguageSwitcher` 原生渲染——32×32 圆形（border-radius:9999px）、#27272a 底、1px #3f3f46 边框、12px/600、#d4d4d8 字色、hover #f4f4f5，transition 覆盖 color/background-color/border-color；hover 规则补 background 锁定（#27272a），抵消 DC 通用 `button:hover` 的背景覆盖，保证与 DD"hover 只变色"一致；浅色主题用同族 zinc 值（底 #f4f4f5、边框 #d4d4d8、字色 #52525b、hover #18181b）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_language_tabs_wired_to_set_language` 的 `.langButton` CSS 精确串断言更新为 DD 样式串（深/浅两套），全量 163 passed。
+- feat(WebConsole): DC 语言切换改为静音式单按钮——单击中/英互切，未手动选过语言时默认跟随浏览器语言（GitHub Issue #92）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主页面切换入口从折叠 FAB + 弹出菜单（🌐 `langFab` → `langMenu` 中/英两项）改为顶栏单按钮 `#langToggle`（`.langButton`）：透明胶囊文字按钮，中文态显「中」、英文态显「EN」，位于静音按钮右边、主题切换按钮左边（窄屏 order:16）。
+    - 单击 `toggleLanguage()` 在中/英间互切（`setLanguage(uiLang==='zh'?'en':'zh')`）并持久化到 `mus4.ui.lang`；`renderLangButton()` 随语言切换刷新按钮文字，aria 标题复用 `language.title` 词条。
+    - 默认跟随浏览器语言：四个页面（主页面/Donkey 页/Joystick 校准页/关于页）的 `readStoredLanguage()` 在 localStorage 无有效值时回退 `detectBrowserLanguage()`（`navigator.language` 以 `zh` 开头即中文）；服务端 `/api/language` 返回 `auto` 时同样按浏览器语言解析后写入本地存储。
+    - 移除弹出菜单全部代码：`langFab`/`langMenu` 的 HTML、CSS 与 FAB 径向动作排序链、`toggleLanguageMenu()`/`closeLanguageMenu()`/`renderLangMenu()`、🌐 图标；三页面既有 `langTabs`（诊断/关于/Joystick 简化页的双页签）保持不动。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_language_tabs_wired_to_set_language` 重写为单按钮断言（按钮 HTML/CSS/`toggleLanguage`/`renderLangButton`/`readStoredLanguage` 浏览器回退/`detectBrowserLanguage` 精确串，`langSwitch`/`data-lang`/English/`langFab`/`langMenu` 无残留断言）；FAB 径向动作断言去掉语言入口并加无残留检查；移动端顶栏断言改 `#langToggle` 与窄屏 order:16；`data-i18n-title="language.title"` 断言改 `data-i18n-aria`。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.3 build="Aug 17 2026 08:16:58"`。
+- feat(WebConsole): DC 深浅主题切换改为静音式单按钮——单击深/浅互切，默认跟随浏览器深浅（GitHub Issue #93）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 切换入口从 `#themeTabs` 三态按钮组（浅色/跟随系统/深色）改为单图标按钮 `#themeToggle`（`.themeButton`），形态与位置参照同顶栏静音按钮 `#muteToggle`：透明胶囊图标按钮，位于红绿蓝切换键右边、语言切换键左边（窄屏 order:15 不变）。
+    - 单击 `toggleTheme()` 在当前生效主题的深/浅反向间来回切换（`setTheme(resolvedTheme()==='light'?'dark':'light')`）并持久化到 `mus4.ui.theme`；图标反映当前主题——深色显月亮（`icoMoon`）、浅色显太阳（`icoSun`），由 `html[data-theme]` CSS 驱动，无需 JS 改图标。
+    - 默认跟随浏览器 `prefers-color-scheme`：`uiTheme='auto'`（localStorage 无值）时 `resolvedTheme()` 经 matchMedia 解析并监听系统 change 实时跟随；用户手动单击后选择持久化，此后不再跟随浏览器，刷新后保持。auto 态由"未手动切换 = 跟随浏览器"等效替代。
+    - 移除三态按钮组全部代码：`#themeTabs` 容器与按钮 HTML、`renderThemeTabs()`、`setTheme()/initTheme()` 中的渲染调用、深浅两套 `#themeTabs` 分段控件 CSS；i18n 删去 `theme.auto/light/dark` 词条（仅保留 `theme.title` 作 aria 标题，中英各一条）。
+    - 首屏防闪烁内联脚本、`systemTheme()/resolvedTheme()/applyTheme()` 主题解析应用链路保持不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.2 → v1.8.3。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_theme_toggle` 重写为单按钮断言（按钮 HTML/双图标/CSS/`toggleTheme` 一键互切、`themeTabs`/`themeSwitch`/`renderThemeTabs`/`theme.auto|light|dark` 无残留断言）；窄屏 order 断言改 `#themeToggle{order:15}`；`test_web_console_light_theme_overrides` 的 `setTheme/initTheme` 断言去渲染调用；版本断言升至 v1.8.3，CHANGELOG 顺序链延伸至 v1.8.3。
+
+## 2026-08-16 v1.8.2
+
+- fix(WebConsole): 修复终端标签智能缩写在真实设备上始终不触发（GitHub Issue #90 复盘：v1.8.1 的振荡修复正确但溢出检测根本没机会触发）
+  - 根因（无头浏览器在车上 v1.8.1 实测复现）：`.grid` 的 `grid-template-columns:1fr` / `@media(min-width:900px)` 下 `2fr 1fr` 均未加 `minmax(0,…)`，grid 列最小宽度默认取内容宽度——多标签时 `#termTabs` 的内容宽度沿 `.row`→`.panel`→grid 列一路顶住最小宽度，`clientWidth` 恒等于 `scrollWidth`，页面转而出现横向滚动；`fitTermTabLabels()` 的 `scrollWidth>clientWidth` 永远为 false，缩写永不触发（此前推测的"车上固件落后/振荡缺陷"都不是主因，振荡缺陷已在 v1.8.1 修复）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：两处 grid 列定义加 `minmax(0,…)`（`minmax(0,1fr)`；`minmax(0,2fr) minmax(0,1fr)`），列可收缩到内容以下，标签条真正溢出，智能缩写/恢复长名按预期工作，页面不再横向滚动。
+  - 验证：Playwright Chromium 对车上真实页面回归——单列 850px 下 4 标签显示「终端 1…4」、12 标签缩写为「1…12」、临界宽度 500↔1280 来回 10 轮无振荡残留、`documentElement.scrollWidth` 不再超出视口。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.1 → v1.8.2。
+  - 测试同步：`tests/test_firmware_feature_flags.py` grid 断言更新为 `minmax(0,…)` 并新增"无裸 `2fr 1fr` 残留"断言；版本断言升至 v1.8.2，CHANGELOG 顺序链延伸至 v1.8.2。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.2 build="Aug 16 2026 21:18:03"`，页面含 `minmax(0,2fr) minmax(0,1fr)`。
+
+## 2026-08-16 v1.8.1
+
+- fix(WebConsole): 修复 DC 终端偶发"无法连接上位机终端服务"后不恢复（GitHub Issue #89）与终端标签智能缩写临界宽度振荡"未生效"（GitHub Issue #90）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（Issue #89）：
+    - 终端探活从 `addTerminalTab()` 内联的一次性 fetch 抽为可重入的 `probeTerminal(term)`；探测失败后 `scheduleTermRetry()` 启动 4s 周期重试定时器（全局唯一 `_termRetryTimer`），每轮先 `_fetchLauncherIp()` 刷新 host_ip（DHCP 变更后拿新 IP），再对所有 `state==='fail'` 的标签重探；任一标签成功或失败标签全部消失（关闭）即停止定时器；成功后设置 iframe `src`（已设置则不重设，避免整页刷新丢会话）并清掉提示——上位机恢复在线后终端自动加载，不再停留在失败提示。
+    - `_fetchLauncherIp()` 的解析逻辑抽为 `_applyLauncherStatus(txt)`，除 `host_ip=` 外新增解析 `host_ip_age_s=` 存入 `_launcherIpAge`（无数据为 -1）。
+    - 失败提示抽为 `termFailHint()`：年龄 >90s（上位机正常 30s 上报一次，3 个周期未更新视为过期）时在提示尾部追加「上位机 IP 已 N 秒未上报，可能已过期」，辅助区分"上位机离线"与"ESP32 里的 host_ip 已过期"。
+    - i18n 新增 `terminal.staleIp` 中英词条（带 `{n}` 占位）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（Issue #90）：
+    - `fitTermTabLabels()` 改为每次先统一恢复长名「终端 N」测量，`scrollWidth>clientWidth` 才缩写为 N；原实现按改名前布局判定 `packed`，改名后不复查，临界宽度下长名↔短名来回振荡，稳态停在"长名+溢出"，用户看到的就是"功能没生效"；改后判定结果确定、可收敛，关标签/缩窗口恢复长名。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.0 → v1.8.1。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 终端断言更新——`fitTermTabLabels` 先长名测量断言 + `packed?` 不再存在断言；新增 `probeTerminal`/`scheduleTermRetry`/`_applyLauncherStatus`/`host_ip_age_s` 解析/`termFailHint`/`terminal.staleIp` 词条断言；版本断言升至 v1.8.1，CHANGELOG 顺序链延伸至 v1.8.1。
+  - 已 OTA 刷至车辆（192.168.3.46）验证：`/api/status` 返回 `version=v1.8.1`。
+
+## 2026-08-16 v1.8.0
+
+- fix(wifi): 修复 STA 连接历史重试"一轮耗尽后不再扫描"与"STA 未配置时不进重试窗口"两个缺口（GitHub Issue #88：之前连接过的 Wi-Fi 出现后小车不自动连接）
+  - `libraries/mus4_wifi/src/WifiManager.cpp`：
+    - 新增常量 `WIFI_STA_HISTORY_RESCAN_INTERVAL_MS = 15000`（紧邻既有 `WIFI_STA_HISTORY_RETRY_INTERVAL_MS`）：一轮历史候选试完后等待 15s 冷却再重开新一轮扫描，覆盖"小车先开机、Wi-Fi 后出现"场景；时长为扫描频率与空转功耗折中。
+    - `updateWifiStaHistoryRetry()` "candidates exhausted" 分支不再终局：记录 `staHistRescanDeadlineMs = millis() + 15000`，日志改为 `candidates exhausted, rescan in 15s`；原实现把 `staHistTriedMask` 全槽位置位后永久停止扫描，历史 Wi-Fi 之后出现时小车永不重连。
+    - `anyUntried==false` 分支改为冷却判定：未到 `staHistRescanDeadlineMs` 保持 `staHistRetryActive=false` 直接返回；冷却期满清 `staHistTriedMask`、打日志 `starting new round`，落入既有扫描启动逻辑重开新一轮（时间回绕比较沿用 `(long)(millis() - deadline) < 0` 风格）。
+    - 重试窗口条件 `inRetryWindow` 追加 `|| wifiStaHistoryCount() > 0`：STA 从未配置（NVS `sta_en=false`）但历史记录非空时运行期也进入重试，不再只能靠开机那一刻的扫描；函数既有 `wifiStaHistoryCount() == 0` 兜底保证历史为空时不空转。
+    - connected 上升沿同步清 `staHistRescanDeadlineMs = 0`。
+  - `libraries/mus4_core/src/RuntimeState.h`：`WifiRuntimeState` 新增 `unsigned long staHistRescanDeadlineMs = 0;`（候选耗尽后重开新一轮扫描的最早时刻），注释块同步补充。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.8.0（行为修复含状态机语义扩展，进 minor）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_wifi_sta_history_retry_rescans_after_exhaustion`（冷却常量、重扫字段与 connected 边沿清零、exhausted/rescan 日志、回绕比较写法断言）与 `test_wifi_sta_history_retry_window_accepts_unconfigured_sta`（窗口条件含 `wifiStaHistoryCount() > 0`、空历史兜底仍在断言）；版本断言升至 v1.8.0，CHANGELOG 逐版本断言与顺序链延伸至 v1.8.0。
+
+## 2026-08-16 v1.7.99
+
+- feat(WebConsole): Serial 终端窗口右下角新增全屏按钮，UI 与行为完全对齐遥测曲线面板 `#chartPanel` 的全屏按钮
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - HTML：`#terminalWrap` 内末尾（`#terminalHint` 之后）新增 `#termFullscreenBtn`（`class="iconButton"`，`onclick="toggleTerminalFullscreen()"`，SVG 与 chartFullscreenBtn 完全相同）；按钮居 DOM 末尾，`addTerminalTab()` 用 `terminalWrap.insertBefore(f,terminalHint)` 插入的 iframe 始终位于按钮之下，按钮可压在 iframe 上。
+    - CSS：`#terminalWrap` 规则内追加 `position:relative`（`.termFrame` 规则不动）；紧跟 `#chartFullscreenBtn` 规则新增 `#termFullscreenBtn{position:absolute;right:8px;bottom:8px;z-index:2}`；新增 `#terminalWrap:fullscreen{background:#101318;height:auto;min-height:0;max-height:none}`——抵消原规则的 height/min-height/max-height，否则全屏被 calc 钳住；浅色主题在 `html[data-theme="light"] #chartPanel:fullscreen` 旁新增 `html[data-theme="light"] #terminalWrap:fullscreen{background:#eef1f5}`。
+    - JS：`toggleChartFullscreen()` 旁新增同构的 `toggleTerminalFullscreen()`；`refreshDynamicLabels()` const 链仿照 `f` 新增 `tf=document.getElementById('termFullscreenBtn')`，函数体内加 `if(tf)` 守卫的图标/标题切换（复用 `button.fullscreen`/`button.split` i18n 键，未新增键）；复用已有 fullscreenchange 监听（会调 `refreshDynamicLabels()`），未新增监听；`applyCmdTarget` 未改（按钮随 `#terminalWrap` 显示/隐藏）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号升至 v1.7.99。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言升至 v1.7.99，CHANGELOG 逐版本断言新增 v1.7.99，日期顺序链延伸至 v1.7.99；图表全屏断言附近新增 `#termFullscreenBtn` 按钮 HTML、CSS 规则与 `toggleTerminalFullscreen()`/`tf` 图标切换断言。
+  - 已 OTA 刷至车辆（192.168.3.52，DHCP 由 .46 变为 .52）验证：`/api/status` 返回 `version=v1.7.99`。
+
 ## 2026-08-16 v1.7.98
 
 - feat(WebConsole): 点击 DC 主页左上角 logo 在新标签页打开 https://www.donkeydrift.com

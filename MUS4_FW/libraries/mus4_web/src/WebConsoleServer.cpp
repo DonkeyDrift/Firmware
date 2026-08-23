@@ -6,7 +6,6 @@
 #include "Mus4Log.h"
 #include "BuildInfo.h"
 #include "MutePreference.h"
-#include "LedBlinkPreference.h"
 #include "LedStatus.h"
 #include "SharedTypes.h"
 #include "StringPrint.h"
@@ -764,55 +763,6 @@ static void handleWifiWebLanguageSet()
     wifiWebServer.send(200, "application/json", response);
 }
 
-// ---------------------------------------------------------------------------
-// Web UI idle LED blink color selection
-//
-// State and NVS persistence (namespace "webui", key "ledblink" UChar 0-7,
-// default 7 = red+green+blue) live in mus4_core's LedBlinkPreference, shared
-// with the ControlMixer idle (MANUAL + Park locked) blink logic; the mixer
-// polls getLedBlinkMask() every loop so a POST here takes effect immediately.
-// Open endpoints like mute/judge-config: the wireless command permission
-// layering only applies to console commands.
-
-static void handleWifiWebLedBlinkGet()
-{
-    String response;
-    response.reserve(18);
-    response += "{\"colors\":";
-    response += getLedBlinkMask();
-    response += "}";
-    sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
-}
-
-static void handleWifiWebLedBlinkSet()
-{
-    if (!wifiWebServer.hasArg("colors")) {
-        sendWifiWebApiHeaders();
-        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
-        return;
-    }
-    String colorsArg = wifiWebServer.arg("colors");
-    if (colorsArg.length() != 1 || colorsArg[0] < '0' || colorsArg[0] > '7') {
-        sendWifiWebApiHeaders();
-        wifiWebServer.send(400, "application/json", "{\"error\":\"invalid_value\"}");
-        return;
-    }
-    if (!saveLedBlinkPreference(colorsArg[0] - '0')) {
-        sendWifiWebApiHeaders();
-        wifiWebServer.send(500, "application/json", "{\"saved\":false}");
-        return;
-    }
-
-    String response;
-    response.reserve(30);
-    response += "{\"saved\":true,\"colors\":";
-    response += getLedBlinkMask();
-    response += "}";
-    sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
-}
-
 static void appendDriftConfigJson(String& response, const DriftConfig& config)
 {
     response += "{\"steeringGyroSign\":";
@@ -1006,6 +956,28 @@ static void handleWifiWebStaPassword()
 {
     if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled()) {
         wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
+        return;
+    }
+    // ?ssid=<已保存网络> 时返回该历史条目的密码（与当前配置密码同等鉴权），
+    // 供历史列表点击回填；不传 ssid 时保持原行为（当前配置）。
+    String historySsid = wifiWebServer.arg("ssid");
+    historySsid.trim();
+    if (historySsid.length() > 0) {
+        String historyPassword;
+        if (!findWifiStaHistoryEntry(historySsid, historyPassword)) {
+            wifiWebServer.send(404, "application/json", "{\"error\":\"not_found\"}");
+            return;
+        }
+        String historyResponse;
+        historyResponse.reserve(128);
+        historyResponse += "{\"password_set\":";
+        historyResponse += historyPassword.length() > 0 ? "true" : "false";
+        historyResponse += ",\"password_len\":";
+        historyResponse += historyPassword.length();
+        historyResponse += ",\"password\":";
+        appendJsonString(historyResponse, historyPassword.c_str());
+        historyResponse += '}';
+        wifiWebServer.send(200, "application/json", historyResponse);
         return;
     }
     String response;
@@ -1230,7 +1202,7 @@ static void handleWifiWebHostWifiStatus()
 {
     sendWifiWebApiHeaders();
     String json;
-    json.reserve(160);
+    json.reserve(224);
     json += "{\"status\":";
     appendJsonString(json, hostWifiStatus.c_str());
     json += ",\"ssid\":";
@@ -1239,6 +1211,10 @@ static void handleWifiWebHostWifiStatus()
     appendJsonString(json, hostWifiIp.c_str());
     json += ",\"error\":";
     appendJsonString(json, hostWifiError.c_str());
+    json += ",\"host_ip\":";
+    appendJsonString(json, hostReportedIp.c_str());
+    json += ",\"host_ip_age_s\":";
+    json += String(hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL);
     json += "}";
     wifiWebServer.send(200, "application/json", json);
 }
@@ -1575,8 +1551,6 @@ void setupWebConsoleServer()
     wifiWebServer.on("/api/mute", HTTP_POST, handleWifiWebMuteSet);
     wifiWebServer.on("/api/language", HTTP_GET, handleWifiWebLanguageGet);
     wifiWebServer.on("/api/language", HTTP_POST, handleWifiWebLanguageSet);
-    wifiWebServer.on("/api/led-blink", HTTP_GET, handleWifiWebLedBlinkGet);
-    wifiWebServer.on("/api/led-blink", HTTP_POST, handleWifiWebLedBlinkSet);
     wifiWebServer.on("/api/drift-config", HTTP_GET, handleWifiWebDriftConfig);
     wifiWebServer.on("/api/drift-config", HTTP_POST, handleWifiWebDriftConfigSet);
     wifiWebServer.on("/api/drift-config/reset", HTTP_POST, handleWifiWebDriftConfigReset);

@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-23 v1.8.60
+
+- fix(WebConsole): 消除 DC 页面首屏两种闪烁——CC 内嵌视图先闪完整控制台再切设置视图、先闪英文再刷中文
+  - 根因：三个 HTML 切片（`WIFI_WEB_CONSOLE_HTML`/`WIFI_WEB_DRIFT_HTML`/`WIFI_WEB_JUDGE_HTML`）的 `embedded`/`settings`/`wifi` body 类与 `initLanguage()` 都在尾部 init 脚本才执行——139KB 主页在类应用前已按完整控制台渲染（首闪）；`initLanguage()` 是 async，先 `fetch('/api/language')` 再 `applyLanguage(lang)` 同步替换全部 data-i18n 文本，fetch 往返期间整页英文（二闪）。CC 视图里的漂移/Judge 子 iframe（`/drift?embedded=1`、`/judge?embedded=1`）同模式同问题。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（三切片同款修复，UPDATE 页不动）：
+    - `<body>` 标签后（任何可见元素之前）插入微型同步脚本：按 `location.search` 立即给 body 加 `preinit` + `embedded` 类（主页另有 `settings`/`wifi` 类；drift/judge 无 settings/wifi 视图只加 embedded），并 `setTimeout(remove preinit,2000)` 兜底 + try/catch（防 init 出错页面永远空白）。首帧即有正确视图类，完整控制台不再闪现。
+    - 各切片 CSS 前部新增 `body.preinit{visibility:hidden}`——选 visibility 而非 display:none：隐藏期间布局/ResizeObserver/canvas DPR 测量照常工作。
+    - `initLanguage()` 内 `applyLanguage(lang)` 之后追加 `document.body.classList.remove('preinit')`——中文应用前页面不可见，英文不再闪现；fetch 失败走 catch→localStorage→applyLanguage 照常显示，2s 兜底强制显示。
+    - 尾部 init 里原有 `classList.add('embedded')` 等赋值保留（幂等保险），wifi 分支 `openWifiApModal()/openWifiStaModal()` 等逻辑不动。
+  - `initTheme()` 核查：三切片均为同步函数（`uiTheme=...;applyTheme()` + matchMedia 监听，无 fetch），且尾部 init 中同步先于 `initLanguage()` 的 await 完成，preinit 隐藏期已覆盖——无主题闪烁隐患，未改动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.59 → v1.8.60（v1.8.59 由本地 Tony 的 STA 密码框修复占用，+1 防撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `test_web_console_preinit_reveal_no_first_paint_flash`（三切片早期脚本紧贴 `<body>` 后且内容含 preinit/embedded 赋值与 2s 兜底、主页另有 settings/wifi 赋值而 drift/judge 没有、preinit CSS 在首个 style 块内、initLanguage 内 reveal、尾部原有类赋值与 wifi 弹窗逻辑保留、UPDATE 页不含 preinit）；版本断言 v1.8.60、CHANGELOG 顺序链补 v1.8.60 行。
+
 ## 2026-08-23 v1.8.58
 
 - fix(WebConsole): 「上位机配网」状态条永远显示「等待...」——STA 板块打开时立即拉取并 5s 慢轮询 /api/host-wifi-status，IDLE 状态改显示上位机在线/等待上报真实状态（Issue #234 后续）

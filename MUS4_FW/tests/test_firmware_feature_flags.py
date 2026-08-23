@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.59"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.60"' in build_info
+    assert "v1.8.60" in changelog
     assert "v1.8.59" in changelog
     assert "v1.8.57" in changelog
     assert "v1.8.54" in changelog
@@ -354,6 +355,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-23 v1.8.60") < changelog.index("## 2026-08-23 v1.8.58")
     assert changelog.index("## 2026-08-23 v1.8.58") < changelog.index("## 2026-08-22 v1.8.57")
     assert changelog.index("## 2026-08-22 v1.8.59") < changelog.index("## 2026-08-22 v1.8.57")
     assert changelog.index("## 2026-08-22 v1.8.57") < changelog.index("## 2026-08-22 v1.8.54")
@@ -2525,6 +2527,56 @@ def test_web_console_settings_view_embeds_tune_sections():
     # #judgeHero/#gyroChartPanel 同款做法；JS 仍更新其元素、隐藏不影响运行）；车端独立 /drift 页完整保留
     assert '<div class="panel" id="driftStatusPanel">' in drift
     assert 'body.embedded #driftStatusPanel{display:none}' in drift
+
+
+def test_web_console_preinit_reveal_no_first_paint_flash():
+    """v1.8.60：消除 DC 页面首屏两种闪烁——CC 内嵌视图先闪完整控制台再切设置视图、
+    先闪英文再刷中文。三切片（CONSOLE/JUDGE/DRIFT）在 <body> 后插入微型同步脚本
+    立即加 preinit/embedded（主页另有 settings/wifi）类 + 2s 兜底，CSS 前部加
+    body.preinit{visibility:hidden}，initLanguage() 内 applyLanguage 后 remove('preinit')；
+    尾部 init 原有类赋值与 wifi 弹窗逻辑保留（幂等保险）。"""
+    source = firmware_source_text()
+
+    console = source[source.index('WIFI_WEB_CONSOLE_HTML'):source.index('WIFI_WEB_JUDGE_HTML')]
+    judge = source[source.index('WIFI_WEB_JUDGE_HTML'):source.index('WIFI_WEB_DRIFT_HTML')]
+    drift = source[source.index('WIFI_WEB_DRIFT_HTML'):source.index('WIFI_WEB_UPDATE_HTML')]
+    update = source[source.index('WIFI_WEB_UPDATE_HTML'):]
+
+    # 早期同步脚本紧贴 <body> 后（任何可见元素之前），加 preinit + embedded 类并带 2s 兜底与 try/catch
+    early_common = ("<body>\n<script>try{var _q=location.search,_b=document.body;_b.classList.add('preinit');"
+                    "if(_q.indexOf('embedded=1')>=0)_b.classList.add('embedded');")
+    early_tail = ("setTimeout(function(){_b.classList.remove('preinit')},2000)}catch(e){"
+                  "try{document.body.classList.remove('preinit')}catch(_e){}}</script>\n")
+    for page in (console, judge, drift):
+        assert early_common in page
+        assert early_tail in page
+    # 主页早期脚本另有 settings/wifi 类；drift/judge 无 settings/wifi 视图、早期脚本不得加这两类
+    assert "if(_q.indexOf('settings=1')>=0)_b.classList.add('settings');" in console
+    assert "if(_q.indexOf('wifi=1')>=0)_b.classList.add('wifi');" in console
+    assert "_b.classList.add('settings')" not in judge
+    assert "_b.classList.add('settings')" not in drift
+    assert "_b.classList.add('wifi')" not in judge
+    assert "_b.classList.add('wifi')" not in drift
+
+    # preinit CSS 在各切片首个 <style> 块内（其 </style> 之前）
+    for page in (console, judge, drift):
+        css_at = page.index('body.preinit{visibility:hidden}')
+        assert page.index('<style>') < css_at < page.index('</style>')
+
+    # initLanguage() 内 applyLanguage 之后 reveal（fetch 失败走 catch→localStorage 也必经此行）
+    reveal = "applyLanguage(lang);if(document.body)document.body.classList.remove('preinit')}"
+    for page in (console, judge, drift):
+        assert reveal in page
+
+    # 尾部 init 原有类赋值保留（幂等保险）；主页 wifi 分支弹窗逻辑不动
+    tail_judge = "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');syncJudgeConfigInputs();"
+    tail_drift = "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');initLanguage();initTheme();loadDriftConfig();"
+    assert tail_judge in judge
+    assert tail_drift in drift
+    assert "if(location.search.indexOf('settings=1')>=0)document.body.classList.add('settings');if(location.search.indexOf('wifi=1')>=0){document.body.classList.add('wifi');openWifiApModal();openWifiStaModal();" in console
+
+    # UPDATE 页不在本次范围：不含 preinit
+    assert 'preinit' not in update
 
 
 def test_web_console_status_parser_preserves_quoted_values_with_spaces():

@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.59"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.62"' in build_info
+    assert "v1.8.62" in changelog
     assert "v1.8.59" in changelog
     assert "v1.8.57" in changelog
     assert "v1.8.54" in changelog
@@ -344,6 +345,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-23 v1.8.62") < changelog.index("## 2026-08-22 v1.8.59")
     assert changelog.index("## 2026-08-22 v1.8.59") < changelog.index("## 2026-08-22 v1.8.57")
     assert changelog.index("## 2026-08-22 v1.8.57") < changelog.index("## 2026-08-22 v1.8.54")
     assert changelog.index("## 2026-08-22 v1.8.54") < changelog.index("## 2026-08-22 v1.8.48")
@@ -2015,6 +2017,13 @@ def test_web_console_ap_ssid_modal_and_api_are_present():
     assert 'restartWifiAp()' in source
     assert 'WIFI_CONSOLE_AP_DEFAULT_SSID' in source
     assert 'WIFI_CONSOLE_AP_SSID' not in source
+    # v1.8.62 起：AP 前缀规则提示行 #apNotice 默认隐藏，仅在输入含非法字符时
+    # 显示（updateApPreview 比对剔除前后的原始值），改回合法输入即重新隐藏；
+    # 保存流程消息（无效/保存中/失败）仍强制可见。
+    assert '<p id="apNotice" data-i18n="wifi.apNotice" style="display:none">' in source
+    assert 'raw!==clean' in source
+    assert "apNotice.style.display=''" in source
+    assert "apNotice.style.display='none'" in source
 
 
 def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():

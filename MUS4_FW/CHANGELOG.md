@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-23 v1.8.62
+
+- fix(WebConsole): AP 名称配置弹窗的前缀规则提示行改为按需显示——默认隐藏，仅在用户输入了不符合规范的前缀字符时提示
+  - 背景：`#apNotice` 提示行（「前缀仅限大小写字母和数字，不超过6位；后缀固定为"-ESP"。保存后会重启 AP…」）此前在弹窗中常显，占视觉空间；规则本身已由输入框实时剔除非法字符兜底，常显提示没有必要。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#apNotice` 加 `style="display:none"` 默认隐藏；`openWifiApModal()` 每次打开弹窗时重置为隐藏态。
+    - `updateApPreview()`：比对本次输入的原始值与剔除非法字符（`[^A-Za-z0-9]`）后的值——剔除了字符（`raw!==clean`）即显示提示行，未剔除（全合法或清空）则保持隐藏；整段显隐逻辑包在 `if(!apSaving)` 内，避免保存流程中输入把保存中/失败消息抹掉。
+    - `saveWifiAp()`：无效输入（`wifi.apInvalid`）、保存中（`wifi.apSavingNotice`）、保存失败（`wifi.apInvalid`/`wifi.apSaveFailed`）三处设置文案时同时强制显示提示行，保存流程消息可见性不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.59 → v1.8.62（v1.8.60、v1.8.61 由并行会话 `Tony-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.62；`test_web_console_ap_ssid_modal_and_api_are_present` 新增 `#apNotice` 默认隐藏 marker（`style="display:none"`）、非法字符比较逻辑（`raw!==clean`）与显隐赋值（`apNotice.style.display`）断言。
+
 ## 2026-08-22 v1.8.59
 
 - fix(WebConsole): 抑制苹果设备在 STA Wi-Fi 密码框输入时弹出「存储密码？」——密码框声明为非登录新密码并加密码管理器忽略属性

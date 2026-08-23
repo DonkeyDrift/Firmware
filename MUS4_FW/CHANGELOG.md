@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-08-23 v1.8.64
+
+- feat(WebConsole): DD Car Connector 内嵌设置视图布局调整——RC Channels 置顶为第一板块、收紧漂移/Judge 子 iframe 间的过大间隙（配合 DD 侧 iframe 去掉 `&wifi=1`，配网板块不再进入该视图）
+  - 布局顺序：`?embedded=1&settings=1` 最终可见顺序由「漂移 → Judge → RC Channels」改为「RC Channels → 漂移 → Judge」；settings+wifi 视图（DD 已不用）变为 AP、STA、RC、设置，不苛求。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主页尾部 init 同步段（wifi 分支之后、rcFold 压平块之前）新增：`settings=1` 时把整个 `#diagnosticsPanel`（settings 作用域只露出 `#rcFold`）`insertBefore` 到 `#settingsView` 之前，带 `settingsView&&diagPanel&&settingsView.parentNode` 空引用保护；同步段在 preinit 隐藏期内执行，无重排闪烁。
+    - `initEmbedTuneFrames()` 的 `fit()` 高度公式修复间隙根因：原取 `Math.max(body.scrollHeight, body.offsetHeight, documentElement.scrollHeight, documentElement.offsetHeight)`，而 `documentElement.scrollHeight` 被 iframe 自身视口高度钳制（≥占位高 820px）——内容较短的漂移子页实测底部多出 ~158px 空白。改为只量 `body`（scrollHeight/offsetHeight 取大）+ `getComputedStyle` 的上下外边距，+2px 余量不变。
+    - drift 子页：`body.embedded{margin-top:0;margin-bottom:10px}`——embedded 下上边距清零（与上方 RC 板块的间距由父页面板 padding 提供）、下边距 12px→10px 对齐板块间距。
+    - judge 子页：`body.embedded{max-width:none}` → `body.embedded{max-width:none;margin-top:0}`——`margin:16px auto` 的 16px 顶边距在融合页里与漂移 iframe 底部空白叠加成大间隙，embedded 下清零。
+    - playwright 实测（车上 v1.8.63 → 本版）：「保存漂移配置」按钮行底部到 Judge 首个板块顶部间距 174px → 22px（目标 ≤24px、与其他板块间距 10~14px 一致：面板 padding 10 + 下边距 10 + 2px 余量）。
+  - DD 侧（DonkeyDrift 仓库 `Tony-cc-declutter` 分支同步提交）：`web_ui/frontend/src/components/CarSettingsPanel.tsx` iframe src 去掉 `&wifi=1`（`?embedded=1&settings=1&wifi=1` → `?embedded=1&settings=1`）+ 顶部注释更新；`CarSettingsPanel.test.tsx` 断言同步。车端独立 DC 页面与固件 `wifi=1` 能力本身不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.63 → v1.8.64（先合并本地 Tony 的 v1.8.62/v1.8.63 后 +1；枚举全部本地分支最高为 v1.8.63）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_settings_view_shows_rc_channels_panel` 新增 diagnosticsPanel 前移断言（空引用保护、执行顺序在 wifi 分支后/rcFold 压平前）；`test_web_console_settings_view_embeds_tune_sections` 新增 fit() 新公式与旧 documentElement 公式移除断言、judge `margin-top:0`、drift embedded 边距断言；版本断言 v1.8.64、CHANGELOG 顺序链补 v1.8.64~v1.8.58 行。
+
 ## 2026-08-23 v1.8.63
 
 - fix(WebConsole): STA 上位机配网两处修复——配网成功后「发送到上位机」按钮变为「完成」；密码框为掩码占位时先取真实明文再发送，修复上位机收到"点点点"导致 nmcli 配网失败

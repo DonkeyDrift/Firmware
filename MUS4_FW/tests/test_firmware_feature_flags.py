@@ -2426,7 +2426,11 @@ def test_web_console_settings_view_shows_rc_channels_panel():
     只露出 Diagnostics 面板里的 #rcFold（RC Channels 校准面板，含中点 Set 与
     油门 Min/Max 滑块），供 DD Car Connector 内嵌同屏调整 RC 校准。
     v1.8.52 起：rcFold 折叠头在该作用域压平为静态标题（常开不可折叠），
-    且 wifi=1 时配网板块（AP+STA）上移到 settingsView 之前成为最顶部板块。"""
+    且 wifi=1 时配网板块（AP+STA）上移到 settingsView 之前成为最顶部板块。
+    v1.8.64 起：settings 模式初始化时把整个 #diagnosticsPanel（该作用域只露出 rcFold）
+    insertBefore 到 #settingsView 之前——RC Channels 成为内嵌设置视图第一个板块
+    （?embedded=1&settings=1 最终顺序：RC Channels → 漂移 → Judge）；同步段执行，
+    preinit 隐藏期内完成不重排闪烁，带空引用保护；settings+wifi 视图顺序不苛求。"""
     source = firmware_source_text()
 
     assert 'body.settings .grid,body.wifi .grid{display:block}' in source
@@ -2458,6 +2462,13 @@ def test_web_console_settings_view_shows_rc_channels_panel():
     # 最终顺序 AP、STA、settingsView），配网成为内嵌视图最顶部板块；带空引用保护
     assert "const settingsView=document.getElementById('settingsView');const wifiAp=document.getElementById('wifiApModal');const wifiSta=document.getElementById('wifiStaModal');" in source
     assert "if(settingsView&&wifiAp&&wifiSta){settingsView.parentNode.insertBefore(wifiAp,settingsView);settingsView.parentNode.insertBefore(wifiSta,settingsView);}" in source
+    # v1.8.64：settings=1 初始化时把整个 #diagnosticsPanel insertBefore 到 #settingsView 之前
+    # （RC Channels 置顶为第一板块；wifi 分支先执行，故 settings+wifi 视图顺序为 AP、STA、RC、设置）；
+    # 带空引用保护（settingsView/diagPanel/parentNode），且在 rcFold 压平块之前的同一同步段执行
+    rc_first = "if(location.search.indexOf('settings=1')>=0){const settingsView=document.getElementById('settingsView');const diagPanel=document.getElementById('diagnosticsPanel');if(settingsView&&diagPanel&&settingsView.parentNode){settingsView.parentNode.insertBefore(diagPanel,settingsView);}}"
+    assert rc_first in source
+    assert source.index(rc_first) > source.index("if(settingsView&&wifiAp&&wifiSta){settingsView.parentNode.insertBefore(wifiAp,settingsView)")
+    assert source.index(rc_first) < source.index("rcFold.classList.add('open')")
     # v1.8.45：融合单卡去掉 STA 卡上边框（浅色主题 .dialog 边框色 #d99a17 会在 AP/STA 之间形成一条黄杠）
     assert 'body.wifi #wifiApModal .dialog{margin:0;border-bottom:none;border-radius:14px 14px 0 0;padding-bottom:8px;box-shadow:none}' in source
     assert 'body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-top:none;border-radius:0 0 14px 14px;padding-top:4px}' in source
@@ -2511,6 +2522,13 @@ def test_web_console_settings_view_embeds_tune_sections():
     assert 'function initEmbedTuneFrames()' in source
     assert 'new ResizeObserver(fit)' in source
     assert "if(document.body.classList.contains('embedded')&&document.body.classList.contains('settings'))initEmbedTuneFrames();" in source
+    # v1.8.64：fit() 高度公式只量 body（scrollHeight/offsetHeight 取大）+ getComputedStyle 上下外边距，
+    # 不再取 documentElement——其 scrollHeight 被 iframe 自身视口高度钳制（>=占位高 820/1000），
+    # 内容较短时 iframe 底部留出大片空白（漂移子页实测多出 ~158px），是两 iframe 间过大间隙的根因
+    assert "var h=Math.max(b.scrollHeight,b.offsetHeight)+mt+mb" in source
+    assert "parseFloat(cs.marginTop)||0" in source
+    assert "parseFloat(cs.marginBottom)||0" in source
+    assert "doc.documentElement?doc.documentElement.scrollHeight:0" not in source
     # 主页：两个跳转按钮保留 id（v1.8.47 引入）；v1.8.48 起整个「车辆设置」标题与「调校」行在
     # body.embedded.settings 作用域整行隐藏（含手柄校准按钮——已移至 DD CC 页顶栏）
     assert 'id="driftSettingsBtn"' in source
@@ -2528,7 +2546,8 @@ def test_web_console_settings_view_embeds_tune_sections():
     assert 'id="judgeHeadPanel"' in judge
     assert 'body.embedded #judgeHeadPanel{display:none}' in judge
     assert "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');syncJudgeConfigInputs();" in judge
-    assert 'body.embedded{max-width:none}' in judge
+    assert 'body.embedded{max-width:none;margin-top:0}' in judge
+    # v1.8.64：embedded 下上边距清零（原 margin:16px auto 的 16px 顶边距在融合页形成大间隙）
     assert 'id="judgeHero"' in judge
     assert 'body.embedded #judgeHero{display:none}' in judge
     assert 'id="gyroChartPanel"' in judge
@@ -2542,6 +2561,9 @@ def test_web_console_settings_view_embeds_tune_sections():
     # #judgeHero/#gyroChartPanel 同款做法；JS 仍更新其元素、隐藏不影响运行）；车端独立 /drift 页完整保留
     assert '<div class="panel" id="driftStatusPanel">' in drift
     assert 'body.embedded #driftStatusPanel{display:none}' in drift
+    # v1.8.64：embedded 下 drift 页 body 上边距清零、下边距收紧为 10px（对齐板块间距）——
+    # 与 judge 页 margin-top:0 配合，把「保存漂移配置」行到 Judge 首个板块的可见间隙压到 ~22px
+    assert 'body.embedded{margin-top:0;margin-bottom:10px}' in drift
 
 
 def test_web_console_preinit_reveal_no_first_paint_flash():

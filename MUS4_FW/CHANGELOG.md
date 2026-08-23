@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-08-23 v1.8.61
+
+- fix(WebConsole): 修复 DC 首屏揭开太慢、CC iframe 场景偶发卡死纯黑屏——`initLanguage()` 改「同步先应用+揭示，后台再对齐服务器偏好」，揭示不再依赖任何网络请求
+  - 根因：v1.8.60 的 preinit 隐藏机制把揭示时机挂在异步 `fetch('/api/language')` 之后——`initLanguage()` 先 await 语言请求再 `applyLanguage()`+移除 preinit；ESP32 单线程 Web 服务在 CC 场景要串行伺候 139KB 主页 + drift/judge 两个子 iframe + 三个语言请求 + 状态轮询 + WS，语言请求排队期间整页 `visibility:hidden`（透出 DD 深色背景即成纯黑屏）；playwright 实测裸车页与 DD 8001 iframe 在车空闲时正常（约 0.75~1s 揭示），拥塞时揭示被无限拖后，今日还观察到一次车辆自发重启（约 1 分钟自恢复），加载中断进一步放大该问题。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（三切片 `WIFI_WEB_CONSOLE_HTML`/`WIFI_WEB_DRIFT_HTML`/`WIFI_WEB_JUDGE_HTML` 同款修改，UPDATE 页无 preinit 机制不动）：
+    - `initLanguage()` 重写为两段：同步段 `readUrlLanguage()` → `readStoredLanguage()` → `detectBrowserLanguage()` 取语言后立即 `applyLanguage(lang)` + `document.body.classList.remove('preinit')`——首帧即正确语言（localStorage 缓存或 navigator 检测覆盖绝大多数情况），揭示不再等任何网络请求；函数保持 `async` 签名但内部已无 await。
+    - 后台对齐段：仅当无 URL `?lang=` 参数时（保持原语义优先级 URL 参数 > 服务器偏好 > 本地缓存/浏览器检测），异步 `fetch('/api/language',{cache:'no-store'})`，成功且服务器语言与当前 `uiLang` 不同才 `writeStoredLanguage(srv)`+`applyLanguage(srv)` 重新应用（`auto` 仍映射 `detectBrowserLanguage()`，保留原 writeStoredLanguage 副作用）；`.catch(()=>{})` 吞掉失败——服务器偏好像原来一样最终生效，但不再阻塞首屏。
+    - `<body>` 后早期内联脚本与 2s 兜底定时器保留不动（init 出错或 JS 异常时仍强制揭示）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.60 → v1.8.61（全本地分支枚举最高为 v1.8.60，+1）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_preinit_reveal_no_first_paint_flash` 语义更新：断言揭示在同步 `applyLanguage` 后立即发生（不再有 `await fetch` 先于揭示）、后台对齐段存在（`if(!urlLang){fetch(...)` + 差异才 re-apply + catch 吞掉）、URL 参数优先保持、2s 兜底与早期脚本不动；版本断言 v1.8.61、CHANGELOG 顺序链补 v1.8.61 行。
+
 ## 2026-08-23 v1.8.60
 
 - fix(WebConsole): 消除 DC 页面首屏两种闪烁——CC 内嵌视图先闪完整控制台再切设置视图、先闪英文再刷中文

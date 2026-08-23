@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.60"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.61"' in build_info
+    assert "v1.8.61" in changelog
     assert "v1.8.60" in changelog
     assert "v1.8.59" in changelog
     assert "v1.8.57" in changelog
@@ -355,6 +356,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-23 v1.8.61") < changelog.index("## 2026-08-23 v1.8.60")
     assert changelog.index("## 2026-08-23 v1.8.60") < changelog.index("## 2026-08-23 v1.8.58")
     assert changelog.index("## 2026-08-23 v1.8.58") < changelog.index("## 2026-08-22 v1.8.57")
     assert changelog.index("## 2026-08-22 v1.8.59") < changelog.index("## 2026-08-22 v1.8.57")
@@ -2530,11 +2532,12 @@ def test_web_console_settings_view_embeds_tune_sections():
 
 
 def test_web_console_preinit_reveal_no_first_paint_flash():
-    """v1.8.60：消除 DC 页面首屏两种闪烁——CC 内嵌视图先闪完整控制台再切设置视图、
-    先闪英文再刷中文。三切片（CONSOLE/JUDGE/DRIFT）在 <body> 后插入微型同步脚本
+    """v1.8.60 引入 preinit 隐藏机制：三切片（CONSOLE/JUDGE/DRIFT）在 <body> 后插入微型同步脚本
     立即加 preinit/embedded（主页另有 settings/wifi）类 + 2s 兜底，CSS 前部加
-    body.preinit{visibility:hidden}，initLanguage() 内 applyLanguage 后 remove('preinit')；
-    尾部 init 原有类赋值与 wifi 弹窗逻辑保留（幂等保险）。"""
+    body.preinit{visibility:hidden}；尾部 init 原有类赋值与 wifi 弹窗逻辑保留（幂等保险）。
+    v1.8.61 修复揭示时机：initLanguage() 改「同步先应用+揭示，后台再对齐服务器偏好」——
+    同步段 readUrlLanguage→readStoredLanguage→detectBrowserLanguage 后立即 applyLanguage+remove('preinit')，
+    揭示不再 await fetch('/api/language')（原实现对 ESP32 单线程拥塞敏感，CC iframe 场景会卡纯黑屏）。"""
     source = firmware_source_text()
 
     console = source[source.index('WIFI_WEB_CONSOLE_HTML'):source.index('WIFI_WEB_JUDGE_HTML')]
@@ -2563,10 +2566,23 @@ def test_web_console_preinit_reveal_no_first_paint_flash():
         css_at = page.index('body.preinit{visibility:hidden}')
         assert page.index('<style>') < css_at < page.index('</style>')
 
-    # initLanguage() 内 applyLanguage 之后 reveal（fetch 失败走 catch→localStorage 也必经此行）
-    reveal = "applyLanguage(lang);if(document.body)document.body.classList.remove('preinit')}"
+    # v1.8.61 同步段：URL 参数 > localStorage 缓存 > 浏览器检测，applyLanguage 后立即 reveal
+    sync_head = ("async function initLanguage(){const urlLang=readUrlLanguage();let lang=urlLang;"
+                 "if(!lang)lang=readStoredLanguage();if(!lang)lang=detectBrowserLanguage();")
+    reveal = "applyLanguage(lang);if(document.body)document.body.classList.remove('preinit');"
+    # v1.8.61 后台对齐段：仅无 URL ?lang= 时拉服务器偏好（保持原优先级），差异才 writeStored+re-apply，catch 吞掉
+    bg_fetch = "if(!urlLang){fetch('/api/language',{cache:'no-store'})"
+    bg_apply = "if(srv&&srv!==uiLang){writeStoredLanguage(srv);applyLanguage(srv)}"
     for page in (console, judge, drift):
+        assert sync_head in page
         assert reveal in page
+        assert bg_fetch in page
+        assert bg_apply in page
+        assert "else if(j.lang==='auto')srv=detectBrowserLanguage();" in page
+        # 揭示不再依赖网络：三切片内 fetch-first 旧实现（await fetch 先于 reveal）已不存在
+        assert "await fetch('/api/language'" not in page
+        # 同一 initLanguage 内 reveal 先于后台 fetch（reveal 标记只此一处，切片内顺序即函数内顺序）
+        assert page.index(reveal) < page.index(bg_fetch)
 
     # 尾部 init 原有类赋值保留（幂等保险）；主页 wifi 分支弹窗逻辑不动
     tail_judge = "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');syncJudgeConfigInputs();"
@@ -2575,8 +2591,9 @@ def test_web_console_preinit_reveal_no_first_paint_flash():
     assert tail_drift in drift
     assert "if(location.search.indexOf('settings=1')>=0)document.body.classList.add('settings');if(location.search.indexOf('wifi=1')>=0){document.body.classList.add('wifi');openWifiApModal();openWifiStaModal();" in console
 
-    # UPDATE 页不在本次范围：不含 preinit
+    # UPDATE 页不在本次范围：不含 preinit，initLanguage 仍是旧 fetch-first 形态（无揭示需求）
     assert 'preinit' not in update
+    assert "await fetch('/api/language'" in update
 
 
 def test_web_console_status_parser_preserves_quoted_values_with_spaces():
@@ -4767,14 +4784,22 @@ def test_web_console_language_api_persists_nvs_preference():
 def test_web_console_language_auto_detects_browser_language():
     """v1.7.68：设备语言偏好缺省 "auto" 时，四个页面启动后经 navigator.language
     自动选择界面语言（zh 开头→中文，其余→英文），检测结果写入 localStorage 作
-    离线兜底；用户手动切换语言仍 POST 显式 zh/en 持久化，覆盖自动检测。"""
+    离线兜底；用户手动切换语言仍 POST 显式 zh/en 持久化，覆盖自动检测。
+    v1.8.61：三主切片（CONSOLE/JUDGE/DRIFT）initLanguage 改「同步先应用+后台对齐」——
+    auto 语义保留：同步段 localStorage 无缓存时即 detectBrowserLanguage() 兜底，
+    后台对齐段服务器 auto 偏好仍映射浏览器检测并在差异时 writeStoredLanguage 持久化；
+    UPDATE 页保留旧内联形式。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
     detect = "function detectBrowserLanguage(){try{return String(navigator.language||'').toLowerCase().indexOf('zh')===0?'zh':'en'}catch(e){return 'zh'}}"
-    auto_branch = "else if(j&&j.lang==='auto'){lang=detectBrowserLanguage();writeStoredLanguage(lang)}"
+    auto_branch_legacy = "else if(j&&j.lang==='auto'){lang=detectBrowserLanguage();writeStoredLanguage(lang)}"
+    auto_branch_align = "else if(j.lang==='auto')srv=detectBrowserLanguage();"
     # 主控制台 + JUDGE/DRIFT/UPDATE 四个页面均为自包含 i18n 核心，逐页断言
     assert assets.count(detect) == 4
-    assert assets.count(auto_branch) == 4
+    assert assets.count(auto_branch_legacy) == 1  # 仅 UPDATE 页保留旧内联形式
+    assert assets.count(auto_branch_align) == 3  # CONSOLE/JUDGE/DRIFT 后台对齐段
+    # 三主切片同步段：localStorage 无缓存时不等网络、直接浏览器检测兜底
+    assert assets.count("if(!lang)lang=detectBrowserLanguage();") == 3
 
     # 主控制台：手动切换仍显式持久化 zh/en（覆盖 auto），不受自动检测影响
     console = _page_region(assets, "WIFI_WEB_CONSOLE_HTML")

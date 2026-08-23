@@ -274,8 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.58"' in build_info
-    assert "v1.8.58" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.59"' in build_info
+    assert "v1.8.59" in changelog
     assert "v1.8.57" in changelog
     assert "v1.8.54" in changelog
     assert "v1.8.53" in changelog
@@ -355,6 +355,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
     assert changelog.index("## 2026-08-23 v1.8.58") < changelog.index("## 2026-08-22 v1.8.57")
+    assert changelog.index("## 2026-08-22 v1.8.59") < changelog.index("## 2026-08-22 v1.8.57")
     assert changelog.index("## 2026-08-22 v1.8.57") < changelog.index("## 2026-08-22 v1.8.54")
     assert changelog.index("## 2026-08-22 v1.8.54") < changelog.index("## 2026-08-22 v1.8.53")
     assert changelog.index("## 2026-08-22 v1.8.53") < changelog.index("## 2026-08-22 v1.8.52")
@@ -2677,6 +2678,10 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
     assert "updateStaPasswordEye()" in select_body
     assert '<label for="staSsid">SSID</label>' in source
     assert '<label for="staPassword" data-i18n="wifi.passwordLabel">密码</label>' in source
+    # v1.8.59：抑制苹果「存储密码？」弹窗——SSID 框不当登录用户名识别（autocomplete=off），
+    # 密码框声明 new-password（非登录凭据）并加主流密码管理器忽略属性
+    assert '<input id="staSsid" placeholder="STA SSID" data-i18n-placeholder="wifi.staPlaceholder" autocomplete="off" autocapitalize="none" spellcheck="false">' in source
+    assert '<input id="staPassword" type="password" placeholder="Wi-Fi 密码，留空表示开放网络" data-i18n-placeholder="wifi.passwordPlaceholder" autocomplete="new-password" data-1p-ignore="true" data-lpignore="true" data-form-type="other">' in source
     assert 'id="staPasswordEye"' in source
     assert 'onclick="toggleStaPasswordVisibility()"' in source
     assert "onmousedown=\"showStaPassword()\"" not in source

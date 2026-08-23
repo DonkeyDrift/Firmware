@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-08-23 v1.8.63
+
+- fix(WebConsole): STA 上位机配网两处修复——配网成功后「发送到上位机」按钮变为「完成」；密码框为掩码占位时先取真实明文再发送，修复上位机收到"点点点"导致 nmcli 配网失败
+  - 背景①（按钮文案）：上位机配网成功（状态条显示「已连接 IP: x.x.x.x」）后，主按钮仍停留在「发送到上位机」，用户不知道流程已结束、以为要再点一次。
+  - 背景②（掩码密码）：ESP32 已存过 STA 密码时，密码框由 `renderStaPasswordState()` 填入 `*` 掩码占位（`staPasswordPlaceholder=true`、`staPasswordDirty=false`）；`saveHostWifi()` 此前直接取 `staPassword.value` 组 `WIFI|ssid|pwd` 串口帧发给上位机，用户不改密码直接发送时上位机收到字面量 `********`，nmcli 用掩码当密码配网必败。ESP32 直连路径 `saveWifiSta()` 有 `keep_password` 兜底，但上位机 nmcli 必须要明文，无等价兜底。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `saveHostWifi()`：`!staPasswordDirty && staPasswordPlaceholder`（框内是掩码占位、用户未改过）时先取真实明文再发送——优先 `fetch('/api/wifi-sta/password?ssid='+encodeURIComponent(ssid))`（v1.8.57 引入的历史条目密码分支，SSID 被手改后仍能取到对应网络的密码），未命中回退 `fetchSavedStaPassword()`（当前已存 STA 密码，覆盖"打开弹窗直接发送"主路径）；两路都失败时报错并中止发送，不再发出掩码。
+    - `pollHostWifiStatus()` connected 分支：状态转「已连接」时把 `staConnectBtn` 文案改为新 i18n `wifi.hostDoneBtn`（完成 / Done）、`onclick` 改为 `closeWifiStaModal`——点击即关闭弹窗；CC 内嵌视图（`body.wifi` CSS 使弹窗 `display:block` 常驻）点击仅移除 `show` 类、面板不消失。
+    - 新增 `resetStaConnectBtn()` 辅助函数（上位机模式下把按钮恢复为「发送到上位机」+`saveHostWifi`），在三处"用户要配另一个网络"的入口调用：`selectWifiHistory()`（点历史条目）、`selectWifiSsid()`（扫描弹层选 SSID）、密码框 `input` 监听；弹窗重开/开关切换由 `onHostWifiToggle()` 既有逻辑复位。
+    - i18n：新增 `wifi.hostDoneBtn` 中英键。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.62 → v1.8.63。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.63；新增 `test_web_console_host_wifi_done_button_and_plaintext_password`（`wifi.hostDoneBtn` 中英键、connected 分支按钮改写、掩码占位时两路明文拉取与中止、`resetStaConnectBtn` 定义与三处调用）。
+
 ## 2026-08-23 v1.8.62
 
 - fix(WebConsole): AP 名称配置弹窗的前缀规则提示行改为按需显示——默认隐藏，仅在用户输入了不符合规范的前缀字符时提示

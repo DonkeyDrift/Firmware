@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.62"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.63"' in build_info
+    assert "v1.8.63" in changelog
     assert "v1.8.62" in changelog
     assert "v1.8.59" in changelog
     assert "v1.8.57" in changelog
@@ -345,6 +346,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-23 v1.8.63") < changelog.index("## 2026-08-23 v1.8.62")
     assert changelog.index("## 2026-08-23 v1.8.62") < changelog.index("## 2026-08-22 v1.8.59")
     assert changelog.index("## 2026-08-22 v1.8.59") < changelog.index("## 2026-08-22 v1.8.57")
     assert changelog.index("## 2026-08-22 v1.8.57") < changelog.index("## 2026-08-22 v1.8.54")
@@ -2490,6 +2492,41 @@ def test_web_console_sta_modal_defaults_host_provisioning_on():
     assert "I18N.zh['wifi.hostSendBtn']='发送到上位机'" in source
     assert "I18N.en['wifi.hostSendBtn']='Send to host'" in source
     assert "connectBtn.onclick=saveHostWifi" in source
+
+
+def test_web_console_host_wifi_done_button_and_plaintext_password():
+    """v1.8.63：①上位机配网成功后「发送到上位机」变为「完成」（点击关闭弹窗）；
+    ②密码框为掩码占位（用户未改动）时，saveHostWifi 先拉取真实明文再组 WIFI| 帧，
+    修复上位机收到字面量 '********' 导致 nmcli 配网失败。"""
+
+    source = firmware_source_text()
+
+    # ① 成功后按钮改「完成」：connected 分支改写文案与 onclick
+    assert "I18N.zh['wifi.hostDoneBtn']='完成'" in source
+    assert "I18N.en['wifi.hostDoneBtn']='Done'" in source
+    assert "doneBtn.textContent=t('wifi.hostDoneBtn')" in source
+    assert "doneBtn.onclick=closeWifiStaModal" in source
+    # 「完成」态在用户改配另一网络时复位：辅助函数 + 历史回填/扫描选择/密码输入三处调用
+    assert "function resetStaConnectBtn()" in source
+    assert "b.textContent=t('wifi.hostSendBtn');b.onclick=saveHostWifi" in source
+    assert "staPasswordDirty=true;updateStaPasswordEye();resetStaConnectBtn();staConnectBtn.focus()" in source
+    assert "closeWifiScanPopover();resetStaConnectBtn();staPassword.focus()" in source
+    assert "staSavedPasswordKnown=false;resetStaConnectBtn()});" in source
+
+    # ② 掩码占位 -> 明文：saveHostWifi 内的两路拉取与失败中止
+    save_body = re.search(
+        r"async function saveHostWifi\(\)\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    )
+    assert save_body, "saveHostWifi() 定义缺失"
+    body = save_body.group("body")
+    assert "if(!staPasswordDirty&&staPasswordPlaceholder)" in body
+    assert "fetch('/api/wifi-sta/password?ssid='+encodeURIComponent(ssid))" in body
+    assert "p=await fetchSavedStaPassword();if(p===null)return" in body
+    # 组帧仍在拉取之后（pwd 为 let、发送前已被明文覆盖）
+    assert "let pwd=staPassword.value" in body
+    assert body.index("let pwd=staPassword.value") < body.index("if(!staPasswordDirty&&staPasswordPlaceholder)") < body.index("const cmd='WIFI|'")
 
 
 def test_web_console_sta_settings_support_scan_and_password_visibility():

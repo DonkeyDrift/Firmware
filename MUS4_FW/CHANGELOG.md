@@ -1,5 +1,21 @@
 # CHANGELOG.md
 
+## 2026-08-23 v1.8.65
+
+- style(WebConsole): CC 内嵌设置视图 UI 对齐 DonkeyDrifter 原生风格（Issue #234 后续）
+  - 背景：用户要求 CC 设置视图里的小标题（RC Channels / 转向修正 / 油门策略 / 评分阈值调参 / 评分参数 / 评分维度）与卡片观感向 DD 的 Drive / Tub Manager / Trainer 页看齐。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（三切片 CONSOLE/DRIFT/JUDGE 各注入 `#dd-embed-native` 样式块，全部 `body.embedded` 作用域，独立页不动）：
+    - 小标题 DD 化：6 个板块标题 `font-weight:600` + `letter-spacing:-0.02em` + 15px，深色 `#e4e7eb` / 浅色 `#1a2330`；标题前加 18px 线性图标（lucide sliders-horizontal，`mask`+`currentColor` 跟随标题色），既有悬停灰字副标题（titleHint/hintSpan）保留——与 DD `SectionCardTitle` 同构。
+    - 卡片 DD 化：`.panel`/`.rcCell`/`.summaryItem`/`.field`/`.card` 圆角统一 8px（DD `rounded-lg`）；浅色主题下单元格/字段卡白底 `#fff` + 细框 `#ccd5df`（对齐 DD `theme-light` 卡片），输入框同步；深色沿用既有近似 DD 深色面板。
+    - 子 iframe 主题透传：`initEmbedTuneFrames()` 给 `/drift?embedded=1`、`/judge?embedded=1` 的 src 追加 `&theme=<父页 data-theme>`，使漂移/Judge 子页跟随主视图（DD 经 `?theme=` 传入）的显式主题，避免系统主题与 DD 手动主题不一致时子页错色。
+    - CSS 嵌套修复：首轮 OTA 后 playwright 验证发现 `<style id="dd-embed-native">` 被前一个 `<style>` 块吞没（HTML 原始文本模式不认嵌套 style 标签，整块 CSS 被当作文本），base 规则（font-weight:600 等）丢失；修复为在 `<style id="dd-embed-native">` 前插 `</style>` 关闭前块，并把尾部多余的 `</style></style>` 改为单个 `</style>`（三切片同款）。
+    - `::before` 图标选择器修复：同轮验证发现 `::before` 伪元素只加在选择器列表最后一项，前 5 个标题选择器没带 `::before` 导致 mask 图标不渲染；修复为每个选择器都加 `::before`（三切片同款）。
+    - 初始化顺序修复：`initEmbedTuneFrames()` 原在 `initTheme()` 之前调用，读取 `document.documentElement.getAttribute('data-theme')` 时主题尚未应用（恒取系统默认 light），子 iframe 永远加载 `theme=light`；修复为把 `initEmbedTuneFrames()` 移到 `initTheme()` 之后（主页 console 切片，drift/judge 子页本就有 `readUrlTheme` 不受影响）。
+    - 控制台切片 `readUrlTheme()`：新增函数读 `?theme=light|dark` URL 参数（drift/judge 切片本就有，console 切片此前缺失），`initTheme()` 改为 `uiTheme=readUrlTheme()||'auto'`——使 DD 经 iframe URL 传入的显式主题在控制台主页也生效。
+  - DD 侧 `CarSettingsPanel.tsx`：iframe src 由 `?embedded=1&settings=1` 改为 `&lang=<lang>&theme=<light|dark>`（lang 取 useTranslation、theme 取 useResolvedTheme），theme 变化经 `key` 触发 iframe 重载；注释与测试同步。
+  - 测试：`tests/test_firmware_feature_flags.py` 新增 `#dd-embed-native` 注入断言（三切片各一）、`initEmbedTuneFrames` 主题透传断言、版本断言 v1.8.65、CHANGELOG 顺序链补 v1.8.65；CSS 断言带 `!important`、console 切片 `initTheme` 断言改 `readUrlTheme()||'auto'`。
+  - 车上验证：playwright（headless Chromium）24/24 全过——两主题下主页面 font-weight=600、`::before` mask 图标渲染（SVG data URI）、深色 color=#e4e7eb / 浅色 #1a2330、`.panel` border-radius=8px、`html[data-theme]` 跟随 `?theme=`；drift/judge 子 iframe 主题跟随父页（dark→dark / light→light）、子 iframe 标题 font-weight=600 + mask 图标同在。
+
 ## 2026-08-23 v1.8.64
 
 - feat(WebConsole): DD Car Connector 内嵌设置视图布局调整——RC Channels 置顶为第一板块、收紧漂移/Judge 子 iframe 间的过大间隙（配合 DD 侧 iframe 去掉 `&wifi=1`，配网板块不再进入该视图）

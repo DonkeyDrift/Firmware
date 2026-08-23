@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.64"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.65"' in build_info
+    assert "v1.8.65" in changelog
     assert "v1.8.64" in changelog
     assert "v1.8.63" in changelog
     assert "v1.8.62" in changelog
@@ -359,6 +360,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-23 v1.8.65") < changelog.index("## 2026-08-23 v1.8.64")
     assert changelog.index("## 2026-08-23 v1.8.64") < changelog.index("## 2026-08-23 v1.8.63")
     assert changelog.index("## 2026-08-23 v1.8.63") < changelog.index("## 2026-08-23 v1.8.62")
     assert changelog.index("## 2026-08-23 v1.8.62") < changelog.index("## 2026-08-23 v1.8.61")
@@ -2567,6 +2569,50 @@ def test_web_console_settings_view_embeds_tune_sections():
     # v1.8.64：embedded 下 drift 页 body 上边距清零、下边距收紧为 10px（对齐板块间距）——
     # 与 judge 页 margin-top:0 配合，把「保存漂移配置」行到 Judge 首个板块的可见间隙压到 ~22px
     assert 'body.embedded{margin-top:0;margin-bottom:10px}' in drift
+
+
+def test_web_console_embedded_view_dd_native_styling():
+    """v1.8.65：CC 内嵌设置视图 UI 对齐 DonkeyDrifter 原生风格——三切片各注入 #dd-embed-native
+    样式块（body.embedded 作用域）：6 个板块小标题加粗+字距+前缀图标（mask+currentColor 跟随标题色），
+    卡片圆角 8px、浅色白底细框；initEmbedTuneFrames 给子 iframe src 追加 &theme=<父页 data-theme>
+    使漂移/Judge 子页跟随主视图显式主题。独立页（无 embedded 类）不受影响。"""
+    source = firmware_source_text()
+
+    # 三切片各注入一份 #dd-embed-native 样式块
+    assert source.count('id="dd-embed-native"') == 3
+    console = source[source.index('WIFI_WEB_CONSOLE_HTML'):source.index('WIFI_WEB_JUDGE_HTML')]
+    judge = source[source.index('WIFI_WEB_JUDGE_HTML'):source.index('WIFI_WEB_DRIFT_HTML')]
+    drift = source[source.index('WIFI_WEB_DRIFT_HTML'):]
+    for seg, label in [(console, 'CONSOLE'), (judge, 'JUDGE'), (drift, 'DRIFT')]:
+        assert 'id="dd-embed-native"' in seg, f'{label} 切片缺 #dd-embed-native 注入'
+
+    # 6 个板块标题（data-i18n）加粗+字距+图标 ::before（mask + currentColor）
+    titles = (
+        'panel.rcChannels',
+        'drift.steering.label',
+        'drift.throttle.label',
+        'judge.section.thresholds',
+        'judge.section.scoring',
+        'judge.dimLabel',
+    )
+    for key in titles:
+        assert f'[data-i18n="{key}"]' in source, f'缺标题选择器 {key}'
+    assert 'font-weight:600!important;letter-spacing:-0.02em!important;font-size:15px!important' in source
+    # 深色 #e4e7eb / 浅色 #1a2330
+    assert 'color:#e4e7eb' in source
+    assert 'html[data-theme="light"]' in source and '#1a2330' in source
+    # 图标 mask + currentColor
+    assert '::before{content:"";display:inline-block;width:18px;height:18px' in source
+    assert 'background:currentColor' in source
+    assert '-webkit-mask:url("data:image/svg+xml,' in source
+
+    # 卡片圆角 8px + 浅色白底细框
+    assert 'body.embedded .panel,body.embedded .rcCell,body.embedded .summaryItem,body.embedded .field,body.embedded .card{border-radius:8px}' in source
+    assert 'html[data-theme="light"] body.embedded .rcCell' in source
+    assert '#ccd5df' in source
+
+    # initEmbedTuneFrames：子 iframe src 追加 &theme=<父页 data-theme>
+    assert "theme='+(document.documentElement.getAttribute('data-theme')||'dark')" in source
 
 
 def test_web_console_preinit_reveal_no_first_paint_flash():
@@ -5105,7 +5151,7 @@ def test_web_console_theme_toggle():
     # 单击切换：在当前生效主题（resolvedTheme）的深/浅反向间来回切换（仅内存、不持久化）
     assert "function toggleTheme(){setTheme(resolvedTheme()==='light'?'dark':'light')}" in assets
     assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in assets
-    assert "function initTheme(){uiTheme='auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
+    assert "function readUrlTheme(){try{const m=/[?&]theme=(light|dark)(?:&|$)/.exec(window.location.search);if(m)return m[1]}catch(e){}return null}function initTheme(){uiTheme=readUrlTheme()||'auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
     assert "initTheme();" in assets
 
     # 跟随系统：'auto' 经 matchMedia 解析（matchMedia 不可用/异常时回退 dark），显式 light/dark 原样返回
@@ -5393,7 +5439,7 @@ def test_web_console_light_theme_overrides():
     assert "function resolvedTheme(){return uiTheme==='auto'?systemTheme():(uiTheme==='light'?'light':'dark')}" in assets
     assert "function applyTheme(){document.documentElement.dataset.theme=resolvedTheme();gridReady=false;draw();const dl=document.getElementById('driftTuneLink');if(dl)dl.href='/drift?theme='+resolvedTheme()}" in assets
     assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in assets
-    assert "function initTheme(){uiTheme='auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
+    assert "function readUrlTheme(){try{const m=/[?&]theme=(light|dark)(?:&|$)/.exec(window.location.search);if(m)return m[1]}catch(e){}return null}function initTheme(){uiTheme=readUrlTheme()||'auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
 
     # 图表/toast 双主题色表：深浅的 grid 与 str 关键色
     assert "grid:'#233041'" in assets

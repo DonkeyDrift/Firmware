@@ -274,14 +274,28 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.63"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.65"' in build_info
+    assert "v1.8.65" in changelog
+    assert "v1.8.64" in changelog
     assert "v1.8.63" in changelog
     assert "v1.8.62" in changelog
+    assert "v1.8.61" in changelog
+    assert "v1.8.60" in changelog
     assert "v1.8.59" in changelog
     assert "v1.8.57" in changelog
     assert "v1.8.54" in changelog
+    assert "v1.8.53" in changelog
+    assert "v1.8.52" in changelog
+    assert "v1.8.51" in changelog
+    assert "v1.8.50" in changelog
+    assert "v1.8.49" in changelog
+    # 注意：v1.8.55/v1.8.56 被有意跳过（并行会话先占后弃、最终改跳 v1.8.57，本地 CHANGELOG 无这两条目的标题）
     assert "v1.8.48" in changelog
+    assert "v1.8.47" in changelog
     assert "v1.8.46" in changelog
+    assert "v1.8.45" in changelog
+    assert "v1.8.44" in changelog
+    # 注意：v1.8.43 被有意跳过（其它会话基于旧基点的构建正在车上运行、未以该形态回本仓库）
     assert "v1.8.42" in changelog
     assert "v1.8.41" in changelog
     assert "v1.8.39" in changelog
@@ -346,13 +360,26 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-23 v1.8.65") < changelog.index("## 2026-08-23 v1.8.64")
+    assert changelog.index("## 2026-08-23 v1.8.64") < changelog.index("## 2026-08-23 v1.8.63")
     assert changelog.index("## 2026-08-23 v1.8.63") < changelog.index("## 2026-08-23 v1.8.62")
-    assert changelog.index("## 2026-08-23 v1.8.62") < changelog.index("## 2026-08-22 v1.8.59")
+    assert changelog.index("## 2026-08-23 v1.8.62") < changelog.index("## 2026-08-23 v1.8.61")
+    assert changelog.index("## 2026-08-23 v1.8.61") < changelog.index("## 2026-08-23 v1.8.60")
+    assert changelog.index("## 2026-08-23 v1.8.60") < changelog.index("## 2026-08-23 v1.8.58")
+    assert changelog.index("## 2026-08-23 v1.8.58") < changelog.index("## 2026-08-22 v1.8.59")
     assert changelog.index("## 2026-08-22 v1.8.59") < changelog.index("## 2026-08-22 v1.8.57")
     assert changelog.index("## 2026-08-22 v1.8.57") < changelog.index("## 2026-08-22 v1.8.54")
-    assert changelog.index("## 2026-08-22 v1.8.54") < changelog.index("## 2026-08-22 v1.8.48")
-    assert changelog.index("## 2026-08-22 v1.8.48") < changelog.index("## 2026-08-22 v1.8.46")
-    assert changelog.index("## 2026-08-22 v1.8.46") < changelog.index("## 2026-08-22 v1.8.42")
+    assert changelog.index("## 2026-08-22 v1.8.54") < changelog.index("## 2026-08-22 v1.8.53")
+    assert changelog.index("## 2026-08-22 v1.8.53") < changelog.index("## 2026-08-22 v1.8.52")
+    assert changelog.index("## 2026-08-22 v1.8.52") < changelog.index("## 2026-08-22 v1.8.51")
+    assert changelog.index("## 2026-08-22 v1.8.51") < changelog.index("## 2026-08-22 v1.8.50")
+    assert changelog.index("## 2026-08-22 v1.8.50") < changelog.index("## 2026-08-22 v1.8.49")
+    assert changelog.index("## 2026-08-22 v1.8.49") < changelog.index("## 2026-08-22 v1.8.48")
+    assert changelog.index("## 2026-08-22 v1.8.48") < changelog.index("## 2026-08-22 v1.8.47")
+    assert changelog.index("## 2026-08-22 v1.8.47") < changelog.index("## 2026-08-22 v1.8.46")
+    assert changelog.index("## 2026-08-22 v1.8.46") < changelog.index("## 2026-08-22 v1.8.45")
+    assert changelog.index("## 2026-08-22 v1.8.45") < changelog.index("## 2026-08-22 v1.8.44")
+    assert changelog.index("## 2026-08-22 v1.8.44") < changelog.index("## 2026-08-22 v1.8.42")
     assert changelog.index("## 2026-08-22 v1.8.42") < changelog.index("## 2026-08-22 v1.8.41")
     assert changelog.index("## 2026-08-22 v1.8.41") < changelog.index("## 2026-08-22 v1.8.39")
     assert changelog.index("## 2026-08-22 v1.8.39") < changelog.index("## 2026-08-21 v1.8.38")
@@ -2399,7 +2426,13 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
 def test_web_console_settings_view_shows_rc_channels_panel():
     """Issue #234（v1.8.41）：?settings=1 / ?wifi=1 内嵌视图选择性显示 .grid，
     只露出 Diagnostics 面板里的 #rcFold（RC Channels 校准面板，含中点 Set 与
-    油门 Min/Max 滑块），供 DD Car Connector 内嵌同屏调整 RC 校准。"""
+    油门 Min/Max 滑块），供 DD Car Connector 内嵌同屏调整 RC 校准。
+    v1.8.52 起：rcFold 折叠头在该作用域压平为静态标题（常开不可折叠），
+    且 wifi=1 时配网板块（AP+STA）上移到 settingsView 之前成为最顶部板块。
+    v1.8.64 起：settings 模式初始化时把整个 #diagnosticsPanel（该作用域只露出 rcFold）
+    insertBefore 到 #settingsView 之前——RC Channels 成为内嵌设置视图第一个板块
+    （?embedded=1&settings=1 最终顺序：RC Channels → 漂移 → Judge）；同步段执行，
+    preinit 隐藏期内完成不重排闪烁，带空引用保护；settings+wifi 视图顺序不苛求。"""
     source = firmware_source_text()
 
     assert 'body.settings .grid,body.wifi .grid{display:block}' in source
@@ -2412,13 +2445,239 @@ def test_web_console_settings_view_shows_rc_channels_panel():
     # 旧的整藏规则已移除（与 display:block 冲突，同特异性后者胜出会导致 grid 仍被藏）
     assert 'body.settings .grid{display:none}' not in source
     assert 'body.wifi .grid{display:none}' not in source
-    # settings/wifi 内嵌视图加载时自动展开 RC Channels 折叠面板
-    assert "if(location.search.indexOf('settings=1')>=0||location.search.indexOf('wifi=1')>=0)toggleFold('rcFold');" in source
+    # v1.8.52：settings/wifi 内嵌视图里 RC Channels 折叠头压平为静态标题——初始化强制展开且不可折叠
+    # （旧 toggleFold('rcFold') 初始化调用已移除；toggleFold 函数本身保留，车端独立 DC 页不受影响）
+    assert "if(location.search.indexOf('settings=1')>=0||location.search.indexOf('wifi=1')>=0)toggleFold('rcFold');" not in source
+    assert "rcFold.classList.add('open')" in source
+    assert "rcFold.querySelector('.foldHead')" in source
+    assert "rcHead.removeAttribute('onclick')" in source
+    assert "rcHead.setAttribute('aria-expanded','true')" in source
+    # 压平 CSS（body.settings/body.wifi 作用域限定）：透明背景/无边框/无 hover/cursor:default/pointer-events:none、
+    # 隐藏 ▸ 箭头；titleHint 重新启用 pointer-events 以保留标题级 hintSpan 悬停灰字
+    assert 'body.settings #rcFold .foldHead,body.wifi #rcFold .foldHead{background:transparent;border:none;cursor:default;pointer-events:none}' in source
+    assert 'body.settings #rcFold .foldHead:hover,body.wifi #rcFold .foldHead:hover{background:transparent}' in source
+    assert 'body.settings #rcFold .foldHead .titleHint,body.wifi #rcFold .foldHead .titleHint{pointer-events:auto}' in source
+    assert 'body.settings #rcFold .foldIcon,body.wifi #rcFold .foldIcon{display:none}' in source
     # settingsView（车辆设置标题 + 调校行）移到 .grid 之前，内嵌视图里排在 RC Channels 面板前
     assert source.index('<div id="settingsView" class="settingsView">') < source.index('<div class="grid">')
-    # v1.8.42：wifi 内嵌视图里 AP/STA 两个配网板块融合为单卡片（上卡去底边/底圆角，下卡去顶圆角）
+    # v1.8.52：wifi=1 初始化时把配网两板块 insertBefore 到 settingsView 之前（先 AP 后 STA，
+    # 最终顺序 AP、STA、settingsView），配网成为内嵌视图最顶部板块；带空引用保护
+    assert "const settingsView=document.getElementById('settingsView');const wifiAp=document.getElementById('wifiApModal');const wifiSta=document.getElementById('wifiStaModal');" in source
+    assert "if(settingsView&&wifiAp&&wifiSta){settingsView.parentNode.insertBefore(wifiAp,settingsView);settingsView.parentNode.insertBefore(wifiSta,settingsView);}" in source
+    # v1.8.64：settings=1 初始化时把整个 #diagnosticsPanel insertBefore 到 #settingsView 之前
+    # （RC Channels 置顶为第一板块；wifi 分支先执行，故 settings+wifi 视图顺序为 AP、STA、RC、设置）；
+    # 带空引用保护（settingsView/diagPanel/parentNode），且在 rcFold 压平块之前的同一同步段执行
+    rc_first = "if(location.search.indexOf('settings=1')>=0){const settingsView=document.getElementById('settingsView');const diagPanel=document.getElementById('diagnosticsPanel');if(settingsView&&diagPanel&&settingsView.parentNode){settingsView.parentNode.insertBefore(diagPanel,settingsView);}}"
+    assert rc_first in source
+    assert source.index(rc_first) > source.index("if(settingsView&&wifiAp&&wifiSta){settingsView.parentNode.insertBefore(wifiAp,settingsView)")
+    assert source.index(rc_first) < source.index("rcFold.classList.add('open')")
+    # v1.8.45：融合单卡去掉 STA 卡上边框（浅色主题 .dialog 边框色 #d99a17 会在 AP/STA 之间形成一条黄杠）
     assert 'body.wifi #wifiApModal .dialog{margin:0;border-bottom:none;border-radius:14px 14px 0 0;padding-bottom:8px;box-shadow:none}' in source
-    assert 'body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-radius:0 0 14px 14px;padding-top:4px}' in source
+    assert 'body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-top:none;border-radius:0 0 14px 14px;padding-top:4px}' in source
+
+
+def test_web_console_embedded_main_view_hides_settings_panels():
+    """Issue #234 后续（v1.8.44）：DD 内嵌主视图（?embedded=1 且无 settings/wifi 参数）
+    隐藏设置类板块/入口——RC Channels 校准面板（#rcFold）、手柄校准/漂移设置按钮行
+    （#diagSettingsRow）、Network 卡 ⚙ 配网入口（#networkGear）、Drift 卡 Tune 链接
+    （#driftTuneLink）——这些已全部移至 DD Car Connector 的车辆设置。
+    规则必须带 :not(.settings):not(.wifi) 守卫，避免误伤 DD Car Connector 的
+    settings/wifi 内嵌视图（其 URL 同样带 embedded=1）；车端独立 DC 页面（无参数）不受影响。"""
+    source = firmware_source_text()
+
+    guard = 'body.embedded:not(.settings):not(.wifi)'
+    assert f'{guard} #rcFold{{display:none}}' in source
+    assert f'{guard} #diagSettingsRow{{display:none}}' in source
+    assert f'{guard} #networkGear{{display:none}}' in source
+    assert f'{guard} #driftTuneLink{{display:none}}' in source
+    # 按钮行加了 id 供 CSS 定点隐藏（原本是无 id 的裸 div）
+    assert '<div id="diagSettingsRow" style="margin:10px 0">' in source
+    # 守卫必须存在：不允许出现不带 :not 的裸 body.embedded 隐藏规则（会误伤 settings/wifi 内嵌视图里的 rcFold）
+    assert 'body.embedded #rcFold{display:none}' not in source
+    assert 'body.embedded #diagSettingsRow{display:none}' not in source
+    assert 'body.embedded #networkGear{display:none}' not in source
+    assert 'body.embedded #driftTuneLink{display:none}' not in source
+
+
+def test_web_console_settings_view_embeds_tune_sections():
+    """Issue #234 后续（v1.8.47/v1.8.48）：CC 车辆设置内嵌视图（?embedded=1&settings=1&wifi=1，
+    即 body.embedded.settings 作用域）默认展开漂移设置与 Judge 设置——两个跳转按钮
+    改为同页内嵌子 iframe 板块（/drift?embedded=1、/judge?embedded=1）；v1.8.48 起「车辆设置」
+    标题与「调校」行（含跳转按钮与手柄校准按钮）在该作用域整行隐藏，手柄校准移至 DD CC 页
+    顶栏经 postMessage(dd-open-joystick-cal) 打开弹窗；车端独立 DC 页面与独立设置视图不受
+    影响；/drift、/judge 子页支持 embedded=1 时隐藏自身头部。"""
+    source = firmware_source_text()
+
+    # 主页：内嵌板块 HTML（默认 display:none，仅 body.embedded.settings 显示）；
+    # v1.8.50 起 iframe 改 data-src 懒加载（仅嵌入设置视图才赋值 src），其余视图不加载子页；
+    # v1.8.51 起去掉「漂移设置/Judge 设置」h3 分类标题与 .embedTuneSection 包装——两个 iframe 直接相接融合为一页
+    assert '<div class="embedTuneSections"><iframe class="embedTuneFrame driftFrame" data-src="/drift?embedded=1"' in source
+    assert '<iframe class="embedTuneFrame judgeFrame" data-src="/judge?embedded=1"' in source
+    assert 'class="embedTuneFrame driftFrame" src=' not in source
+    assert 'class="embedTuneFrame judgeFrame" src=' not in source
+    assert 'class="embedTuneSection"' not in source
+    assert '.embedTuneSection h3' not in source
+    assert '.embedTuneSections{display:none}' in source
+    assert 'body.embedded.settings .embedTuneSections{display:block}' in source
+    assert '.embedTuneFrame{display:block;width:100%;border:0' in source
+    # v1.8.50：子 iframe 按内容自动撑高（无内部滚动条），仅 embedded+settings 视图初始化
+    assert 'function initEmbedTuneFrames()' in source
+    assert 'new ResizeObserver(fit)' in source
+    assert "if(document.body.classList.contains('embedded')&&document.body.classList.contains('settings'))initEmbedTuneFrames();" in source
+    # v1.8.64：fit() 高度公式只量 body（scrollHeight/offsetHeight 取大）+ getComputedStyle 上下外边距，
+    # 不再取 documentElement——其 scrollHeight 被 iframe 自身视口高度钳制（>=占位高 820/1000），
+    # 内容较短时 iframe 底部留出大片空白（漂移子页实测多出 ~158px），是两 iframe 间过大间隙的根因
+    assert "var h=Math.max(b.scrollHeight,b.offsetHeight)+mt+mb" in source
+    assert "parseFloat(cs.marginTop)||0" in source
+    assert "parseFloat(cs.marginBottom)||0" in source
+    assert "doc.documentElement?doc.documentElement.scrollHeight:0" not in source
+    # 主页：两个跳转按钮保留 id（v1.8.47 引入）；v1.8.48 起整个「车辆设置」标题与「调校」行在
+    # body.embedded.settings 作用域整行隐藏（含手柄校准按钮——已移至 DD CC 页顶栏）
+    assert 'id="driftSettingsBtn"' in source
+    assert 'id="judgeSettingsBtn"' in source
+    assert 'body.embedded.settings #settingsView .setTitle{display:none}' in source
+    assert 'body.embedded.settings #settingsView .setRow{display:none}' in source
+    # v1.8.47 的跳转按钮定点隐藏规则已被 setRow 整行隐藏覆盖，不应再存在
+    assert 'body.embedded.settings #driftSettingsBtn,body.embedded.settings #judgeSettingsBtn{display:none}' not in source
+    # 主页：message 监听追加 dd-open-joystick-cal 分支（DD CC 页顶栏「手柄校准」按钮经 postMessage 打开弹窗）
+    assert "else if(d.type==='dd-open-joystick-cal'){openJoystickCalModal()}" in source
+
+    # /judge 页（JUDGE 段在 DRIFT 段之前）：头部 panel 加 id 并在 embedded 时隐藏；init 检测 embedded=1；
+    # v1.8.51：embedded 时撑满 iframe 宽度（去 760px 限宽），隐藏显示类区域（得分 hero、gyroZ 曲线），只留设置表单
+    judge = source[source.index('WIFI_WEB_JUDGE_HTML'):source.index('WIFI_WEB_DRIFT_HTML')]
+    assert 'id="judgeHeadPanel"' in judge
+    assert 'body.embedded #judgeHeadPanel{display:none}' in judge
+    assert "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');syncJudgeConfigInputs();" in judge
+    assert 'body.embedded{max-width:none;margin-top:0}' in judge
+    # v1.8.64：embedded 下上边距清零（原 margin:16px auto 的 16px 顶边距在融合页形成大间隙）；
+    # .panel 的 margin:12px 0 顶边距同样清零（embedded 下头部/hero/gyro 面板全隐藏后，
+    # 「评分阈值调参」面板的 12px 顶边距成为唯一可见面板的上间隙来源）
+    assert 'body.embedded .panel{margin-top:0}' in judge
+    assert 'id="judgeHero"' in judge
+    assert 'body.embedded #judgeHero{display:none}' in judge
+    assert 'id="gyroChartPanel"' in judge
+    assert 'body.embedded #gyroChartPanel{display:none}' in judge
+
+    # /drift 页：embedded 时隐藏自身 headerRow（主页也有同名规则，必须切片到 DRIFT 段断言）；init 检测 embedded=1
+    drift = source[source.index('WIFI_WEB_DRIFT_HTML'):]
+    assert 'body.embedded .headerRow{display:none}' in drift
+    assert "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');initLanguage();initTheme();loadDriftConfig();" in drift
+    # v1.8.53：embedded 时隐藏漂移页顶部 Status 状态栏面板（CC 设置页只留设置表单，与 v1.8.51 judge 页
+    # #judgeHero/#gyroChartPanel 同款做法；JS 仍更新其元素、隐藏不影响运行）；车端独立 /drift 页完整保留
+    assert '<div class="panel" id="driftStatusPanel">' in drift
+    assert 'body.embedded #driftStatusPanel{display:none}' in drift
+    # v1.8.64：embedded 下 drift 页 body 上边距清零、下边距收紧为 10px（对齐板块间距）——
+    # 与 judge 页 margin-top:0 配合，把「保存漂移配置」行到 Judge 首个板块的可见间隙压到 ~22px
+    assert 'body.embedded{margin-top:0;margin-bottom:10px}' in drift
+
+
+def test_web_console_embedded_view_dd_native_styling():
+    """v1.8.65：CC 内嵌设置视图 UI 对齐 DonkeyDrifter 原生风格——三切片各注入 #dd-embed-native
+    样式块（body.embedded 作用域）：6 个板块小标题加粗+字距+前缀图标（mask+currentColor 跟随标题色），
+    卡片圆角 8px、浅色白底细框；initEmbedTuneFrames 给子 iframe src 追加 &theme=<父页 data-theme>
+    使漂移/Judge 子页跟随主视图显式主题。独立页（无 embedded 类）不受影响。"""
+    source = firmware_source_text()
+
+    # 三切片各注入一份 #dd-embed-native 样式块
+    assert source.count('id="dd-embed-native"') == 3
+    console = source[source.index('WIFI_WEB_CONSOLE_HTML'):source.index('WIFI_WEB_JUDGE_HTML')]
+    judge = source[source.index('WIFI_WEB_JUDGE_HTML'):source.index('WIFI_WEB_DRIFT_HTML')]
+    drift = source[source.index('WIFI_WEB_DRIFT_HTML'):]
+    for seg, label in [(console, 'CONSOLE'), (judge, 'JUDGE'), (drift, 'DRIFT')]:
+        assert 'id="dd-embed-native"' in seg, f'{label} 切片缺 #dd-embed-native 注入'
+
+    # 6 个板块标题（data-i18n）加粗+字距+图标 ::before（mask + currentColor）
+    titles = (
+        'panel.rcChannels',
+        'drift.steering.label',
+        'drift.throttle.label',
+        'judge.section.thresholds',
+        'judge.section.scoring',
+        'judge.dimLabel',
+    )
+    for key in titles:
+        assert f'[data-i18n="{key}"]' in source, f'缺标题选择器 {key}'
+    assert 'font-weight:600!important;letter-spacing:-0.02em!important;font-size:15px!important' in source
+    # 深色 #e4e7eb / 浅色 #1a2330
+    assert 'color:#e4e7eb' in source
+    assert 'html[data-theme="light"]' in source and '#1a2330' in source
+    # 图标 mask + currentColor
+    assert '::before{content:"";display:inline-block;width:18px;height:18px' in source
+    assert 'background:currentColor' in source
+    assert '-webkit-mask:url("data:image/svg+xml,' in source
+
+    # 卡片圆角 8px + 浅色白底细框
+    assert 'body.embedded .panel,body.embedded .rcCell,body.embedded .summaryItem,body.embedded .field,body.embedded .card{border-radius:8px}' in source
+    assert 'html[data-theme="light"] body.embedded .rcCell' in source
+    assert '#ccd5df' in source
+
+    # initEmbedTuneFrames：子 iframe src 追加 &theme=<父页 data-theme>
+    assert "theme='+(document.documentElement.getAttribute('data-theme')||'dark')" in source
+
+
+def test_web_console_preinit_reveal_no_first_paint_flash():
+    """v1.8.60 引入 preinit 隐藏机制：三切片（CONSOLE/JUDGE/DRIFT）在 <body> 后插入微型同步脚本
+    立即加 preinit/embedded（主页另有 settings/wifi）类 + 2s 兜底，CSS 前部加
+    body.preinit{visibility:hidden}；尾部 init 原有类赋值与 wifi 弹窗逻辑保留（幂等保险）。
+    v1.8.61 修复揭示时机：initLanguage() 改「同步先应用+揭示，后台再对齐服务器偏好」——
+    同步段 readUrlLanguage→readStoredLanguage→detectBrowserLanguage 后立即 applyLanguage+remove('preinit')，
+    揭示不再 await fetch('/api/language')（原实现对 ESP32 单线程拥塞敏感，CC iframe 场景会卡纯黑屏）。"""
+    source = firmware_source_text()
+
+    console = source[source.index('WIFI_WEB_CONSOLE_HTML'):source.index('WIFI_WEB_JUDGE_HTML')]
+    judge = source[source.index('WIFI_WEB_JUDGE_HTML'):source.index('WIFI_WEB_DRIFT_HTML')]
+    drift = source[source.index('WIFI_WEB_DRIFT_HTML'):source.index('WIFI_WEB_UPDATE_HTML')]
+    update = source[source.index('WIFI_WEB_UPDATE_HTML'):]
+
+    # 早期同步脚本紧贴 <body> 后（任何可见元素之前），加 preinit + embedded 类并带 2s 兜底与 try/catch
+    early_common = ("<body>\n<script>try{var _q=location.search,_b=document.body;_b.classList.add('preinit');"
+                    "if(_q.indexOf('embedded=1')>=0)_b.classList.add('embedded');")
+    early_tail = ("setTimeout(function(){_b.classList.remove('preinit')},2000)}catch(e){"
+                  "try{document.body.classList.remove('preinit')}catch(_e){}}</script>\n")
+    for page in (console, judge, drift):
+        assert early_common in page
+        assert early_tail in page
+    # 主页早期脚本另有 settings/wifi 类；drift/judge 无 settings/wifi 视图、早期脚本不得加这两类
+    assert "if(_q.indexOf('settings=1')>=0)_b.classList.add('settings');" in console
+    assert "if(_q.indexOf('wifi=1')>=0)_b.classList.add('wifi');" in console
+    assert "_b.classList.add('settings')" not in judge
+    assert "_b.classList.add('settings')" not in drift
+    assert "_b.classList.add('wifi')" not in judge
+    assert "_b.classList.add('wifi')" not in drift
+
+    # preinit CSS 在各切片首个 <style> 块内（其 </style> 之前）
+    for page in (console, judge, drift):
+        css_at = page.index('body.preinit{visibility:hidden}')
+        assert page.index('<style>') < css_at < page.index('</style>')
+
+    # v1.8.61 同步段：URL 参数 > localStorage 缓存 > 浏览器检测，applyLanguage 后立即 reveal
+    sync_head = ("async function initLanguage(){const urlLang=readUrlLanguage();let lang=urlLang;"
+                 "if(!lang)lang=readStoredLanguage();if(!lang)lang=detectBrowserLanguage();")
+    reveal = "applyLanguage(lang);if(document.body)document.body.classList.remove('preinit');"
+    # v1.8.61 后台对齐段：仅无 URL ?lang= 时拉服务器偏好（保持原优先级），差异才 writeStored+re-apply，catch 吞掉
+    bg_fetch = "if(!urlLang){fetch('/api/language',{cache:'no-store'})"
+    bg_apply = "if(srv&&srv!==uiLang){writeStoredLanguage(srv);applyLanguage(srv)}"
+    for page in (console, judge, drift):
+        assert sync_head in page
+        assert reveal in page
+        assert bg_fetch in page
+        assert bg_apply in page
+        assert "else if(j.lang==='auto')srv=detectBrowserLanguage();" in page
+        # 揭示不再依赖网络：三切片内 fetch-first 旧实现（await fetch 先于 reveal）已不存在
+        assert "await fetch('/api/language'" not in page
+        # 同一 initLanguage 内 reveal 先于后台 fetch（reveal 标记只此一处，切片内顺序即函数内顺序）
+        assert page.index(reveal) < page.index(bg_fetch)
+
+    # 尾部 init 原有类赋值保留（幂等保险）；主页 wifi 分支弹窗逻辑不动
+    tail_judge = "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');syncJudgeConfigInputs();"
+    tail_drift = "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');initLanguage();initTheme();loadDriftConfig();"
+    assert tail_judge in judge
+    assert tail_drift in drift
+    assert "if(location.search.indexOf('settings=1')>=0)document.body.classList.add('settings');if(location.search.indexOf('wifi=1')>=0){document.body.classList.add('wifi');openWifiApModal();openWifiStaModal();" in console
+
+    # UPDATE 页不在本次范围：不含 preinit，initLanguage 仍是旧 fetch-first 形态（无揭示需求）
+    assert 'preinit' not in update
+    assert "await fetch('/api/language'" in update
 
 
 def test_web_console_status_parser_preserves_quoted_values_with_spaces():
@@ -2492,6 +2751,50 @@ def test_web_console_sta_modal_defaults_host_provisioning_on():
     assert "I18N.zh['wifi.hostSendBtn']='发送到上位机'" in source
     assert "I18N.en['wifi.hostSendBtn']='Send to host'" in source
     assert "connectBtn.onclick=saveHostWifi" in source
+
+
+def test_web_console_host_wifi_status_bar_shows_host_report_state():
+    """v1.8.58：「上位机配网」状态条不再永远停在「等待...」——
+
+    STA 板块打开（onHostWifiToggle checked 分支）立即拉取 /api/host-wifi-status 并
+    5s 慢轮询；接口新增 host_ip/host_ip_age_s 字段（上位机 HOSTIP| 周期上报），
+    IDLE 分支按上报新鲜度显示「上位机在线 IP: x.x.x.x」或「等待上位机上报」。
+    """
+
+    server = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp").read_text(encoding="utf-8")
+    assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
+
+    # 后端：/api/host-wifi-status 新增 host_ip / host_ip_age_s（age 算法与 /api/status 一致）
+    assert 'json += ",\\"host_ip\\":";' in server
+    assert "appendJsonString(json, hostReportedIp.c_str());" in server
+    assert 'json += ",\\"host_ip_age_s\\":";' in server
+    assert "json += String(hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL);" in server
+    assert "json.reserve(224);" in server
+
+    # 前端：打开 STA 板块（toggle checked 分支）立即拉取真实状态 + 5s 慢轮询
+    assert "bar.style.display='block';pollHostWifiStatus();stopHostWifiPoll();hostWifiPollTimer=setInterval(pollHostWifiStatus,5000)" in assets
+    # 关闭 STA 弹窗停止轮询（修补轮询泄漏）
+    assert "function closeWifiStaModal(){closeWifiScanPopover();maskStaPassword();stopHostWifiPoll();wifiStaModal.classList.remove('show')}" in assets
+
+    # IDLE 分支：host_ip 非空且上报不超过 60s 视为上位机在线，否则等待上位机上报
+    assert "if(j.status==='IDLE'){if(j.host_ip&&j.host_ip_age_s<=60){lbl.textContent=t('wifi.hostStatus.hostOnline');ipEl.style.display='';ipEl.textContent='IP: '+j.host_ip}" in assets
+    assert "else{lbl.textContent=t('wifi.hostStatus.waitingHost');ipEl.style.display='none'}errEl.style.display='none'}" in assets
+    # connected/failed 分支保持现有自愈（拿到终态后停止轮询）
+    # connected 分支：拿到终态后停止轮询并 toast（v1.8.63 在中间插入「完成」按钮改写，两者不再相邻，分开断言）
+    assert "stopHostWifiPoll();const doneBtn=document.getElementById('staConnectBtn')" in assets
+    assert "showToast(t('wifi.hostOkToast')+j.ip,true)" in assets
+
+    # i18n：新增 hostOnline/waitingHost 中英键，旧 idle 键不再被引用、已删除
+    assert "I18N.zh['wifi.hostStatus.hostOnline']='上位机在线'" in assets
+    assert "I18N.en['wifi.hostStatus.hostOnline']='Host online'" in assets
+    assert "I18N.zh['wifi.hostStatus.waitingHost']='等待上位机上报'" in assets
+    assert "I18N.en['wifi.hostStatus.waitingHost']='Waiting for host report'" in assets
+    # 状态条 label 不走 data-i18n：initLanguage() 异步 fetch /api/language 后 applyLanguage()
+    # 会按 data-i18n 重写 textContent，把首轮轮询已显示的「上位机在线」覆盖回占位文字（最长 5s 才自愈）——
+    # label 是状态驱动元素（与 refreshDynamicLabels 管辖的按钮同类），占位文字硬编码，首轮轮询 <1s 即被真实状态替换
+    assert 'id="hostWifiStatusLabel" style="color:#8fa1b5">等待上位机上报</b>' in assets
+    assert 'data-i18n="wifi.hostStatus.waitingHost"' not in assets
+    assert "wifi.hostStatus.idle" not in assets
 
 
 def test_web_console_host_wifi_done_button_and_plaintext_password():
@@ -3728,10 +4031,11 @@ def test_drift_settings_button_next_to_joystick_calibration():
     assert "window.open('/drift?theme='+resolvedTheme(),'_blank')" in assets, "漂移设置按钮应携带当前主题跳转到 ESP32 自身 drift 配置页"
     assert "I18N.zh['button.driftSettings']" in assets, "缺少中文漂移设置文案"
     assert "I18N.en['button.driftSettings']" in assets, "缺少英文漂移设置文案"
-    # 漂移设置按钮应与手柄校准按钮位于同一容器（margin:10px 0 的 div）
+    # 漂移设置按钮应与手柄校准按钮位于同一容器（设置视图调校行 / 诊断面板按钮行）
+    # 阈值 320：v1.8.47 起按钮加 id、v1.8.48 起 Judge 入口带 ?theme= 参数，同行字符串变长
     cal_btn = assets.index("openJoystickCalModal()")
     drift_btn = assets.index("button.driftSettings")
-    assert abs(cal_btn - drift_btn) < 200, "漂移设置按钮应紧邻手柄校准按钮"
+    assert abs(cal_btn - drift_btn) < 320, "漂移设置按钮应紧邻手柄校准按钮"
 
 
 def test_drift_page_theme_and_title_hints():
@@ -3786,50 +4090,54 @@ def test_drift_page_theme_and_title_hints():
 
 
 def test_joystick_cal_and_rc_panel_title_hints():
-    """手柄校准弹窗与 RC Channels 校准面板的所有标题采用悬停灰字提示
-    （.titleHint + .hintSpan），与 v1.8.36 漂移调参页一致：
+    """悬停灰字提示（.titleHint + .hintSpan）只保留在标题级元素上（v1.8.51 收敛）：
 
-    - 主控制台页面补齐 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）。
-    - 弹窗大标题（cal.title）、RC Channels 折叠头（panel.rcChannels）及 12 个 rcCell
-      小标题（CH1~CH6 / OUT Steering / OUT Throttle / Mid S / Mid T / Min T / Max T）
-      全部包为标题+悬停灰字，并补齐 14 组中英 i18n 键。
+    - 主控制台页面保留 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）。
+    - 标题级保留 2 处：手柄校准弹窗大标题（cal.title.hint）、RC Channels 折叠头
+      （rc.hint.panel）。
+    - v1.8.51：CH1~CH6 / OUT / Mid / Min / Max 共 12 个 rcCell 是字段标签而非小标题，
+      其 titleHint 包装与 12 组 rc.hint.* i18n 键已全部删除（用户：字段不需要悬停特效）。
     """
     assets = (
         PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
     ).read_text(encoding="utf-8")
     console = _page_region(assets, "WIFI_WEB_CONSOLE_HTML")
 
-    # 主控制台页面补齐 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）
+    # 主控制台页面保留 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）
     assert ".titleHint{display:inline-flex;align-items:baseline" in console, "主控制台缺 titleHint 基础样式"
     assert ".hintSpan{max-width:0;opacity:0;" in console, "主控制台缺 hintSpan 折叠样式"
     assert ".titleHint:hover .hintSpan{max-width:340px;opacity:1;" in console, "主控制台缺悬停展开样式"
     assert 'html[data-theme="light"] .hintSpan{' in console, "主控制台缺 light 主题 hintSpan 颜色变体"
 
-    # 弹窗大标题
+    # 弹窗大标题（标题级，保留）
     assert '<div class="titleHint"><h3 data-i18n="cal.title">手柄校准</h3>' in console, "手柄校准弹窗大标题未包 titleHint"
     assert 'data-i18n="cal.title.hint"' in console, "弹窗标题缺 cal.title.hint 悬停提示"
 
-    # RC Channels 折叠头
+    # RC Channels 折叠头（标题级，保留）
     assert '<span class="titleHint"><span data-i18n="panel.rcChannels">RC Channels</span>' in console, "RC Channels 折叠头未包 titleHint"
     assert 'data-i18n="rc.hint.panel"' in console, "RC Channels 折叠头缺 rc.hint.panel 悬停提示"
 
-    # 12 个 rcCell 小标题
-    hint_keys = [
+    # 12 个 rcCell 字段标签：v1.8.51 起不再有悬停特效（无 titleHint 包装、无 i18n 键）
+    removed_keys = [
         "rc.hint.ch1", "rc.hint.ch2", "rc.hint.ch3", "rc.hint.ch4",
         "rc.hint.ch5", "rc.hint.ch6", "rc.hint.outSteering",
         "rc.hint.outThrottle", "rc.hint.midS", "rc.hint.midT",
         "rc.hint.minT", "rc.hint.maxT",
     ]
-    for key in hint_keys:
-        assert f'data-i18n="{key}"' in console, f"rcCell 小标题缺少悬停提示 {key}"
+    for key in removed_keys:
+        assert f'data-i18n="{key}"' not in console, f"rcCell 字段标签仍有悬停提示 {key}"
+        assert f"I18N.zh['{key}']" not in assets, f"中文 i18n 键未删除 {key}"
+        assert f"I18N.en['{key}']" not in assets, f"英文 i18n 键未删除 {key}"
+    # rcCell 标题恢复为纯 <b> 标签
+    assert '<div class="rcCell"><b>CH1 Steering</b>' in console, "CH1 字段标签应为纯 <b> 无包装"
+    assert '<div class="rcCell" style="flex:1"><b>Max T</b>' in console, "Max T 字段标签应为纯 <b> 无包装"
 
-    # 控制台页面 titleHint 包装总数：弹窗 1 + 折叠头 1 + rcCell 12 = 14
-    assert console.count('class="titleHint"') == 14, "控制台应有 14 处 titleHint（弹窗1+折叠头1+rcCell12）"
-    assert console.count('class="hintSpan"') == 14, "控制台应有 14 处 hintSpan"
+    # 控制台页面 titleHint 包装总数：弹窗 1 + 折叠头 1 = 2（rcCell 12 处已于 v1.8.51 移除）
+    assert console.count('class="titleHint"') == 2, "控制台应仅剩 2 处标题级 titleHint（弹窗1+折叠头1）"
+    assert console.count('class="hintSpan"') == 2, "控制台应仅剩 2 处 hintSpan"
 
-    # 14 组中英 i18n 键齐全
-    i18n_keys = ["cal.title.hint", "rc.hint.panel", *hint_keys]
-    for key in i18n_keys:
+    # 保留的 2 组中英 i18n 键齐全
+    for key in ["cal.title.hint", "rc.hint.panel"]:
         assert f"I18N.zh['{key}']" in assets, f"缺中文 i18n 键 {key}"
         assert f"I18N.en['{key}']" in assets, f"缺英文 i18n 键 {key}"
 
@@ -4597,14 +4905,22 @@ def test_web_console_language_api_persists_nvs_preference():
 def test_web_console_language_auto_detects_browser_language():
     """v1.7.68：设备语言偏好缺省 "auto" 时，四个页面启动后经 navigator.language
     自动选择界面语言（zh 开头→中文，其余→英文），检测结果写入 localStorage 作
-    离线兜底；用户手动切换语言仍 POST 显式 zh/en 持久化，覆盖自动检测。"""
+    离线兜底；用户手动切换语言仍 POST 显式 zh/en 持久化，覆盖自动检测。
+    v1.8.61：三主切片（CONSOLE/JUDGE/DRIFT）initLanguage 改「同步先应用+后台对齐」——
+    auto 语义保留：同步段 localStorage 无缓存时即 detectBrowserLanguage() 兜底，
+    后台对齐段服务器 auto 偏好仍映射浏览器检测并在差异时 writeStoredLanguage 持久化；
+    UPDATE 页保留旧内联形式。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
     detect = "function detectBrowserLanguage(){try{return String(navigator.language||'').toLowerCase().indexOf('zh')===0?'zh':'en'}catch(e){return 'zh'}}"
-    auto_branch = "else if(j&&j.lang==='auto'){lang=detectBrowserLanguage();writeStoredLanguage(lang)}"
+    auto_branch_legacy = "else if(j&&j.lang==='auto'){lang=detectBrowserLanguage();writeStoredLanguage(lang)}"
+    auto_branch_align = "else if(j.lang==='auto')srv=detectBrowserLanguage();"
     # 主控制台 + JUDGE/DRIFT/UPDATE 四个页面均为自包含 i18n 核心，逐页断言
     assert assets.count(detect) == 4
-    assert assets.count(auto_branch) == 4
+    assert assets.count(auto_branch_legacy) == 1  # 仅 UPDATE 页保留旧内联形式
+    assert assets.count(auto_branch_align) == 3  # CONSOLE/JUDGE/DRIFT 后台对齐段
+    # 三主切片同步段：localStorage 无缓存时不等网络、直接浏览器检测兜底
+    assert assets.count("if(!lang)lang=detectBrowserLanguage();") == 3
 
     # 主控制台：手动切换仍显式持久化 zh/en（覆盖 auto），不受自动检测影响
     console = _page_region(assets, "WIFI_WEB_CONSOLE_HTML")
@@ -4835,7 +5151,7 @@ def test_web_console_theme_toggle():
     # 单击切换：在当前生效主题（resolvedTheme）的深/浅反向间来回切换（仅内存、不持久化）
     assert "function toggleTheme(){setTheme(resolvedTheme()==='light'?'dark':'light')}" in assets
     assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in assets
-    assert "function initTheme(){uiTheme='auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
+    assert "function readUrlTheme(){try{const m=/[?&]theme=(light|dark)(?:&|$)/.exec(window.location.search);if(m)return m[1]}catch(e){}return null}function initTheme(){uiTheme=readUrlTheme()||'auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
     assert "initTheme();" in assets
 
     # 跟随系统：'auto' 经 matchMedia 解析（matchMedia 不可用/异常时回退 dark），显式 light/dark 原样返回
@@ -5123,7 +5439,7 @@ def test_web_console_light_theme_overrides():
     assert "function resolvedTheme(){return uiTheme==='auto'?systemTheme():(uiTheme==='light'?'light':'dark')}" in assets
     assert "function applyTheme(){document.documentElement.dataset.theme=resolvedTheme();gridReady=false;draw();const dl=document.getElementById('driftTuneLink');if(dl)dl.href='/drift?theme='+resolvedTheme()}" in assets
     assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in assets
-    assert "function initTheme(){uiTheme='auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
+    assert "function readUrlTheme(){try{const m=/[?&]theme=(light|dark)(?:&|$)/.exec(window.location.search);if(m)return m[1]}catch(e){}return null}function initTheme(){uiTheme=readUrlTheme()||'auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
 
     # 图表/toast 双主题色表：深浅的 grid 与 str 关键色
     assert "grid:'#233041'" in assets

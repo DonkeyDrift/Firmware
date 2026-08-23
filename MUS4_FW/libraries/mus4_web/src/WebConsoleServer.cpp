@@ -1202,7 +1202,7 @@ static void handleWifiWebHostWifiStatus()
 {
     sendWifiWebApiHeaders();
     String json;
-    json.reserve(160);
+    json.reserve(224);
     json += "{\"status\":";
     appendJsonString(json, hostWifiStatus.c_str());
     json += ",\"ssid\":";
@@ -1211,6 +1211,10 @@ static void handleWifiWebHostWifiStatus()
     appendJsonString(json, hostWifiIp.c_str());
     json += ",\"error\":";
     appendJsonString(json, hostWifiError.c_str());
+    json += ",\"host_ip\":";
+    appendJsonString(json, hostReportedIp.c_str());
+    json += ",\"host_ip_age_s\":";
+    json += String(hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL);
     json += "}";
     wifiWebServer.send(200, "application/json", json);
 }

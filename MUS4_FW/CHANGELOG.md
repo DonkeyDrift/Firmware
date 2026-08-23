@@ -1,5 +1,35 @@
 # CHANGELOG.md
 
+## 2026-08-23 v1.8.65
+
+- style(WebConsole): CC 内嵌设置视图 UI 对齐 DonkeyDrifter 原生风格（Issue #234 后续）
+  - 背景：用户要求 CC 设置视图里的小标题（RC Channels / 转向修正 / 油门策略 / 评分阈值调参 / 评分参数 / 评分维度）与卡片观感向 DD 的 Drive / Tub Manager / Trainer 页看齐。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（三切片 CONSOLE/DRIFT/JUDGE 各注入 `#dd-embed-native` 样式块，全部 `body.embedded` 作用域，独立页不动）：
+    - 小标题 DD 化：6 个板块标题 `font-weight:600` + `letter-spacing:-0.02em` + 15px，深色 `#e4e7eb` / 浅色 `#1a2330`；标题前加 18px 线性图标（lucide sliders-horizontal，`mask`+`currentColor` 跟随标题色），既有悬停灰字副标题（titleHint/hintSpan）保留——与 DD `SectionCardTitle` 同构。
+    - 卡片 DD 化：`.panel`/`.rcCell`/`.summaryItem`/`.field`/`.card` 圆角统一 8px（DD `rounded-lg`）；浅色主题下单元格/字段卡白底 `#fff` + 细框 `#ccd5df`（对齐 DD `theme-light` 卡片），输入框同步；深色沿用既有近似 DD 深色面板。
+    - 子 iframe 主题透传：`initEmbedTuneFrames()` 给 `/drift?embedded=1`、`/judge?embedded=1` 的 src 追加 `&theme=<父页 data-theme>`，使漂移/Judge 子页跟随主视图（DD 经 `?theme=` 传入）的显式主题，避免系统主题与 DD 手动主题不一致时子页错色。
+    - CSS 嵌套修复：首轮 OTA 后 playwright 验证发现 `<style id="dd-embed-native">` 被前一个 `<style>` 块吞没（HTML 原始文本模式不认嵌套 style 标签，整块 CSS 被当作文本），base 规则（font-weight:600 等）丢失；修复为在 `<style id="dd-embed-native">` 前插 `</style>` 关闭前块，并把尾部多余的 `</style></style>` 改为单个 `</style>`（三切片同款）。
+    - `::before` 图标选择器修复：同轮验证发现 `::before` 伪元素只加在选择器列表最后一项，前 5 个标题选择器没带 `::before` 导致 mask 图标不渲染；修复为每个选择器都加 `::before`（三切片同款）。
+    - 初始化顺序修复：`initEmbedTuneFrames()` 原在 `initTheme()` 之前调用，读取 `document.documentElement.getAttribute('data-theme')` 时主题尚未应用（恒取系统默认 light），子 iframe 永远加载 `theme=light`；修复为把 `initEmbedTuneFrames()` 移到 `initTheme()` 之后（主页 console 切片，drift/judge 子页本就有 `readUrlTheme` 不受影响）。
+    - 控制台切片 `readUrlTheme()`：新增函数读 `?theme=light|dark` URL 参数（drift/judge 切片本就有，console 切片此前缺失），`initTheme()` 改为 `uiTheme=readUrlTheme()||'auto'`——使 DD 经 iframe URL 传入的显式主题在控制台主页也生效。
+  - DD 侧 `CarSettingsPanel.tsx`：iframe src 由 `?embedded=1&settings=1` 改为 `&lang=<lang>&theme=<light|dark>`（lang 取 useTranslation、theme 取 useResolvedTheme），theme 变化经 `key` 触发 iframe 重载；注释与测试同步。
+  - 测试：`tests/test_firmware_feature_flags.py` 新增 `#dd-embed-native` 注入断言（三切片各一）、`initEmbedTuneFrames` 主题透传断言、版本断言 v1.8.65、CHANGELOG 顺序链补 v1.8.65；CSS 断言带 `!important`、console 切片 `initTheme` 断言改 `readUrlTheme()||'auto'`。
+  - 车上验证：playwright（headless Chromium）24/24 全过——两主题下主页面 font-weight=600、`::before` mask 图标渲染（SVG data URI）、深色 color=#e4e7eb / 浅色 #1a2330、`.panel` border-radius=8px、`html[data-theme]` 跟随 `?theme=`；drift/judge 子 iframe 主题跟随父页（dark→dark / light→light）、子 iframe 标题 font-weight=600 + mask 图标同在。
+
+## 2026-08-23 v1.8.64
+
+- feat(WebConsole): DD Car Connector 内嵌设置视图布局调整——RC Channels 置顶为第一板块、收紧漂移/Judge 子 iframe 间的过大间隙（配合 DD 侧 iframe 去掉 `&wifi=1`，配网板块不再进入该视图）
+  - 布局顺序：`?embedded=1&settings=1` 最终可见顺序由「漂移 → Judge → RC Channels」改为「RC Channels → 漂移 → Judge」；settings+wifi 视图（DD 已不用）变为 AP、STA、RC、设置，不苛求。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主页尾部 init 同步段（wifi 分支之后、rcFold 压平块之前）新增：`settings=1` 时把整个 `#diagnosticsPanel`（settings 作用域只露出 `#rcFold`）`insertBefore` 到 `#settingsView` 之前，带 `settingsView&&diagPanel&&settingsView.parentNode` 空引用保护；同步段在 preinit 隐藏期内执行，无重排闪烁。
+    - `initEmbedTuneFrames()` 的 `fit()` 高度公式修复间隙根因：原取 `Math.max(body.scrollHeight, body.offsetHeight, documentElement.scrollHeight, documentElement.offsetHeight)`，而 `documentElement.scrollHeight` 被 iframe 自身视口高度钳制（≥占位高 820px）——内容较短的漂移子页实测底部多出 ~158px 空白。改为只量 `body`（scrollHeight/offsetHeight 取大）+ `getComputedStyle` 的上下外边距，+2px 余量不变。
+    - drift 子页：`body.embedded{margin-top:0;margin-bottom:10px}`——embedded 下上边距清零（与上方 RC 板块的间距由父页面板 padding 提供）、下边距 12px→10px 对齐板块间距。
+    - judge 子页：`body.embedded{max-width:none}` → `body.embedded{max-width:none;margin-top:0}`——`margin:16px auto` 的 16px 顶边距在融合页里与漂移 iframe 底部空白叠加成大间隙，embedded 下清零；另加 `body.embedded .panel{margin-top:0}`——embedded 下头部/hero/gyroZ 面板全隐藏后，「评分阈值调参」面板 `margin:12px 0` 的 12px 顶边距成为首个可见面板的上间隙来源，一并清零。
+    - playwright 实测（车上 v1.8.63 → 本版）：「保存漂移配置」按钮行底部到 Judge 首个板块顶部间距 174px → 22px（目标 ≤24px、与其他板块间距 10~14px 一致：面板 padding 10 + 下边距 10 + 2px 余量）。
+  - DD 侧（DonkeyDrift 仓库 `Tony-cc-declutter` 分支同步提交）：`web_ui/frontend/src/components/CarSettingsPanel.tsx` iframe src 去掉 `&wifi=1`（`?embedded=1&settings=1&wifi=1` → `?embedded=1&settings=1`）+ 顶部注释更新；`CarSettingsPanel.test.tsx` 断言同步。车端独立 DC 页面与固件 `wifi=1` 能力本身不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.63 → v1.8.64（先合并本地 Tony 的 v1.8.62/v1.8.63 后 +1；枚举全部本地分支最高为 v1.8.63）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_settings_view_shows_rc_channels_panel` 新增 diagnosticsPanel 前移断言（空引用保护、执行顺序在 wifi 分支后/rcFold 压平前）；`test_web_console_settings_view_embeds_tune_sections` 新增 fit() 新公式与旧 documentElement 公式移除断言、judge `margin-top:0`、drift embedded 边距断言；版本断言 v1.8.64、CHANGELOG 顺序链补 v1.8.64~v1.8.58 行。
+
 ## 2026-08-23 v1.8.63
 
 - fix(WebConsole): STA 上位机配网两处修复——配网成功后「发送到上位机」按钮变为「完成」；密码框为掩码占位时先取真实明文再发送，修复上位机收到"点点点"导致 nmcli 配网失败
@@ -23,6 +53,44 @@
     - `saveWifiAp()`：无效输入（`wifi.apInvalid`）、保存中（`wifi.apSavingNotice`）、保存失败（`wifi.apInvalid`/`wifi.apSaveFailed`）三处设置文案时同时强制显示提示行，保存流程消息可见性不变。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.59 → v1.8.62（v1.8.60、v1.8.61 由并行会话 `Tony-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
   - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.62；`test_web_console_ap_ssid_modal_and_api_are_present` 新增 `#apNotice` 默认隐藏 marker（`style="display:none"`）、非法字符比较逻辑（`raw!==clean`）与显隐赋值（`apNotice.style.display`）断言。
+
+## 2026-08-23 v1.8.61
+
+- fix(WebConsole): 修复 DC 首屏揭开太慢、CC iframe 场景偶发卡死纯黑屏——`initLanguage()` 改「同步先应用+揭示，后台再对齐服务器偏好」，揭示不再依赖任何网络请求
+  - 根因：v1.8.60 的 preinit 隐藏机制把揭示时机挂在异步 `fetch('/api/language')` 之后——`initLanguage()` 先 await 语言请求再 `applyLanguage()`+移除 preinit；ESP32 单线程 Web 服务在 CC 场景要串行伺候 139KB 主页 + drift/judge 两个子 iframe + 三个语言请求 + 状态轮询 + WS，语言请求排队期间整页 `visibility:hidden`（透出 DD 深色背景即成纯黑屏）；playwright 实测裸车页与 DD 8001 iframe 在车空闲时正常（约 0.75~1s 揭示），拥塞时揭示被无限拖后，今日还观察到一次车辆自发重启（约 1 分钟自恢复），加载中断进一步放大该问题。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（三切片 `WIFI_WEB_CONSOLE_HTML`/`WIFI_WEB_DRIFT_HTML`/`WIFI_WEB_JUDGE_HTML` 同款修改，UPDATE 页无 preinit 机制不动）：
+    - `initLanguage()` 重写为两段：同步段 `readUrlLanguage()` → `readStoredLanguage()` → `detectBrowserLanguage()` 取语言后立即 `applyLanguage(lang)` + `document.body.classList.remove('preinit')`——首帧即正确语言（localStorage 缓存或 navigator 检测覆盖绝大多数情况），揭示不再等任何网络请求；函数保持 `async` 签名但内部已无 await。
+    - 后台对齐段：仅当无 URL `?lang=` 参数时（保持原语义优先级 URL 参数 > 服务器偏好 > 本地缓存/浏览器检测），异步 `fetch('/api/language',{cache:'no-store'})`，成功且服务器语言与当前 `uiLang` 不同才 `writeStoredLanguage(srv)`+`applyLanguage(srv)` 重新应用（`auto` 仍映射 `detectBrowserLanguage()`，保留原 writeStoredLanguage 副作用）；`.catch(()=>{})` 吞掉失败——服务器偏好像原来一样最终生效，但不再阻塞首屏。
+    - `<body>` 后早期内联脚本与 2s 兜底定时器保留不动（init 出错或 JS 异常时仍强制揭示）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.60 → v1.8.61（全本地分支枚举最高为 v1.8.60，+1）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_preinit_reveal_no_first_paint_flash` 语义更新：断言揭示在同步 `applyLanguage` 后立即发生（不再有 `await fetch` 先于揭示）、后台对齐段存在（`if(!urlLang){fetch(...)` + 差异才 re-apply + catch 吞掉）、URL 参数优先保持、2s 兜底与早期脚本不动；版本断言 v1.8.61、CHANGELOG 顺序链补 v1.8.61 行。
+
+## 2026-08-23 v1.8.60
+
+- fix(WebConsole): 消除 DC 页面首屏两种闪烁——CC 内嵌视图先闪完整控制台再切设置视图、先闪英文再刷中文
+  - 根因：三个 HTML 切片（`WIFI_WEB_CONSOLE_HTML`/`WIFI_WEB_DRIFT_HTML`/`WIFI_WEB_JUDGE_HTML`）的 `embedded`/`settings`/`wifi` body 类与 `initLanguage()` 都在尾部 init 脚本才执行——139KB 主页在类应用前已按完整控制台渲染（首闪）；`initLanguage()` 是 async，先 `fetch('/api/language')` 再 `applyLanguage(lang)` 同步替换全部 data-i18n 文本，fetch 往返期间整页英文（二闪）。CC 视图里的漂移/Judge 子 iframe（`/drift?embedded=1`、`/judge?embedded=1`）同模式同问题。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（三切片同款修复，UPDATE 页不动）：
+    - `<body>` 标签后（任何可见元素之前）插入微型同步脚本：按 `location.search` 立即给 body 加 `preinit` + `embedded` 类（主页另有 `settings`/`wifi` 类；drift/judge 无 settings/wifi 视图只加 embedded），并 `setTimeout(remove preinit,2000)` 兜底 + try/catch（防 init 出错页面永远空白）。首帧即有正确视图类，完整控制台不再闪现。
+    - 各切片 CSS 前部新增 `body.preinit{visibility:hidden}`——选 visibility 而非 display:none：隐藏期间布局/ResizeObserver/canvas DPR 测量照常工作。
+    - `initLanguage()` 内 `applyLanguage(lang)` 之后追加 `document.body.classList.remove('preinit')`——中文应用前页面不可见，英文不再闪现；fetch 失败走 catch→localStorage→applyLanguage 照常显示，2s 兜底强制显示。
+    - 尾部 init 里原有 `classList.add('embedded')` 等赋值保留（幂等保险），wifi 分支 `openWifiApModal()/openWifiStaModal()` 等逻辑不动。
+  - `initTheme()` 核查：三切片均为同步函数（`uiTheme=...;applyTheme()` + matchMedia 监听，无 fetch），且尾部 init 中同步先于 `initLanguage()` 的 await 完成，preinit 隐藏期已覆盖——无主题闪烁隐患，未改动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.59 → v1.8.60（v1.8.59 由本地 Tony 的 STA 密码框修复占用，+1 防撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `test_web_console_preinit_reveal_no_first_paint_flash`（三切片早期脚本紧贴 `<body>` 后且内容含 preinit/embedded 赋值与 2s 兜底、主页另有 settings/wifi 赋值而 drift/judge 没有、preinit CSS 在首个 style 块内、initLanguage 内 reveal、尾部原有类赋值与 wifi 弹窗逻辑保留、UPDATE 页不含 preinit）；版本断言 v1.8.60、CHANGELOG 顺序链补 v1.8.60 行。
+
+## 2026-08-23 v1.8.58
+
+- fix(WebConsole): 「上位机配网」状态条永远显示「等待...」——STA 板块打开时立即拉取并 5s 慢轮询 /api/host-wifi-status，IDLE 状态改显示上位机在线/等待上报真实状态（Issue #234 后续）
+  - 根因：`openWifiStaModal()` 强制 `hostWifiToggle.checked=true` 并调 `onHostWifiToggle()`，但该函数 checked 分支只做 `bar.style.display='block'`，从不 fetch `/api/host-wifi-status`——2s 轮询只在 `saveHostWifi()`（点「发送」）后才启动。CC 内嵌视图（?embedded=1&settings=1&wifi=1）里 STA 板块常开，label 永远停在 HTML 占位文字 `wifi.hostStatus.idle`（等待...）。实际上位机在线且周期上报（Serial2 `HOSTIP|` 帧，运行时全局 `hostReportedIp`/`hostReportedIpMs`），`/api/status` 已有 `host_ip`/`host_ip_age_s`，但 host-wifi-status 接口与前端都没用它。
+  - `libraries/mus4_web/src/WebConsoleServer.cpp`：`handleWifiWebHostWifiStatus()` 的 JSON 新增 `"host_ip"` 与 `"host_ip_age_s"` 字段（数据来自 `hostReportedIp`/`hostReportedIpMs`，age 算法与 `/api/status` 一致：`hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL`）；`json.reserve(160)` 加大到 224。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `onHostWifiToggle()` checked 分支末尾追加 `pollHostWifiStatus();stopHostWifiPoll();hostWifiPollTimer=setInterval(pollHostWifiStatus,5000)`——打开 STA 板块立即拉真实状态 + 5s 慢轮询保持新鲜（先停旧定时器防重复）；unchecked 分支既有 `stopHostWifiPoll()` 不动。
+    - `closeWifiStaModal()` 补 `stopHostWifiPoll()`（原关弹窗不停轮询有小泄漏；CC 内嵌视图不关弹窗，常开轮询正是预期行为）。
+    - `pollHostWifiStatus()` IDLE 分支重写：`host_ip` 非空且 `host_ip_age_s<=60` 视为上位机在线——label 显示新 i18n `wifi.hostStatus.hostOnline`（上位机在线 / Host online），`hostWifiStatusIp` 显示 `IP: x.x.x.x`，error span 隐藏；否则 label 显示新 i18n `wifi.hostStatus.waitingHost`（等待上位机上报 / Waiting for host report），ip/error span 隐藏。connecting/connected/failed 分支保持现有行为（含 connected/failed 里 `stopHostWifiPoll()` 自愈）；原 `{IDLE:...}` 状态映射表移除 IDLE 项，IDLE 改由上述专用分支处理。
+    - i18n：`wifi.hostStatus.idle` 键删除（JS 与 HTML 占位均已不再引用），新增 `wifi.hostStatus.hostOnline` 与 `wifi.hostStatus.waitingHost` 中英各一份；状态条 HTML 占位 `data-i18n` 由 `wifi.hostStatus.idle` 改为 `wifi.hostStatus.waitingHost`（首次拉取前的占位语义对齐）。
+    - 状态条 label 移除 `data-i18n`（首轮车上 playwright 验证发现的覆盖竞态：`initLanguage()` 异步 fetch `/api/language` 后 `applyLanguage()` 按 `data-i18n` 重写全部占位元素 textContent，会把首轮轮询已显示的「上位机在线」覆盖回「等待上位机上报」、最长 5s 后才由下一轮轮询自愈；label 为状态驱动元素（与 `refreshDynamicLabels()` 管辖的按钮同类），不走 data-i18n，占位文字保留硬编码「等待上位机上报」，首轮轮询 <1s 即被真实状态替换）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.53 → v1.8.58（并行会话接连占号：v1.8.54 扫描弹层浅色修复、v1.8.57 STA 历史回填，v1.8.55/v1.8.56 被对方先占后弃而跳过，撞号四次 +1）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——新增 `test_web_console_host_wifi_status_bar_shows_host_report_state`（后端新 JSON 字段/reserve 224、前端 onHostWifiToggle 立即拉取+5s 轮询、closeWifiStaModal 停轮询、IDLE 分支 host_ip/age<=60 判断、新 i18n 键存在且 idle 键删除）；版本断言 v1.8.58、CHANGELOG 顺序链补 v1.8.58 行。
 
 ## 2026-08-22 v1.8.59
 
@@ -53,6 +121,58 @@
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.48 → v1.8.54（v1.8.49~v1.8.53 由并行会话 `Tony-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
   - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.54；新增 `test_sta_scan_popover_light_theme_selector` 断言修复后的 `.scanPopover,html[data-theme="light"] .foldHead{` 选择器存在且无效拼接 `scanPopoverhtml` 不再出现。
 
+## 2026-08-22 v1.8.53
+
+- style(WebConsole): CC 内嵌设置视图删掉漂移子页顶部的 Status 状态栏面板（embedded 作用域限定，Issue #234 后续）
+  - 背景：CC 车辆设置内嵌视图（?embedded=1&settings=1&wifi=1）里漂移子 iframe 顶部有一条 Status 状态栏（Enabled/Active/Yaw Error/Throttle Mode 四项实时状态，中文显示 关/待命/0.00/直通）——显示类内容不属于设置（DD 主视图已有遥测），用户要求「把最上面的状态栏删掉」；车端独立 /drift 页面保持原样完整显示。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（WIFI_WEB_DRIFT_HTML 切片）：做法与 v1.8.51 judge 页 `#judgeHero`/`#gyroChartPanel` 隐藏完全一致——漂移页 body 起点 headerRow 之后的第一个 `.panel`（Status 面板，含 `drift.status.label` 标题与 `stateEnabled`/`stateActive`/`stateYawError`/`stateThrottleMode` 四个 summaryItem）加 `id="driftStatusPanel"`；既有 `body.embedded .headerRow{display:none}` 规则旁新增 `body.embedded #driftStatusPanel{display:none}`。漂移页 JS 仍正常更新这些元素，纯 CSS 隐藏不影响运行；CC 内嵌视图里 `initEmbedTuneFrames()` 的 ResizeObserver 会自动收掉子 iframe 高度。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.52 → v1.8.53。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_settings_view_embeds_tune_sections` 的 DRIFT 段断言新增 `id="driftStatusPanel"` 与 `body.embedded #driftStatusPanel{display:none}` 两项；版本断言 v1.8.53、CHANGELOG 顺序链补 v1.8.53 行。
+
+## 2026-08-22 v1.8.52
+
+- style(WebConsole): CC 内嵌设置视图 RC Channels 折叠头压平为静态标题（常开不可折叠）+ 配网板块上移为内嵌视图最顶部板块（Issue #234 后续）
+  - 背景：① CC 内嵌设置视图里 RC Channels 是可折叠面板，折叠头按钮样式（背景/边框/箭头/hover）在内嵌场景下显得多余，用户要求压平成静态标题、内容常开不可折叠（标题文字与标题级悬停灰字 hint 保留）；② 内嵌视图（?embedded=1&settings=1&wifi=1）当前可见顺序为车辆设置→RC Channels→配网，用户要求配网板块（AP 名称配置 + STA Wi-Fi 配置）移到最顶部。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - RC 折叠头压平（`body.settings`/`body.wifi` 作用域限定，只影响内嵌 settings/wifi 视图）：新增 `body.settings #rcFold .foldHead,body.wifi #rcFold .foldHead{background:transparent;border:none;cursor:default;pointer-events:none}`、对应 `:hover` 背景透明规则、`... .foldHead .titleHint{pointer-events:auto}`（保留标题级 hintSpan 悬停灰字）与 `... .foldIcon{display:none}`（隐藏 ▸ 箭头）；作用域规则带 ID，特异性高于 `.foldHead`/`.foldHead:hover` 及 light 主题变体，无需单独 light 变体。
+    - JS 初始化：旧 `if(...settings=1...||...wifi=1...)toggleFold('rcFold')` 替换为强制展开且不可折叠逻辑——`#rcFold` 加 `open` class、foldHead 移除 `onclick` 属性（防点击/键盘触发折叠）、`aria-expanded` 置 `true`，全程空引用保护；`toggleFold()` 函数本身保留，车端独立 DC 页（无 URL 参数）rcFold 仍默认收起、点击可展开/收起。
+    - 配网板块上移：`wifi=1` 初始化分支（`openWifiApModal();openWifiStaModal();` 之后）把 `#wifiApModal`、`#wifiStaModal` 依次 `insertBefore` 到 `#settingsView` 之前（先 AP 后 STA，最终顺序 AP、STA、settingsView），合并的配网板块成为内嵌视图最顶部板块；三者均为 body 直接子节点，加空引用保护；普通 DC 页无 `wifi=1` 不受影响。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.51 → v1.8.52。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_web_console_settings_view_shows_rc_channels_panel` 更新：旧 `toggleFold('rcFold')` 初始化断言改为断言其不存在，新增强制展开 JS（`classList.add('open')`/`removeAttribute('onclick')`/`aria-expanded='true'`）、4 条压平 CSS 规则与配网板块 `insertBefore` 上移断言；版本断言 v1.8.52、CHANGELOG 顺序链补 v1.8.52 行。
+
+## 2026-08-22 v1.8.51
+
+- style(WebConsole): CC 内嵌设置视图融合漂移/Judge 为一页（去分类标题、Judge 撑满宽度、隐藏显示类区域）+ 删除 RC Channels 字段级标题的悬停灰字特效（Issue #234 后续）
+  - 背景：① RC Channels 里 CH1 Steering/CH2 Throttle 等是字段标签不是小标题，悬停灰字特效（v1.8.46 引入）不应加在它们上面；② 用户要求 CC 设置页不按「漂移设置/Judge 设置」分类，融合成一个有逻辑顺序的页面；③ Judge 板块有 760px 居中限宽，没撑满。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - RC 面板字段级特效删除：12 个 rcCell 标题（CH1~CH6 / OUT Steering / OUT Throttle / Mid S / Mid T / Min T / Max T）的 `.titleHint`+`.hintSpan` 包装解包回纯 `<b>`，对应 12 组中英 i18n 键（`rc.hint.ch1`~`ch6`/`outSteering`/`outThrottle`/`midS`/`midT`/`minT`/`maxT`）删除；保留标题级特效——手柄校准弹窗大标题（`cal.title.hint`）与 RC Channels 折叠头（`rc.hint.panel`），/drift 页与 /judge 页标题级 hint 不动（审计确认无其它字段级混入）。
+    - 融合：embedTuneSections 去掉「漂移设置」「Judge 设置」两个 h3 分类标题（连同 `.embedTuneSection h3` CSS 与 light 变体、`.embedTuneSection` 间距规则），两个子 iframe 前后相接成一页——逻辑顺序：先车辆动态参数（漂移：状态/转向修正/油门策略），后评判规则（Judge：评分阈值/基础阈值/评分参数/评分维度）。
+    - Judge 页 embedded 作用域：`body.embedded{max-width:none}` 放开 760px 限宽撑满 iframe；`#judgeHero`（得分/碰撞 hero）与 `#gyroChartPanel`（gyroZ 曲线）两个显示类区域加 id 并在 embedded 时隐藏——CC 设置页只留设置表单（显示类内容不属于设置，且 DD 主视图已有遥测图表）；车端独立 /judge 页面不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.50 → v1.8.51。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——`test_joystick_cal_and_rc_panel_title_hints` 改为断言 12 处 rcCell 无 titleHint 包装、12 组 i18n 键已删、标题级 2 处（弹窗+折叠头）保留、控制台 titleHint 计数 14→2；`test_web_console_settings_view_embeds_tune_sections` 更新——h3 移除、judge embedded 撑宽/隐藏规则断言；版本断言 v1.8.51。
+
+## 2026-08-22 v1.8.50
+
+- fix(WebConsole): CC 车辆设置内嵌视图的漂移/Judge 子 iframe 按内容自动撑高——消除 Judge 设置的内部滚动条，整页统一滚动（Issue #234 后续）
+  - 背景：v1.8.47 的内嵌子 iframe 用固定高度（drift 820px / judge 1000px），Judge 页内容超出后出现独立的内部滚动条，用户要求在整页里完全显示、统一滚动。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - JS 新增 `initEmbedTuneFrames()`：子 iframe load 后按内容高度自动撑高——同源 iframe 直接读 `contentDocument` 的 body/documentElement scroll/offset 高度取最大（+2px 防 1px 滚动），立即 + 400ms + 1600ms 三次 fit 覆盖异步内容，并用 `ResizeObserver` 持续跟踪内容高度变化；仅高度变化时才写 style，收敛无循环。
+    - 懒加载：两个子 iframe 的 `src` 改为 `data-src`，仅 `body.embedded.settings`（CC 车辆设置内嵌视图）才由 init 赋值加载——其它视图（车端独立 DC 主页、DD 嵌入主视图）不再隐藏加载 /drift /judge，消除子页 250ms 轮询/WS 对 ESP32 的无效占用（v1.8.47 引入的隐患）。
+    - CSS：`.embedTuneFrame` 加 `overflow:hidden`；820px/1000px 固定高度保留为加载前占位。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.49 → v1.8.50。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_settings_view_embeds_tune_sections` 更新——iframe 断言改 `data-src`，新增 `initEmbedTuneFrames()` / `ResizeObserver` / 懒加载守卫（`classList.contains('embedded')&&document.body.classList.contains('settings')` 才调用）断言；版本断言 v1.8.50。
+
+## 2026-08-22 v1.8.49
+
+- feat(WebConsole): CC 车辆设置内嵌视图删「车辆设置」标题与「调校」行框——手柄校准按钮移至 DD CC 页顶栏，经 postMessage 打开校准弹窗（Issue #234 后续）
+  - 背景：内嵌设置视图里漂移/Judge 设置已默认展开（v1.8.47），调校行只剩手柄校准一个按钮；用户要求把该按钮移到 DD CC 页顶部「重新扫描」右边，并删掉「车辆设置」标题与「调校」行框。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS（`body.embedded.settings` 作用域限定）：新增 `body.embedded.settings #settingsView .setTitle{display:none}` 与 `body.embedded.settings #settingsView .setRow{display:none}`——「车辆设置」标题与「调校」行（含两个跳转按钮与手柄校准按钮）整行隐藏；v1.8.47 的 `#driftSettingsBtn/#judgeSettingsBtn{display:none}` 规则已被 setRow 整行隐藏覆盖，移除。车端独立 DC 页面与独立设置视图（无 embedded）保持原样。
+    - JS：既有 `window.addEventListener('message', ...)`（dd-console-mute-changed / dd-open-wifi-sta / dd-open-wifi-ap）追加 `dd-open-joystick-cal` 分支——收到 DD CC 页顶栏「手柄校准」按钮的 postMessage 后调用 `openJoystickCalModal()`，弹窗在内嵌 iframe 可视区内居中打开。
+  - DD 侧配套（DonkeyDrift 仓库 `Tony-cc-declutter` 分支）：`CarSettingsPanel.tsx` 顶栏「重新扫描」右侧新增「手柄校准」按钮，点击 postMessage `{type:'dd-open-joystick-cal'}` 到内嵌 iframe（沿用 DrifterConsolePage 静音同步的同款 postMessage 通道）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.47 → v1.8.49（v1.8.48 由并行会话的 Judge 页主题跟随条目占用，跳号避撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` `test_web_console_settings_view_embeds_tune_sections` 更新——按钮隐藏规则断言替换为 setTitle/setRow 整行隐藏断言，新增 `dd-open-joystick-cal` 监听分支断言；版本断言 v1.8.49。
+
 ## 2026-08-22 v1.8.48
 
 - feat(WebConsole): Drift Judge 页（/judge）跟随 Drifter Console 深浅色主题，全部标题改为悬停灰字提示（titleHint），样式对齐 /drift 调参页
@@ -64,6 +184,19 @@
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.46 → v1.8.48（v1.8.47 由并行会话 `session-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
   - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.48；新增 `test_judge_page_theme_and_title_hints` 断言防闪烁脚本/浅色覆盖/内存态主题 JS（无 localStorage、无切换按钮、`readParentTheme()` 同源父页主题跟随）/drawChart 主题取色/6 处 titleHint 与 hintSpan/悬停 CSS/`judge.gyroChartHint` 中英键/控制台 `/judge?theme=` 入口。
 
+## 2026-08-22 v1.8.47
+
+- feat(WebConsole): CC 车辆设置内嵌视图（`?embedded=1&settings=1&wifi=1`）默认展开漂移设置与 Judge 设置——两个跳转按钮改为同页内嵌子 iframe 板块（Issue #234 后续）
+  - 背景：CC 内嵌设置视图里「漂移设置 / Judge 设置」此前是两个跳转按钮，点击会把整个 iframe 导航走；用户要求这两个设置默认展开、直接可见可调。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 主页 settingsView 调校行：「漂移设置」「Judge 设置」按钮加 `id="driftSettingsBtn"` / `id="judgeSettingsBtn"`；行后新增 `<div class="embedTuneSections">`，含两个内嵌子板块（h3 标题复用既有 i18n 键 `button.driftSettings` / `settings.judge` + `<iframe class="embedTuneFrame" src="/drift?embedded=1">` / `src="/judge?embedded=1"`）。
+    - 主页 CSS（`body.embedded.settings` 作用域限定）：`.embedTuneSections{display:none}` 默认隐藏、`body.embedded.settings .embedTuneSections{display:block}` 只在 CC 车辆设置内嵌视图显示；同作用域隐藏 `driftSettingsBtn`/`judgeSettingsBtn` 两个跳转按钮（「手柄校准」按钮保留，弹窗本就内联可用）；iframe 全宽无边框圆角 10px、深色底 `#101318`，driftFrame 高 820px / judgeFrame 高 1000px。
+    - /drift 页：新增 `body.embedded .headerRow{display:none}`，init 开头加 `embedded=1` 检测置 `body.embedded` class——子 iframe 内隐藏自身头部。
+    - /judge 页：头部 panel 加 `id="judgeHeadPanel"`，新增 `body.embedded #judgeHeadPanel{display:none}`，init 开头同样加 embedded class 检测。
+    - 车端独立 DC 页面与独立设置视图完全不动：内嵌板块仅在 `body.embedded.settings` 显示；主题/语言无需传参——子 iframe 与车主页同源同 localStorage，主题走系统检测自动跟随。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.45 → v1.8.47（v1.8.46 由并行会话的 titleHint 条目占用，跳号避撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_web_console_settings_view_embeds_tune_sections`（内嵌板块 HTML/CSS 规则、两个按钮 id 与隐藏规则、drift/judge 子页 embedded 守卫与 init 检测——按 `WIFI_WEB_*_HTML` 切片断言避免与主页同名规则混淆）；版本断言 v1.8.47。
+
 ## 2026-08-22 v1.8.46
 
 - feat(WebConsole): 手柄校准弹窗与 RC Channels 校准面板全部标题加悬停灰字提示（titleHint），样式对齐 /drift 调参页与 DD group-hover
@@ -71,6 +204,25 @@
   - `libraries/mus4_web/src/WebConsoleAssets.h`：主控制台 `<style>` 新增 `.titleHint`/`.hintSpan`（含 `html[data-theme="light"] .hintSpan` 变体，与 /drift 页规则逐字一致）；`#joystickCalModal` 标题、`#rcFold` 折叠头与 12 个 `.rcCell` 标题全部包为 `.titleHint`+`.hintSpan`；新增 14 组中英 i18n 键（`cal.title.hint`、`rc.hint.panel`、`rc.hint.ch1`~`rc.hint.ch6`、`rc.hint.outSteering`/`outThrottle`/`midS`/`midT`/`minT`/`maxT`）。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.42 → v1.8.46（v1.8.43~v1.8.45 由并行会话 `session-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
   - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.46；`test_web_console_groups_rc_and_status_into_collapsible_sections` 的 rcFold 折叠头断言改为 `.titleHint` 包装后的新串；新增 `test_joystick_cal_and_rc_panel_title_hints` 断言 14 处 titleHint 包装、CSS 规则与 14 组中英 i18n 键齐全。
+
+## 2026-08-22 v1.8.45
+
+- style(WebConsole): wifi 内嵌融合单卡去掉 STA 卡上边框——消除 AP/STA 之间的黄色横杠
+  - 背景：浅色主题下 `.dialog` 边框色为 `#d99a17`（金色），AP/STA 融合时只去了 AP 卡底边，STA 卡顶边残留，两卡之间出现一条黄杠（DD Car Connector 车辆设置内嵌视图可见）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`body.wifi #wifiStaModal .dialog` 规则加 `border-top:none`，AP/STA 两卡背景无缝相接成真正单卡；深色主题同步生效（同规则覆盖）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.44 → v1.8.45。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 融合单卡断言更新为含 `border-top:none` 的 STA 规则；版本断言 v1.8.45。
+
+## 2026-08-22 v1.8.44
+
+- feat(WebConsole): DD 内嵌主视图（`?embedded=1`）隐藏设置类板块/入口——已全部移至 DD Car Connector 的车辆设置（Issue #234 后续）
+  - 背景：DD Car Connector 已 1:1 内嵌车端设置（`?embedded=1&settings=1&wifi=1`：调校/RC 校准/AP/STA 配网），用户要求 DD 的 Drifter Console 嵌入页（`?embedded=1` 主视图）不再重复出现这些设置；车端独立 DC 页面（无参数直连）保持不动。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS 新增 4 条守卫规则 `body.embedded:not(.settings):not(.wifi) #rcFold / #diagSettingsRow / #networkGear / #driftTuneLink{display:none}`——隐藏 RC Channels 校准面板、手柄校准+漂移设置按钮行、Network 卡 ⚙ 配网入口、Drift 卡 Tune 链接。`:not(.settings):not(.wifi)` 守卫必不可少：CC 的车辆设置 iframe URL 同样带 `embedded=1`，无守卫会把 CC 视图里的 rcFold 一起藏掉。
+    - 诊断面板里原无 id 的「Calibrate Joystick + 漂移设置」按钮行加 `id="diagSettingsRow"` 供定点隐藏。
+    - 主视图保留：状态卡（Mode/Park/Drift/Voltage/Network 显示）、遥测图表、串口终端、STATUS Details——纯显示/驾驶内容不动。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.42 → v1.8.44（v1.8.43 为其它会话基于旧基点的 RC 面板+配网融合构建、正在车上运行且未以该形态回本仓库，跳号避免撞号；其内容已含在本地 Tony 中，本次构建基于本地 Tony 1e5e398、不落后）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_web_console_embedded_main_view_hides_settings_panels`（4 条守卫规则、按钮行 id、禁止不带 `:not` 的裸 `body.embedded` 隐藏规则）；版本断言更新至 v1.8.44。
 
 ## 2026-08-22 v1.8.42
 

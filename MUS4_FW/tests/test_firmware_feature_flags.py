@@ -274,7 +274,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.61"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.64"' in build_info
+    assert "v1.8.64" in changelog
+    assert "v1.8.63" in changelog
+    assert "v1.8.62" in changelog
     assert "v1.8.61" in changelog
     assert "v1.8.60" in changelog
     assert "v1.8.59" in changelog
@@ -356,9 +359,12 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-08-23 v1.8.64") < changelog.index("## 2026-08-23 v1.8.63")
+    assert changelog.index("## 2026-08-23 v1.8.63") < changelog.index("## 2026-08-23 v1.8.62")
+    assert changelog.index("## 2026-08-23 v1.8.62") < changelog.index("## 2026-08-23 v1.8.61")
     assert changelog.index("## 2026-08-23 v1.8.61") < changelog.index("## 2026-08-23 v1.8.60")
     assert changelog.index("## 2026-08-23 v1.8.60") < changelog.index("## 2026-08-23 v1.8.58")
-    assert changelog.index("## 2026-08-23 v1.8.58") < changelog.index("## 2026-08-22 v1.8.57")
+    assert changelog.index("## 2026-08-23 v1.8.58") < changelog.index("## 2026-08-22 v1.8.59")
     assert changelog.index("## 2026-08-22 v1.8.59") < changelog.index("## 2026-08-22 v1.8.57")
     assert changelog.index("## 2026-08-22 v1.8.57") < changelog.index("## 2026-08-22 v1.8.54")
     assert changelog.index("## 2026-08-22 v1.8.54") < changelog.index("## 2026-08-22 v1.8.53")
@@ -2038,6 +2044,13 @@ def test_web_console_ap_ssid_modal_and_api_are_present():
     assert 'restartWifiAp()' in source
     assert 'WIFI_CONSOLE_AP_DEFAULT_SSID' in source
     assert 'WIFI_CONSOLE_AP_SSID' not in source
+    # v1.8.62 起：AP 前缀规则提示行 #apNotice 默认隐藏，仅在输入含非法字符时
+    # 显示（updateApPreview 比对剔除前后的原始值），改回合法输入即重新隐藏；
+    # 保存流程消息（无效/保存中/失败）仍强制可见。
+    assert '<p id="apNotice" data-i18n="wifi.apNotice" style="display:none">' in source
+    assert 'raw!==clean' in source
+    assert "apNotice.style.display=''" in source
+    assert "apNotice.style.display='none'" in source
 
 
 def test_wifi_ap_ssid_is_restricted_to_mdns_safe_hostname():
@@ -2696,7 +2709,9 @@ def test_web_console_host_wifi_status_bar_shows_host_report_state():
     assert "if(j.status==='IDLE'){if(j.host_ip&&j.host_ip_age_s<=60){lbl.textContent=t('wifi.hostStatus.hostOnline');ipEl.style.display='';ipEl.textContent='IP: '+j.host_ip}" in assets
     assert "else{lbl.textContent=t('wifi.hostStatus.waitingHost');ipEl.style.display='none'}errEl.style.display='none'}" in assets
     # connected/failed 分支保持现有自愈（拿到终态后停止轮询）
-    assert "stopHostWifiPoll();showToast(t('wifi.hostOkToast')+j.ip,true)" in assets
+    # connected 分支：拿到终态后停止轮询并 toast（v1.8.63 在中间插入「完成」按钮改写，两者不再相邻，分开断言）
+    assert "stopHostWifiPoll();const doneBtn=document.getElementById('staConnectBtn')" in assets
+    assert "showToast(t('wifi.hostOkToast')+j.ip,true)" in assets
 
     # i18n：新增 hostOnline/waitingHost 中英键，旧 idle 键不再被引用、已删除
     assert "I18N.zh['wifi.hostStatus.hostOnline']='上位机在线'" in assets
@@ -2709,6 +2724,41 @@ def test_web_console_host_wifi_status_bar_shows_host_report_state():
     assert 'id="hostWifiStatusLabel" style="color:#8fa1b5">等待上位机上报</b>' in assets
     assert 'data-i18n="wifi.hostStatus.waitingHost"' not in assets
     assert "wifi.hostStatus.idle" not in assets
+
+
+def test_web_console_host_wifi_done_button_and_plaintext_password():
+    """v1.8.63：①上位机配网成功后「发送到上位机」变为「完成」（点击关闭弹窗）；
+    ②密码框为掩码占位（用户未改动）时，saveHostWifi 先拉取真实明文再组 WIFI| 帧，
+    修复上位机收到字面量 '********' 导致 nmcli 配网失败。"""
+
+    source = firmware_source_text()
+
+    # ① 成功后按钮改「完成」：connected 分支改写文案与 onclick
+    assert "I18N.zh['wifi.hostDoneBtn']='完成'" in source
+    assert "I18N.en['wifi.hostDoneBtn']='Done'" in source
+    assert "doneBtn.textContent=t('wifi.hostDoneBtn')" in source
+    assert "doneBtn.onclick=closeWifiStaModal" in source
+    # 「完成」态在用户改配另一网络时复位：辅助函数 + 历史回填/扫描选择/密码输入三处调用
+    assert "function resetStaConnectBtn()" in source
+    assert "b.textContent=t('wifi.hostSendBtn');b.onclick=saveHostWifi" in source
+    assert "staPasswordDirty=true;updateStaPasswordEye();resetStaConnectBtn();staConnectBtn.focus()" in source
+    assert "closeWifiScanPopover();resetStaConnectBtn();staPassword.focus()" in source
+    assert "staSavedPasswordKnown=false;resetStaConnectBtn()});" in source
+
+    # ② 掩码占位 -> 明文：saveHostWifi 内的两路拉取与失败中止
+    save_body = re.search(
+        r"async function saveHostWifi\(\)\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    )
+    assert save_body, "saveHostWifi() 定义缺失"
+    body = save_body.group("body")
+    assert "if(!staPasswordDirty&&staPasswordPlaceholder)" in body
+    assert "fetch('/api/wifi-sta/password?ssid='+encodeURIComponent(ssid))" in body
+    assert "p=await fetchSavedStaPassword();if(p===null)return" in body
+    # 组帧仍在拉取之后（pwd 为 let、发送前已被明文覆盖）
+    assert "let pwd=staPassword.value" in body
+    assert body.index("let pwd=staPassword.value") < body.index("if(!staPasswordDirty&&staPasswordPlaceholder)") < body.index("const cmd='WIFI|'")
 
 
 def test_web_console_sta_settings_support_scan_and_password_visibility():

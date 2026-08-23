@@ -1,5 +1,29 @@
 # CHANGELOG.md
 
+## 2026-08-23 v1.8.63
+
+- fix(WebConsole): STA 上位机配网两处修复——配网成功后「发送到上位机」按钮变为「完成」；密码框为掩码占位时先取真实明文再发送，修复上位机收到"点点点"导致 nmcli 配网失败
+  - 背景①（按钮文案）：上位机配网成功（状态条显示「已连接 IP: x.x.x.x」）后，主按钮仍停留在「发送到上位机」，用户不知道流程已结束、以为要再点一次。
+  - 背景②（掩码密码）：ESP32 已存过 STA 密码时，密码框由 `renderStaPasswordState()` 填入 `*` 掩码占位（`staPasswordPlaceholder=true`、`staPasswordDirty=false`）；`saveHostWifi()` 此前直接取 `staPassword.value` 组 `WIFI|ssid|pwd` 串口帧发给上位机，用户不改密码直接发送时上位机收到字面量 `********`，nmcli 用掩码当密码配网必败。ESP32 直连路径 `saveWifiSta()` 有 `keep_password` 兜底，但上位机 nmcli 必须要明文，无等价兜底。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `saveHostWifi()`：`!staPasswordDirty && staPasswordPlaceholder`（框内是掩码占位、用户未改过）时先取真实明文再发送——优先 `fetch('/api/wifi-sta/password?ssid='+encodeURIComponent(ssid))`（v1.8.57 引入的历史条目密码分支，SSID 被手改后仍能取到对应网络的密码），未命中回退 `fetchSavedStaPassword()`（当前已存 STA 密码，覆盖"打开弹窗直接发送"主路径）；两路都失败时报错并中止发送，不再发出掩码。
+    - `pollHostWifiStatus()` connected 分支：状态转「已连接」时把 `staConnectBtn` 文案改为新 i18n `wifi.hostDoneBtn`（完成 / Done）、`onclick` 改为 `closeWifiStaModal`——点击即关闭弹窗；CC 内嵌视图（`body.wifi` CSS 使弹窗 `display:block` 常驻）点击仅移除 `show` 类、面板不消失。
+    - 新增 `resetStaConnectBtn()` 辅助函数（上位机模式下把按钮恢复为「发送到上位机」+`saveHostWifi`），在三处"用户要配另一个网络"的入口调用：`selectWifiHistory()`（点历史条目）、`selectWifiSsid()`（扫描弹层选 SSID）、密码框 `input` 监听；弹窗重开/开关切换由 `onHostWifiToggle()` 既有逻辑复位。
+    - i18n：新增 `wifi.hostDoneBtn` 中英键。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.62 → v1.8.63。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.63；新增 `test_web_console_host_wifi_done_button_and_plaintext_password`（`wifi.hostDoneBtn` 中英键、connected 分支按钮改写、掩码占位时两路明文拉取与中止、`resetStaConnectBtn` 定义与三处调用）。
+
+## 2026-08-23 v1.8.62
+
+- fix(WebConsole): AP 名称配置弹窗的前缀规则提示行改为按需显示——默认隐藏，仅在用户输入了不符合规范的前缀字符时提示
+  - 背景：`#apNotice` 提示行（「前缀仅限大小写字母和数字，不超过6位；后缀固定为"-ESP"。保存后会重启 AP…」）此前在弹窗中常显，占视觉空间；规则本身已由输入框实时剔除非法字符兜底，常显提示没有必要。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - `#apNotice` 加 `style="display:none"` 默认隐藏；`openWifiApModal()` 每次打开弹窗时重置为隐藏态。
+    - `updateApPreview()`：比对本次输入的原始值与剔除非法字符（`[^A-Za-z0-9]`）后的值——剔除了字符（`raw!==clean`）即显示提示行，未剔除（全合法或清空）则保持隐藏；整段显隐逻辑包在 `if(!apSaving)` 内，避免保存流程中输入把保存中/失败消息抹掉。
+    - `saveWifiAp()`：无效输入（`wifi.apInvalid`）、保存中（`wifi.apSavingNotice`）、保存失败（`wifi.apInvalid`/`wifi.apSaveFailed`）三处设置文案时同时强制显示提示行，保存流程消息可见性不变。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.59 → v1.8.62（v1.8.60、v1.8.61 由并行会话 `Tony-dc-embedded-declutter` 分支使用、未合入本地 Tony，跳号避开碰撞）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本与 CHANGELOG 顺序断言升至 v1.8.62；`test_web_console_ap_ssid_modal_and_api_are_present` 新增 `#apNotice` 默认隐藏 marker（`style="display:none"`）、非法字符比较逻辑（`raw!==clean`）与显隐赋值（`apNotice.style.display`）断言。
+
 ## 2026-08-23 v1.8.61
 
 - fix(WebConsole): 修复 DC 首屏揭开太慢、CC iframe 场景偶发卡死纯黑屏——`initLanguage()` 改「同步先应用+揭示，后台再对齐服务器偏好」，揭示不再依赖任何网络请求

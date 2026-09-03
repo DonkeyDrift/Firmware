@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-03 v1.8.66
+
+- fix(security): 隐私泄露清理——真实 Wi-Fi 凭据与本机 agent 私人文件移出版本控制，防止继续随公开仓库扩散
+  - 背景：安全审计发现本仓库（GitHub 公开）三分支当前树仍带着真实 STA Wi-Fi 凭据与多个本机 agent 工作目录。本次全部解除跟踪；历史提交中的旧内容无法经删文件抹除，根治依赖更换路由器密码（已另行提醒用户）。
+  - `MUS4_FW/WirelessSecrets.h`：`git rm --cached` 解除跟踪（`MUS4_FW/.gitignore` 本已列出该文件、此前被跟踪导致 ignore 无效）；模板 `libraries/mus4_core/src/WirelessSecrets.example.h` 本就在库（占位符内容），`MUS4_FW.ino` 与 `libraries/mus4_wifi/src/WifiStaConfig.cpp` 经 `__has_include` 条件包含，缺该文件可正常编译。本地构建/OTA 前复制模板填入真实凭据即可。
+  - 同批解除跟踪的本机私人文件：`MUS4_FW/ArduFlux.json`（IDE 配置）、`MUS4_FW/.trae/`、`MUS4_FW/.superpowers/`、`MUS4_FW/.claude/`（agent 工作目录，含内网 IP 与本机路径）、`MUS4_FW/provisioning_system/playwright_tests/playwright-report/`（测试产物）——均只解除跟踪、本地文件保留。
+  - `MUS4_FW/provisioning_system/tests/test_agent.py`：单测中硬编码的真实家庭 Wi-Fi SSID/密码改为与真实凭据无关的占位值 `TestSSID`/`testpass123`（断言逻辑不变）。
+  - `.gitignore` 加固：根级新增 `.env`/`.env.*`/`*.pem`/`*.key`/`id_rsa*`/`known_hosts`/`*.ovpn`/`*.p12`/`*.keystore`/`credentials*`/`secrets*`、`.trae/`/`.claude/`/`.superpowers/`/`.agents/`、`sdkconfig`；`MUS4_FW/.gitignore` 新增 `.trae/`/`.claude/`/`.env`/`sdkconfig`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.65 → v1.8.66。
+  - 测试同步：`MUS4_FW/tests/test_firmware_feature_flags.py` 版本断言 v1.8.66、CHANGELOG 顺序链补 v1.8.66；`test_agent.py` 全量通过；固件编译验证通过。固件行为无功能变化（仅版本号字符串）。
+
 ## 2026-08-23 v1.8.65
 
 - style(WebConsole): CC 内嵌设置视图 UI 对齐 DonkeyDrifter 原生风格（Issue #234 后续）

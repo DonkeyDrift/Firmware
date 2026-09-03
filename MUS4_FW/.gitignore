@@ -55,3 +55,9 @@ ArduFlux.json
 .worktrees/
 build_verbose/
 data/
+
+# 本机 agent 工作目录与凭据（防再漏）
+.trae/
+.claude/
+.env
+sdkconfig

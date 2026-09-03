@@ -121,7 +121,7 @@ class TestWifiManager(unittest.TestCase):
         ]
 
         wm = WifiManager('wlan0')
-        wm.connect("HUAWEI-DKC", "dkc@2026")
+        wm.connect("TestSSID", "testpass123")
 
         add_calls = [c for c in mock_run.call_args_list
                      if c.args and isinstance(c.args[0], list)
@@ -134,7 +134,7 @@ class TestWifiManager(unittest.TestCase):
         # 密码通过 wifi-sec.psk 传入
         self.assertIn("wifi-sec.psk", cmd)
         psk_idx = cmd.index("wifi-sec.psk")
-        self.assertEqual(cmd[psk_idx + 1], "dkc@2026")
+        self.assertEqual(cmd[psk_idx + 1], "testpass123")
 
     @patch('wifi_manager.subprocess.run')
     def test_connect_uses_arg_list_not_shell(self, mock_run):

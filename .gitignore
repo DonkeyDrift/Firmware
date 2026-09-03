@@ -15,3 +15,25 @@ MUS4_FW/.mus4_ota_target
 # 本机 agent 说明文件（用户私人文件，不入库；含 MUS4_FW 及第三方库内的同名文件）
 AGENTS.md
 CLAUDE.md
+
+# 密钥、证书与本机凭据（防再漏）
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+known_hosts
+*.ovpn
+*.p12
+*.keystore
+credentials*
+secrets*
+
+# 本机 agent 工作目录
+.trae/
+.claude/
+.superpowers/
+.agents/
+
+# ESP-IDF 本机配置（可能含 Wi-Fi 密码）
+sdkconfig

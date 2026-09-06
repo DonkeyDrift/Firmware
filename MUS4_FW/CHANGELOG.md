@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-06 v1.8.70
+
+- fix(WebConsole): ZCode 远控链接宽容解析——兼容 fragment 形式参数与 remoteControlToken 链接，无效存档不再回填 prompt 诱导回车
+  - 背景：用户反馈粘贴 ZCode 桌面端「复制链接」给出的链接被误判「链接无效」——桌面端链接的参数可能在 `#` fragment 之后（形如 `https://zcode.z.ai/remote/v4#sid=…&hash=…`），而 v1.8.69 的校验只认 query 参数；另一诱因是早期存入的无效裸链接被原样回填进 prompt 预填，诱导用户直接回车再次校验失败。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片）：
+    - JS 新增 `zcodeRemoteNormalize(raw)` 统一归一化：trim + 去首尾引号（含「」“”‘’）→ `new URL()` 解析（失败返回空）→ 必须 `https:` → fragment 里有 `=` 就把参数归并进 query（query 已有同名参数不覆盖）并清空 hash → 有 `remoteControlToken` 参数原样返回（token 链接不刷 t）→ 否则必须含 `sid`+`hash` 且把 `t` 刷成 `Date.now()`。
+    - `zcodeRemoteFreshUrl()` 与 `zcodeRemotePrompt()` 均改走 `zcodeRemoteNormalize`：prompt 预填改为存档归一化有效才预填、无效存档预填空串（不再诱导回车）；保存的是归一化后的值（fragment 形式链接存档后即为 query 形式 + 新鲜 t）。
+    - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例，不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.69 → v1.8.70。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.70、CHANGELOG 顺序链补 v1.8.70；`test_web_console_header_entry_buttons` ZCode 断言块更新：删除已失效的 `url.indexOf('https://')===0` 断言（新代码用 `u.protocol!=='https:'`），新增 `zcodeRemoteNormalize`/`u.hash.slice(1)`/`remoteControlToken`/`window.prompt(t('zcode.remotePrompt'),cur)` 断言，sid/hash/t 刷新相关断言保留，注释块同步描述新行为。node 打桩功能验证 32 例通过（query/fragment/token/垃圾输入/引号容忍/无效存档预填空串等），pytest 与固件编译验证通过。
+
 ## 2026-09-06 v1.8.69
 
 - feat(WebConsole): DC「ZCode」按钮点击即新鲜、正常点击零弹框——单击用已存凭证现拼带全新时间戳的远控链接，复制到剪贴板后直接新标签打开，并后台唤醒 PC 上的 Z Code 桌面端

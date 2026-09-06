@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.69"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.70"' in build_info
+    assert "v1.8.70" in changelog
     assert "v1.8.69" in changelog
     assert "v1.8.68" in changelog
     assert "v1.8.67" in changelog
@@ -364,6 +365,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-09-06 v1.8.70") < changelog.index("## 2026-09-06 v1.8.69")
     assert changelog.index("## 2026-09-06 v1.8.69") < changelog.index("## 2026-09-06 v1.8.68")
     assert changelog.index("## 2026-09-06 v1.8.68") < changelog.index("## 2026-09-06 v1.8.67")
     assert changelog.index("## 2026-09-06 v1.8.67") < changelog.index("## 2026-09-03 v1.8.66")
@@ -5372,6 +5374,13 @@ def test_web_console_header_entry_buttons():
     # （zcodeRemoteWake，失败静默不阻塞）；无存档或存档缺 sid/hash（早期裸链接）时才
     # prompt 录入，校验升级为必须含 sid 与 hash 参数；双击 ondblclick 重新 prompt 更新；
     # 单击经 260ms 定时器延迟以区分双击；title 提示走 data-i18n-title
+    # v1.8.70 宽容解析（用户反馈粘贴桌面端复制的链接被误判"链接无效"——桌面端链接
+    # 的参数可能在 # fragment 后，v1.8.69 校验只认 query；另一诱因是 prompt 预填了
+    # 早期存的无效裸链接诱导直接回车）：zcodeRemoteNormalize 统一归一化——trim+去
+    # 首尾引号（含「」“”‘’）→ new URL → 必须 https: → fragment 里有 = 就把参数
+    # 归并进 query（query 已有同名参数不覆盖）并清空 hash → 有 remoteControlToken
+    # 参数原样返回 → 否则必须含 sid+hash 且把 t 刷成 Date.now()；prompt 预填改为
+    # 存档归一化有效才预填（无效存档预填空串），保存归一化后的值
     assert 'onclick="openZCode()"' in assets
     assert 'ondblclick="editZCodeUrl()"' in assets
     assert 'data-i18n-title="zcode.remoteHint"' in assets
@@ -5379,7 +5388,13 @@ def test_web_console_header_entry_buttons():
     assert "localStorage.getItem('zcodeRemoteUrl')" in assets
     assert "localStorage.setItem('zcodeRemoteUrl',url)" in assets
     assert "window.open(url,'_blank','noopener')" in assets
-    assert "url.indexOf('https://')===0" in assets
+    # v1.8.70 宽容解析：query/fragment 两种参数形式都接受，remoteControlToken 链接原样通过
+    assert 'function zcodeRemoteNormalize(' in assets
+    assert "u.protocol!=='https:'" in assets
+    assert 'u.hash.slice(1)' in assets
+    assert 'remoteControlToken' in assets
+    # prompt 预填归一化后的有效存档（无效存档预填空串，不再诱导回车）
+    assert "window.prompt(t('zcode.remotePrompt'),cur)" in assets
     assert 'https://zcode.z.ai/remote/v4?sid=…&hash=…' in assets  # 占位示例，非真实凭证
     assert assets.count("'button.openZCode':'ZCode'") == 2
     # fresh-t 重建：sid/hash 缺一视为无存档；每次点击 set('t',Date.now()) 现拼新链接

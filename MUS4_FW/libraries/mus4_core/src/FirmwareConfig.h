@@ -8,7 +8,7 @@
 // #define ENABLE_SERIAL2_ECHO_TO_SERIAL0  // 调试：Serial2 收到的所有数据透传到 Serial0（hex dump 格式）
 // #define ENABLE_BOOT_STEERING_SELF_TEST
 #define ENABLE_AUTH_SERVICE  // 启用基于 eFuse 芯片 ID 的身份识别服务（CMD:READ_HW_ID 等）
-// #define ENABLE_CLOUD_REPORT  // 已停用：「找小车」改为 DD 局域网直连发现（v1.8.74），不再云端上报；mus4_cloud 库与 AuthService::getHardwareId() 保留为 dormant 代码
+#define ENABLE_CLOUD_REPORT  // 「找小车」云端上报开关：连上 Wi-Fi 后上报局域网 IP 到 Cloudflare Pages（find-dkc），供网页查找 Donkey Car（去 token 公开查询）
 
 #ifndef ENABLE_WIFI_CONSOLE
 #define ENABLE_GAMEPAD_MODE

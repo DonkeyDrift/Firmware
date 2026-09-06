@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-06 v1.8.67
+
+- feat(WebConsole): DC 顶栏新增「ZCode Remote」入口按钮——单击新标签页打开 localStorage 里的 ZCode 远程控制链接，双击重新录入
+  - 背景：ZCode 桌面端可生成远程控制链接（形如 https://zcode.z.ai/remote/v4#配对凭证，链接本身是凭证）；用户希望在 DC 头部一键打开。与既有「ZCode」按钮（#openZCodeBtn，走 launcher :8090/api/launch/zcode 拉起 TUI 网页终端）是两个功能，本版为并列新增、旧按钮不动。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片；JUDGE 无 headerRow、DRIFT 的 headerRow 仅标题，不属同一结构，未动；body.embedded 下 headerRow 本就隐藏）：
+    - headerRow：`#openDshBtn` 之后、GitHub 链接之前新增 `#openZCodeRemoteBtn`（.navTabWeak 弱化标签 + lucide link 14px 图标，沿用 KCW/ZCode/DSH 同款结构）；`onclick="openZCodeRemote()"`、`ondblclick="editZCodeRemoteUrl()"`，title 提示走 `data-i18n-title="zcode.remoteHint"`。
+    - 交互（原生 JS）：单击读 localStorage 键 `zcodeRemoteUrl`，有值直接 `window.open(url,'_blank','noopener')`；无值 `window.prompt` 录入，校验须以 `https://` 开头（失败 alert 提示且不保存不打开），合法则 trim 后存入并打开；双击重新 prompt 更新（预填现有值，无值时预填占位示例 `https://zcode.z.ai/remote/v4`）。单击经 260ms 定时器延迟以区分双击（否则 dblclick 前的两次 click 会误开两个标签页）。
+    - 窄屏布局（max-width:820px）：第 2 行末尾追加 `#openZCodeRemoteBtn{order:11}`，`.br2` 换行分隔顺移 11→12，其余 order 不变。
+    - i18n 中英各 4 词条：`button.openZCodeRemote`（ZCode 远程 / ZCode Remote）、`zcode.remoteHint`（单击打开 ZCode 远程控制，双击更新链接 / Click to open ZCode Remote Control, double-click to update the link）、`zcode.remotePrompt`、`zcode.remoteInvalid`。
+    - 安全：真实远程链接是凭证，只存用户浏览器 localStorage；代码与测试内仅出现占位示例，不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.66 → v1.8.67。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.67、CHANGELOG 顺序链补 v1.8.67（并补 v1.8.66→v1.8.65 缺失链节）；`test_web_console_mobile_header_layout` 第 2 行补 `#openZCodeRemoteBtn{order:11}` 与 `.br2{order:12}` 断言；`test_web_console_header_entry_buttons` 新增 ZCode Remote 断言块（DOM 序链 dsh<zcodeRemote<gh、onclick/ondblclick、data-i18n-title、localStorage 读写、noopener、https:// 校验、占位示例、中英词条、lucide link 图标），`.navTabWeak` 计数 3→4。另用 node 对新增 JS 函数做打桩功能验证 11/11 通过；固件编译验证通过。
+
 ## 2026-09-03 v1.8.66
 
 - fix(security): 隐私泄露清理——真实 Wi-Fi 凭据与本机 agent 私人文件移出版本控制，防止继续随公开仓库扩散

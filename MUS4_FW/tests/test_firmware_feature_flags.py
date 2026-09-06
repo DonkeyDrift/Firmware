@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.71"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.72"' in build_info
+    assert "v1.8.72" in changelog
     assert "v1.8.71" in changelog
     assert "v1.8.70" in changelog
     assert "v1.8.69" in changelog
@@ -366,6 +367,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-09-06 v1.8.72") < changelog.index("## 2026-09-06 v1.8.71")
     assert changelog.index("## 2026-09-06 v1.8.71") < changelog.index("## 2026-09-06 v1.8.70")
     assert changelog.index("## 2026-09-06 v1.8.70") < changelog.index("## 2026-09-06 v1.8.69")
     assert changelog.index("## 2026-09-06 v1.8.69") < changelog.index("## 2026-09-06 v1.8.68")
@@ -2354,7 +2356,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert 'function updateTubMeta()' in source
     assert 'tubMeta.textContent=tubSamples.length' in source
     assert '<span class="recMeta"><span data-i18n="tub.recorded">录制量</span><b id="tubMeta">0</b></span>' in source
-    assert 'function clearChart(){pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;tubSamples=[];tubStartedMs=0;tubStoppedMs=0;tubLastSeq=0;tubRecording=false;updateTubMeta();draw()}' in source
+    assert "function clearChart(){const wasRecording=tubRecording;pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;tubSamples=[];tubStartedMs=0;tubStoppedMs=0;tubLastSeq=0;tubRecording=false;updateTubMeta();refreshDynamicLabels();if(wasRecording)line(t('tub.clearedWhileRecording'));draw()}" in source
     assert "c.innerHTML=chartPaused?ICON_PLAY:ICON_PAUSE" in source
     assert "f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     assert '<button onclick="clearChart()">清空曲线</button>' not in source

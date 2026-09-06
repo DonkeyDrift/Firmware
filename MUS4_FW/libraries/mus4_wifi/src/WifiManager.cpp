@@ -19,6 +19,7 @@
 #include <Preferences.h>
 #include <ESPmDNS.h>
 #include <esp_wifi.h>
+#include <string.h>
 #ifdef ENABLE_WIFI_NETBIOS_DISCOVERY
 #include <NetBIOS.h>
 #endif
@@ -106,6 +107,51 @@ static const unsigned long WIFI_STA_HISTORY_RETRY_INTERVAL_MS = 3000;
 // 一轮历史候选试完后，等待该冷却时间再重开新一轮扫描，覆盖「小车先开机、
 // 历史 Wi-Fi 后出现（或暂时不在覆盖范围）」的场景；15s 是扫描频率与空转功耗的折中。
 static const unsigned long WIFI_STA_HISTORY_RESCAN_INTERVAL_MS = 15000;
+
+// --- Drift/Judge 设置 NVS 单次写 blob ---
+// 行车中在 Drift/Judge 设置页点保存时，HTTP handler 在唯一主循环里同步写 NVS；
+// 旧实现逐键 put（drift 12 键 / judge 10 键），每次 put 都触发一次 nvs_commit 写
+// flash，整段数十~数百 ms 内控制输出被推迟、车会瞬时停顿。改为把整组参数打包进
+// 定长 blob 一次 putBytes（单次 nvs_commit 写 flash）；load 优先读 blob，读不到
+// 回退旧逐键格式——老车已调好的参数无损保留。旧键保留不删，便于回滚旧固件。
+static const char* MUS4_PREF_JUDGE_CFG_BLOB_KEY = "judge_cfg";
+static const char* MUS4_PREF_DRIFT_CFG_BLOB_KEY = "drift_cfg";
+// blob 格式版本：将来扩展字段时递增，load 只接受版本与长度完全匹配的 blob。
+static const uint8_t MUS4_CFG_BLOB_VERSION = 1;
+
+struct JudgeConfigBlob {
+    uint8_t version;      // 格式版本，当前为 MUS4_CFG_BLOB_VERSION
+    uint8_t windowSize;
+    uint8_t reserved[2];  // 对齐预留，固定写 0
+    float collisionThreshold;
+    float bigTurnThreshold;
+    float collisionPenalty;
+    float turnSmoothnessWeight;
+    float rangeMatchWeight;
+    float gyroStabilityWeight;
+    float bigTurnStabilityWeight;
+    float speedStabilityWeight;
+    float throttleStabilityWeight;
+};
+static_assert(sizeof(JudgeConfigBlob) == 40, "JudgeConfigBlob layout changed");
+
+struct DriftConfigBlob {
+    uint8_t version;      // 格式版本，当前为 MUS4_CFG_BLOB_VERSION
+    int8_t steeringGyroSign;
+    uint8_t reserved[2];  // 对齐预留，固定写 0
+    float maxYawRate;
+    float kp;
+    float kd;
+    float maxSteeringCorrection;
+    float gyroFilterAlpha;
+    float spinThreshold;
+    float steeringThreshold;
+    float continuousThrottle;
+    float pulseThrottle;
+    float pulseFreqHz;
+    float pulseDuty;
+};
+static_assert(sizeof(DriftConfigBlob) == 48, "DriftConfigBlob layout changed");
 
 #ifdef ENABLE_WIFI_LLMNR_DISCOVERY
 static WiFiUDP wifiLlmnrUdp;
@@ -249,39 +295,63 @@ void loadJudgeConfigPreference()
         mus4LogLine("wifi", "judge config load failed");
         return;
     }
-    config.collisionThreshold = mus4Prefs.getFloat(
-        MUS4_PREF_JUDGE_COLLISION_THRESHOLD_KEY,
-        WIFI_JUDGE_COLLISION_THRESHOLD_DEFAULT);
-    config.bigTurnThreshold = mus4Prefs.getFloat(
-        MUS4_PREF_JUDGE_BIG_TURN_THRESHOLD_KEY,
-        WIFI_JUDGE_BIG_TURN_THRESHOLD_DEFAULT);
-    config.windowSize = mus4Prefs.getUChar(
-        MUS4_PREF_JUDGE_WINDOW_SIZE_KEY,
-        WIFI_JUDGE_WINDOW_SIZE_DEFAULT);
-    config.collisionPenalty = mus4Prefs.getFloat(
-        MUS4_PREF_JUDGE_COLLISION_PENALTY_KEY,
-        WIFI_JUDGE_COLLISION_PENALTY_DEFAULT);
-    config.turnSmoothnessWeight = mus4Prefs.getFloat(
-        MUS4_PREF_JUDGE_TURN_SMOOTHNESS_WEIGHT_KEY,
-        WIFI_JUDGE_TURN_SMOOTHNESS_WEIGHT_DEFAULT);
-    config.rangeMatchWeight = mus4Prefs.getFloat(
-        MUS4_PREF_JUDGE_RANGE_MATCH_WEIGHT_KEY,
-        WIFI_JUDGE_RANGE_MATCH_WEIGHT_DEFAULT);
-    config.gyroStabilityWeight = mus4Prefs.getFloat(
-        MUS4_PREF_JUDGE_GYRO_STABILITY_WEIGHT_KEY,
-        WIFI_JUDGE_GYRO_STABILITY_WEIGHT_DEFAULT);
-    config.bigTurnStabilityWeight = mus4Prefs.getFloat(
-        MUS4_PREF_JUDGE_BIG_TURN_STABILITY_WEIGHT_KEY,
-        WIFI_JUDGE_BIG_TURN_STABILITY_WEIGHT_DEFAULT);
-    config.speedStabilityWeight = mus4Prefs.getFloat(
-        MUS4_PREF_JUDGE_SPEED_STABILITY_WEIGHT_KEY,
-        WIFI_JUDGE_SPEED_STABILITY_WEIGHT_DEFAULT);
-    config.throttleStabilityWeight = mus4Prefs.getFloat(
-        MUS4_PREF_JUDGE_THROTTLE_STABILITY_WEIGHT_KEY,
-        WIFI_JUDGE_THROTTLE_STABILITY_WEIGHT_DEFAULT);
+    JudgeConfigBlob blob;
+    memset(&blob, 0, sizeof(blob));
+    bool loadedFromBlob =
+        mus4Prefs.getBytesLength(MUS4_PREF_JUDGE_CFG_BLOB_KEY) == sizeof(blob) &&
+        mus4Prefs.getBytes(MUS4_PREF_JUDGE_CFG_BLOB_KEY, &blob, sizeof(blob)) == sizeof(blob) &&
+        blob.version == MUS4_CFG_BLOB_VERSION;
+    if (loadedFromBlob) {
+        config.collisionThreshold = blob.collisionThreshold;
+        config.bigTurnThreshold = blob.bigTurnThreshold;
+        config.windowSize = blob.windowSize;
+        config.collisionPenalty = blob.collisionPenalty;
+        config.turnSmoothnessWeight = blob.turnSmoothnessWeight;
+        config.rangeMatchWeight = blob.rangeMatchWeight;
+        config.gyroStabilityWeight = blob.gyroStabilityWeight;
+        config.bigTurnStabilityWeight = blob.bigTurnStabilityWeight;
+        config.speedStabilityWeight = blob.speedStabilityWeight;
+        config.throttleStabilityWeight = blob.throttleStabilityWeight;
+    } else {
+        // 旧固件逐键格式回退：老车已调好的参数无损保留
+        config.collisionThreshold = mus4Prefs.getFloat(
+            MUS4_PREF_JUDGE_COLLISION_THRESHOLD_KEY,
+            WIFI_JUDGE_COLLISION_THRESHOLD_DEFAULT);
+        config.bigTurnThreshold = mus4Prefs.getFloat(
+            MUS4_PREF_JUDGE_BIG_TURN_THRESHOLD_KEY,
+            WIFI_JUDGE_BIG_TURN_THRESHOLD_DEFAULT);
+        config.windowSize = mus4Prefs.getUChar(
+            MUS4_PREF_JUDGE_WINDOW_SIZE_KEY,
+            WIFI_JUDGE_WINDOW_SIZE_DEFAULT);
+        config.collisionPenalty = mus4Prefs.getFloat(
+            MUS4_PREF_JUDGE_COLLISION_PENALTY_KEY,
+            WIFI_JUDGE_COLLISION_PENALTY_DEFAULT);
+        config.turnSmoothnessWeight = mus4Prefs.getFloat(
+            MUS4_PREF_JUDGE_TURN_SMOOTHNESS_WEIGHT_KEY,
+            WIFI_JUDGE_TURN_SMOOTHNESS_WEIGHT_DEFAULT);
+        config.rangeMatchWeight = mus4Prefs.getFloat(
+            MUS4_PREF_JUDGE_RANGE_MATCH_WEIGHT_KEY,
+            WIFI_JUDGE_RANGE_MATCH_WEIGHT_DEFAULT);
+        config.gyroStabilityWeight = mus4Prefs.getFloat(
+            MUS4_PREF_JUDGE_GYRO_STABILITY_WEIGHT_KEY,
+            WIFI_JUDGE_GYRO_STABILITY_WEIGHT_DEFAULT);
+        config.bigTurnStabilityWeight = mus4Prefs.getFloat(
+            MUS4_PREF_JUDGE_BIG_TURN_STABILITY_WEIGHT_KEY,
+            WIFI_JUDGE_BIG_TURN_STABILITY_WEIGHT_DEFAULT);
+        config.speedStabilityWeight = mus4Prefs.getFloat(
+            MUS4_PREF_JUDGE_SPEED_STABILITY_WEIGHT_KEY,
+            WIFI_JUDGE_SPEED_STABILITY_WEIGHT_DEFAULT);
+        config.throttleStabilityWeight = mus4Prefs.getFloat(
+            MUS4_PREF_JUDGE_THROTTLE_STABILITY_WEIGHT_KEY,
+            WIFI_JUDGE_THROTTLE_STABILITY_WEIGHT_DEFAULT);
+    }
+    // 只有值真的来自旧键才顺手迁移写成 blob；全新设备（无旧键）不在 load 里多写 flash
+    bool migrateLegacyKeys = !loadedFromBlob &&
+        mus4Prefs.isKey(MUS4_PREF_JUDGE_COLLISION_THRESHOLD_KEY);
     mus4Prefs.end();
     if (!isValidJudgeConfig(config)) {
         config = defaultJudgeConfig();
+        migrateLegacyKeys = false;
         mus4LogLine("wifi", "judge config invalid, using defaults");
     }
     wifiRuntime.judgeConfig = config;
@@ -292,47 +362,35 @@ void loadJudgeConfigPreference()
         (double)wifiRuntime.judgeConfig.bigTurnThreshold,
         wifiRuntime.judgeConfig.windowSize,
         (double)wifiRuntime.judgeConfig.collisionPenalty);
+    if (migrateLegacyKeys) {
+        // 一次性迁移：写成 blob 后，后续 load 直读 blob、save 也只单次写 blob
+        saveJudgeConfigPreference(config);
+    }
 }
 
 bool saveJudgeConfigPreference(const JudgeConfig& config)
 {
     if (!isValidJudgeConfig(config)) return false;
+    // 整组参数打包成 blob 一次 putBytes（单次 nvs_commit 写 flash），
+    // 避免行车中逐键 put 多次写 flash、阻塞主循环造成控制输出瞬时停顿。
+    JudgeConfigBlob blob;
+    memset(&blob, 0, sizeof(blob));
+    blob.version = MUS4_CFG_BLOB_VERSION;
+    blob.collisionThreshold = config.collisionThreshold;
+    blob.bigTurnThreshold = config.bigTurnThreshold;
+    blob.windowSize = config.windowSize;
+    blob.collisionPenalty = config.collisionPenalty;
+    blob.turnSmoothnessWeight = config.turnSmoothnessWeight;
+    blob.rangeMatchWeight = config.rangeMatchWeight;
+    blob.gyroStabilityWeight = config.gyroStabilityWeight;
+    blob.bigTurnStabilityWeight = config.bigTurnStabilityWeight;
+    blob.speedStabilityWeight = config.speedStabilityWeight;
+    blob.throttleStabilityWeight = config.throttleStabilityWeight;
     if (!mus4Prefs.begin(MUS4_PREF_NAMESPACE, false)) return false;
-    size_t collisionWritten = mus4Prefs.putFloat(
-        MUS4_PREF_JUDGE_COLLISION_THRESHOLD_KEY,
-        config.collisionThreshold);
-    size_t turnWritten = mus4Prefs.putFloat(
-        MUS4_PREF_JUDGE_BIG_TURN_THRESHOLD_KEY,
-        config.bigTurnThreshold);
-    size_t windowWritten = mus4Prefs.putUChar(
-        MUS4_PREF_JUDGE_WINDOW_SIZE_KEY,
-        config.windowSize);
-    size_t penaltyWritten = mus4Prefs.putFloat(
-        MUS4_PREF_JUDGE_COLLISION_PENALTY_KEY,
-        config.collisionPenalty);
-    size_t turnWeightWritten = mus4Prefs.putFloat(
-        MUS4_PREF_JUDGE_TURN_SMOOTHNESS_WEIGHT_KEY,
-        config.turnSmoothnessWeight);
-    size_t rangeWeightWritten = mus4Prefs.putFloat(
-        MUS4_PREF_JUDGE_RANGE_MATCH_WEIGHT_KEY,
-        config.rangeMatchWeight);
-    size_t gyroWeightWritten = mus4Prefs.putFloat(
-        MUS4_PREF_JUDGE_GYRO_STABILITY_WEIGHT_KEY,
-        config.gyroStabilityWeight);
-    size_t bigTurnWeightWritten = mus4Prefs.putFloat(
-        MUS4_PREF_JUDGE_BIG_TURN_STABILITY_WEIGHT_KEY,
-        config.bigTurnStabilityWeight);
-    size_t speedWeightWritten = mus4Prefs.putFloat(
-        MUS4_PREF_JUDGE_SPEED_STABILITY_WEIGHT_KEY,
-        config.speedStabilityWeight);
-    size_t throttleWeightWritten = mus4Prefs.putFloat(
-        MUS4_PREF_JUDGE_THROTTLE_STABILITY_WEIGHT_KEY,
-        config.throttleStabilityWeight);
+    size_t written = mus4Prefs.putBytes(
+        MUS4_PREF_JUDGE_CFG_BLOB_KEY, &blob, sizeof(blob));
     mus4Prefs.end();
-    if (collisionWritten == 0 || turnWritten == 0 || windowWritten == 0 ||
-        penaltyWritten == 0 || turnWeightWritten == 0 || rangeWeightWritten == 0 ||
-        gyroWeightWritten == 0 || bigTurnWeightWritten == 0 ||
-        speedWeightWritten == 0 || throttleWeightWritten == 0) return false;
+    if (written != sizeof(blob)) return false;
     wifiRuntime.judgeConfig = config;
     mus4Logf(
         "wifi",
@@ -357,45 +415,71 @@ void loadDriftConfigPreference()
         mus4LogLine("wifi", "drift config load failed");
         return;
     }
-    config.steeringGyroSign = (int8_t)mus4Prefs.getInt(
-        MUS4_PREF_DRIFT_STEERING_GYRO_SIGN_KEY,
-        WIFI_DRIFT_STEERING_GYRO_SIGN_DEFAULT);
-    config.maxYawRate = mus4Prefs.getFloat(
-        MUS4_PREF_DRIFT_MAX_YAW_RATE_KEY,
-        WIFI_DRIFT_MAX_YAW_RATE_DEFAULT);
-    config.kp = mus4Prefs.getFloat(
-        MUS4_PREF_DRIFT_KP_KEY,
-        WIFI_DRIFT_KP_DEFAULT);
-    config.kd = mus4Prefs.getFloat(
-        MUS4_PREF_DRIFT_KD_KEY,
-        WIFI_DRIFT_KD_DEFAULT);
-    config.maxSteeringCorrection = mus4Prefs.getFloat(
-        MUS4_PREF_DRIFT_MAX_STEERING_CORRECTION_KEY,
-        WIFI_DRIFT_MAX_STEERING_CORRECTION_DEFAULT);
-    config.gyroFilterAlpha = mus4Prefs.getFloat(
-        MUS4_PREF_DRIFT_GYRO_FILTER_ALPHA_KEY,
-        WIFI_DRIFT_GYRO_FILTER_ALPHA_DEFAULT);
-    config.spinThreshold = mus4Prefs.getFloat(
-        MUS4_PREF_DRIFT_SPIN_THRESHOLD_KEY,
-        WIFI_DRIFT_SPIN_THRESHOLD_DEFAULT);
-    config.steeringThreshold = mus4Prefs.getFloat(
-        MUS4_PREF_DRIFT_STEERING_THRESHOLD_KEY,
-        WIFI_DRIFT_STEERING_THRESHOLD_DEFAULT);
-    config.continuousThrottle = mus4Prefs.getFloat(
-        MUS4_PREF_DRIFT_CONTINUOUS_THROTTLE_KEY,
-        WIFI_DRIFT_CONTINUOUS_THROTTLE_DEFAULT);
-    config.pulseThrottle = mus4Prefs.getFloat(
-        MUS4_PREF_DRIFT_PULSE_THROTTLE_KEY,
-        WIFI_DRIFT_PULSE_THROTTLE_DEFAULT);
-    config.pulseFreqHz = mus4Prefs.getFloat(
-        MUS4_PREF_DRIFT_PULSE_FREQ_HZ_KEY,
-        WIFI_DRIFT_PULSE_FREQ_HZ_DEFAULT);
-    config.pulseDuty = mus4Prefs.getFloat(
-        MUS4_PREF_DRIFT_PULSE_DUTY_KEY,
-        WIFI_DRIFT_PULSE_DUTY_DEFAULT);
+    DriftConfigBlob blob;
+    memset(&blob, 0, sizeof(blob));
+    bool loadedFromBlob =
+        mus4Prefs.getBytesLength(MUS4_PREF_DRIFT_CFG_BLOB_KEY) == sizeof(blob) &&
+        mus4Prefs.getBytes(MUS4_PREF_DRIFT_CFG_BLOB_KEY, &blob, sizeof(blob)) == sizeof(blob) &&
+        blob.version == MUS4_CFG_BLOB_VERSION;
+    if (loadedFromBlob) {
+        config.steeringGyroSign = blob.steeringGyroSign;
+        config.maxYawRate = blob.maxYawRate;
+        config.kp = blob.kp;
+        config.kd = blob.kd;
+        config.maxSteeringCorrection = blob.maxSteeringCorrection;
+        config.gyroFilterAlpha = blob.gyroFilterAlpha;
+        config.spinThreshold = blob.spinThreshold;
+        config.steeringThreshold = blob.steeringThreshold;
+        config.continuousThrottle = blob.continuousThrottle;
+        config.pulseThrottle = blob.pulseThrottle;
+        config.pulseFreqHz = blob.pulseFreqHz;
+        config.pulseDuty = blob.pulseDuty;
+    } else {
+        // 旧固件逐键格式回退：老车已调好的参数无损保留
+        config.steeringGyroSign = (int8_t)mus4Prefs.getInt(
+            MUS4_PREF_DRIFT_STEERING_GYRO_SIGN_KEY,
+            WIFI_DRIFT_STEERING_GYRO_SIGN_DEFAULT);
+        config.maxYawRate = mus4Prefs.getFloat(
+            MUS4_PREF_DRIFT_MAX_YAW_RATE_KEY,
+            WIFI_DRIFT_MAX_YAW_RATE_DEFAULT);
+        config.kp = mus4Prefs.getFloat(
+            MUS4_PREF_DRIFT_KP_KEY,
+            WIFI_DRIFT_KP_DEFAULT);
+        config.kd = mus4Prefs.getFloat(
+            MUS4_PREF_DRIFT_KD_KEY,
+            WIFI_DRIFT_KD_DEFAULT);
+        config.maxSteeringCorrection = mus4Prefs.getFloat(
+            MUS4_PREF_DRIFT_MAX_STEERING_CORRECTION_KEY,
+            WIFI_DRIFT_MAX_STEERING_CORRECTION_DEFAULT);
+        config.gyroFilterAlpha = mus4Prefs.getFloat(
+            MUS4_PREF_DRIFT_GYRO_FILTER_ALPHA_KEY,
+            WIFI_DRIFT_GYRO_FILTER_ALPHA_DEFAULT);
+        config.spinThreshold = mus4Prefs.getFloat(
+            MUS4_PREF_DRIFT_SPIN_THRESHOLD_KEY,
+            WIFI_DRIFT_SPIN_THRESHOLD_DEFAULT);
+        config.steeringThreshold = mus4Prefs.getFloat(
+            MUS4_PREF_DRIFT_STEERING_THRESHOLD_KEY,
+            WIFI_DRIFT_STEERING_THRESHOLD_DEFAULT);
+        config.continuousThrottle = mus4Prefs.getFloat(
+            MUS4_PREF_DRIFT_CONTINUOUS_THROTTLE_KEY,
+            WIFI_DRIFT_CONTINUOUS_THROTTLE_DEFAULT);
+        config.pulseThrottle = mus4Prefs.getFloat(
+            MUS4_PREF_DRIFT_PULSE_THROTTLE_KEY,
+            WIFI_DRIFT_PULSE_THROTTLE_DEFAULT);
+        config.pulseFreqHz = mus4Prefs.getFloat(
+            MUS4_PREF_DRIFT_PULSE_FREQ_HZ_KEY,
+            WIFI_DRIFT_PULSE_FREQ_HZ_DEFAULT);
+        config.pulseDuty = mus4Prefs.getFloat(
+            MUS4_PREF_DRIFT_PULSE_DUTY_KEY,
+            WIFI_DRIFT_PULSE_DUTY_DEFAULT);
+    }
+    // 只有值真的来自旧键才顺手迁移写成 blob；全新设备（无旧键）不在 load 里多写 flash
+    bool migrateLegacyKeys = !loadedFromBlob &&
+        mus4Prefs.isKey(MUS4_PREF_DRIFT_STEERING_GYRO_SIGN_KEY);
     mus4Prefs.end();
     if (!isValidDriftConfig(config)) {
         config = defaultDriftConfig();
+        migrateLegacyKeys = false;
         mus4LogLine("wifi", "drift config invalid, using defaults");
     }
     wifiRuntime.driftConfig = config;
@@ -414,6 +498,10 @@ void loadDriftConfigPreference()
         (double)wifiRuntime.driftConfig.pulseThrottle,
         (double)wifiRuntime.driftConfig.pulseFreqHz,
         (double)wifiRuntime.driftConfig.pulseDuty);
+    if (migrateLegacyKeys) {
+        // 一次性迁移：写成 blob 后，后续 load 直读 blob、save 也只单次写 blob
+        saveDriftConfigPreference(config);
+    }
 }
 
 bool saveDriftConfigPreference(const DriftConfig& config)
@@ -423,50 +511,28 @@ bool saveDriftConfigPreference(const DriftConfig& config)
         mus4LogLine("wifi", "drift config save failed: prefs begin");
         return false;
     }
-    size_t signWritten = mus4Prefs.putInt(
-        MUS4_PREF_DRIFT_STEERING_GYRO_SIGN_KEY,
-        config.steeringGyroSign);
-    size_t yawWritten = mus4Prefs.putFloat(
-        MUS4_PREF_DRIFT_MAX_YAW_RATE_KEY,
-        config.maxYawRate);
-    size_t kpWritten = mus4Prefs.putFloat(
-        MUS4_PREF_DRIFT_KP_KEY,
-        config.kp);
-    size_t kdWritten = mus4Prefs.putFloat(
-        MUS4_PREF_DRIFT_KD_KEY,
-        config.kd);
-    size_t maxCorrWritten = mus4Prefs.putFloat(
-        MUS4_PREF_DRIFT_MAX_STEERING_CORRECTION_KEY,
-        config.maxSteeringCorrection);
-    size_t alphaWritten = mus4Prefs.putFloat(
-        MUS4_PREF_DRIFT_GYRO_FILTER_ALPHA_KEY,
-        config.gyroFilterAlpha);
-    size_t spinWritten = mus4Prefs.putFloat(
-        MUS4_PREF_DRIFT_SPIN_THRESHOLD_KEY,
-        config.spinThreshold);
-    size_t strThWritten = mus4Prefs.putFloat(
-        MUS4_PREF_DRIFT_STEERING_THRESHOLD_KEY,
-        config.steeringThreshold);
-    size_t contWritten = mus4Prefs.putFloat(
-        MUS4_PREF_DRIFT_CONTINUOUS_THROTTLE_KEY,
-        config.continuousThrottle);
-    size_t pulseWritten = mus4Prefs.putFloat(
-        MUS4_PREF_DRIFT_PULSE_THROTTLE_KEY,
-        config.pulseThrottle);
-    size_t freqWritten = mus4Prefs.putFloat(
-        MUS4_PREF_DRIFT_PULSE_FREQ_HZ_KEY,
-        config.pulseFreqHz);
-    size_t dutyWritten = mus4Prefs.putFloat(
-        MUS4_PREF_DRIFT_PULSE_DUTY_KEY,
-        config.pulseDuty);
+    // 整组参数打包成 blob 一次 putBytes（单次 nvs_commit 写 flash），
+    // 避免行车中逐键 put 多次写 flash、阻塞主循环造成控制输出瞬时停顿。
+    DriftConfigBlob blob;
+    memset(&blob, 0, sizeof(blob));
+    blob.version = MUS4_CFG_BLOB_VERSION;
+    blob.steeringGyroSign = config.steeringGyroSign;
+    blob.maxYawRate = config.maxYawRate;
+    blob.kp = config.kp;
+    blob.kd = config.kd;
+    blob.maxSteeringCorrection = config.maxSteeringCorrection;
+    blob.gyroFilterAlpha = config.gyroFilterAlpha;
+    blob.spinThreshold = config.spinThreshold;
+    blob.steeringThreshold = config.steeringThreshold;
+    blob.continuousThrottle = config.continuousThrottle;
+    blob.pulseThrottle = config.pulseThrottle;
+    blob.pulseFreqHz = config.pulseFreqHz;
+    blob.pulseDuty = config.pulseDuty;
+    size_t written = mus4Prefs.putBytes(
+        MUS4_PREF_DRIFT_CFG_BLOB_KEY, &blob, sizeof(blob));
     mus4Prefs.end();
-    if (signWritten == 0 || yawWritten == 0 || kpWritten == 0 || kdWritten == 0 ||
-        maxCorrWritten == 0 || alphaWritten == 0 || spinWritten == 0 || strThWritten == 0 ||
-        contWritten == 0 || pulseWritten == 0 || freqWritten == 0 || dutyWritten == 0) {
-        mus4Logf("wifi", "drift config save failed: sign=%u yaw=%u kp=%u kd=%u corr=%u alpha=%u spin=%u str=%u cont=%u pulse=%u freq=%u duty=%u",
-                 (unsigned)signWritten, (unsigned)yawWritten, (unsigned)kpWritten, (unsigned)kdWritten,
-                 (unsigned)maxCorrWritten, (unsigned)alphaWritten, (unsigned)spinWritten, (unsigned)strThWritten,
-                 (unsigned)contWritten, (unsigned)pulseWritten, (unsigned)freqWritten, (unsigned)dutyWritten);
+    if (written != sizeof(blob)) {
+        mus4Logf("wifi", "drift config save failed: blob written=%u", (unsigned)written);
         return false;
     }
     wifiRuntime.driftConfig = config;

@@ -1,5 +1,23 @@
 # CHANGELOG.md
 
+## 2026-09-06 v1.8.72
+
+- fix(WebConsole): Drift Console 整页三步审查修复——安全门禁四补（空 POST /update 不再无条件重启、WIFI| 配网密码日志脱敏、devmode/serial 命令补鉴权）+ OTA 中断卡死双保险 + 重启后遥测静默自愈 + STA 配网假失败假成功 + tub 录制丢点/静默清空 + 校准反馈静默 + drift/judge 保存合并为单次 NVS 写
+  - 背景：对整个 Drift Console 页面（服务端 C++ + 内嵌前端 JS）做「边界情况 / 陌生 CodeReviewer 复审 / 上线严重 Bug 预演」三步审查，发现 4 高 5 中共 9 条实锤问题，本次全部修复；DD 侧配套修复见 DonkeyDrift (198)。
+  - 安全门禁（`libraries/mus4_web/src/WebConsoleServer.cpp`、`libraries/mus4_command/src/WirelessConsole.cpp`）：
+    - 空 POST `/update` 不再重启：新增静态标志 `s_wifiWebUpdateStarted`（UPLOAD_FILE_START 鉴权通过才置位），POST 完成处理器要求"确实发生过鉴权通过的上传且 errorMsg 为空"才走 ACK+`ESP.restart()`，否则 400 `NACK:NO_UPLOAD`；`Update.abort()` 移到鉴权检查之后（原顺序允许未认证请求中止进行中的 OTA 会话）。
+    - `redactWirelessConsoleLine` 新增 `WIFI|` 分支：`WIFI|<ssid>|<password>` 脱敏为 `WIFI|<ssid>|<redacted>`——此前 DC「上位机配网」发出的明文家庭 Wi-Fi 密码会进 web 环形日志（无鉴权 `/api/log` 可读、经 WS 实时广播）。
+    - `POST /api/devmode` 补全文件统一的 `consoleAuthenticated || devModeEnabled || isWirelessConsoleAuthDisabled()` 门禁（403 `{"error":"auth_required"}`）——它本是唯一无鉴权写端点，且开 DEV 即绕过全部鉴权与 OTA 免密。
+    - `/api/cmd?target=serial/serial1` 直转 Serial2 分支补同款 403 门禁（默认空密码配置下行为不变）。
+  - OTA 中断卡死双保险（`WebConsoleServer.cpp`、`libraries/mus4_wifi/src/WifiOta.cpp`、`libraries/mus4_core/src/WifiConsoleTypes.h`）：本机 core 3.3.10 实测 abort 时 POST handler 不执行（原注释假设相反）——(a) upload handler 直接处理 `UPLOAD_FILE_ABORTED` 就地 `resetOtaAfterFailedUpload()`+`closeWifiOtaWindow()`；(b) 新增空闲超时兜底 `WIFI_OTA_IDLE_TIMEOUT_MS=60000`：upload WRITE 刷新活动时间戳，`updateWifiOta()` 检测到 `inProgress` 且空闲超 60s 即复位清理（ArduinoOTA 通道经 `wifiWebOtaLastActivityMs()` 返回 0 豁免，不误杀）。修复前：上传中途浏览器关页/休眠/Wi-Fi 抖动 → 控制台全 503 + 车永久 Park Locked，只能重启。
+  - 重启后遥测/日志静默自愈（`libraries/mus4_web/src/WebConsoleAssets.h`）：服务端 seq 重启归零而前端 `lastDataSeq/lastLogSeq` 只增不减，轮询模式下新数据被 since 过滤永久静默。新增 `resetDataSeqOnRollback(seq)`：WS `hello` 帧与 HTTP `/api/data` 的 `latest.seq` 两处检测到回退即重置双 seq 并提示（i18n `data.seqReset`）。
+  - STA 配网三连（`WebConsoleServer.cpp` + `WebConsoleAssets.h`）：(a) `staSsid` 编辑即清密码掩码占位/dirty 等全部状态，`saveWifiSta` 不再拿旧密码连新网；`renderStaPasswordState` 增加 SSID 失配跳过回填（防 5s 轮询复活旧掩码）；(b) 服务端收到新配置即 `clearWifiStaLastError()` 并在 `/api/wifi-sta` JSON 新增 `apply_pending` 字段（`scheduleWifiStaApply`→apply 执行期间为 true），前端等待循环在 `apply_pending` 期间不评估陈旧 connected/last_error——消除 800ms apply 窗口内的秒弹假失败与旧 IP 假成功；(c) handoff 成功 modal 去重顺序修正——调用点不再预写 `handoffShownForStaIp`（原先函数内去重恒命中导致成功 modal 永不显示），`updateNetworkCard` 场景保留"只标记不弹窗"并加注释。
+  - 校准与命令反馈（`WebConsoleAssets.h`）：`explainCommandError` 补映射——小写 `auth_required`（新 403 JSON 契约）、`NACK:JOYSTICK_INVALID_RANGE`（提示重新校准打满杆）、`NACK:JOYSTICK_SAVE_FAILED`，及 NACK/error 兜底原文展示（i18n `error.joystickInvalidRange`/`error.joystickSaveFailed`）；`joystickCalLive` 死元素接线——DONE 步骤「请检查下方数值」下方真正显示解析出的 min/mid/max。
+  - tub 录制（`WebConsoleAssets.h`）：`handleDataPayload` 对帧内 `points[]` 逐点 `tp()`（原先只录每帧 latest，HTTP 轮询/主循环繁忙时一帧多点全丢；`tp()` 移除 `ch6===undefined` 门槛——plot point 本就无 ch6，下游转换工具对缺失字段填 0 容错）；`clearChart()` 末尾 `refreshDynamicLabels()`（录制按钮状态正确回弹）+ 录制中被清空时 `line()` 提示（i18n `tub.clearedWhileRecording`）。
+  - drift/judge 保存单次 NVS 写（`libraries/mus4_wifi/src/WifiManager.cpp`）：`saveDriftConfigPreference`/`saveJudgeConfigPreference` 由 12/10 次逐键 put（每次 put 都 `nvs_commit` 写 flash，主循环同步执行致行车中保存时控制输出停顿数十~数百 ms）改为单次 `putBytes` 定长 blob（`judge_cfg`/`drift_cfg`，首字节格式版本 + `static_assert` 钉尺寸）；load 先读 blob、读不到回退旧逐键（旧车参数无损），仅当值真来自旧键且校验通过才一次性迁移写 blob；旧键保留不删，回滚旧固件仍可读。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.71 → v1.8.72。
+  - 测试同步：新增 `tests/test_web_console_security.py` 10 例（devmode/serial 门禁存在与顺序、update POST 需上传发生标志、`Update.abort()` 在鉴权后、ABORTED 就地清理、活动时间戳与空闲超时、WIFI| 脱敏、`apply_pending` 字段、清错误先于 schedule apply）；新增 `tests/web_console_fixes.test.mjs` 25 例 node:vm 沙箱行为测试（seq 回退两通道、错误映射矩阵、staSsid 清占位、apply_pending 假失败/假成功、handoff 标记语义、tub 逐点去重与上限自动停、clearChart 两态、joystickCalLive 两态、全部 `<script>` 块编译完整性）+ `tests/test_web_console_fixes_node.py` 包装（无 node 自动 skip）；新增 `tests/test_drift_judge_nvs_single_write.py` 5 例（单次 putBytes、无逐键 put、版本字段与 static_assert、blob 优先 + 旧键回退 + isKey 门控迁移）；`tests/test_wireless_console_policy.py` +6 例（WIFI| 脱敏、MODE 认证放行/未认证拒绝/大小写敏感——顺带修复 Python 策略镜像缺失 MODE 分支的实锤漂移）；`tests/wireless_console_policy.py` 镜像同步补 WIFI| 脱敏与 `is_wireless_mode_command()`；`tests/test_firmware_feature_flags.py` 版本断言 v1.8.72、CHANGELOG 顺序链补 v1.8.72、`clearChart` 逐字钉扎串按新行为更新。`pytest MUS4_FW/tests/` 360 passed + 31 subtests；arduino-cli 编译通过。
+
 ## 2026-09-06 v1.8.71
 
 - feat(WebConsole): DC「ZCode」点击实时取活链——单击先开占位标签，再 POST DD 后端 `:8000/api/zcode-remote/link` 实时向 ZCode 桌面端取新鲜远控链接，零弹框零粘贴；取不到才回落 localStorage 存档/prompt 录入

@@ -24,6 +24,15 @@ def is_control_command(line):
     return True
 
 
+def is_wireless_mode_command(line):
+    # 与固件 isWirelessModeCommand 一致：前缀大小写敏感（startsWith），
+    # 参数去空白后必须是单个字符 0/1/2。
+    if not line.startswith("MODE ") and not line.startswith("MODE:"):
+        return False
+    arg = line[5:].strip()
+    return len(arg) == 1 and arg in "012"
+
+
 def is_wireless_command_allowed(line, authenticated, park_locked, *, dev_mode=False, origin="tcp", auth_disabled=False):
     command = normalize_wireless_command(line)
     # DEV ON 仅对 Web 来源放权"OTA + Web 配置 + 显示/日志切换 + WIFI_STA_*"。
@@ -48,6 +57,9 @@ def is_wireless_command_allowed(line, authenticated, park_locked, *, dev_mode=Fa
     # 其余命令（控制 / 诊断）不读 webDevMode，严格要求认证。
     if not authed:
         return False
+    # 模式命令需认证，Park 锁定下也允许（油门仍钳 0）；前缀大小写敏感。
+    if is_wireless_mode_command(line):
+        return True
     if command in PARK_LOCKED_COMMANDS:
         return park_locked
     return is_control_command(line)
@@ -60,6 +72,13 @@ def redact_wireless_console_line(line):
         return "AUTH:<redacted>"
     if command == "WIFI_STA_PASSWORD":
         return "WIFI_STA_PASSWORD:<redacted>"
+    # WIFI|<ssid>|<password>（Serial2 上位机配网协议）：保留 ssid，脱敏密码段。
+    # 与固件 startsWith("WIFI|") 一致，大小写敏感，不经过 normalize 大写化。
+    if line.startswith("WIFI|"):
+        second_pipe = line.find("|", 5)
+        if second_pipe > 5:
+            return line[:second_pipe + 1] + "<redacted>"
+        return "WIFI|<redacted>"
     return line
 
 

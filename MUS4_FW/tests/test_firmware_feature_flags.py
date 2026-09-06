@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.70"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.71"' in build_info
+    assert "v1.8.71" in changelog
     assert "v1.8.70" in changelog
     assert "v1.8.69" in changelog
     assert "v1.8.68" in changelog
@@ -365,6 +366,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-09-06 v1.8.71") < changelog.index("## 2026-09-06 v1.8.70")
     assert changelog.index("## 2026-09-06 v1.8.70") < changelog.index("## 2026-09-06 v1.8.69")
     assert changelog.index("## 2026-09-06 v1.8.69") < changelog.index("## 2026-09-06 v1.8.68")
     assert changelog.index("## 2026-09-06 v1.8.68") < changelog.index("## 2026-09-06 v1.8.67")
@@ -5381,13 +5383,28 @@ def test_web_console_header_entry_buttons():
     # 归并进 query（query 已有同名参数不覆盖）并清空 hash → 有 remoteControlToken
     # 参数原样返回 → 否则必须含 sid+hash 且把 t 刷成 Date.now()；prompt 预填改为
     # 存档归一化有效才预填（无效存档预填空串），保存归一化后的值
+    # v1.8.71 点击实时取活链（用户场景：Mac 浏览器点 DC 的 ZCode，要直接打开
+    # 远控 Linux 主机的页面、零弹框零粘贴）：单击先同步开 about:blank 占位标签
+    # （防异步 window.open 被拦截），再 POST :8000/api/zcode-remote/link 向 DD
+    # 后端实时取链（zcodeRemoteFetchLive，30s 超时——桌面端未开启会代开启、
+    # 不在线会拉起）；取到活链即存 localStorage 兜底并导航；取不到才回落
+    # localStorage 存档现拼/prompt 录入的旧流程，都无有效链接时关闭占位标签
     assert 'onclick="openZCode()"' in assets
     assert 'ondblclick="editZCodeUrl()"' in assets
     assert 'data-i18n-title="zcode.remoteHint"' in assets
     assert 'function openZCode(){if(zcodeClickTimer)return' in assets
     assert "localStorage.getItem('zcodeRemoteUrl')" in assets
     assert "localStorage.setItem('zcodeRemoteUrl',url)" in assets
-    assert "window.open(url,'_blank','noopener')" in assets
+    # v1.8.71 实时取活链：占位标签（about:blank，opener 置空）+ DD 后端端点 +
+    # 占位导航/被拦兜底直开；活链落 localStorage 兜底
+    assert 'function zcodeRemoteFetchLive(' in assets
+    assert ":8000/api/zcode-remote/link" in assets
+    assert "window.open('about:blank','_blank')" in assets
+    assert 'win.opener=null' in assets
+    assert 'win.location.href=u' in assets
+    assert "window.open(u,'_blank','noopener')" in assets
+    assert "localStorage.setItem('zcodeRemoteUrl',live)" in assets
+    assert 'win.close()' in assets
     # v1.8.70 宽容解析：query/fragment 两种参数形式都接受，remoteControlToken 链接原样通过
     assert 'function zcodeRemoteNormalize(' in assets
     assert "u.protocol!=='https:'" in assets

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-06 v1.8.71
+
+- feat(WebConsole): DC「ZCode」点击实时取活链——单击先开占位标签，再 POST DD 后端 `:8000/api/zcode-remote/link` 实时向 ZCode 桌面端取新鲜远控链接，零弹框零粘贴；取不到才回落 localStorage 存档/prompt 录入
+  - 背景：用户场景是 Mac 浏览器打开 DC 点「ZCode」、直接跳出远控这台 Linux 主机的页面。桌面端远控凭证（sid/hash）此前只能靠手工「复制链接」粘贴录入；本次由 DD 后端新增 `/api/zcode-remote/link` 端点实时取链（桌面端未开启则经 CDP 代开启、不在线则拉起，详见 DonkeyDrift 侧 CHANGELOG），DC 点击即用，彻底免录入。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片）：
+    - JS 新增 `zcodeRemoteFetchLive(cb)`：`POST http://<_launcherIp>:8000/api/zcode-remote/link`（AbortController 30s 超时——桌面端冷启动需数十秒），成功回 `{status:"ok",url}` 则回调活链，任何失败回调 null。
+    - `openZCode()` 改造：单击（260ms 双击去抖不变）先同步 `window.open('about:blank','_blank')` 开占位标签（`opener` 置空）——防止异步取链后 `window.open` 被浏览器弹窗拦截；拿到链接后写占位标签 `location.href` 完成导航（占位被拦则 `window.open(url)` 直开兜底）。取到活链即写入 localStorage 作离线兜底存档；取不到活链才走 v1.8.70 的存档现拼/`zcodeRemotePrompt()` 录入流程，两者都无果时关闭占位标签。
+    - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例，不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.70 → v1.8.71。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.71、CHANGELOG 顺序链补 v1.8.71；`test_web_console_header_entry_buttons` ZCode 断言块新增 `zcodeRemoteFetchLive`/`:8000/api/zcode-remote/link`/占位标签（`about:blank`、`win.opener=null`、`win.location.href=u`、被拦兜底 `window.open(u,...)`、活链存档、`win.close()`）断言；`window.open(url,...)` 断言随变量更名更新为 `u`。
+
 ## 2026-09-06 v1.8.70
 
 - fix(WebConsole): ZCode 远控链接宽容解析——兼容 fragment 形式参数与 remoteControlToken 链接，无效存档不再回填 prompt 诱导回车

@@ -243,3 +243,8 @@ bool processAuthCommand(const String& line, Print& out)
     // 不是 Auth 命令，返回 false 让调用方继续分发
     return false;
 }
+
+String getHardwareId()
+{
+    return readHwId();
+}

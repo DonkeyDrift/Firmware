@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-06 v1.8.73
+
+- feat(cloud): 一键找车——ESP32 连上 Wi-Fi 后周期上报局域网信息到 Cloudflare Pages Functions，配合「找小车」网页在局域网内一键发现小车
+  - 背景：用户希望在一个网页里点击一下就能搜索局域网内有没有小车，看到 ESP32 的 IP 或 DonkeyDrift 的 IP。方案 A：车辆与 DD 后端分别周期上报自身局域网信息到云端（Cloudflare Pages Functions + KV），网页读 KV 列出在线设备。
+  - 新增库 `MUS4_FW/libraries/mus4_cloud/`（`library.properties` + `src/mus4_cloud.h` + `src/CloudReporter.{h,cpp}`）：轻量 HTTPS 上报器——`mus4cloud::update()` 每循环调用，首次拿到 IP 立即上报一次、此后每 5 分钟（`CLOUD_REPORT_INTERVAL_MS=300000`）心跳上报；未联网/未拿 IP 时跳过，失败静默重试不阻塞主循环。POST JSON 到 `CLOUD_REPORT_URL`（`/report` 端点），字段为 token/device_id/type=esp32/lan_ip/port=80/hostname/version；请求带浏览器 UA（`Mozilla/5.0 (ESP32) DonkeyDrift-FindCar/1.0`）规避 Cloudflare 对默认 ESP32 HTTPClient UA 的 403。
+  - `libraries/mus4_auth/src/AuthService.h`、`AuthService.cpp`：新增公开 `String getHardwareId()`——返回 eFuse MAC 派生的稳定硬件标识，作为云端 device_id。
+  - `libraries/mus4_core/src/FirmwareConfig.h`：新增 `ENABLE_CLOUD_REPORT` 开关（已启用）；`CLOUD_REPORT_URL`/`CLOUD_REPORT_TOKEN` 走本地 `WirelessSecrets.h`（不入库），缺任一即 `update()` 退化为空操作。
+  - `libraries/mus4_core/src/WirelessSecrets.example.h`：新增注释掉的 `CLOUD_REPORT_URL`/`CLOUD_REPORT_TOKEN` 占位示例（真实凭据不写死，参照既有 WIFI_STA 占位模式）。
+  - `MUS4_FW.ino`：`#include "CloudReporter.h"` + 在 Wi-Fi 更新块调用 `mus4cloud::update()`（约 663 行）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.72 → v1.8.73。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.73、CHANGELOG 顺序链补 v1.8.73。arduino-cli 编译通过。
+
 ## 2026-09-06 v1.8.72
 
 - fix(WebConsole): Drift Console 整页三步审查修复——安全门禁四补（空 POST /update 不再无条件重启、WIFI| 配网密码日志脱敏、devmode/serial 命令补鉴权）+ OTA 中断卡死双保险 + 重启后遥测静默自愈 + STA 配网假失败假成功 + tub 录制丢点/静默清空 + 校准反馈静默 + drift/judge 保存合并为单次 NVS 写

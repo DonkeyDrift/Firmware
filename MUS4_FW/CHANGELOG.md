@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-06 v1.8.74
+
+- fix(cloud): 关闭云端上报、移除共享 token，改走 DD 局域网直连「一键找车」
+  - 背景：原「找小车」依赖 Cloudflare Pages Functions + 共享 token 的云端上报方案（v1.8.73），用户要求去掉 token、在 DD 网页里一键查询局域网内小车；改为 ESP32 不做任何云端上报，由 DD 后端在局域网内直接发现小车与 DD 的 IP，零 token、零云端依赖。
+  - `libraries/mus4_core/src/FirmwareConfig.h`：注释掉 `ENABLE_CLOUD_REPORT`（云端上报开关停用；`mus4_cloud` 库与 `AuthService::getHardwareId()` 保留为 dormant 代码，不删除）。
+  - `libraries/mus4_core/src/WirelessSecrets.example.h`：移除 `CLOUD_REPORT_URL`/`CLOUD_REPORT_TOKEN` 占位示例。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.73 → v1.8.74。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 v1.8.74、CHANGELOG 顺序链补 v1.8.74。arduino-cli 编译通过。
+
 ## 2026-09-06 v1.8.73
 
 - feat(cloud): 一键找车——ESP32 连上 Wi-Fi 后周期上报局域网信息到 Cloudflare Pages Functions，配合「找小车」网页在局域网内一键发现小车

@@ -6,6 +6,7 @@
 
 #include "Mus4Log.h"
 #include "SharedTypes.h"
+#include "WebLogBuffer.h"
 #include "WirelessConsole.h"
 
 // IDF OTA helpers are linked from the Arduino core but the header is not
@@ -25,6 +26,9 @@ extern ControlData rc_data;
 extern ControlData car_output;
 
 extern void ensureWifiOtaStarted();
+// HTTP OTA 上传会话状态（定义在 WebConsoleServer.cpp），供空闲超时兜底使用。
+extern void resetOtaAfterFailedUpload();
+extern unsigned long wifiWebOtaLastActivityMs();
 
 void forceWifiOtaParkLocked()
 {
@@ -117,6 +121,17 @@ void updateWifiOta(OtaRuntimeState& os, WifiRuntimeState& ws)
         forceWifiOtaParkLocked();
     }
     unsigned long now = millis();
+    // HTTP OTA 上传中途客户端 abort 时，core 3.3.10 的 WebServer 不执行 POST
+    // handler，inProgress/parkGuardActive/windowOpen 可能永久卡死；按上传活动
+    // 时间戳做空闲超时兜底。时间戳为 0 表示当前无 HTTP 上传（如 ArduinoOTA
+    // 通道），不参与判断，避免误 abort ArduinoOTA 上传。
+    unsigned long lastOtaActivityMs = wifiWebOtaLastActivityMs();
+    if (os.inProgress && lastOtaActivityMs > 0 && (long)(now - lastOtaActivityMs) > (long)WIFI_OTA_IDLE_TIMEOUT_MS) {
+        resetOtaAfterFailedUpload();
+        closeWifiOtaWindow("UPLOAD_IDLE_TIMEOUT", os);
+        appendWebLog("ota", "http update idle timeout, state reset");
+        return;
+    }
     if (!ws.devModeEnabled && !os.inProgress && (long)(now - os.deadlineMs) >= 0) {
         closeWifiOtaWindow("TIMEOUT", os);
         return;

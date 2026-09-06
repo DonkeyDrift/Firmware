@@ -274,7 +274,11 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.68"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.72"' in build_info
+    assert "v1.8.72" in changelog
+    assert "v1.8.71" in changelog
+    assert "v1.8.70" in changelog
+    assert "v1.8.69" in changelog
     assert "v1.8.68" in changelog
     assert "v1.8.67" in changelog
     assert "v1.8.66" in changelog
@@ -363,6 +367,10 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-09-06 v1.8.72") < changelog.index("## 2026-09-06 v1.8.71")
+    assert changelog.index("## 2026-09-06 v1.8.71") < changelog.index("## 2026-09-06 v1.8.70")
+    assert changelog.index("## 2026-09-06 v1.8.70") < changelog.index("## 2026-09-06 v1.8.69")
+    assert changelog.index("## 2026-09-06 v1.8.69") < changelog.index("## 2026-09-06 v1.8.68")
     assert changelog.index("## 2026-09-06 v1.8.68") < changelog.index("## 2026-09-06 v1.8.67")
     assert changelog.index("## 2026-09-06 v1.8.67") < changelog.index("## 2026-09-03 v1.8.66")
     assert changelog.index("## 2026-09-03 v1.8.66") < changelog.index("## 2026-08-23 v1.8.65")
@@ -2348,7 +2356,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert 'function updateTubMeta()' in source
     assert 'tubMeta.textContent=tubSamples.length' in source
     assert '<span class="recMeta"><span data-i18n="tub.recorded">录制量</span><b id="tubMeta">0</b></span>' in source
-    assert 'function clearChart(){pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;tubSamples=[];tubStartedMs=0;tubStoppedMs=0;tubLastSeq=0;tubRecording=false;updateTubMeta();draw()}' in source
+    assert "function clearChart(){const wasRecording=tubRecording;pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;tubSamples=[];tubStartedMs=0;tubStoppedMs=0;tubLastSeq=0;tubRecording=false;updateTubMeta();refreshDynamicLabels();if(wasRecording)line(t('tub.clearedWhileRecording'));draw()}" in source
     assert "c.innerHTML=chartPaused?ICON_PLAY:ICON_PAUSE" in source
     assert "f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     assert '<button onclick="clearChart()">清空曲线</button>' not in source
@@ -5286,7 +5294,9 @@ def test_web_console_header_entry_buttons():
     占位示例 https://zcode.z.ai/remote/v4；单击经 260ms 定时器延迟以区分双击。
     v1.8.68 #openZCodeRemoteBtn 撤下、远程链接行为原地并入旧「ZCode」按钮
     （#openZCodeBtn，id/标签不变，原 launcher 行为——POST :8090/api/launch/zcode
-    拉起 TUI 网页终端——整体下线；有意行为变更，用户不要两个 ZCode 按钮并存）。"""
+    拉起 TUI 网页终端——整体下线；有意行为变更，用户不要两个 ZCode 按钮并存）。
+    v1.8.69 ZCode 按钮点击即新鲜（fresh-t 现拼链接 + 复制剪贴板 + 唤醒桌面端），
+    正常点击零弹框，解决旧链接打开显示"手机连接已失效"。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -5359,27 +5369,76 @@ def test_web_console_header_entry_buttons():
 
     # v1.8.42 引入"ZCode"按钮（原 launcher 行为：POST :8090/api/launch/zcode 拉起 TUI 终端）；
     # v1.8.68 起原地替换为远程控制链接入口（有意行为变更）：单击读 localStorage
-    # zcodeRemoteUrl，有值直接 window.open(url,'_blank','noopener')，无值 prompt 录入
-    # （校验 https:// 前缀，失败 alert 不保存不打开）；双击 ondblclick 重新 prompt 更新；
+    # zcodeRemoteUrl 直接打开，无值 prompt 录入；双击重新录入。
+    # v1.8.69 点击即新鲜、不再失效（用户反馈存好的旧链接打开显示"手机连接已失效"——
+    # 远控链接带 t 生成时间戳，旧 t 会被 z.ai 拒收）：单击用已存链接里的持久化
+    # sid/hash 现拼带全新 t 的 URL（zcodeRemoteFreshUrl），复制到剪贴板
+    # （zcodeRemoteCopy，clipboard API + textarea/execCommand 降级）后 window.open 直接
+    # 跳转、零弹框，并 best-effort POST :8090/api/launch/zcode-remote 唤醒桌面端
+    # （zcodeRemoteWake，失败静默不阻塞）；无存档或存档缺 sid/hash（早期裸链接）时才
+    # prompt 录入，校验升级为必须含 sid 与 hash 参数；双击 ondblclick 重新 prompt 更新；
     # 单击经 260ms 定时器延迟以区分双击；title 提示走 data-i18n-title
+    # v1.8.70 宽容解析（用户反馈粘贴桌面端复制的链接被误判"链接无效"——桌面端链接
+    # 的参数可能在 # fragment 后，v1.8.69 校验只认 query；另一诱因是 prompt 预填了
+    # 早期存的无效裸链接诱导直接回车）：zcodeRemoteNormalize 统一归一化——trim+去
+    # 首尾引号（含「」“”‘’）→ new URL → 必须 https: → fragment 里有 = 就把参数
+    # 归并进 query（query 已有同名参数不覆盖）并清空 hash → 有 remoteControlToken
+    # 参数原样返回 → 否则必须含 sid+hash 且把 t 刷成 Date.now()；prompt 预填改为
+    # 存档归一化有效才预填（无效存档预填空串），保存归一化后的值
+    # v1.8.71 点击实时取活链（用户场景：Mac 浏览器点 DC 的 ZCode，要直接打开
+    # 远控 Linux 主机的页面、零弹框零粘贴）：单击先同步开 about:blank 占位标签
+    # （防异步 window.open 被拦截），再 POST :8000/api/zcode-remote/link 向 DD
+    # 后端实时取链（zcodeRemoteFetchLive，30s 超时——桌面端未开启会代开启、
+    # 不在线会拉起）；取到活链即存 localStorage 兜底并导航；取不到才回落
+    # localStorage 存档现拼/prompt 录入的旧流程，都无有效链接时关闭占位标签
     assert 'onclick="openZCode()"' in assets
     assert 'ondblclick="editZCodeUrl()"' in assets
     assert 'data-i18n-title="zcode.remoteHint"' in assets
     assert 'function openZCode(){if(zcodeClickTimer)return' in assets
     assert "localStorage.getItem('zcodeRemoteUrl')" in assets
     assert "localStorage.setItem('zcodeRemoteUrl',url)" in assets
-    assert "window.open(url,'_blank','noopener')" in assets
-    assert "url.indexOf('https://')!==0" in assets
-    assert "'https://zcode.z.ai/remote/v4'" in assets  # 占位示例，非真实凭证
+    # v1.8.71 实时取活链：占位标签（about:blank，opener 置空）+ DD 后端端点 +
+    # 占位导航/被拦兜底直开；活链落 localStorage 兜底
+    assert 'function zcodeRemoteFetchLive(' in assets
+    assert ":8000/api/zcode-remote/link" in assets
+    assert "window.open('about:blank','_blank')" in assets
+    assert 'win.opener=null' in assets
+    assert 'win.location.href=u' in assets
+    assert "window.open(u,'_blank','noopener')" in assets
+    assert "localStorage.setItem('zcodeRemoteUrl',live)" in assets
+    assert 'win.close()' in assets
+    # v1.8.70 宽容解析：query/fragment 两种参数形式都接受，remoteControlToken 链接原样通过
+    assert 'function zcodeRemoteNormalize(' in assets
+    assert "u.protocol!=='https:'" in assets
+    assert 'u.hash.slice(1)' in assets
+    assert 'remoteControlToken' in assets
+    # prompt 预填归一化后的有效存档（无效存档预填空串，不再诱导回车）
+    assert "window.prompt(t('zcode.remotePrompt'),cur)" in assets
+    assert 'https://zcode.z.ai/remote/v4?sid=…&hash=…' in assets  # 占位示例，非真实凭证
     assert assets.count("'button.openZCode':'ZCode'") == 2
-    assert "'zcode.remoteHint':'单击打开 ZCode 远程控制，双击更新链接'" in assets
-    assert "'zcode.remoteHint':'Click to open ZCode Remote Control, double-click to update the link'" in assets
-    assert "'zcode.remotePrompt':'请粘贴 ZCode 远程控制链接（需以 https:// 开头）'" in assets
-    assert "'zcode.remotePrompt':'Paste the ZCode Remote Control link (must start with https://)'" in assets
-    assert "'zcode.remoteInvalid':'链接无效：必须以 https:// 开头，未保存'" in assets
-    assert "'zcode.remoteInvalid':'Invalid link: must start with https://, not saved'" in assets
+    # fresh-t 重建：sid/hash 缺一视为无存档；每次点击 set('t',Date.now()) 现拼新链接
+    assert 'function zcodeRemoteFreshUrl()' in assets
+    assert "u.searchParams.get('sid')" in assets
+    assert "u.searchParams.get('hash')" in assets
+    assert "u.searchParams.set('t',String(Date.now()))" in assets
+    # 复制到剪贴板：clipboard API + textarea/execCommand 降级，成功 toast
+    assert 'function zcodeRemoteCopy(url)' in assets
+    assert 'navigator.clipboard.writeText(url)' in assets
+    assert "document.execCommand('copy')" in assets
+    # 点击时唤醒桌面端（best-effort，_launcherIp 为空跳过，失败静默）
+    assert 'function zcodeRemoteWake()' in assets
+    assert ':8090/api/launch/zcode-remote' in assets
+    assert "'zcode.remoteHint':'单击打开 ZCode 远程控制（自动复制链接），双击更新链接'" in assets
+    assert "'zcode.remoteHint':'Click to open ZCode Remote Control (link auto-copied), double-click to update the link'" in assets
+    assert "'zcode.remotePrompt':'请粘贴 ZCode 桌面端「复制链接」给出的完整远控链接（形如 https://zcode.z.ai/remote/v4?sid=…&hash=…）'" in assets
+    assert "'zcode.remotePrompt':'Paste the full Remote Control link from the ZCode desktop \"Copy link\" button (e.g. https://zcode.z.ai/remote/v4?sid=…&hash=…)'" in assets
+    assert "'zcode.remoteInvalid':'链接无效：必须是桌面端复制的完整链接（含 sid 与 hash 参数），未保存'" in assets
+    assert "'zcode.remoteInvalid':'Invalid link: must be the full link copied from the desktop app (with sid and hash params), not saved'" in assets
+    assert "'zcode.remoteCopied':'远控链接已复制到剪贴板'" in assets
+    assert "'zcode.remoteCopied':'Remote control link copied to clipboard'" in assets
     # launcher 旧行为与 v1.8.67 并列按钮的残留一律不存在
-    assert ':8090/api/launch/zcode' not in assets
+    # （旧 TUI 端点调用以收尾引号区分于新 /api/launch/zcode-remote 唤醒端点）
+    assert ":8090/api/launch/zcode'" not in assets
     assert 'zCodeLaunching' not in assets
     assert 'openZCodeLaunching' not in assets
     assert 'toast.zCodeFailed' not in assets

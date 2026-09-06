@@ -75,6 +75,12 @@ extern void sampleWifiWebData();
 // Web-local state (moved from MUS4_FW.ino)
 static String wifiWebUpdateErrorMsg;
 static size_t wifiWebUpdateReceived = 0;
+// HTTP OTA 上传会话状态：仅在 UPLOAD_FILE_START 鉴权通过后置位，POST 完成
+// 处理器据此区分"真实发生过的上传"与空 POST（后者绝不重启）；每次写块刷新
+// 活动时间戳，供 updateWifiOta() 做空闲超时兜底（客户端 abort 时 core
+// 3.3.10 的 WebServer 不会执行 POST handler）。
+static bool s_wifiWebUpdateStarted = false;
+static unsigned long s_lastOtaActivityMs = 0;
 static unsigned long lastWifiWebUpdateMs = 0;
 static uint32_t wifiWebUpdateMaxDtMs = 0;
 static uint32_t wifiWebSampleMaxDtMs = 0;
@@ -280,6 +286,14 @@ static void handleWifiWebCommand()
     String response;
     StringPrint out(response);
     if (target.equalsIgnoreCase("serial") || target.equalsIgnoreCase("serial1")) {
+        // serial/serial1 直转 Serial2（上位机配网通道），与 Web 配置接口同款门禁；
+        // 前端识别 403 {"error":"auth_required"} 弹出认证提示。
+        if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled()) {
+            sendWifiWebApiHeaders();
+            wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
+            recordWifiWebHandlerDt(startedMs, wifiWebCommandMaxDtMs);
+            return;
+        }
         // v1.7.29：启用串口转发，支持上位机配网（WIFI|ssid|password 协议）。
         // 将 Web 命令原样转发到 Serial2（ESP32→Linux 上位机），并等待响应。
         appendWebLog("web", String("> [serial2] ") + redactWirelessConsoleLine(line));
@@ -318,6 +332,10 @@ static void handleWifiWebDevMode()
 
 static void handleWifiWebDevModeSet()
 {
+    if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled()) {
+        wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
+        return;
+    }
     String body = wifiWebServer.arg("plain");
     body.trim();
     body.toLowerCase();
@@ -425,6 +443,10 @@ static String wifiStaJson()
     response += ws.staTimedOut ? "true" : "false";
     response += ",\"connecting\":";
     response += ws.staConnecting ? "true" : "false";
+    // 从收到新配置到 deferred apply 真正执行（WIFI_STA_APPLY_DELAY_MS 窗口）
+    // 期间为 true，前端据此忽略 connected/last_error 等上一轮陈旧状态。
+    response += ",\"apply_pending\":";
+    response += ws.staApplyPending ? "true" : "false";
     response += ",\"last_error\":";
     appendJsonString(response, ws.staConnected ? "" : ws.staLastError);
     response += ",\"last_error_message\":";
@@ -1124,6 +1146,9 @@ static void handleWifiWebStaSet()
     }
     wifiStaApplyFromAp = requestFromAp;
     wifiStaTargetChannel = (requestFromAp && targetChannel >= 1 && targetChannel <= 14) ? (uint8_t)targetChannel : 0;
+    // 新配置要等 WIFI_STA_APPLY_DELAY_MS 后才真正 apply；先清掉上一轮的
+    // 错误状态，避免 apply 窗口内 /api/wifi-sta 读到陈旧失败。
+    clearWifiStaLastError();
     appendWebLog("web", String("wifi sta saved ssid=") + ws.staSsid + " password=<redacted>");
     wifiWebServer.send(200, "application/json", String("{\"saved\":true,\"applied\":true,\"state\":") + wifiStaJson() + "}");
     scheduleWifiStaApply();
@@ -1380,13 +1405,16 @@ static bool isWifiWebUpdateAuthOk()
     return false;
 }
 
-static void resetOtaAfterFailedUpload()
+// 非 static：updateWifiOta()（WifiOta.cpp）的空闲超时兜底也要调用。
+void resetOtaAfterFailedUpload()
 {
     // 确保 Update 对象不会卡在 running 状态，否则后续 Update.begin() 会报
     // "already running" 而彻底拒绝新的 OTA 请求。
     if (Update.isRunning()) {
         Update.abort();
     }
+    s_wifiWebUpdateStarted = false;
+    s_lastOtaActivityMs = 0;
     os.inProgress = false;
     os.parkGuardActive = false;
     os.closeWsPending = false;
@@ -1401,21 +1429,34 @@ static void resetOtaAfterFailedUpload()
     }
 }
 
+// 非 static：updateWifiOta()（WifiOta.cpp）的空闲超时兜底据此判断当前是否有
+// HTTP 上传在传输及其最近活动时间；0 表示无 HTTP 上传（如 ArduinoOTA 通道），
+// 不参与空闲判断，避免误 abort ArduinoOTA 上传。
+unsigned long wifiWebOtaLastActivityMs()
+{
+    return s_wifiWebUpdateStarted ? s_lastOtaActivityMs : 0;
+}
+
 static void handleWifiWebUpdateUpload()
 {
     HTTPUpload& upload = wifiWebServer.upload();
     if (upload.status == UPLOAD_FILE_START) {
         wifiWebUpdateErrorMsg = "";
         wifiWebUpdateReceived = 0;
-        // 防御：如果上次更新异常退出导致 Update 对象仍处 running 状态，
-        // 先 abort 再 begin，避免 "already running" 导致新上传无法开始。
-        if (Update.isRunning()) {
-            Update.abort();
-        }
+        s_wifiWebUpdateStarted = false;
         if (!isWifiWebUpdateAuthOk()) {
             wifiWebUpdateErrorMsg = "NACK:AUTH_REQUIRED";
             mus4LogLine("ota", "http update rejected: auth required");
             return;
+        }
+        // 鉴权通过才计为一次真实上传：POST 完成处理器据此拒绝空 POST 重启。
+        s_wifiWebUpdateStarted = true;
+        s_lastOtaActivityMs = millis();
+        // 防御：如果上次更新异常退出导致 Update 对象仍处 running 状态，
+        // 先 abort 再 begin，避免 "already running" 导致新上传无法开始。
+        // 必须在鉴权通过之后再 abort，避免未认证请求干扰进行中的 OTA。
+        if (Update.isRunning()) {
+            Update.abort();
         }
         // v1.7.34：HTTP OTA 上传开始时若 Park 未锁定，自动强制锁定而非拒绝。
         // OTA 传输期间本就会通过 forceWifiOtaParkLocked() 强制 Park Locked，
@@ -1441,6 +1482,7 @@ static void handleWifiWebUpdateUpload()
         }
     } else if (upload.status == UPLOAD_FILE_WRITE) {
         if (wifiWebUpdateErrorMsg.length() > 0) return;
+        s_lastOtaActivityMs = millis(); // 每写一块刷新活动时间戳（空闲超时兜底用）
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
             wifiWebUpdateErrorMsg = "NACK:WRITE_FAILED";
             mus4Logf("ota", "http update write failed at %u", wifiWebUpdateReceived);
@@ -1470,11 +1512,15 @@ static void handleWifiWebUpdateUpload()
             mus4LogLine("ota", "http update success");
         }
     } else if (upload.status == UPLOAD_FILE_ABORTED) {
-        // abort 路径由 handleWifiWebUpdatePost 统一清理 OTA 状态；
-        // 这里只标记错误并打日志，避免状态重置分散在两处。
+        // ESP32 core 3.3.10：客户端 abort 时 _parseForm() 返回 false，POST
+        // handler 不会执行（但 _parseFormUploadAborted() 会把 UPLOAD_FILE_ABORTED
+        // 送达本 handler），因此状态清理必须在这里直接完成，否则
+        // inProgress/parkGuardActive/windowOpen 会永久卡死。
         stopLedOtaGlitch();
         wifiWebUpdateErrorMsg = "NACK:ABORTED";
         mus4LogLine("ota", "http update aborted");
+        resetOtaAfterFailedUpload();
+        closeWifiOtaWindow("UPLOAD_ABORTED", os);
     }
 }
 
@@ -1489,6 +1535,12 @@ static void handleWifiWebUpdatePost()
         // 下一次 Update.begin() 会直接失败。
         resetOtaAfterFailedUpload();
         wifiWebServer.send(500, "text/plain", wifiWebUpdateErrorMsg + "\n");
+        recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
+        return;
+    }
+    if (!s_wifiWebUpdateStarted) {
+        // 未发生鉴权通过的上传（如空 POST）：绝不走成功分支，更不重启。
+        wifiWebServer.send(400, "text/plain", "NACK:NO_UPLOAD\n");
         recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
         return;
     }

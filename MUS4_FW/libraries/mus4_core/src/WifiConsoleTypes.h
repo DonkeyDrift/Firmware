@@ -44,6 +44,10 @@ static const char* WIFI_OTA_HOSTNAME = "mus4-ota";
 static const char* WIFI_OTA_PASSWORD = "mus4-debug";
 static const uint16_t WIFI_OTA_PORT = 3232;
 static const unsigned long WIFI_OTA_WINDOW_MS = 120000UL;
+// HTTP OTA 上传空闲超时：UPLOAD_FILE_START/WRITE 刷新活动时间戳，超过该时长
+// 无新数据块视为客户端已 abort（core 3.3.10 下 POST handler 不会执行），由
+// updateWifiOta() 兜底复位 OTA 状态，避免 inProgress/parkGuardActive 永久卡死。
+static const unsigned long WIFI_OTA_IDLE_TIMEOUT_MS = 60000UL;
 static const char* MUS4_PREF_NAMESPACE = "mus4";
 static const char* MUS4_PREF_DEV_MODE_KEY = "dev_mode";
 static const char* MUS4_PREF_AP_SSID_KEY = "ap_ssid";

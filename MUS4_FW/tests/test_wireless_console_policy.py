@@ -311,6 +311,48 @@ class TestWirelessConsolePolicy(unittest.TestCase):
         self.assertEqual(POLICY.redact_wireless_console_line("WIFI_STA_PASSWORD:secret123"), "WIFI_STA_PASSWORD:<redacted>")
         self.assertEqual(POLICY.redact_wireless_console_line("WIFI_STA_SSID:HomeWiFi"), "WIFI_STA_SSID:HomeWiFi")
 
+    def test_redacts_wifi_provisioning_password_but_keeps_ssid(self):
+        # WIFI|ssid|password 上位机配网协议：ssid 保留、密码段脱敏，
+        # 避免明文经 web 日志环形缓冲 / WS 广播泄露。
+        self.assertEqual(
+            POLICY.redact_wireless_console_line("WIFI|HomeWiFi|secret123"),
+            "WIFI|HomeWiFi|<redacted>",
+        )
+        # 无密码段（或空 ssid）时整体脱敏
+        self.assertEqual(POLICY.redact_wireless_console_line("WIFI|HomeWiFi"), "WIFI|<redacted>")
+        self.assertEqual(POLICY.redact_wireless_console_line("WIFI|"), "WIFI|<redacted>")
+
+    def test_wifi_provisioning_redaction_is_case_sensitive_like_firmware(self):
+        # 固件用 startsWith("WIFI|")（大小写敏感），小写前缀不脱敏、原样保留；
+        # 镜像不能整体 .upper() 后误判。
+        self.assertEqual(
+            POLICY.redact_wireless_console_line("wifi|HomeWiFi|secret123"),
+            "wifi|HomeWiFi|secret123",
+        )
+
+    def test_mode_command_requires_authentication_but_not_park(self):
+        # 固件 isWirelessCommandAllowed：认证用户放行 MODE 0/1/2，Park 锁定下也允许。
+        for cmd in ["MODE 0", "MODE 1", "MODE 2", "MODE:1", "MODE  2  "]:
+            with self.subTest(cmd=cmd):
+                self.assertFalse(POLICY.is_wireless_command_allowed(cmd, authenticated=False, park_locked=True))
+                self.assertTrue(POLICY.is_wireless_command_allowed(cmd, authenticated=True, park_locked=True))
+                self.assertTrue(POLICY.is_wireless_command_allowed(cmd, authenticated=True, park_locked=False))
+
+    def test_mode_command_prefix_is_case_sensitive_like_firmware(self):
+        # startsWith("MODE ")/startsWith("MODE:") 大小写敏感；小写 mode 落到
+        # 控制命令判定，格式不符即拒绝。
+        self.assertFalse(POLICY.is_wireless_command_allowed("mode 1", authenticated=True, park_locked=True))
+        self.assertFalse(POLICY.is_wireless_command_allowed("Mode 1", authenticated=True, park_locked=True))
+
+    def test_mode_command_rejects_out_of_range_argument(self):
+        for cmd in ["MODE 3", "MODE 10", "MODE ", "MODE x"]:
+            with self.subTest(cmd=cmd):
+                self.assertFalse(POLICY.is_wireless_command_allowed(cmd, authenticated=True, park_locked=True))
+
+    def test_mode_command_not_relaxed_by_web_dev_mode(self):
+        # DEV ON 白名单不含 MODE：未认证仍拒绝。
+        self.assertFalse(POLICY.is_web_command_allowed("MODE 1", authenticated=False, park_locked=True, dev_mode=True))
+
     def test_tcp_console_ignores_dev_mode_ota_relaxation(self):
         self.assertFalse(POLICY.is_wireless_command_allowed("ENABLE_OTA", authenticated=False, park_locked=False, dev_mode=True, origin="tcp"))
         self.assertFalse(POLICY.is_wireless_command_allowed("OTA_STATUS", authenticated=False, park_locked=False, dev_mode=True, origin="tcp"))

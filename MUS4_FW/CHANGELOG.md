@@ -1,5 +1,61 @@
 # CHANGELOG.md
 
+## 2026-09-06 v1.8.72
+
+- fix(WebConsole): Drift Console 整页三步审查修复——安全门禁四补（空 POST /update 不再无条件重启、WIFI| 配网密码日志脱敏、devmode/serial 命令补鉴权）+ OTA 中断卡死双保险 + 重启后遥测静默自愈 + STA 配网假失败假成功 + tub 录制丢点/静默清空 + 校准反馈静默 + drift/judge 保存合并为单次 NVS 写
+  - 背景：对整个 Drift Console 页面（服务端 C++ + 内嵌前端 JS）做「边界情况 / 陌生 CodeReviewer 复审 / 上线严重 Bug 预演」三步审查，发现 4 高 5 中共 9 条实锤问题，本次全部修复；DD 侧配套修复见 DonkeyDrift (198)。
+  - 安全门禁（`libraries/mus4_web/src/WebConsoleServer.cpp`、`libraries/mus4_command/src/WirelessConsole.cpp`）：
+    - 空 POST `/update` 不再重启：新增静态标志 `s_wifiWebUpdateStarted`（UPLOAD_FILE_START 鉴权通过才置位），POST 完成处理器要求"确实发生过鉴权通过的上传且 errorMsg 为空"才走 ACK+`ESP.restart()`，否则 400 `NACK:NO_UPLOAD`；`Update.abort()` 移到鉴权检查之后（原顺序允许未认证请求中止进行中的 OTA 会话）。
+    - `redactWirelessConsoleLine` 新增 `WIFI|` 分支：`WIFI|<ssid>|<password>` 脱敏为 `WIFI|<ssid>|<redacted>`——此前 DC「上位机配网」发出的明文家庭 Wi-Fi 密码会进 web 环形日志（无鉴权 `/api/log` 可读、经 WS 实时广播）。
+    - `POST /api/devmode` 补全文件统一的 `consoleAuthenticated || devModeEnabled || isWirelessConsoleAuthDisabled()` 门禁（403 `{"error":"auth_required"}`）——它本是唯一无鉴权写端点，且开 DEV 即绕过全部鉴权与 OTA 免密。
+    - `/api/cmd?target=serial/serial1` 直转 Serial2 分支补同款 403 门禁（默认空密码配置下行为不变）。
+  - OTA 中断卡死双保险（`WebConsoleServer.cpp`、`libraries/mus4_wifi/src/WifiOta.cpp`、`libraries/mus4_core/src/WifiConsoleTypes.h`）：本机 core 3.3.10 实测 abort 时 POST handler 不执行（原注释假设相反）——(a) upload handler 直接处理 `UPLOAD_FILE_ABORTED` 就地 `resetOtaAfterFailedUpload()`+`closeWifiOtaWindow()`；(b) 新增空闲超时兜底 `WIFI_OTA_IDLE_TIMEOUT_MS=60000`：upload WRITE 刷新活动时间戳，`updateWifiOta()` 检测到 `inProgress` 且空闲超 60s 即复位清理（ArduinoOTA 通道经 `wifiWebOtaLastActivityMs()` 返回 0 豁免，不误杀）。修复前：上传中途浏览器关页/休眠/Wi-Fi 抖动 → 控制台全 503 + 车永久 Park Locked，只能重启。
+  - 重启后遥测/日志静默自愈（`libraries/mus4_web/src/WebConsoleAssets.h`）：服务端 seq 重启归零而前端 `lastDataSeq/lastLogSeq` 只增不减，轮询模式下新数据被 since 过滤永久静默。新增 `resetDataSeqOnRollback(seq)`：WS `hello` 帧与 HTTP `/api/data` 的 `latest.seq` 两处检测到回退即重置双 seq 并提示（i18n `data.seqReset`）。
+  - STA 配网三连（`WebConsoleServer.cpp` + `WebConsoleAssets.h`）：(a) `staSsid` 编辑即清密码掩码占位/dirty 等全部状态，`saveWifiSta` 不再拿旧密码连新网；`renderStaPasswordState` 增加 SSID 失配跳过回填（防 5s 轮询复活旧掩码）；(b) 服务端收到新配置即 `clearWifiStaLastError()` 并在 `/api/wifi-sta` JSON 新增 `apply_pending` 字段（`scheduleWifiStaApply`→apply 执行期间为 true），前端等待循环在 `apply_pending` 期间不评估陈旧 connected/last_error——消除 800ms apply 窗口内的秒弹假失败与旧 IP 假成功；(c) handoff 成功 modal 去重顺序修正——调用点不再预写 `handoffShownForStaIp`（原先函数内去重恒命中导致成功 modal 永不显示），`updateNetworkCard` 场景保留"只标记不弹窗"并加注释。
+  - 校准与命令反馈（`WebConsoleAssets.h`）：`explainCommandError` 补映射——小写 `auth_required`（新 403 JSON 契约）、`NACK:JOYSTICK_INVALID_RANGE`（提示重新校准打满杆）、`NACK:JOYSTICK_SAVE_FAILED`，及 NACK/error 兜底原文展示（i18n `error.joystickInvalidRange`/`error.joystickSaveFailed`）；`joystickCalLive` 死元素接线——DONE 步骤「请检查下方数值」下方真正显示解析出的 min/mid/max。
+  - tub 录制（`WebConsoleAssets.h`）：`handleDataPayload` 对帧内 `points[]` 逐点 `tp()`（原先只录每帧 latest，HTTP 轮询/主循环繁忙时一帧多点全丢；`tp()` 移除 `ch6===undefined` 门槛——plot point 本就无 ch6，下游转换工具对缺失字段填 0 容错）；`clearChart()` 末尾 `refreshDynamicLabels()`（录制按钮状态正确回弹）+ 录制中被清空时 `line()` 提示（i18n `tub.clearedWhileRecording`）。
+  - drift/judge 保存单次 NVS 写（`libraries/mus4_wifi/src/WifiManager.cpp`）：`saveDriftConfigPreference`/`saveJudgeConfigPreference` 由 12/10 次逐键 put（每次 put 都 `nvs_commit` 写 flash，主循环同步执行致行车中保存时控制输出停顿数十~数百 ms）改为单次 `putBytes` 定长 blob（`judge_cfg`/`drift_cfg`，首字节格式版本 + `static_assert` 钉尺寸）；load 先读 blob、读不到回退旧逐键（旧车参数无损），仅当值真来自旧键且校验通过才一次性迁移写 blob；旧键保留不删，回滚旧固件仍可读。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.71 → v1.8.72。
+  - 测试同步：新增 `tests/test_web_console_security.py` 10 例（devmode/serial 门禁存在与顺序、update POST 需上传发生标志、`Update.abort()` 在鉴权后、ABORTED 就地清理、活动时间戳与空闲超时、WIFI| 脱敏、`apply_pending` 字段、清错误先于 schedule apply）；新增 `tests/web_console_fixes.test.mjs` 25 例 node:vm 沙箱行为测试（seq 回退两通道、错误映射矩阵、staSsid 清占位、apply_pending 假失败/假成功、handoff 标记语义、tub 逐点去重与上限自动停、clearChart 两态、joystickCalLive 两态、全部 `<script>` 块编译完整性）+ `tests/test_web_console_fixes_node.py` 包装（无 node 自动 skip）；新增 `tests/test_drift_judge_nvs_single_write.py` 5 例（单次 putBytes、无逐键 put、版本字段与 static_assert、blob 优先 + 旧键回退 + isKey 门控迁移）；`tests/test_wireless_console_policy.py` +6 例（WIFI| 脱敏、MODE 认证放行/未认证拒绝/大小写敏感——顺带修复 Python 策略镜像缺失 MODE 分支的实锤漂移）；`tests/wireless_console_policy.py` 镜像同步补 WIFI| 脱敏与 `is_wireless_mode_command()`；`tests/test_firmware_feature_flags.py` 版本断言 v1.8.72、CHANGELOG 顺序链补 v1.8.72、`clearChart` 逐字钉扎串按新行为更新。`pytest MUS4_FW/tests/` 360 passed + 31 subtests；arduino-cli 编译通过。
+
+## 2026-09-06 v1.8.71
+
+- feat(WebConsole): DC「ZCode」点击实时取活链——单击先开占位标签，再 POST DD 后端 `:8000/api/zcode-remote/link` 实时向 ZCode 桌面端取新鲜远控链接，零弹框零粘贴；取不到才回落 localStorage 存档/prompt 录入
+  - 背景：用户场景是 Mac 浏览器打开 DC 点「ZCode」、直接跳出远控这台 Linux 主机的页面。桌面端远控凭证（sid/hash）此前只能靠手工「复制链接」粘贴录入；本次由 DD 后端新增 `/api/zcode-remote/link` 端点实时取链（桌面端未开启则经 CDP 代开启、不在线则拉起，详见 DonkeyDrift 侧 CHANGELOG），DC 点击即用，彻底免录入。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片）：
+    - JS 新增 `zcodeRemoteFetchLive(cb)`：`POST http://<_launcherIp>:8000/api/zcode-remote/link`（AbortController 30s 超时——桌面端冷启动需数十秒），成功回 `{status:"ok",url}` 则回调活链，任何失败回调 null。
+    - `openZCode()` 改造：单击（260ms 双击去抖不变）先同步 `window.open('about:blank','_blank')` 开占位标签（`opener` 置空）——防止异步取链后 `window.open` 被浏览器弹窗拦截；拿到链接后写占位标签 `location.href` 完成导航（占位被拦则 `window.open(url)` 直开兜底）。取到活链即写入 localStorage 作离线兜底存档；取不到活链才走 v1.8.70 的存档现拼/`zcodeRemotePrompt()` 录入流程，两者都无果时关闭占位标签。
+    - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例，不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.70 → v1.8.71。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.71、CHANGELOG 顺序链补 v1.8.71；`test_web_console_header_entry_buttons` ZCode 断言块新增 `zcodeRemoteFetchLive`/`:8000/api/zcode-remote/link`/占位标签（`about:blank`、`win.opener=null`、`win.location.href=u`、被拦兜底 `window.open(u,...)`、活链存档、`win.close()`）断言；`window.open(url,...)` 断言随变量更名更新为 `u`。
+
+## 2026-09-06 v1.8.70
+
+- fix(WebConsole): ZCode 远控链接宽容解析——兼容 fragment 形式参数与 remoteControlToken 链接，无效存档不再回填 prompt 诱导回车
+  - 背景：用户反馈粘贴 ZCode 桌面端「复制链接」给出的链接被误判「链接无效」——桌面端链接的参数可能在 `#` fragment 之后（形如 `https://zcode.z.ai/remote/v4#sid=…&hash=…`），而 v1.8.69 的校验只认 query 参数；另一诱因是早期存入的无效裸链接被原样回填进 prompt 预填，诱导用户直接回车再次校验失败。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片）：
+    - JS 新增 `zcodeRemoteNormalize(raw)` 统一归一化：trim + 去首尾引号（含「」“”‘’）→ `new URL()` 解析（失败返回空）→ 必须 `https:` → fragment 里有 `=` 就把参数归并进 query（query 已有同名参数不覆盖）并清空 hash → 有 `remoteControlToken` 参数原样返回（token 链接不刷 t）→ 否则必须含 `sid`+`hash` 且把 `t` 刷成 `Date.now()`。
+    - `zcodeRemoteFreshUrl()` 与 `zcodeRemotePrompt()` 均改走 `zcodeRemoteNormalize`：prompt 预填改为存档归一化有效才预填、无效存档预填空串（不再诱导回车）；保存的是归一化后的值（fragment 形式链接存档后即为 query 形式 + 新鲜 t）。
+    - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例，不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.69 → v1.8.70。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.70、CHANGELOG 顺序链补 v1.8.70；`test_web_console_header_entry_buttons` ZCode 断言块更新：删除已失效的 `url.indexOf('https://')===0` 断言（新代码用 `u.protocol!=='https:'`），新增 `zcodeRemoteNormalize`/`u.hash.slice(1)`/`remoteControlToken`/`window.prompt(t('zcode.remotePrompt'),cur)` 断言，sid/hash/t 刷新相关断言保留，注释块同步描述新行为。node 打桩功能验证 32 例通过（query/fragment/token/垃圾输入/引号容忍/无效存档预填空串等），pytest 与固件编译验证通过。
+  - 审查补强（2026-09-06 合并前三步审查，不影响固件行为、版本号不变）：ZCode 远控链接逻辑此前只有 `test_firmware_feature_flags.py` 字符串断言，v1.8.69/v1.8.70 开发时的 node 打桩验证（32 例）是未入库的临时脚本——本次固化为 `tests/zcode_remote_url.test.mjs`（23 例：从 WebConsoleAssets.h 提取真实函数实体进 node:vm 沙箱执行，覆盖 normalize 边界矩阵——query/fragment/带路径 fragment/同名不覆盖/token 原样/裸链接/缺参/非 https/垃圾输入/空值/引号包裹——及单击去抖/双击/prompt 预填/存储读写抛错容错/复制降级失败/唤醒跳过等交互流）+ `tests/test_zcode_remote_node.py` pytest 包装（无 node 环境自动 skip）。审查结论：固件侧 localStorage 已有 try/catch 容错，无需源码改动；DD 侧同款容错修复见 DonkeyDrift (196)。
+
+## 2026-09-06 v1.8.69
+
+- feat(WebConsole): DC「ZCode」按钮点击即新鲜、正常点击零弹框——单击用已存凭证现拼带全新时间戳的远控链接，复制到剪贴板后直接新标签打开，并后台唤醒 PC 上的 Z Code 桌面端
+  - 背景：v1.8.68 把 ZCode 按钮改为打开 localStorage 里保存的远控链接，但链接里的 `t` 生成时间戳会过期（z.ai 远控页明示"不要复用旧复制的链接，请扫最新二维码"），旧链接打开即显示「手机连接已失效」；无存档时还会 prompt 弹框。本次让每次点击都现拼一条带全新 `t` 的链接（sid/hash 为持久化设备凭证不变），只有点击后才向 Z Code 发请求，且复制到剪贴板再打开，保证每次打开都不失效、不再弹框。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片）：
+    - JS 新增 `zcodeRemoteFreshUrl()`：读 localStorage 键 `zcodeRemoteUrl`，`new URL()` 解析后校验含 `sid` 与 `hash` 参数（缺一视为无存档，返回空走录入），`searchParams.set('t', String(Date.now()))` 现拼新鲜链接返回。
+    - JS 新增 `zcodeRemoteCopy(url)`：复制到剪贴板——`navigator.clipboard.writeText` 优先，http 非安全上下文降级隐藏 textarea + `document.execCommand('copy')`；成功 `showToast`（`zcode.remoteCopied`），失败仅记日志不阻塞跳转。
+    - JS 新增 `zcodeRemoteWake()`：点击时 best-effort `POST http://<host_ip>:8090/api/launch/zcode-remote` 唤醒/拉起 PC 上的 Z Code 桌面端（`_launcherIp` 为空跳过、失败静默、不 await 不阻塞跳转）。
+    - `openZCode()` 改造：单击（260ms 双击去抖不变）→ `zcodeRemoteFreshUrl() || zcodeRemotePrompt()` → 有值则复制 + `window.open(url,'_blank','noopener')` + `zcodeRemoteWake()`；正常点击零弹框。
+    - `zcodeRemotePrompt()`：预填值改为当前存档（不再预填必失效的裸占位链接）；校验升级为必须 `https://` 且含 `sid=`、`hash=` 参数，失败 alert 不保存不打开——杜绝再存进必失效的裸链接。
+    - i18n：`zcode.remoteHint`/`zcode.remotePrompt`/`zcode.remoteInvalid` 中英词条更新（引导粘贴桌面端「复制链接」给出的完整链接），新增 `zcode.remoteCopied`（远控链接已复制到剪贴板 / Remote control link copied to clipboard）；按钮静态 title 同步更新。
+    - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例（`https://zcode.z.ai/remote/v4?sid=…&hash=…`），不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.68 → v1.8.69。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.69、CHANGELOG 顺序链补 v1.8.69；`test_web_console_header_entry_buttons` ZCode 断言块改写为 v1.8.69 新行为（`zcodeRemoteFreshUrl`/sid/hash 校验/`set('t',String(Date.now()))`/`zcodeRemoteCopy`/clipboard+execCommand/`zcodeRemoteWake`/`:8090/api/launch/zcode-remote`/新中英词条；旧端点残留断言改为带收尾引号的 `:8090/api/launch/zcode'` 以区分新 `-remote` 端点）。pytest 与固件编译验证通过。
+
 ## 2026-09-06 v1.8.68
 
 - feat(WebConsole): DC 顶栏「ZCode」按钮行为原地替换为远程控制链接跳转——单击打开 localStorage 链接、双击重录；v1.8.67 并列新增的 #openZCodeRemoteBtn 撤下（有意行为变更）

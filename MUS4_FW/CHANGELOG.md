@@ -10,6 +10,7 @@
     - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例，不含真实链接。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.69 → v1.8.70。
   - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.70、CHANGELOG 顺序链补 v1.8.70；`test_web_console_header_entry_buttons` ZCode 断言块更新：删除已失效的 `url.indexOf('https://')===0` 断言（新代码用 `u.protocol!=='https:'`），新增 `zcodeRemoteNormalize`/`u.hash.slice(1)`/`remoteControlToken`/`window.prompt(t('zcode.remotePrompt'),cur)` 断言，sid/hash/t 刷新相关断言保留，注释块同步描述新行为。node 打桩功能验证 32 例通过（query/fragment/token/垃圾输入/引号容忍/无效存档预填空串等），pytest 与固件编译验证通过。
+  - 审查补强（2026-09-06 合并前三步审查，不影响固件行为、版本号不变）：ZCode 远控链接逻辑此前只有 `test_firmware_feature_flags.py` 字符串断言，v1.8.69/v1.8.70 开发时的 node 打桩验证（32 例）是未入库的临时脚本——本次固化为 `tests/zcode_remote_url.test.mjs`（23 例：从 WebConsoleAssets.h 提取真实函数实体进 node:vm 沙箱执行，覆盖 normalize 边界矩阵——query/fragment/带路径 fragment/同名不覆盖/token 原样/裸链接/缺参/非 https/垃圾输入/空值/引号包裹——及单击去抖/双击/prompt 预填/存储读写抛错容错/复制降级失败/唤醒跳过等交互流）+ `tests/test_zcode_remote_node.py` pytest 包装（无 node 环境自动 skip）。审查结论：固件侧 localStorage 已有 try/catch 容错，无需源码改动；DD 侧同款容错修复见 DonkeyDrift (196)。
 
 ## 2026-09-06 v1.8.69
 

@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.67"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.68"' in build_info
+    assert "v1.8.68" in changelog
     assert "v1.8.67" in changelog
     assert "v1.8.66" in changelog
     assert "v1.8.65" in changelog
@@ -362,6 +363,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-09-06 v1.8.68") < changelog.index("## 2026-09-06 v1.8.67")
     assert changelog.index("## 2026-09-06 v1.8.67") < changelog.index("## 2026-09-03 v1.8.66")
     assert changelog.index("## 2026-09-03 v1.8.66") < changelog.index("## 2026-08-23 v1.8.65")
     assert changelog.index("## 2026-08-23 v1.8.65") < changelog.index("## 2026-08-23 v1.8.64")
@@ -1835,7 +1837,7 @@ def test_web_console_header_logo_left_of_title():
 def test_web_console_mobile_header_layout():
     """窄屏（手机/平板竖屏，max-width:820px）头部重排为固定 4 行：
     第 1 行 logo + 标题 + GitHub + 版本号（紧跟 GitHub 右侧，整体左排）；
-    第 2 行 打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web / ZCode / 打开 DeepSeek Harness / ZCode Remote；
+    第 2 行 打开 Donkey / 打开 DonkeyDrifter / 打开 Kimi Code Web / ZCode / 打开 DeepSeek Harness；
     第 3 行 红绿蓝（最左）+ OTA + 静音 + DEV（margin-left:auto 贴合最右端）；
     第 4 行 主题切换（左）+ 语言切换（右）。
     实现方式：headerRow 保持 flex-wrap，DOM 中三个 .rowBreak 分隔 span 桌面
@@ -1847,7 +1849,10 @@ def test_web_console_mobile_header_layout():
     DeepSeek Harness 之间），order 插入 9，后续顺移 +1。
     v1.8.67 第 2 行再新增"ZCode Remote"按钮（#openZCodeRemoteBtn，localStorage 远程控制
     链接入口，排在 DeepSeek Harness 之后、GitHub 链接之前），order 追加 11，
-    .br2 换行分隔顺移 11→12。"""
+    .br2 换行分隔顺移 11→12。
+    v1.8.68 #openZCodeRemoteBtn 撤下——旧「ZCode」按钮（#openZCodeBtn）原地替换为
+    远程控制链接入口（有意行为变更，用户不要两个 ZCode 按钮并存），第 2 行恢复
+    5 个入口，order 复原（#openZCodeBtn 仍 9），.br2 回到 11。"""
 
     source = firmware_source_text()
 
@@ -1866,15 +1871,15 @@ def test_web_console_mobile_header_layout():
     assert "#versionLabel{order:4}" in source
     assert "#versionLabel{order:4;margin-left:auto}" not in source
     assert ".br1{order:5}" in source
-    # 第 2 行：Donkey / DonkeyDrifter / Kimi Code Web / ZCode / DeepSeek Harness / ZCode Remote
+    # 第 2 行：Donkey / DonkeyDrifter / Kimi Code Web / ZCode / DeepSeek Harness
     assert "#enterDonkeyBtn{order:6}" in source
     assert "#enterDonkeyDrifterBtn{order:7}" in source
     assert "#openKimiCodeWebBtn{order:8}" in source
     assert "#openZCodeBtn{order:9}" in source
     assert "#openDshBtn{order:10}" in source
-    assert "#openZCodeRemoteBtn{order:11}" in source
-    # ZCode Remote 插入第 2 行末尾，.br2 换行分隔随之顺移 11→12
-    assert ".br2{order:12}" in source
+    # v1.8.68：v1.8.67 的 #openZCodeRemoteBtn 撤下，.br2 复原回 11
+    assert "#openZCodeRemoteBtn" not in source
+    assert ".br2{order:11}" in source
     # 第 3 行：静音（桌面右推 margin-left:auto 复位）+ 主题 + 语言（右对齐）
     assert ".headerRow .otaLink{order:13}" in source
     assert "#muteToggle{order:14;margin-left:0}" in source
@@ -5278,22 +5283,24 @@ def test_web_console_header_entry_buttons():
     本地书签型入口，单击读 localStorage（键 zcodeRemoteUrl）直接 window.open 新标签打开
     （noopener），无值时 prompt 录入；双击重新 prompt 更新；链接须以 https:// 开头，
     否则 alert 且不保存。真实远程链接是凭证，仅存浏览器 localStorage，代码内仅保留
-    占位示例 https://zcode.z.ai/remote/v4；单击经 260ms 定时器延迟以区分双击。"""
+    占位示例 https://zcode.z.ai/remote/v4；单击经 260ms 定时器延迟以区分双击。
+    v1.8.68 #openZCodeRemoteBtn 撤下、远程链接行为原地并入旧「ZCode」按钮
+    （#openZCodeBtn，id/标签不变，原 launcher 行为——POST :8090/api/launch/zcode
+    拉起 TUI 网页终端——整体下线；有意行为变更，用户不要两个 ZCode 按钮并存）。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
 
     # 位置：主标题 <h1> 之后、GitHub 链接之前，Donkey 在左、DonkeyDrifter 居中、
-    # Kimi Code Web 在右、ZCode 紧随其后、DeepSeek Harness 再右、ZCode Remote 最右
+    # Kimi Code Web 在右、ZCode 紧随其后、DeepSeek Harness 在最右
     h1_pos = assets.index('<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>')
     donkey_pos = assets.index('data-i18n="button.enterDonkey"')
     drifter_pos = assets.index('data-i18n="button.enterDonkeyDrifter"')
     kimi_pos = assets.index('data-i18n="button.openKimiCodeWeb"')
     zcode_pos = assets.index('data-i18n="button.openZCode"')
     dsh_pos = assets.index('data-i18n="button.openDsh"')
-    zcode_remote_pos = assets.index('data-i18n="button.openZCodeRemote"')
     gh_pos = assets.index('<a class="ghLink"')
-    assert h1_pos < donkey_pos < drifter_pos < kimi_pos < zcode_pos < dsh_pos < zcode_remote_pos < gh_pos
+    assert h1_pos < donkey_pos < drifter_pos < kimi_pos < zcode_pos < dsh_pos < gh_pos
 
     # v1.7.61：改用 <a target="_blank"> 原生链接，不再使用 onclick + window.open
     assert 'id="enterDonkeyBtn"' in assets
@@ -5350,47 +5357,40 @@ def test_web_console_header_entry_buttons():
     assert "'toast.dshTimeout':'DeepSeek Harness 启动超时'" in assets
     assert "'toast.dshTimeout':'DeepSeek Harness launch timed out'" in assets
 
-    # v1.8.42："ZCode"按钮：交互与 DeepSeek Harness 按钮同款，
-    # POST http://<host>:8090/api/launch/zcode（毫秒级返回，15s 超时），
-    # about:blank 句柄 + 等待态禁用并切启动中文案，失败/超时走 toast；
-    # i18n 中英词条各出现 2 次
+    # v1.8.42 引入"ZCode"按钮（原 launcher 行为：POST :8090/api/launch/zcode 拉起 TUI 终端）；
+    # v1.8.68 起原地替换为远程控制链接入口（有意行为变更）：单击读 localStorage
+    # zcodeRemoteUrl，有值直接 window.open(url,'_blank','noopener')，无值 prompt 录入
+    # （校验 https:// 前缀，失败 alert 不保存不打开）；双击 ondblclick 重新 prompt 更新；
+    # 单击经 260ms 定时器延迟以区分双击；title 提示走 data-i18n-title
     assert 'onclick="openZCode()"' in assets
-    assert 'async function openZCode()' in assets
-    assert ':8090/api/launch/zcode' in assets
-    assert "let zCodeLaunching=false" in assets
-    assert '15000' in assets
-    assert assets.count("'button.openZCode':'ZCode'") == 2
-    assert "'button.openZCodeLaunching':'正在启动 ZCode...'" in assets
-    assert "'button.openZCodeLaunching':'Launching ZCode...'" in assets
-    assert "'toast.zCodeFailed':'ZCode 启动失败'" in assets
-    assert "'toast.zCodeFailed':'Failed to launch ZCode'" in assets
-    assert "'toast.zCodeTimeout':'ZCode 启动超时'" in assets
-    assert "'toast.zCodeTimeout':'ZCode launch timed out'" in assets
-
-    # v1.8.67："ZCode Remote"按钮（#openZCodeRemoteBtn）：与 launcher 系按钮并列的本地书签型入口。
-    # 单击：读 localStorage zcodeRemoteUrl，有值直接 window.open(url,'_blank','noopener')，
-    # 无值 prompt 录入（校验 https:// 前缀，失败 alert 不保存）；双击重新 prompt 更新。
-    # 单击经 260ms 定时器延迟以区分双击；按钮 title 提示走 data-i18n-title。
-    # 真实远程链接是凭证，只存浏览器 localStorage，代码内仅有占位示例。
-    assert 'id="openZCodeRemoteBtn"' in assets
-    assert 'onclick="openZCodeRemote()"' in assets
-    assert 'ondblclick="editZCodeRemoteUrl()"' in assets
+    assert 'ondblclick="editZCodeUrl()"' in assets
     assert 'data-i18n-title="zcode.remoteHint"' in assets
+    assert 'function openZCode(){if(zcodeClickTimer)return' in assets
     assert "localStorage.getItem('zcodeRemoteUrl')" in assets
     assert "localStorage.setItem('zcodeRemoteUrl',url)" in assets
     assert "window.open(url,'_blank','noopener')" in assets
     assert "url.indexOf('https://')!==0" in assets
     assert "'https://zcode.z.ai/remote/v4'" in assets  # 占位示例，非真实凭证
-    assert assets.count("'button.openZCodeRemote':'ZCode 远程'") == 1
-    assert assets.count("'button.openZCodeRemote':'ZCode Remote'") == 1
+    assert assets.count("'button.openZCode':'ZCode'") == 2
     assert "'zcode.remoteHint':'单击打开 ZCode 远程控制，双击更新链接'" in assets
     assert "'zcode.remoteHint':'Click to open ZCode Remote Control, double-click to update the link'" in assets
     assert "'zcode.remotePrompt':'请粘贴 ZCode 远程控制链接（需以 https:// 开头）'" in assets
     assert "'zcode.remotePrompt':'Paste the ZCode Remote Control link (must start with https://)'" in assets
     assert "'zcode.remoteInvalid':'链接无效：必须以 https:// 开头，未保存'" in assets
     assert "'zcode.remoteInvalid':'Invalid link: must start with https://, not saved'" in assets
-    # lucide link 图标（14px，stroke=currentColor）
-    assert 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71' in assets
+    # launcher 旧行为与 v1.8.67 并列按钮的残留一律不存在
+    assert ':8090/api/launch/zcode' not in assets
+    assert 'zCodeLaunching' not in assets
+    assert 'openZCodeLaunching' not in assets
+    assert 'toast.zCodeFailed' not in assets
+    assert 'toast.zCodeTimeout' not in assets
+    assert 'openZCodeRemote' not in assets
+    assert 'button.openZCodeRemote' not in assets
+
+    # v1.8.68：#openZCodeRemoteBtn 撤下（v1.8.67 并列新增一版后即按用户要求改为原地替换），
+    # 远程链接行为并入 #openZCodeBtn；此处保留"不存在"断言防回潮
+    assert 'id="openZCodeRemoteBtn"' not in assets
+    assert '<span data-i18n="button.openZCodeRemote">ZCode Remote</span>' not in assets
 
     # v1.7.59：enterDonkeyDrifter 指向 /launch/drive
     # v1.7.61：入口按钮改用 <a target="_blank">，不再使用 onclick + window.open
@@ -5407,24 +5407,22 @@ def test_web_console_header_entry_buttons():
     assert '.otaLink{display:inline-flex;align-items:center;justify-content:center;height:32px' in assets
     assert '.otaButton{' not in assets
     # v1.8.16：DC 顶栏标签复刻 DD 两类标签结构——D/DD 为 14px 功能标签(.navTab)，
-    # KCW/ZCode/DSH/ZCode Remote 为 12px 弱化标签(.navTabWeak)并带 lucide 图标；仅 2 个 .navTab
+    # KCW/ZCode/DSH 为 12px 弱化标签(.navTabWeak)并带 lucide 图标；仅 2 个 .navTab
     assert '.navTab{font-family:inherit;color:#8fa1b5;font-size:0.875rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1.25rem;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer;margin-right:12px}' in assets
     assert '.navTab:hover{color:#8bdcff;background:transparent}' in assets
     assert '.navTabWeak{font-family:inherit;color:#6b7d90;font-size:0.75rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1rem;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-right:12px}' in assets
     assert '.navTabWeak:hover{color:#b9c5d3;background:transparent}' in assets
     assert assets.count('class="navTab"') == 2
-    assert assets.count('class="navTabWeak"') == 4
+    assert assets.count('class="navTabWeak"') == 3
     assert '<a class="navTab" data-i18n="button.enterDonkey"' in assets
     assert '<a class="navTab" data-i18n="button.enterDonkeyDrifter"' in assets
     assert '<button type="button" class="navTabWeak" id="openKimiCodeWebBtn"' in assets
     assert '<button type="button" class="navTabWeak" id="openZCodeBtn"' in assets
     assert '<button type="button" class="navTabWeak" id="openDshBtn"' in assets
-    assert '<button type="button" class="navTabWeak" id="openZCodeRemoteBtn"' in assets
     assert '<span data-i18n="button.openKimiCodeWeb">Kimi Code Web</span>' in assets
     assert '<span data-i18n="button.openZCode">ZCode</span>' in assets
     assert '<span data-i18n="button.openDsh">DeepSeek Harness</span>' in assets
-    assert '<span data-i18n="button.openZCodeRemote">ZCode Remote</span>' in assets
-    # KCW/ZCode/DSH/ZCode Remote 带 lucide 图标（Sparkles / Code2(code-xml) / FlaskConical / Link，14px，stroke=currentColor）
+    # KCW/ZCode/DSH 带 lucide 图标（Sparkles / Code2(code-xml) / FlaskConical，14px，stroke=currentColor）
     assert 'M9.937 15.5A2 2 0 0 0 8.5 14.063' in assets
     assert '<path d="m18 16 4-4-4-4"></path>' in assets
     assert '<path d="m6 8-4 4 4 4"></path>' in assets

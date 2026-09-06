@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-06 v1.8.68
+
+- feat(WebConsole): DC 顶栏「ZCode」按钮行为原地替换为远程控制链接跳转——单击打开 localStorage 链接、双击重录；v1.8.67 并列新增的 #openZCodeRemoteBtn 撤下（有意行为变更）
+  - 背景：用户明确不要两个 ZCode 按钮并存——撤下 v1.8.67 新增的「ZCode Remote」按钮，把旧的 launcher 版「ZCode」按钮（#openZCodeBtn，原 POST :8090/api/launch/zcode 拉起 TUI 网页终端）原地替换为远程链接入口，id 与标签「ZCode」均不变。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片）：
+    - headerRow：`#openZCodeBtn` 保留原位（Kimi Code Web 与 DeepSeek Harness 之间），`onclick="openZCode()"` 指向新实现并新增 `ondblclick="editZCodeUrl()"`，title 提示走 `data-i18n-title="zcode.remoteHint"`（单击打开 ZCode 远程控制，双击更新链接 / Click to open ZCode Remote Control, double-click to update the link）；v1.8.67 的 `#openZCodeRemoteBtn` DOM 整段移除（含 lucide link 图标）。
+    - JS：旧 launcher 版 `openZCode()`（about:blank 句柄 + AbortController 15s 超时 + toast 报错）整体删除，替换为远程链接实现——单击读 localStorage 键 `zcodeRemoteUrl`，有值 `window.open(url,'_blank','noopener')`；无值 `window.prompt` 录入（预填现有值或占位示例 `https://zcode.z.ai/remote/v4`），trim 后校验 `https://` 前缀，失败 alert 且不保存不打开；双击重新 prompt 更新；单击经 260ms 定时器延迟以区分双击。
+    - i18n：移除 `button.openZCodeLaunching` / `toast.zCodeFailed` / `toast.zCodeTimeout`（中英，随 launcher 行为下线）与 v1.8.67 的 `button.openZCodeRemote`；保留 `zcode.remoteHint` / `zcode.remotePrompt` / `zcode.remoteInvalid`（中英各 3 条）；`button.openZCode`（ZCode）标签不变。
+    - 窄屏布局：`#openZCodeRemoteBtn{order:11}` 规则移除，`.br2` 复原 12→11，第 2 行恢复 5 个入口按钮。
+    - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例，不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.67 → v1.8.68。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.68、CHANGELOG 顺序链补 v1.8.68；`test_web_console_mobile_header_layout` 移除 #openZCodeRemoteBtn order 断言、复原 `.br2{order:11}` 并加"不存在"断言；`test_web_console_header_entry_buttons` 原 v1.8.42 launcher 断言块改写为新行为断言（ondblclick、data-i18n-title、localStorage 读写、noopener、https:// 校验、中英词条，及 launcher/并列按钮残留不存在），v1.8.67 ZCode Remote 断言块改写为 v1.8.68 撤下防回潮断言，`.navTabWeak` 计数恢复 3，DOM 序链复原。node 打桩功能验证与固件编译验证通过。
+
 ## 2026-09-06 v1.8.67
 
 - feat(WebConsole): DC 顶栏新增「ZCode Remote」入口按钮——单击新标签页打开 localStorage 里的 ZCode 远程控制链接，双击重新录入

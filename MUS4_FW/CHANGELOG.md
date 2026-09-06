@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-06 v1.8.69
+
+- feat(WebConsole): DC「ZCode」按钮点击即新鲜、正常点击零弹框——单击用已存凭证现拼带全新时间戳的远控链接，复制到剪贴板后直接新标签打开，并后台唤醒 PC 上的 Z Code 桌面端
+  - 背景：v1.8.68 把 ZCode 按钮改为打开 localStorage 里保存的远控链接，但链接里的 `t` 生成时间戳会过期（z.ai 远控页明示"不要复用旧复制的链接，请扫最新二维码"），旧链接打开即显示「手机连接已失效」；无存档时还会 prompt 弹框。本次让每次点击都现拼一条带全新 `t` 的链接（sid/hash 为持久化设备凭证不变），只有点击后才向 Z Code 发请求，且复制到剪贴板再打开，保证每次打开都不失效、不再弹框。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片）：
+    - JS 新增 `zcodeRemoteFreshUrl()`：读 localStorage 键 `zcodeRemoteUrl`，`new URL()` 解析后校验含 `sid` 与 `hash` 参数（缺一视为无存档，返回空走录入），`searchParams.set('t', String(Date.now()))` 现拼新鲜链接返回。
+    - JS 新增 `zcodeRemoteCopy(url)`：复制到剪贴板——`navigator.clipboard.writeText` 优先，http 非安全上下文降级隐藏 textarea + `document.execCommand('copy')`；成功 `showToast`（`zcode.remoteCopied`），失败仅记日志不阻塞跳转。
+    - JS 新增 `zcodeRemoteWake()`：点击时 best-effort `POST http://<host_ip>:8090/api/launch/zcode-remote` 唤醒/拉起 PC 上的 Z Code 桌面端（`_launcherIp` 为空跳过、失败静默、不 await 不阻塞跳转）。
+    - `openZCode()` 改造：单击（260ms 双击去抖不变）→ `zcodeRemoteFreshUrl() || zcodeRemotePrompt()` → 有值则复制 + `window.open(url,'_blank','noopener')` + `zcodeRemoteWake()`；正常点击零弹框。
+    - `zcodeRemotePrompt()`：预填值改为当前存档（不再预填必失效的裸占位链接）；校验升级为必须 `https://` 且含 `sid=`、`hash=` 参数，失败 alert 不保存不打开——杜绝再存进必失效的裸链接。
+    - i18n：`zcode.remoteHint`/`zcode.remotePrompt`/`zcode.remoteInvalid` 中英词条更新（引导粘贴桌面端「复制链接」给出的完整链接），新增 `zcode.remoteCopied`（远控链接已复制到剪贴板 / Remote control link copied to clipboard）；按钮静态 title 同步更新。
+    - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例（`https://zcode.z.ai/remote/v4?sid=…&hash=…`），不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.68 → v1.8.69。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.69、CHANGELOG 顺序链补 v1.8.69；`test_web_console_header_entry_buttons` ZCode 断言块改写为 v1.8.69 新行为（`zcodeRemoteFreshUrl`/sid/hash 校验/`set('t',String(Date.now()))`/`zcodeRemoteCopy`/clipboard+execCommand/`zcodeRemoteWake`/`:8090/api/launch/zcode-remote`/新中英词条；旧端点残留断言改为带收尾引号的 `:8090/api/launch/zcode'` 以区分新 `-remote` 端点）。pytest 与固件编译验证通过。
+
 ## 2026-09-06 v1.8.68
 
 - feat(WebConsole): DC 顶栏「ZCode」按钮行为原地替换为远程控制链接跳转——单击打开 localStorage 链接、双击重录；v1.8.67 并列新增的 #openZCodeRemoteBtn 撤下（有意行为变更）

@@ -3,7 +3,8 @@
 
 行为测试本体在同目录 `web_console_fixes.test.mjs`：从 .h 提取真实函数实体
 放进 node:vm 沙箱跑断言（seq 回退重置 / 命令错误映射矩阵 / STA 配网占位清理 /
-handoff modal 标记 / apply_pending 等待 / tub 批量帧录制 / 校准弹窗 live 行）。
+handoff modal 标记 / apply_pending 等待 / tub 批量帧录制 / 校准弹窗 live 行 /
+终端标签最小空闲编号 #149）。
 本机无 node 时 skip。
 """
 

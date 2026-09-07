@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.75"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.76"' in build_info
+    assert "v1.8.76" in changelog
     assert "v1.8.75" in changelog
     assert "v1.8.74" in changelog
     assert "v1.8.73" in changelog
@@ -370,6 +371,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-09-07 v1.8.76") < changelog.index("## 2026-09-07 v1.8.75")
+    assert changelog.index("## 2026-09-07 v1.8.75") < changelog.index("## 2026-09-06 v1.8.74")
     assert changelog.index("## 2026-09-06 v1.8.73") < changelog.index("## 2026-09-06 v1.8.72")
     assert changelog.index("## 2026-09-06 v1.8.72") < changelog.index("## 2026-09-06 v1.8.71")
     assert changelog.index("## 2026-09-06 v1.8.71") < changelog.index("## 2026-09-06 v1.8.70")
@@ -640,15 +643,16 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "document.createElement('iframe')" in source
     assert "f.setAttribute('scrolling','no')" in source
     assert "function selectTerminalTab(id)" in source
-    # 标签按位置连续编号（v1.7.80）：新建用 termList.length+1，杀标签后剩余标签重编号；
+    # 标签默认编号取最小空闲编号（#149）：freeTermNumber 找未被占用的最小 N（改名置空 num、关闭标签即释放）；
     # 标签文字放在 .termTabLabel 子 span（v1.7.87 起）；v1.7.93 起默认名智能缩写（放得下显示"终端 N"、放不下缩写为 N）；
     # #90 修复：fitTermTabLabels 每次先按长名统一测量、溢出才缩写（原按改名前布局判 packed，
     # 临界宽度下长名↔短名振荡，用户看到长名+溢出"没生效"）
-    assert "l.textContent=t('terminal.tab')+' '+(termList.length+1);" in source
+    assert "function freeTermNumber(){let n=1;const used=new Set();termList.forEach(x=>{if(x.num)used.add(x.num)});while(used.has(n))n++;return n;}" in source
+    assert "const num=freeTermNumber();const l=document.createElement('span');l.className='termTabLabel';l.textContent=t('terminal.tab')+' '+num;" in source
     assert "function fitTermTabLabels()" in source
     assert "termTabs.scrollWidth>termTabs.clientWidth" in source
-    assert "if(!x.name)x.l.textContent=t('terminal.tab')+' '+(j+1)" in source
-    assert "if(termTabs.scrollWidth>termTabs.clientWidth)termList.forEach((x,j)=>{if(!x.name)x.l.textContent=''+(j+1)})" in source
+    assert "termList.forEach(x=>{if(!x.name&&x.num)x.l.textContent=t('terminal.tab')+' '+x.num})" in source
+    assert "if(termTabs.scrollWidth>termTabs.clientWidth)termList.forEach(x=>{if(!x.name&&x.num)x.l.textContent=''+x.num})" in source
     assert "packed?" not in source
     assert "window.addEventListener('resize',fitTermTabLabels)" in source
     # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端，
@@ -658,7 +662,9 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "function killTerminalTab(id)" in source
     # 保底一个终端（v1.7.97）：仅剩一个标签时 × 关闭钮隐藏（updateTermTabClose），
     # killTerminalTab 入口守卫拒绝关闭最后一个；term 对象持 × 元素引用 c 以控制显隐
-    assert "const term={id:id,f:f,b:b,l:l,c:c,name:null,state:'loading'}" in source
+    assert "const term={id:id,f:f,b:b,l:l,c:c,name:null,num:num,state:'loading'}" in source
+    # 改名经 window message 写入 cur.name 并置空 num 释放默认编号（#149）
+    assert "cur.name=d.name;cur.num=null;cur.l.textContent=d.name;cur.b.title=d.name;" in source
     assert "function updateTermTabClose(){const hide=termList.length<=1;" in source
     assert "x.c.style.display=hide?'none':''" in source
     assert "function killTerminalTab(id){if(termList.length<=1)return;" in source
@@ -671,7 +677,7 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "d.type!=='donkeydrifter.term.name'" in source
     assert "x.f.contentWindow===e.source" in source
     assert "if(!cur||cur.name)return;" in source
-    assert "cur.name=d.name;cur.l.textContent=d.name;" in source
+    assert "cur.name=d.name;cur.num=null;cur.l.textContent=d.name;" in source
     assert ".termTabClose{" in source
     assert "I18N.zh['terminal.closeTab']" in source
     assert "I18N.en['terminal.closeTab']" in source

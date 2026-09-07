@@ -6,12 +6,12 @@
 //   - AuthService::getHardwareId()（eFuse MAC 派生的 12 位小写十六进制硬件 ID）
 //   - BuildInfo.h 的 MUS4_FIRMWARE_VERSION（版本字段）
 //
-// 协议（POST /report，JSON body）：
-//   {"token":"<共享口令>","device_id":"<硬件ID>","type":"esp32",
+// 协议（POST /report，JSON body，去 token 公开上报）：
+//   {"device_id":"<硬件ID>","type":"esp32",
 //    "lan_ip":"192.168.3.46","port":"80","hostname":"mus4-esp","version":"v1.8.72"}
 //
-// 默认关闭：仅当 ENABLE_CLOUD_REPORT、CLOUD_REPORT_TOKEN、CLOUD_REPORT_URL
-// 三者同时定义时才编译真实逻辑，否则 update() 为空操作。
+// 默认关闭：仅当 ENABLE_CLOUD_REPORT、CLOUD_REPORT_URL 二者同时定义时
+// 才编译真实逻辑，否则 update() 为空操作。
 
 #include "CloudReporter.h"
 
@@ -23,7 +23,7 @@
 #include "AuthService.h"
 #include "Mus4Log.h"
 
-// 引入编译期密钥（token / 上报 URL）。WirelessSecrets.h 是本机本地文件、不入库，
+// 引入编译期 URL。WirelessSecrets.h 是本机本地文件、不入库，
 // 参照 WifiStaConfig.cpp 的 __has_include 模式：提供时宏才生效。
 #if defined(ENABLE_CLOUD_REPORT)
 #if __has_include("WirelessSecrets.h")
@@ -31,7 +31,7 @@
 #endif
 #endif
 
-#if defined(ENABLE_CLOUD_REPORT) && defined(CLOUD_REPORT_TOKEN) && defined(CLOUD_REPORT_URL)
+#if defined(ENABLE_CLOUD_REPORT) && defined(CLOUD_REPORT_URL)
 
 namespace mus4cloud {
 
@@ -41,7 +41,7 @@ static const int CLOUD_REPORT_HTTP_TIMEOUT_MS = 5000;            // 连接 + 总
 static bool reportedOnce = false;            // 是否已完成首次上报
 static unsigned long lastReportMs = 0;       // 上次上报时刻（millis()）
 
-/// 拼装上报 JSON。这些字段（token / 硬件 ID / IP / hostname / version）
+/// 拼装上报 JSON。这些字段（硬件 ID / IP / hostname / version）
 /// 均不含需转义的字符，直接 String 拼接即可（本工程无 ArduinoJson）。
 static String buildReportBody()
 {
@@ -54,9 +54,7 @@ static String buildReportBody()
 
     String body;
     body.reserve(200);
-    body += "{\"token\":\"";
-    body += CLOUD_REPORT_TOKEN;
-    body += "\",\"device_id\":\"";
+    body += "{\"device_id\":\"";
     body += deviceId;
     body += "\",\"type\":\"esp32\",\"lan_ip\":\"";
     body += WiFi.localIP().toString();
@@ -118,7 +116,7 @@ bool isConfigured()
 
 }  // namespace mus4cloud
 
-#else  // 未启用：开关 / token / URL 任一缺失时退化为空操作
+#else  // 未启用：开关 / URL 任一缺失时退化为空操作
 
 namespace mus4cloud {
 
@@ -131,4 +129,4 @@ bool isConfigured()
 
 }  // namespace mus4cloud
 
-#endif  // ENABLE_CLOUD_REPORT && CLOUD_REPORT_TOKEN && CLOUD_REPORT_URL
+#endif  // ENABLE_CLOUD_REPORT && CLOUD_REPORT_URL

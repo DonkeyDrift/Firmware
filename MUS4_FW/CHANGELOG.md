@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-09-07 v1.8.75
+
+- feat(cloud): 恢复「找 Donkey Car」云端上报（去 token、公开查询），网页改名 find-dkc
+  - 背景：用户要求「不要 IP，要网站；不要叫小车，叫 Donkey Car」。上一条 v1.8.74 曾为「去 token」关掉了云端上报、改走 DD 局域网直连；本次按用户最新意愿恢复云端上报（让公网网页 find-dkc.pages.dev 打开即查，零 token），并把措辞从「小车」改为「Donkey Car」。
+  - `libraries/mus4_cloud/src/CloudReporter.cpp`、`CloudReporter.h`：去掉 token 字段与 `CLOUD_REPORT_TOKEN` 编译门槛——上报 JSON 不再含 token，仅需 `ENABLE_CLOUD_REPORT` + `CLOUD_REPORT_URL`。
+  - `libraries/mus4_core/src/FirmwareConfig.h`：重新启用 `ENABLE_CLOUD_REPORT`。
+  - `libraries/mus4_core/src/WirelessSecrets.example.h`：移除 `CLOUD_REPORT_TOKEN` 占位，只保留 `CLOUD_REPORT_URL` 示例（指向 `find-dkc.pages.dev/report`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.74 → v1.8.75。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 v1.8.75、CHANGELOG 顺序链补 v1.8.75。arduino-cli 编译通过、OTA 刷车。
+
 ## 2026-09-06 v1.8.74
 
 - fix(cloud): 关闭云端上报、移除共享 token，改走 DD 局域网直连「一键找车」

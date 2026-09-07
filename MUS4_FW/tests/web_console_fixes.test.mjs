@@ -16,7 +16,8 @@
 //  ⑤ waitWifiStaConnectionResult：apply_pending=true 期间陈旧 connected/last_error 不评估；
 //  ⑥ tub 录制批量帧逐点录入（points 末点与 latest 同 seq 由 tubLastSeq 去重，
 //    TUB_MAX_SAMPLES 自动停不变）+ clearChart 停录回弹按钮并提示；
-//  ⑦ joystickCalLive 在轮询刷新时同步写入（DONE 步骤"下方数值"不再空白）。
+//  ⑦ joystickCalLive 在轮询刷新时同步写入（DONE 步骤"下方数值"不再空白）；
+//  ⑧ 终端标签默认编号取最小空闲编号（#149：改名释放编号，新标签复用「终端 1」）。
 //
 // 运行：node MUS4_FW/tests/web_console_fixes.test.mjs
 // （pytest 包装见同目录 test_web_console_fixes_node.py）
@@ -121,24 +122,32 @@ const FN_SIGNATURES = [
   'function formatCalAxis(',
   'function renderCalStep(',
   'async function refreshJoystickCalStatus(',
+  'function freeTermNumber(',
+  'function addTerminalTab(',
+  'function fitTermTabLabels(',
 ];
 const fnBlocks = FN_SIGNATURES.map((sig) => extractFn(src, sig));
 const listenerStmt = extractStmt(src, "staSsid.addEventListener('input',");
+const termNameListenerStmt = extractStmt(src, "window.addEventListener('message',e=>{const d=e.data;if(!d||d.type!=='donkeydrifter.term.name'");
 const tubMaxConst = src.match(/const TUB_MAX_SAMPLES=\d+;/);
 assert.ok(tubMaxConst, '未找到 TUB_MAX_SAMPLES 常量');
 
 // 被测函数引用的顶层 let 状态（照 line 341 的声明子集），与提取的函数同一脚本作用域。
 const driver = `
 let lastLogSeq=0,lastDataSeq=0,tubRecording=false,tubSamples=[],tubStartedMs=0,tubStoppedMs=0,tubLastSeq=0,pointHead=0,pointCount=0,points=new Array(256),scrollOffset=0,smoothedDt=16,gridReady=false,chartPaused=false,screenSaverActive=false,dataTransport='poll',dataWs=null,dataWsConnected=false,dataWsReconnectDelay=500,dataPolling=false,staSelectedChannel=0,staPasswordPlaceholder=false,staPasswordDirty=false,staPasswordVisible=false,staSavedPassword='',staSavedPasswordKnown=false;
+let termInited=false,termSeq=0,termActive=0,termList=[];
 ${tubMaxConst[0]}
 ${fnBlocks.join('\n')}
 ${listenerStmt}
+${termNameListenerStmt}
 ;globalThis.__x = {
   resetDataSeqOnRollback, handleDataPayload, latestPoint, ts, te, tp, clearChart,
   explainCommandError, showCommandError, dataWsUrl, connectDataSocket,
   handoffStaUrl, showWifiStaHandoffModal, waitWifiStaConnectionResult,
   renderStaPasswordState, parseJoystickCalStatus, formatCalAxis, renderCalStep,
   refreshJoystickCalStatus,
+  freeTermNumber, addTerminalTab, fitTermTabLabels,
+  get termList() { return termList; },
   get state() {
     return { lastDataSeq, lastLogSeq, tubRecording, tubSamples, tubLastSeq, tubStartedMs,
       tubStoppedMs, staSelectedChannel, staPasswordPlaceholder, staPasswordDirty,
@@ -161,6 +170,7 @@ function makeEl() {
   const added = [];
   return {
     textContent: '', value: '', type: '', style: {}, added,
+    setAttribute() {}, appendChild() {}, remove() {},
     classList: {
       add: (c) => added.push(c),
       remove() {},
@@ -191,6 +201,9 @@ function makeEnv(opts = {}) {
     addEventListener(type, fn) { this._handlers[type] = fn; },
   });
   els.staSsid = staSsid;
+  els.terminalWrap = { insertBefore() {} };
+  els.termTabs = { scrollWidth: 0, clientWidth: 100, appendChild() {} };
+  els.terminalHint = makeEl();
   const wsInstances = [];
   class FakeWebSocket {
     constructor(url) { this.url = url; this.sent = []; this.readyState = FakeWebSocket.OPEN; wsInstances.push(this); }
@@ -199,16 +212,31 @@ function makeEnv(opts = {}) {
   }
   FakeWebSocket.OPEN = 1;
   FakeWebSocket.CLOSED = 3;
-  const win = {};
+  const win = {
+    _handlers: {},
+    addEventListener(type, fn) { this._handlers[type] = fn; },
+  };
   const sandbox = {
     location: { protocol: 'http:', hostname: '192.0.2.1' }, // RFC 5737 占位 IP
     window: win,
-    document: { activeElement: null },
+    document: {
+      activeElement: null,
+      createElement: (tag) => {
+        const el = makeEl();
+        if (tag === 'iframe') el.contentWindow = {};
+        return el;
+      },
+    },
     WebSocket: FakeWebSocket,
     Blob: class {},
     fetch: async () => ({ text: async () => opts.calText ?? CAL_TEXT }),
     alert: (...a) => { calls.alert.push(a); },
     showToast: (...a) => { calls.toast.push(a); },
+    selectTerminalTab: () => {},
+    updateTermTabClose: () => {},
+    killTerminalTab: () => {},
+    probeTerminal: () => {},
+    _fetchLauncherIp: async () => '192.0.2.1',
     line: (...a) => { calls.line.push(a); },
     appendLogLine: (...a) => { calls.appendLog.push(a); },
     t: (k) => k,
@@ -541,6 +569,60 @@ await test('joystickCalLive：解析失败时 live 行清空', async () => {
   const env = makeEnv({ calText: 'garbage' });
   await env.x.refreshJoystickCalStatus();
   assert.equal(env.els.joystickCalLive.textContent, '');
+});
+
+// ---------- ⑧ 终端标签最小空闲编号（#149） ----------
+
+await test('addTerminalTab：首个标签默认编号为 1', () => {
+  const env = makeEnv();
+  env.x.addTerminalTab();
+  assert.equal(env.x.termList.length, 1);
+  assert.equal(env.x.termList[0].num, 1);
+  assert.equal(env.x.termList[0].l.textContent, 'terminal.tab 1');
+});
+
+await test('改名释放编号：新标签复用最小空闲编号 1（#149 复现场景）', () => {
+  const env = makeEnv();
+  env.x.addTerminalTab();
+  const first = env.x.termList[0];
+  env.window._handlers.message({
+    data: { type: 'donkeydrifter.term.name', name: 'Donkey' },
+    source: first.f.contentWindow,
+  });
+  assert.equal(first.name, 'Donkey');
+  assert.equal(first.num, null, '改名后原编号应释放');
+  assert.equal(first.l.textContent, 'Donkey');
+  env.x.addTerminalTab();
+  const second = env.x.termList[1];
+  assert.equal(second.num, 1, '「终端 1」已空出，新标签应取名 1 而非 2');
+  assert.equal(second.l.textContent, 'terminal.tab 1');
+});
+
+await test('fitTermTabLabels：未改名标签保持各自编号，不按下标重排', () => {
+  const env = makeEnv();
+  env.x.addTerminalTab();
+  env.x.addTerminalTab();
+  env.window._handlers.message({
+    data: { type: 'donkeydrifter.term.name', name: 'Donkey' },
+    source: env.x.termList[0].f.contentWindow,
+  });
+  env.x.fitTermTabLabels();
+  assert.equal(env.x.termList[1].l.textContent, 'terminal.tab 2', '未改名标签保持原编号');
+  env.x.addTerminalTab();
+  assert.equal(env.x.termList[2].num, 1);
+  assert.equal(env.x.termList[2].l.textContent, 'terminal.tab 1');
+});
+
+await test('关闭标签释放编号：最小空闲编号可被再次占用', () => {
+  const env = makeEnv();
+  env.x.addTerminalTab(); // num 1
+  env.x.addTerminalTab(); // num 2
+  env.x.termList.splice(0, 1); // 等价 killTerminalTab 移除首个标签
+  env.x.fitTermTabLabels();
+  assert.equal(env.x.freeTermNumber(), 1, '移除后编号 1 应重新空闲');
+  assert.equal(env.x.termList[0].l.textContent, 'terminal.tab 2');
+  env.x.addTerminalTab();
+  assert.equal(env.x.termList[env.x.termList.length - 1].num, 1);
 });
 
 // ---------- 静态断言：i18n 成对与整页 <script> 语法 ----------

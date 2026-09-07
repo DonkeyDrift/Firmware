@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-07 v1.8.76
+
+- fix(DC): 终端标签默认编号改取最小空闲编号——首个标签改名后新建标签复用「终端 1」而非「终端 2」（GitHub issue #149）
+  - 背景：DC Serial 终端里第一个标签执行命令后被改名为命令名（如「Donkey」），此时新建标签仍按 `termList.length+1` 编号得到「终端 2」，但页面上已没有任何叫「终端 1」的标签。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `freeTermNumber()` 取未被占用的最小 N；`addTerminalTab()` 为新标签分配并保存 `num` 字段（不再按标签总数 +1）；`fitTermTabLabels()` 未改名标签按各自 `num` 显示（不再按数组下标重排）；`donkeydrifter.term.name` message 监听在改名时把 `num` 置空释放编号。标签关闭后其编号同样自动空闲可复用。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.75 → v1.8.76。
+  - 测试同步：`tests/web_console_fixes.test.mjs` 新增 4 例（首个标签编号 1 / 改名释放编号后新标签复用 1（issue 复现场景）/ 未改名标签保持各自编号不按下标重排 / 关闭标签释放编号可再次占用），node 行为测试 29 例全过；`tests/test_firmware_feature_flags.py` 版本断言与 CHANGELOG 顺序链补 v1.8.76。arduino-cli 编译通过。
+
 ## 2026-09-07 v1.8.75
 
 - feat(cloud): 恢复「找 Donkey Car」云端上报（去 token、公开查询），网页改名 find-dkc
@@ -9,6 +17,7 @@
   - `libraries/mus4_core/src/WirelessSecrets.example.h`：移除 `CLOUD_REPORT_TOKEN` 占位，只保留 `CLOUD_REPORT_URL` 示例（指向 `find-dkc.pages.dev/report`）。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.74 → v1.8.75。
   - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 v1.8.75、CHANGELOG 顺序链补 v1.8.75。arduino-cli 编译通过、OTA 刷车。
+
 
 ## 2026-09-06 v1.8.74
 

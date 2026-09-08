@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-08 v1.8.77
+
+- fix(DC): ZCode 按钮打开远控时不再自动复制链接到剪贴板（不再覆盖用户剪贴板内容）
+  - 背景：用户反馈从 DC 页面点「ZCode」进入 ZCode 后，剪贴板内容会被 ZCode 远控链接覆盖（v1.8.71 起的"自动复制"行为），用户不希望剪贴板被覆盖。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`openZCode()` 导航回调 `nav` 移除 `zcodeRemoteCopy(u)` 调用（打开流程不变：实时取活链 → localStorage 兜底 → prompt 录入，仅不再写剪贴板）；整体删除 `zcodeRemoteCopy()` 函数（clipboard API + textarea/execCommand 降级复制逻辑）与 `zcode.remoteCopied` toast 文案；`zcode.remoteHint` 中英文提示同步去掉"自动复制链接"措辞。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.76 → v1.8.77。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 改为反向断言 `zcodeRemoteCopy`/`zcode.remoteCopied` 不存在、hint 新文案正断言，版本断言与 CHANGELOG 顺序链补 v1.8.77。176 例全过；arduino-cli 编译通过、HTTP OTA 刷车验证 version=v1.8.77。
+
 ## 2026-09-07 v1.8.76
 
 - fix(DC): 终端标签默认编号改取最小空闲编号——首个标签改名后新建标签复用「终端 1」而非「终端 2」（GitHub issue #149）

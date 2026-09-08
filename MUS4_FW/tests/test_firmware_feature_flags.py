@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.76"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.77"' in build_info
+    assert "v1.8.77" in changelog
     assert "v1.8.76" in changelog
     assert "v1.8.75" in changelog
     assert "v1.8.74" in changelog
@@ -371,7 +372,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
-    assert changelog.index("## 2026-09-07 v1.8.76") < changelog.index("## 2026-09-07 v1.8.75")
+    assert changelog.index("## 2026-09-08 v1.8.77") < changelog.index("## 2026-09-07 v1.8.76")
     assert changelog.index("## 2026-09-07 v1.8.75") < changelog.index("## 2026-09-06 v1.8.74")
     assert changelog.index("## 2026-09-06 v1.8.73") < changelog.index("## 2026-09-06 v1.8.72")
     assert changelog.index("## 2026-09-06 v1.8.72") < changelog.index("## 2026-09-06 v1.8.71")
@@ -5382,8 +5383,7 @@ def test_web_console_header_entry_buttons():
     # zcodeRemoteUrl 直接打开，无值 prompt 录入；双击重新录入。
     # v1.8.69 点击即新鲜、不再失效（用户反馈存好的旧链接打开显示"手机连接已失效"——
     # 远控链接带 t 生成时间戳，旧 t 会被 z.ai 拒收）：单击用已存链接里的持久化
-    # sid/hash 现拼带全新 t 的 URL（zcodeRemoteFreshUrl），复制到剪贴板
-    # （zcodeRemoteCopy，clipboard API + textarea/execCommand 降级）后 window.open 直接
+    # sid/hash 现拼带全新 t 的 URL（zcodeRemoteFreshUrl）后 window.open 直接
     # 跳转、零弹框，并 best-effort POST :8090/api/launch/zcode-remote 唤醒桌面端
     # （zcodeRemoteWake，失败静默不阻塞）；无存档或存档缺 sid/hash（早期裸链接）时才
     # prompt 录入，校验升级为必须含 sid 与 hash 参数；双击 ondblclick 重新 prompt 更新；
@@ -5431,21 +5431,19 @@ def test_web_console_header_entry_buttons():
     assert "u.searchParams.get('sid')" in assets
     assert "u.searchParams.get('hash')" in assets
     assert "u.searchParams.set('t',String(Date.now()))" in assets
-    # 复制到剪贴板：clipboard API + textarea/execCommand 降级，成功 toast
-    assert 'function zcodeRemoteCopy(url)' in assets
-    assert 'navigator.clipboard.writeText(url)' in assets
-    assert "document.execCommand('copy')" in assets
+    # v1.8.77 不再自动复制到剪贴板（用户反馈覆盖剪贴板内容）：打开 ZCode 时
+    # 绝不写剪贴板，zcodeRemoteCopy 与 zcode.remoteCopied 一并移除
+    assert 'zcodeRemoteCopy' not in assets
+    assert 'zcode.remoteCopied' not in assets
     # 点击时唤醒桌面端（best-effort，_launcherIp 为空跳过，失败静默）
     assert 'function zcodeRemoteWake()' in assets
     assert ':8090/api/launch/zcode-remote' in assets
-    assert "'zcode.remoteHint':'单击打开 ZCode 远程控制（自动复制链接），双击更新链接'" in assets
-    assert "'zcode.remoteHint':'Click to open ZCode Remote Control (link auto-copied), double-click to update the link'" in assets
+    assert "'zcode.remoteHint':'单击打开 ZCode 远程控制，双击更新链接'" in assets
+    assert "'zcode.remoteHint':'Click to open ZCode Remote Control, double-click to update the link'" in assets
     assert "'zcode.remotePrompt':'请粘贴 ZCode 桌面端「复制链接」给出的完整远控链接（形如 https://zcode.z.ai/remote/v4?sid=…&hash=…）'" in assets
     assert "'zcode.remotePrompt':'Paste the full Remote Control link from the ZCode desktop \"Copy link\" button (e.g. https://zcode.z.ai/remote/v4?sid=…&hash=…)'" in assets
     assert "'zcode.remoteInvalid':'链接无效：必须是桌面端复制的完整链接（含 sid 与 hash 参数），未保存'" in assets
     assert "'zcode.remoteInvalid':'Invalid link: must be the full link copied from the desktop app (with sid and hash params), not saved'" in assets
-    assert "'zcode.remoteCopied':'远控链接已复制到剪贴板'" in assets
-    assert "'zcode.remoteCopied':'Remote control link copied to clipboard'" in assets
     # launcher 旧行为与 v1.8.67 并列按钮的残留一律不存在
     # （旧 TUI 端点调用以收尾引号区分于新 /api/launch/zcode-remote 唤醒端点）
     assert ":8090/api/launch/zcode'" not in assets

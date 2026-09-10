@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.77"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.78"' in build_info
+    assert "v1.8.78" in changelog
     assert "v1.8.77" in changelog
     assert "v1.8.76" in changelog
     assert "v1.8.75" in changelog
@@ -372,6 +373,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-09-10 v1.8.78") < changelog.index("## 2026-09-08 v1.8.77")
     assert changelog.index("## 2026-09-08 v1.8.77") < changelog.index("## 2026-09-07 v1.8.76")
     assert changelog.index("## 2026-09-07 v1.8.75") < changelog.index("## 2026-09-06 v1.8.74")
     assert changelog.index("## 2026-09-06 v1.8.73") < changelog.index("## 2026-09-06 v1.8.72")
@@ -985,6 +987,35 @@ def test_firmware_config_centralizes_core_compile_time_defaults():
     assert "#define ENABLE_WIFI_CONSOLE" not in sketch
     assert "#define CH1_PIN 36" not in sketch
     assert "#define PWM_FILTER_SIZE 5" not in sketch
+
+
+def test_cloud_report_url_has_in_repo_default_not_only_gitignored_secret():
+    """「找小车」上报地址必须有仓库内默认值（v1.8.77 教训）。
+
+    干净 worktree / 新 clone 里没有 gitignore 的 WirelessSecrets.h；若上报地址只来自
+    该文件，整块上报代码会被静默编译掉——车明明在线，find-dkc 网页却查不到（用户反馈）。
+    """
+    config = (
+        PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h"
+    ).read_text(encoding="utf-8")
+    reporter = (
+        PROJECT_ROOT / "libraries" / "mus4_cloud" / "src" / "CloudReporter.cpp"
+    ).read_text(encoding="utf-8")
+    sketch = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert '#define ENABLE_CLOUD_REPORT' in config
+    assert '#define CLOUD_REPORT_URL_DEFAULT "https://find-dkc.pages.dev/report"' in config
+    assert '#include "FirmwareConfig.h"' in reporter
+    # 缺省回落：CLOUD_REPORT_URL 未定义时用仓库内默认值，门槛只看 ENABLE_CLOUD_REPORT
+    assert re.search(
+        r"#ifndef\s+CLOUD_REPORT_URL\s*\n#define\s+CLOUD_REPORT_URL\s+CLOUD_REPORT_URL_DEFAULT",
+        reporter,
+    )
+    assert "#if defined(ENABLE_CLOUD_REPORT) && defined(CLOUD_REPORT_URL)" not in reporter
+    assert "mus4cloud::update();" in sketch
+    # 上报节奏：成功 5 分钟一跳、失败 1 分钟快重试
+    assert "CLOUD_REPORT_INTERVAL_MS = 300000UL" in reporter
+    assert "CLOUD_REPORT_RETRY_MS = 60000UL" in reporter
 
 
 

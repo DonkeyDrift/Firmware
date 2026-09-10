@@ -10,6 +10,13 @@
 #define ENABLE_AUTH_SERVICE  // 启用基于 eFuse 芯片 ID 的身份识别服务（CMD:READ_HW_ID 等）
 #define ENABLE_CLOUD_REPORT  // 「找小车」云端上报开关：连上 Wi-Fi 后上报局域网 IP 到 Cloudflare Pages（find-dkc），供网页查找 Donkey Car（去 token 公开查询）
 
+// 云端上报地址默认值（公开端点、不含任何机密）：官方 find-dkc 站点。
+// 本地 WirelessSecrets.h 里的 CLOUD_REPORT_URL 可覆盖它。
+// 放在配置头里而不是只放 gitignore 的本地密钥文件：干净 worktree / 新 clone 里
+// 没有 WirelessSecrets.h，曾因此让整块上报代码被静默编译掉（v1.8.77 车上固件即如此：
+// 车在线却在网页上查不到）。
+#define CLOUD_REPORT_URL_DEFAULT "https://find-dkc.pages.dev/report"
+
 #ifndef ENABLE_WIFI_CONSOLE
 #define ENABLE_GAMEPAD_MODE
 #endif

@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-09-10 v1.8.78
+
+- fix(cloud): 「找 Donkey Car」上报地址改为仓库内默认值——干净 worktree 编译不再把整块云端上报静默编译掉（车在线却在 find-dkc 网页上查不到）
+  - 背景：用户反馈 find-dkc 网页点「刷新」只看到 DonkeyDrift 主机（TONY007），看不到 ESP32（Drifter Console）。实测车上 v1.8.77 的 DC Web 日志连续 20 分钟无任何 `cloud` 记录、云端 KV 亦无 esp32 记录 → 上报代码根本没进固件。
+  - 根因：v1.8.77 是在**新建的会话 worktree**（`Firmware/.worktrees/session-zcode-no-autocopy`）里编译的，而 `WirelessSecrets.h` 是 gitignore 的本机文件、不会随 worktree 出现，`CLOUD_REPORT_URL` 未定义 → 编译门槛 `ENABLE_CLOUD_REPORT && CLOUD_REPORT_URL` 不成立 → `mus4cloud::update()` 退化成空操作（无任何日志，静默失效）。
+  - `libraries/mus4_core/src/FirmwareConfig.h`：新增 `CLOUD_REPORT_URL_DEFAULT "https://find-dkc.pages.dev/report"`（公开端点、非机密）；本机 `WirelessSecrets.h` 里的 `CLOUD_REPORT_URL` 仍可覆盖它。
+  - `libraries/mus4_cloud/src/CloudReporter.cpp`：编译门槛改为只看 `ENABLE_CLOUD_REPORT`，`CLOUD_REPORT_URL` 缺省时回落到 `CLOUD_REPORT_URL_DEFAULT`；`reportNow()` 返回是否 2xx；上报节奏改为「成功 5 分钟一跳 / 失败 1 分钟快重试」（失败不写 KV，不额外消耗云端写入额度）、DHCP 换 IP 时立即补报；首次上报打印 `report armed: <url>` 便于日后排查。
+  - `libraries/mus4_cloud/src/CloudReporter.h`、`libraries/mus4_core/src/WirelessSecrets.example.h`：说明同步（URL 为可选覆盖项，缺省即用官方端点）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.77 → v1.8.78。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_cloud_report_url_has_in_repo_default_not_only_gitignored_secret`（断言仓库内默认值、`#ifndef` 回落链、门槛不再要求 URL、快重试常量、`.ino` 挂钩仍在），版本断言与 CHANGELOG 顺序链补 v1.8.78。
+  - 顺带修复（v1.8.77 收尾遗漏）：`tests/zcode_remote_url.test.mjs` 仍在断言 v1.8.77 已删除的 `zcodeRemoteCopy` 函数与「自动复制」行为，导致该 node 行为测试整套挂掉（v1.8.77 只同步了 `test_firmware_feature_flags.py`，漏了这个文件）。改为断言「打开远控完全不碰剪贴板」——clipboard 可用也不调用 `writeText`、无复制相关 toast 与日志；另把 `localStorage.setItem` 抛错用例的断言同步为「不复制」。27 例全过。
+
 ## 2026-09-08 v1.8.77
 
 - fix(DC): ZCode 按钮打开远控时不再自动复制链接到剪贴板（不再覆盖用户剪贴板内容）

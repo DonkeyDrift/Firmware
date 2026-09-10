@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-11 v1.8.79
+
+- fix(cloud): 云端上报重试策略收紧——快速重试只在开机首报成功前启用，换 IP 补报不再可能死循环
+  - 背景：v1.8.78 引入「失败 1 分钟重试」时留了两个隐患：① 持续断网（连着 Wi-Fi 但外网不通）时，同步 HTTPS 上报（连接 + 总超时各 5 秒）每分钟都会阻塞主循环一次，而主循环还要跑 RC 遥控采样与控制输出；② `lastReportedIp` 只在成功时记录——「DHCP 换了 IP + 该次上报失败」会让 `ipChanged` 每轮都为真，退化成不停重试、把主循环卡死在同步 HTTPS 上。
+  - `libraries/mus4_cloud/src/CloudReporter.cpp`：新增 `everSucceeded`（本次开机是否成功上报过）——未成功前按 1 分钟快速重试（车重启后尽快出现在网页上），成功过一次后一律 5 分钟稳态心跳；`lastReportedIp` 改为**无论成败**都记录本次尝试过的 IP，换 IP 只触发一次补报；移除不再使用的 `lastReportOk`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.78 → v1.8.79。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_cloud_report_retry_policy_is_bounded_and_ip_change_cannot_spin`（断言快速重试受 `everSucceeded` 约束、IP 记录无条件写、成功分支不再记 IP），版本断言与 CHANGELOG 顺序链补 v1.8.79。
+
 ## 2026-09-10 v1.8.78
 
 - fix(cloud): 「找 Donkey Car」上报地址改为仓库内默认值——干净 worktree 编译不再把整块云端上报静默编译掉（车在线却在 find-dkc 网页上查不到）

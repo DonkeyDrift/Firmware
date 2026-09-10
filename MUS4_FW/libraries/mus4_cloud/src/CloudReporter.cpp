@@ -13,10 +13,10 @@
 //
 // 协议（POST /report，JSON body，去 token 公开上报）：
 //   {"device_id":"<硬件ID>","type":"esp32",
-//    "lan_ip":"192.168.3.46","port":"80","hostname":"mus4-esp","version":"v1.8.78"}
+//    "lan_ip":"192.168.3.46","port":"80","hostname":"mus4-esp","version":"v1.8.79"}
 //
-// 节奏：首次拿到 IP 立即上报；成功每 5 分钟心跳一次，失败每 1 分钟快速重试
-// （失败不写 KV，快速重试不会额外消耗云端写入额度），IP 变化时立即补报。
+// 节奏：首次拿到 IP 立即上报；此后每 5 分钟心跳一次；开机尚未成功上报过时按
+// 1 分钟快速重试（失败不写 KV，不额外消耗云端写入额度）；IP 变化时立即补报。
 //
 // 默认关闭：仅当 FirmwareConfig.h 定义 ENABLE_CLOUD_REPORT 时才编译真实逻辑。
 
@@ -48,14 +48,14 @@
 
 namespace mus4cloud {
 
-static const unsigned long CLOUD_REPORT_INTERVAL_MS = 300000UL;  // 成功后的心跳间隔：5 分钟
-static const unsigned long CLOUD_REPORT_RETRY_MS = 60000UL;      // 失败后的重试间隔：1 分钟
+static const unsigned long CLOUD_REPORT_INTERVAL_MS = 300000UL;  // 稳态心跳间隔：5 分钟
+static const unsigned long CLOUD_REPORT_RETRY_MS = 60000UL;      // 首报成功前的快速重试：1 分钟
 static const int CLOUD_REPORT_HTTP_TIMEOUT_MS = 5000;            // 连接 + 总超时：5 秒
 
 static bool reportedOnce = false;         // 是否已尝试过首次上报
-static bool lastReportOk = false;         // 上次上报是否成功（决定下一跳间隔）
-static bool ipKnown = false;              // 是否已成功上报过某个 IP
-static IPAddress lastReportedIp;          // 上次成功上报时的局域网 IP
+static bool everSucceeded = false;        // 本次开机是否成功上报过（决定是否仍走快速重试）
+static bool ipKnown = false;              // 是否已尝试上报过某个 IP
+static IPAddress lastReportedIp;          // 上次尝试上报时的局域网 IP
 static unsigned long lastReportMs = 0;    // 上次上报时刻（millis()）
 
 /// 拼装上报 JSON。这些字段（硬件 ID / IP / hostname / version）
@@ -119,10 +119,13 @@ void update()
     if (ip == IPAddress(0, 0, 0, 0)) return;
 
     unsigned long now = millis();
-    // 首次拿到 IP 立即上报；成功每 5 分钟一跳，失败 1 分钟后重试；
-    // DHCP 换 IP 时立即补报（每次重读 localIP，避免网页上留着旧地址）。
+    // 首次拿到 IP 立即上报；此后每 5 分钟一跳，DHCP 换 IP 时立即补报
+    // （每次重读 localIP，避免网页上留着旧地址）。
+    // 快速重试（1 分钟）只在"本次开机尚未成功上报过"时启用：既让车重启后尽快
+    // 出现在网页上，又避免长时间断网时把主循环频繁卡在同步 HTTPS 上报上
+    // （RC 遥控与控制循环不能被上报长时间阻塞）。
     bool ipChanged = ipKnown && ip != lastReportedIp;
-    unsigned long interval = lastReportOk ? CLOUD_REPORT_INTERVAL_MS : CLOUD_REPORT_RETRY_MS;
+    unsigned long interval = everSucceeded ? CLOUD_REPORT_INTERVAL_MS : CLOUD_REPORT_RETRY_MS;
 
     if (!reportedOnce || ipChanged || (now - lastReportMs) >= interval) {
         if (!reportedOnce) {
@@ -130,11 +133,13 @@ void update()
         }
         bool ok = reportNow();
         reportedOnce = true;
-        lastReportOk = ok;
         lastReportMs = now;
+        // 无论成败都记下这次的 IP：否则"换 IP + 上报失败"会让 ipChanged 每轮
+        // 都为真，退化成不停重试、把主循环卡死在同步 HTTPS 上。
+        lastReportedIp = ip;
+        ipKnown = true;
         if (ok) {
-            lastReportedIp = ip;
-            ipKnown = true;
+            everSucceeded = true;
         }
     }
 }

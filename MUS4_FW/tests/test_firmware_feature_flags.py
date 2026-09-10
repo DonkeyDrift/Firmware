@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.78"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.8.79"' in build_info
+    assert "v1.8.79" in changelog
     assert "v1.8.78" in changelog
     assert "v1.8.77" in changelog
     assert "v1.8.76" in changelog
@@ -373,6 +374,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-09-11 v1.8.79") < changelog.index("## 2026-09-10 v1.8.78")
     assert changelog.index("## 2026-09-10 v1.8.78") < changelog.index("## 2026-09-08 v1.8.77")
     assert changelog.index("## 2026-09-08 v1.8.77") < changelog.index("## 2026-09-07 v1.8.76")
     assert changelog.index("## 2026-09-07 v1.8.75") < changelog.index("## 2026-09-06 v1.8.74")
@@ -1013,9 +1015,27 @@ def test_cloud_report_url_has_in_repo_default_not_only_gitignored_secret():
     )
     assert "#if defined(ENABLE_CLOUD_REPORT) && defined(CLOUD_REPORT_URL)" not in reporter
     assert "mus4cloud::update();" in sketch
-    # 上报节奏：成功 5 分钟一跳、失败 1 分钟快重试
+    # 上报节奏：稳态 5 分钟一跳、开机首报成功前 1 分钟快重试
     assert "CLOUD_REPORT_INTERVAL_MS = 300000UL" in reporter
     assert "CLOUD_REPORT_RETRY_MS = 60000UL" in reporter
+
+
+def test_cloud_report_retry_policy_is_bounded_and_ip_change_cannot_spin():
+    """上报重试不得把主循环拖死（同步 HTTPS 最长各 5 秒，主循环还要跑控制）。
+
+    两个约束：① 快速重试只在本次开机尚未成功上报过时启用，长时间断网退回
+    5 分钟一跳；② 换 IP 触发补报后无论成败都记住这次尝试过的 IP，否则
+    「换 IP + 上报失败」会让 ipChanged 每轮都为真，退化成死循环重试。
+    """
+    reporter = (
+        PROJECT_ROOT / "libraries" / "mus4_cloud" / "src" / "CloudReporter.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "everSucceeded ? CLOUD_REPORT_INTERVAL_MS : CLOUD_REPORT_RETRY_MS" in reporter
+    assert "lastReportedIp = ip;" in reporter
+    # 必须无条件记录尝试过的 IP，不能只在成功分支里记
+    assert "if (ok) {\n            lastReportedIp = ip;" not in reporter
+    assert "everSucceeded = true;" in reporter
 
 
 

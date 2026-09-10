@@ -61,12 +61,12 @@ function extractZcodeBlock(s) {
 
 const block = extractZcodeBlock(src);
 for (const fn of ['zcodeRemoteGet', 'zcodeRemoteNormalize', 'zcodeRemoteFreshUrl',
-  'zcodeRemoteCopy', 'zcodeRemoteWake', 'zcodeRemoteFetchLive', 'zcodeRemotePrompt',
+  'zcodeRemoteWake', 'zcodeRemoteFetchLive', 'zcodeRemotePrompt',
   'openZCode', 'editZCodeUrl']) {
   assert.ok(block.includes(`function ${fn}(`), `提取的代码块缺 ${fn}`);
 }
 // let/函数声明在 vm 脚本顶层不落到 globalThis，末尾显式挂出测试触达面
-const driver = `${block}\n;globalThis.__z = { openZCode, editZCodeUrl, zcodeRemoteNormalize, zcodeRemoteFreshUrl, zcodeRemoteGet, zcodeRemotePrompt, zcodeRemoteCopy, zcodeRemoteWake, zcodeRemoteFetchLive, getClickTimer: () => zcodeClickTimer };`;
+const driver = `${block}\n;globalThis.__z = { openZCode, editZCodeUrl, zcodeRemoteNormalize, zcodeRemoteFreshUrl, zcodeRemoteGet, zcodeRemotePrompt, zcodeRemoteWake, zcodeRemoteFetchLive, getClickTimer: () => zcodeClickTimer };`;
 
 // 构造一套全新沙箱（每个测试独立）：打桩 localStorage/window（含 about:blank
 // 占位标签对象）/navigator/document/fetch（区分 :8000 取活链与 :8090 唤醒）/
@@ -288,7 +288,7 @@ await test('单击去抖：260ms 内不开标签，到点先同步开 about:blan
   assert.equal(env.placeholders[0].opener, null, '占位标签 opener 置空');
 });
 
-await test('活链获取成功：原样存档 + 占位标签原地导航 + 复制，不 prompt 不唤醒不关占位', async () => {
+await test('活链获取成功：原样存档 + 占位标签原地导航，不复制不 prompt 不唤醒不关占位', async () => {
   const env = makeEnv({ clipboard: 'ok' });
   env.z.openZCode();
   env.flush();
@@ -305,8 +305,8 @@ await test('活链获取成功：原样存档 + 占位标签原地导航 + 复�
   assert.equal(env.wakeFetches().length, 0, '活链路径不唤醒（桌面端由 DD 后端代拉起）');
   assert.equal(env.calls.open.length, 1, '只有占位这一次 window.open');
   await microtasks();
-  assert.equal(env.calls.copy.length, 1, 'clipboard API 复制一次');
-  assert.equal(env.calls.toast.length, 1, '复制成功 toast');
+  assert.equal(env.calls.copy.length, 0, 'v1.8.77 起打开远控不再写剪贴板');
+  assert.equal(env.calls.toast.length, 0, '不再有"已复制"toast');
 });
 
 await test('占位标签被拦截 + 活链成功：window.open 直开兜底，活链仍存档', async () => {
@@ -376,7 +376,8 @@ await test('活链失败 + 无存档 + prompt 录入有效链接：保存归一�
   assert.equal(env.wakeFetches().length, 1);
   assert.equal(env.placeholders[0].closed, false);
   await microtasks();
-  assert.equal(env.calls.toast.length, 1);
+  assert.equal(env.calls.toast.length, 0, '打开远控不显示复制相关 toast');
+  assert.equal(env.calls.copy.length, 0, '打开远控不写剪贴板');
 });
 
 await test('活链失败 + prompt 录入裸链接：alert 提示、不保存、关闭占位不导航不唤醒', async () => {
@@ -417,14 +418,14 @@ await test('localStorage.getItem 抛错（存储禁用）：活链失败后按�
   assert.equal(opened.searchParams.get('sid'), 'placeholder-sid', '录入链接正常导航');
 });
 
-await test('localStorage.setItem 抛错（隐私模式）：活链存档失败但本次仍正常导航+复制', async () => {
+await test('localStorage.setItem 抛错（隐私模式）：活链存档失败但本次仍正常导航', async () => {
   const env = makeEnv({ clipboard: 'ok', setThrows: true });
   env.z.openZCode();
   env.flush();
   await microtasks();
   assert.equal(env.placeholders[0].location.href, LIVE, '活链照常导航');
   await microtasks();
-  assert.equal(env.calls.toast.length, 1);
+  assert.equal(env.calls.copy.length, 0, '打开远控不写剪贴板');
 });
 
 await test('快速连点两次：去抖守卫只留一个定时器，只开一个占位只取一次活链', async () => {
@@ -452,15 +453,17 @@ await test('双击序列（click→click→dblclick）：定时器取消，只 p
   assert.ok(env.store.get('zcodeRemoteUrl').includes('placeholder-sid'));
 });
 
-await test('clipboard API 不可用且 execCommand 也失败：仅 log 一行，导航不受影响', async () => {
-  const env = makeEnv({ execThrows: true }); // navigator 无 clipboard → 走降级
+await test('打开远控完全不碰剪贴板：clipboard 可用也不调用、无复制相关 toast 与日志', async () => {
+  const env = makeEnv({ clipboard: 'ok' }); // clipboard 可用也不行，v1.8.77 起不再自动复制
   env.z.openZCode();
   env.flush();
   await microtasks();
-  assert.equal(env.placeholders[0].location.href, LIVE, '复制失败不阻塞导航');
+  assert.equal(env.placeholders[0].location.href, LIVE, '导航正常');
   await microtasks();
-  assert.equal(env.calls.toast.length, 0, '复制失败不应显示"已复制"toast');
-  assert.ok(env.calls.line.some((m) => String(m[0]).includes('zcode remote copy failed')));
+  assert.equal(env.calls.copy.length, 0, 'clipboard.writeText 未被调用');
+  assert.equal(env.calls.toast.length, 0, '无复制相关 toast');
+  assert.ok(!env.calls.line.some((m) => String(m[0]).includes('zcode remote copy')),
+    '不再有复制路径日志');
 });
 
 await test('_launcherIp 为空：取活链同步回落（不发 fetch），有存档正常导航、唤醒同样跳过', async () => {

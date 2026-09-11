@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-09-11 v1.9.0
+
+- feat(DC): Web Console 四页新增「座舱 / Apple」双 UI 风格切换——Apple 风为新默认，座舱风逐值保留可随时切回
+  - 背景与考据：v1.7.36 曾加入 UI 风格分段切换条（09bfc8e），v1.7.40 移除只留 Drifter Console 皮肤（6a53932）；本次按用户要求复活切换器，第二档换成 Apple 设计语言（单一 Action Blue 强调色、负字距排版、hairline 卡片、按压缩放反馈）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS 变量化：4 个 rawliteral 页（Console/Judge/Drift/Update）的硬编码颜色全部抽成 `:root`（深色）+ `html[data-theme="light"]`（浅色）变量块，226 处浅色覆盖规则改引变量；座舱象限（无 `data-ui` 或 `data-ui="cockpit"`）计算样式与旧版逐值一致。
+    - Apple 象限：新增 `html[data-ui="apple"]` / `html[data-ui="apple"][data-theme="light"]` 变量覆写块（accent `#2997ff`/`#0066cc`、canvas `#000`/`#f5f5f7`、surface `#1c1c1e`/`#fff`、hairline 分隔、iOS system 状态色）+ 少量作用域规则（卡片去渐变改 hairline、`:active scale(.97)` 按压反馈、200–350ms `cubic-bezier(.32,.72,0,1)` 过渡、标题负字距、数字 tabular-nums）。
+    - 风格机制：`<html data-ui>` + preinit 解析（`?ui=` URL 参数 → localStorage `mus4.ui.style` → 默认 apple）；新增 `readUrlUiStyle/readStoredUiStyle/resolvedUiStyle/applyUiStyle/setUiStyle`；`/drift`、`/judge` 内部跳转与 embedTuneFrames 子 iframe 像 `?theme=` 一样拼 `&ui=`。
+    - 切换器：4 页页头新增 `#skinSwitch` 分段控件（座舱 / Apple），新 i18n 键 `uiStyle.title/.cockpit/.apple`（zh/en × 4 页）。
+    - 删小字（用户要求）：删除 17 组无操作价值的说明文字——`devHint` 悬停提示、`rc.hint.panel`、`cal.title.hint`（含 `.titleHint`/`.hintSpan` CSS）、`judge.gyroChartHint/tuneDesc/thresholdsDesc/scoringDesc/dimDesc` 与 h1 硬编码英文副标题、`drift.versionTag/status.desc/steering.desc/throttle.desc`；zh/en 字典条目同步删除。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.79 → v1.9.0。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 52 处断言/docstring 更新（删除键的反向断言、双风格机制正断言、版本断言与 CHANGELOG 顺序链补 v1.9.0）；362 例 + 31 subtests 全过；`tests/web_console_fixes.test.mjs` 29 例全过。
+  - 体积：编译 flash 1,742,544 → 1,751,792 字节（88.63% → 89.10%，+9,248 字节即 .h 源增量），余量 214KB，OTA 安全。
+  - 顺带修复：浅色主题 `helpFab:focus-visible` 阴影漏配（`rgba(0,0,0,.35)` → `rgba(15,23,42,.16)`）；`@keyframes pulseLight` 合并入 `pulse`（box-shadow 走 `--badGlow` 变量）。
+
 ## 2026-09-11 v1.8.79
 
 - fix(cloud): 云端上报重试策略收紧——快速重试只在开机首报成功前启用，换 IP 补报不再可能死循环

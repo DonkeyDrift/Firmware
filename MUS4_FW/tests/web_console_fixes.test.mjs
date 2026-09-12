@@ -125,6 +125,7 @@ const FN_SIGNATURES = [
   'function freeTermNumber(',
   'function addTerminalTab(',
   'function fitTermTabLabels(',
+  'function terminalUrl(',
 ];
 const fnBlocks = FN_SIGNATURES.map((sig) => extractFn(src, sig));
 const listenerStmt = extractStmt(src, "staSsid.addEventListener('input',");
@@ -135,7 +136,7 @@ assert.ok(tubMaxConst, '未找到 TUB_MAX_SAMPLES 常量');
 // 被测函数引用的顶层 let 状态（照 line 341 的声明子集），与提取的函数同一脚本作用域。
 const driver = `
 let lastLogSeq=0,lastDataSeq=0,tubRecording=false,tubSamples=[],tubStartedMs=0,tubStoppedMs=0,tubLastSeq=0,pointHead=0,pointCount=0,points=new Array(256),scrollOffset=0,smoothedDt=16,gridReady=false,chartPaused=false,screenSaverActive=false,dataTransport='poll',dataWs=null,dataWsConnected=false,dataWsReconnectDelay=500,dataPolling=false,staSelectedChannel=0,staPasswordPlaceholder=false,staPasswordDirty=false,staPasswordVisible=false,staSavedPassword='',staSavedPasswordKnown=false;
-let termInited=false,termSeq=0,termActive=0,termList=[];
+let termInited=false,termSeq=0,termActive=0,termList=[],_launcherIp='192.0.2.1';
 ${tubMaxConst[0]}
 ${fnBlocks.join('\n')}
 ${listenerStmt}
@@ -146,7 +147,7 @@ ${termNameListenerStmt}
   handoffStaUrl, showWifiStaHandoffModal, waitWifiStaConnectionResult,
   renderStaPasswordState, parseJoystickCalStatus, formatCalAxis, renderCalStep,
   refreshJoystickCalStatus,
-  freeTermNumber, addTerminalTab, fitTermTabLabels,
+  freeTermNumber, addTerminalTab, fitTermTabLabels, terminalUrl,
   get termList() { return termList; },
   get state() {
     return { lastDataSeq, lastLogSeq, tubRecording, tubSamples, tubLastSeq, tubStartedMs,
@@ -221,6 +222,9 @@ function makeEnv(opts = {}) {
     window: win,
     document: {
       activeElement: null,
+      documentElement: {
+        getAttribute: (name) => (opts.docAttrs || {})[name] ?? null,
+      },
       createElement: (tag) => {
         const el = makeEl();
         if (tag === 'iframe') el.contentWindow = {};
@@ -623,6 +627,19 @@ await test('关闭标签释放编号：最小空闲编号可被再次占用', ()
   assert.equal(env.x.termList[0].l.textContent, 'terminal.tab 2');
   env.x.addTerminalTab();
   assert.equal(env.x.termList[env.x.termList.length - 1].num, 1);
+});
+
+await test('terminalUrl 跟随 DC 页面主题：拼接 ?theme=&ui= 参数', () => {
+  const cases = [
+    [{}, 'http://192.0.2.1:8090/terminal?theme=dark&ui=apple'], // 缺省：深色 + Apple（页面默认 data-ui="apple"）
+    [{ 'data-theme': 'light', 'data-ui': 'apple' }, 'http://192.0.2.1:8090/terminal?theme=light&ui=apple'],
+    [{ 'data-theme': 'dark', 'data-ui': 'cockpit' }, 'http://192.0.2.1:8090/terminal?theme=dark&ui=cockpit'],
+    [{ 'data-theme': 'light', 'data-ui': 'cockpit' }, 'http://192.0.2.1:8090/terminal?theme=light&ui=cockpit'],
+  ];
+  for (const [attrs, want] of cases) {
+    const env = makeEnv({ docAttrs: attrs });
+    assert.equal(env.x.terminalUrl(), want, `attrs=${JSON.stringify(attrs)}`);
+  }
 });
 
 // ---------- 静态断言：i18n 成对与整页 <script> 语法 ----------

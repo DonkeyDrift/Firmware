@@ -619,8 +619,10 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert 'id="terminalHint"' in source
     assert 'id="termTabs"' in source
     assert 'id="terminalFrame"' not in source
-    # 终端 URL 由上位机 HOSTIP 上报自动发现（_launcherIp），不硬编码
-    assert "function terminalUrl(){return 'http://'+_launcherIp+':8090/terminal';}" in source
+    # 终端 URL 由上位机 HOSTIP 上报自动发现（_launcherIp），不硬编码；
+    # 拼 ?theme=&ui= 把当前页面主题带给终端页（终端配色跟随 DC 页面，
+    # 与 initEmbedTuneFrames 同一惯例；launcher 终端页缺省保持原深色）
+    assert "function terminalUrl(){var de=document.documentElement;return 'http://'+_launcherIp+':8090/terminal?theme='+(de.getAttribute('data-theme')||'dark')+'&ui='+(de.getAttribute('data-ui')||'apple');}" in source
     # 选择持久化：localStorage 键 + 写入/读取 + 默认 serial + 启动时恢复
     assert "const CMD_TARGET_KEY='donkeydrifter.ui.cmdTarget'" in source
     assert "localStorage.setItem(CMD_TARGET_KEY,src)" in source

@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-12 v1.9.1
+
+- feat(DC): Serial 终端配色跟随 DC 页面主题——终端 iframe URL 拼 `?theme=&ui=`，深色终端不再是唯一外观
+  - 背景：用户反馈 DC 的终端（cmdTarget=Serial 的上位机 xterm.js iframe）固定黑色，浅色/Apple 主题下突兀，要求跟随 DC 页面主题。配套 DonkeyDrift 侧 launcher 终端页解析 `?theme=light|dark&ui=cockpit|apple` 应用四象限调色板（缺省 cockpit-dark 与历史逐值一致，launcher 菜单直开不受影响）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`terminalUrl()` 拼 `?theme=<data-theme||'dark'>&ui=<data-ui||'apple'>`（与 `initEmbedTuneFrames` 子 iframe 拼参同一惯例）；新建终端标签即按当前主题配色，已开标签保持创建时主题（切主题后重开标签即可，不重载进行中会话）。
+  - 测试同步：`tests/web_console_fixes.test.mjs` 真码提取沙箱新增 `terminalUrl` 四象限拼参用例（29→30 全过）；`tests/test_firmware_feature_flags.py` 终端 URL 断言同步新契约（pytest 362+31 全过）。
+  - 编译 1,751,904 字节（较 v1.9.0 +112B）；合并后按流程 HTTP OTA 刷车并验证 `version=v1.9.1`（结果见当天工程日志）。
+
 ## 2026-09-11 v1.9.0
 
 - feat(DC): Web Console 四页新增「座舱 / Apple」双 UI 风格切换——Apple 风为新默认，座舱风逐值保留可随时切回

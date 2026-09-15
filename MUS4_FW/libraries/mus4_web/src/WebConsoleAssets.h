@@ -398,7 +398,7 @@ function line(t){appendLogLine(t,'web');}
 function switchLogSource(src){currentLogSource=canonicalLogSource(src||'web');cmdTarget.value=currentLogSource;const buf=sourceBuffers[currentLogSource];log.textContent=buf.length>0?buf.slice(-LOG_DISPLAY_MAX_BYTES):t('log.empty');log.scrollTop=log.scrollHeight;}
 const CMD_TARGET_KEY='donkeydrifter.ui.cmdTarget';
 let termInited=false,termSeq=0,termActive=0;const termList=[];
-function terminalUrl(){return 'http://'+_launcherIp+':8090/terminal';}
+function terminalUrl(){var de=document.documentElement;return 'http://'+_launcherIp+':8090/terminal?theme='+(de.getAttribute('data-theme')||'dark')+'&ui='+(de.getAttribute('data-ui')||'apple');}
 // #89：失败提示拼上 host_ip 上报年龄（>90s 视为过期，上位机正常 30s 上报一次）；
 // 从未收到上报（age=-1，_launcherIp 还是默认回退值）时明确提示 IP 未知，不显示误导性的回退地址
 function termFailHint(){if(_launcherIpAge===-1)return t('terminal.unknownIp');return t('terminal.unreachable')+terminalUrl()+(_launcherIpAge>90?' ('+t('terminal.staleIp').replace('{n}',_launcherIpAge)+')':'')}

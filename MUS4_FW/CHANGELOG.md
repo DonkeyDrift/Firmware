@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-09-15 v1.9.2
+
+- feat(DC): Web Console 四页切换器与 DD/FDC 统一为同一规格；/update 补浅色主题；子页头部统一；Console 中文标签补齐等 13 项视觉修复
+  - 背景：用户反馈 DD/DC/FDC 三端「座舱/Apple」切换按键样式完全不一样，要求统一成一样的。三端同落地《统一切换器规格 v1》（配套 DonkeyDrift (221)、find-car v1.2.0 同口径）。
+  - 切换器：`libraries/mus4_web/src/WebConsoleAssets.h` 4 页 `#skinSwitch`/`.skinSeg` CSS 统一重写为同一段文本——几何 28px 轨道（2px padding/gap）/24px 段/12px·600/999px 圆角；cockpit 激活 = accentFill/onAccent（原样保留语义）；apple = iOS 填充灰轨道 + 浮起滑块（light #fff / dark #636366 + 阴影）+ 非激活 hover 字色反馈（原 Apple 象限 hover 无反馈）；保留各页布局微调（Console `order:5`、judge `margin-left:auto`）；各页 `:root`/`[data-theme="light"]`/`[data-ui="apple"]` 变量块补齐轨道/滑块语义变量。
+  - /update：接入与其他三页一致的 `data-theme` 解析（`?theme=` 参数 + localStorage + prefers-color-scheme）与主题切换按钮，补齐 light 变量组（原无任何主题处理、恒深色）；移动端容器补水平 padding（原标题/拖放框/说明文字贴屏边）。
+  - 子页头部统一：/judge、/drift、/update 补齐「返回 Drifter Console」链接（携带当前 ui/theme 象限参数——judge 原返回裸 `/` 丢参数）+ 主题切换 + 语言切换按钮（原仅 Console 有）；update 页 headerRow gap/h1 字号微调，防 480px 容器头部换行溢出。
+  - Console：图表 Y 轴窄屏只画 1/0/-1 三刻度（原 9 刻度在移动端约 90px 高度内全部重叠）；「STA 切换提示」弹窗加 localStorage 记忆 + 「不再提示」按钮（原每次进首页都弹）；中文模式补齐 MODE/RC/PARK/DRIFT/VOLTAGE/NETWORK/Serial/RC Channels/STATUS Details/Throttle/Steering/GyroZ 等标签 data-i18n 与中英词条（原中文界面大量残留英文，英文模式 70 元素反向完好）；终端标签页（终端 1/Term 1）切语言即时重渲染（原等下次 ws 状态推送才更新）；Apple 象限移动端终端面板补容器边框/背景（原文字直接浮在页面上）；「录制量 0」label 与计数同行、整行垂直居中；头部五个外链包 `.navLinks`，≤820px 整组换行 + 横向滚动（原移动端头部占首屏约 1/3）。
+  - /judge：碰撞「状态正常」徽章改 inline 药丸绿边（原像只读输入框、浅色对比度低）；开始计分/恢复默认值/选择文件补 :hover（与同页既有按钮一致）；seq 序号小字收进 title tooltip；「拖分原因：拖分分析中，继续保持当前动作。」占位机制文案精简。/drift 序号小字同收 tooltip。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 断言更新（cmdTarget/tunePair/rcCell 补 data-i18n 断言、`.navLinks` 存在性取代五条 order 断言、drift/judge 头部控件由「不存在」反转为「存在」、子页语言机制白名单加 theme./language. 前缀）；pytest **361 例 + 31 subtests 全过**；`tests/web_console_fixes.test.mjs` 30 全过、`tests/zcode_remote_url.test.mjs` 27 全过。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.9.1 → v1.9.2。
+  - 体积：编译 flash 1,767,456 字节（较 v1.9.1 +15,552B，约 89.9%，余量约 194KB，OTA 安全）；合并后按流程 HTTP OTA 刷车并验证 `version=v1.9.2`（结果见当天工程日志）。
+
 ## 2026-09-12 v1.9.1
 
 - feat(DC): Serial 终端配色跟随 DC 页面主题——终端 iframe URL 拼 `?theme=&ui=`，深色终端不再是唯一外观

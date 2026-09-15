@@ -37,3 +37,6 @@ secrets*
 
 # ESP-IDF 本机配置（可能含 Wi-Fi 密码）
 sdkconfig
+
+# 本机科普 HTML 页面（保留本地、不入库）
+MUS4_FW/docs/architecture-guide.html

@@ -1,5 +1,13 @@
 # CHANGELOG.md
 
+## 2026-09-16 v1.9.2（仓库维护，无固件变更）
+
+- chore(repo): 将 `MUS4_FW/docs/architecture-guide.html` 移出 git 跟踪（本机保留，不改写历史），与 DonkeyDrift (222) 同口径
+  - 背景：该 HTML 是写给本机看的固件架构科普页，属本机资料，用户要求不再入库。
+  - `git rm --cached MUS4_FW/docs/architecture-guide.html`：仅从索引移除，本地文件保留；`.gitignore` 新增 `MUS4_FW/docs/architecture-guide.html` 条目防再次误入库。历史提交中原样保留旧版本，此后不再跟踪。
+  - 固件源码零变更：`libraries/mus4_core/src/BuildInfo.h` 保持 v1.9.2，编译产物不变，**无需 OTA**。
+  - 测试同步：纯仓库维护改动，无代码/测试变更。
+
 ## 2026-09-15 v1.9.2
 
 - feat(DC): Web Console 四页切换器与 DD/FDC 统一为同一规格；/update 补浅色主题；子页头部统一；Console 中文标签补齐等 13 项视觉修复

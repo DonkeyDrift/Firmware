@@ -274,7 +274,9 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.9.0"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.9.2"' in build_info
+    assert "v1.9.2" in changelog
+    assert "v1.9.1" in changelog
     assert "v1.9.0" in changelog
     assert "v1.8.79" in changelog
     assert "v1.8.78" in changelog
@@ -582,12 +584,12 @@ def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
 
     assert 'id="cmdTarget"' in source
     assert 'id="logSource"' not in source
-    assert '<option value="web">Web</option>' in source
-    assert '<option value="serial">Serial</option>' in source
+    assert '<option value="web" data-i18n="cmd.web">Web</option>' in source
+    assert '<option value="serial" data-i18n="cmd.serial">Serial</option>' in source
     assert '<option value="serial1">Serial1</option>' not in source
     # Serial（上位机终端）排第一位，是默认目标
-    assert source.index('<option value="serial">Serial</option>') < \
-        source.index('<option value="web">Web</option>')
+    assert source.index('<option value="serial" data-i18n="cmd.serial">Serial</option>') < \
+        source.index('<option value="web" data-i18n="cmd.web">Web</option>')
     assert "const LOG_SOURCE_MAX_BYTES=1024*1024" in source
     assert "const LOG_DISPLAY_MAX_BYTES=16000" in source
     assert "sourceBuffers={web:'',serial:'',serial1:''}" in source
@@ -1955,12 +1957,18 @@ def test_web_console_mobile_header_layout():
     assert "#versionLabel{order:4}" in source
     assert "#versionLabel{order:4;margin-left:auto}" not in source
     assert ".br1{order:5}" in source
-    # 第 2 行：Donkey / DonkeyDrifter / Kimi Code Web / ZCode / DeepSeek Harness
-    assert "#enterDonkeyBtn{order:6}" in source
-    assert "#enterDonkeyDrifterBtn{order:7}" in source
-    assert "#openKimiCodeWebBtn{order:8}" in source
-    assert "#openZCodeBtn{order:9}" in source
-    assert "#openDshBtn{order:10}" in source
+    # 第 2 行：Donkey / DonkeyDrifter / Kimi Code Web / ZCode / DeepSeek Harness（包在 .navLinks 里整组换行、可横向滚动）
+    assert '</h1><span class="navLinks"><a class="navTab" data-i18n="button.enterDonkey" id="enterDonkeyBtn"' in source
+    assert '<span data-i18n="button.openDsh">DeepSeek Harness</span></button></span><a class="ghLink"' in source
+    assert ".navLinks{display:inline-flex;align-items:center;gap:12px}" in source
+    assert ".navLinks{order:6;flex-basis:100%;overflow-x:auto;scrollbar-width:none}" in source
+    assert ".navLinks::-webkit-scrollbar{display:none}" in source
+    assert ".navLinks>*{flex:0 0 auto}" in source
+    assert "#enterDonkeyBtn{order:6}" not in source
+    assert "#enterDonkeyDrifterBtn{order:7}" not in source
+    assert "#openKimiCodeWebBtn{order:8}" not in source
+    assert "#openZCodeBtn{order:9}" not in source
+    assert "#openDshBtn{order:10}" not in source
     # v1.8.68：v1.8.67 的 #openZCodeRemoteBtn 撤下，.br2 复原回 11
     assert "#openZCodeRemoteBtn" not in source
     assert ".br2{order:11}" in source
@@ -2060,7 +2068,7 @@ def test_web_console_drift_card_tune_link_left_of_state_dot():
     source = firmware_source_text()
 
     drift = source[source.index('id="driftCard"'):source.index('id="voltageCard"')]
-    assert '<span class="tunePair"><a href="/drift" id="driftTuneLink">Tune</a><span class="stateDot"></span></span>' in drift
+    assert '<span class="tunePair"><a href="/drift" id="driftTuneLink" data-i18n="state.tune">Tune</a><span class="stateDot"></span></span>' in drift
     assert 'id="driftNeedle"></i></div><span class="stateDot"></span></div>' not in drift
     assert '.tunePair{position:absolute;right:12px;top:11px;font-size:11px;line-height:10px;' in source
     assert '.tunePair a{color:var(--accent);text-decoration:none;vertical-align:-1px}' in source
@@ -2445,7 +2453,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     # v1.8.21：OTA 按钮与 DEV 开关恢复至 DC 头部（PR #124 曾移至 DonkeyDrifter 顶栏，现加回）
     assert '<a href="/update" class="otaLink"' in source
     assert 'id="devModeToggle"' in source
-    assert '<select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><div id="termTabs"></div><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
+    assert '<select id="cmdTarget"><option value="serial" data-i18n="cmd.serial">Serial</option><option value="web" data-i18n="cmd.web">Web</option></select><div id="termTabs"></div><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
@@ -4144,29 +4152,32 @@ def test_drift_page_theme_and_title_hints():
     - <head> 内有防闪烁主题脚本（读 ?theme= URL 参数，缺省按系统 prefers-color-scheme）。
     - 控制台三处 /drift 入口（Drift 卡 Tune 链接 / Diagnostics 漂移设置按钮 /
       设置视图漂移设置按钮）都携带当前主题参数，实现"跟随 Drifter Console 深浅色"。
-    - 漂移页不自带主题切换按钮（v1.8.39 起删除）——主题完全跟随控制台
-      ?theme= 参数传递，缺省 auto 跟随系统，内存态不持久化。
+    - 头部自带主题切换按钮（Console 同款日月单图标 #themeToggle，内存态不写
+      localStorage），进入时以控制台 ?theme= 参数为初值、缺省 auto 跟随系统。
     - Apple UI 改造：标题悬停灰字提示（.titleHint + .hintSpan）已全部删除（无意义小字
       清理），drift.versionTag/status.desc/steering.desc/throttle.desc 键一并移除。
-    - 「返回 Drifter Console」链接已删除。
+    - 头部提供「返回 Drifter Console」链接（#backLink，data-i18n="drift.backLink"），
+      href 由 syncBackLink() 同步当前主题与 UI 风格参数。
     """
     assets = (
         PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
     ).read_text(encoding="utf-8")
     page = _page_region(assets, "WIFI_WEB_DRIFT_HTML")
 
-    # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（v1.8.39 起无切换按钮，完全跟随控制台 ?theme= 参数）
+    # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（进入时以控制台 ?theme= 参数为初值）
     assert "document.documentElement.dataset.theme" in page, "漂移页缺少防闪烁主题脚本"
     assert 'html[data-theme="light"]{--bg:#eef1f5;--ink:#1a2330;' in page, "漂移页缺少浅色主题变量块"
     assert "function initTheme()" in page, "漂移页缺少 initTheme"
     assert "function readUrlTheme()" in page, "漂移页缺少 ?theme= 参数解析"
     assert "function initTheme(){uiTheme=readUrlTheme()||'auto';applyTheme();" in page, "漂移页 initTheme 应以 ?theme= 参数优先、缺省 auto"
     assert "mus4.ui.theme" not in page, "漂移页主题不应写 localStorage（与控制台一致的内存态）"
-    # v1.8.39：漂移页不再自带切换按钮——主题完全跟随 Drifter Console（经 ?theme= 参数传递）
-    assert 'id="themeToggle"' not in page, "漂移页不应再有主题切换按钮（应跟随控制台）"
-    assert "function toggleTheme()" not in page, "漂移页 toggleTheme 应已删除"
-    assert "function setTheme(theme)" not in page, "漂移页 setTheme 应已删除"
-    assert "drift.theme.title" not in page, "漂移页主题按钮 i18n 键应已删除"
+    # 头部自带主题切换按钮（Console 同款日月单图标，内存态切换）
+    assert 'id="themeToggle"' in page, "漂移页应有主题切换按钮"
+    assert "function toggleTheme(){setTheme(resolvedTheme()==='light'?'dark':'light')}" in page, "漂移页缺少 toggleTheme"
+    assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in page, "漂移页缺少 setTheme"
+    assert "drift.theme.title" not in page, "主题按钮用共享 theme.title 键，不应有 drift.theme.title"
+    assert 'data-i18n-aria="theme.title"' in page, "漂移页主题按钮缺少 theme.title aria i18n"
+    assert 'id="langToggle"' in page, "漂移页应有语言切换按钮"
 
     # 控制台三处入口携带主题参数
     assert "href=\"/drift\" id=\"driftTuneLink\"" in assets, "Drift 卡 Tune 链接缺少 driftTuneLink id"
@@ -4184,9 +4195,12 @@ def test_drift_page_theme_and_title_hints():
         assert f"I18N.zh['{key}']" not in page, f"中文 i18n 键应已删除 {key}"
         assert f"I18N.en['{key}']" not in page, f"英文 i18n 键应已删除 {key}"
 
-    # 返回链接已删除
-    assert "drift.backLink" not in page, "返回 Drifter Console 链接及其 i18n 键应已删除"
-    assert 'href="/"' not in page, "漂移页不应再有返回首页链接"
+    # 返回 Drifter Console 链接（#backLink），href 由 syncBackLink() 同步主题参数
+    assert 'data-i18n="drift.backLink"' in page, "漂移页缺少返回 Drifter Console 链接"
+    assert 'href="/"' in page, "漂移页缺少返回首页链接"
+    assert "function syncBackLink()" in page, "漂移页缺少 syncBackLink"
+    assert "'drift.backLink':'返回 Drifter Console'" in page, "缺少中文 drift.backLink 文案"
+    assert "'drift.backLink':'Back to Drifter Console'" in page, "缺少英文 drift.backLink 文案"
 
 
 def test_joystick_cal_and_rc_panel_title_hints():
@@ -4231,9 +4245,9 @@ def test_joystick_cal_and_rc_panel_title_hints():
         assert f'data-i18n="{key}"' not in console, f"rcCell 字段标签仍有悬停提示 {key}"
         assert f"I18N.zh['{key}']" not in assets, f"中文 i18n 键未删除 {key}"
         assert f"I18N.en['{key}']" not in assets, f"英文 i18n 键未删除 {key}"
-    # rcCell 标题恢复为纯 <b> 标签
-    assert '<div class="rcCell"><b>CH1 Steering</b>' in console, "CH1 字段标签应为纯 <b> 无包装"
-    assert '<div class="rcCell" style="flex:1"><b>Max T</b>' in console, "Max T 字段标签应为纯 <b> 无包装"
+    # rcCell 标题为 <b> 标签（无悬停包装），文案走 i18n 键 rc.*
+    assert '<div class="rcCell"><b data-i18n="rc.ch1">CH1 Steering</b>' in console, "CH1 字段标签应为无包装 <b> + data-i18n"
+    assert '<div class="rcCell" style="flex:1"><b data-i18n="rc.maxT">Max T</b>' in console, "Max T 字段标签应为无包装 <b> + data-i18n"
 
     # 控制台页面 titleHint/hintSpan 包装总数为 0（Apple UI 改造全部删除）
     assert console.count('class="titleHint"') == 0, "控制台 titleHint 应已全部删除"
@@ -4246,8 +4260,8 @@ def test_judge_page_theme_and_title_hints():
 
     - <head> 内有防闪烁主题脚本（读 ?theme= URL 参数，缺省按系统 prefers-color-scheme）。
     - 控制台设置视图「Judge 设置」入口携带当前主题参数，实现"跟随 Drifter Console 深浅色"。
-    - 页内不自带主题切换按钮、不写 localStorage——主题完全跟随控制台 ?theme= 参数传递，
-      缺省 auto 跟随系统，内存态。
+    - 头部自带主题切换按钮（Console 同款日月单图标 #themeToggle，内存态不写
+      localStorage），进入时以控制台 ?theme= 参数为初值、缺省 auto 跟随系统。
     - drawChart() 图表底色/网格线/曲线色按 resolvedTheme() 取色，浅色主题下图表不变黑。
     - Apple UI 改造：标题悬停灰字提示（.titleHint + .hintSpan，原 6 处：h1/gyroZ 曲线/
       评分阈值调参/基础阈值/评分参数/评分维度）已全部删除，相关 i18n 键一并移除。
@@ -4258,7 +4272,7 @@ def test_judge_page_theme_and_title_hints():
     ).read_text(encoding="utf-8")
     page = _page_region(assets, "WIFI_WEB_JUDGE_HTML")
 
-    # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（无切换按钮，完全跟随控制台 ?theme= 参数）
+    # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（头部自带切换按钮，进入时以控制台 ?theme= 参数为初值）
     assert "document.documentElement.dataset.theme" in page, "Judge 页缺少防闪烁主题脚本"
     assert 'html[data-theme="light"]{--bg:#eef1f5;--ink:#1a2330;' in page, "Judge 页缺少浅色主题变量块"
     assert '--chartBg:#f4f6f9' in page, "Judge 页缺少浅色图表底色变量"
@@ -4268,8 +4282,10 @@ def test_judge_page_theme_and_title_hints():
     assert "function readParentTheme()" in page, "Judge 页缺少同源父页主题读取（CC 内嵌 iframe 跟随控制台）"
     assert "window.parent.document.documentElement.dataset.theme" in page
     assert "mus4.ui.theme" not in page, "Judge 页主题不应写 localStorage（与控制台一致的内存态）"
-    assert 'id="themeToggle"' not in page, "Judge 页不应有主题切换按钮（应跟随控制台）"
-    assert "function toggleTheme()" not in page, "Judge 页不应有 toggleTheme"
+    assert 'id="themeToggle"' in page, "Judge 页应有主题切换按钮"
+    assert "function toggleTheme(){setTheme(resolvedTheme()==='light'?'dark':'light')}" in page, "Judge 页缺少 toggleTheme"
+    assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in page, "Judge 页缺少 setTheme"
+    assert 'id="langToggle"' in page, "Judge 页应有语言切换按钮"
 
     # drawChart 按主题取色（浅色底/网格/曲线）
     assert "const light=resolvedTheme()==='light'" in page, "drawChart 未按主题取色"
@@ -5092,7 +5108,9 @@ def _page_i18n_keys(page, lang):
 def test_web_console_sub_pages_follow_device_language():
     """JUDGE/DRIFT/UPDATE 三个子页面与主控制台共享语言偏好：各页内嵌自包含
     i18n 核心（localStorage 键 mus4.ui.lang + 启动时 GET /api/language 恢复设备
-    语言），zh/en 字典键完全对齐且各页键统一前缀（judge./drift./ota.）。"""
+    语言），zh/en 字典键完全对齐且各页键统一前缀（judge./drift./ota.）。
+    各页头部另有语言切换按钮 #langToggle（toggleLanguage→setLanguage 写回设备偏好，
+    POST /api/language），主题/语言按钮 aria 用共享键 theme.title/language.title。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
     for marker, prefix in [
@@ -5108,14 +5126,21 @@ def test_web_console_sub_pages_follow_device_language():
         assert "function detectBrowserLanguage()" in page
         assert "j.lang==='auto'" in page
         assert page.count("initLanguage()") == 2, f"{marker} initLanguage 应恰好 1 定义 + 1 调用"
-        assert "setLanguage" not in page, f"{marker} 不应带语言切换 UI（跟随设备偏好）"
+        assert 'id="langToggle"' in page, f"{marker} 应带语言切换按钮"
+        assert "function toggleLanguage()" in page, f"{marker} 缺少 toggleLanguage"
+        assert "function setLanguage(" in page, f"{marker} 缺少 setLanguage（写回设备偏好）"
 
         zh_keys = _page_i18n_keys(page, "zh")
         en_keys = _page_i18n_keys(page, "en")
         assert zh_keys, f"{marker} 缺少 zh 字典"
         assert zh_keys == en_keys, f"{marker} zh/en 键不对齐: {zh_keys ^ en_keys}"
-        # Apple UI 改造：四页新增 uiStyle.title/.cockpit/.apple 切换器词条，放行 uiStyle. 前缀
-        assert all(k.startswith(prefix) or k.startswith("uiStyle.") for k in zh_keys), f"{marker} 存在非 {prefix}/uiStyle. 前缀键"
+        # Apple UI 改造：四页新增 uiStyle.title/.cockpit/.apple 切换器词条，放行 uiStyle. 前缀；
+        # 子页头部主题/语言切换按钮的 aria 文案用共享键 theme.title/language.title，放行 theme./language. 前缀
+        assert all(
+            k.startswith(prefix) or k.startswith("uiStyle.")
+            or k.startswith("theme.") or k.startswith("language.")
+            for k in zh_keys
+        ), f"{marker} 存在非 {prefix}/uiStyle./theme./language. 前缀键"
 
 
 def test_web_console_language_switch_rerenders_joystick_cal_status():

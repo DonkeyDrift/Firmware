@@ -11,7 +11,7 @@
   - /judge：碰撞「状态正常」徽章改 inline 药丸绿边（原像只读输入框、浅色对比度低）；开始计分/恢复默认值/选择文件补 :hover（与同页既有按钮一致）；seq 序号小字收进 title tooltip；「拖分原因：拖分分析中，继续保持当前动作。」占位机制文案精简。/drift 序号小字同收 tooltip。
   - 测试同步：`tests/test_firmware_feature_flags.py` 断言更新（cmdTarget/tunePair/rcCell 补 data-i18n 断言、`.navLinks` 存在性取代五条 order 断言、drift/judge 头部控件由「不存在」反转为「存在」、子页语言机制白名单加 theme./language. 前缀）；pytest **361 例 + 31 subtests 全过**；`tests/web_console_fixes.test.mjs` 30 全过、`tests/zcode_remote_url.test.mjs` 27 全过。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.9.1 → v1.9.2。
-  - 体积：编译 flash __SIZE__ 字节（较 v1.9.1 __DELTA__）；合并后按流程 HTTP OTA 刷车并验证 `version=v1.9.2`（结果见当天工程日志）。
+  - 体积：编译 flash 1,767,456 字节（较 v1.9.1 +15,552B，约 89.9%，余量约 194KB，OTA 安全）；合并后按流程 HTTP OTA 刷车并验证 `version=v1.9.2`（结果见当天工程日志）。
 
 ## 2026-09-12 v1.9.1
 

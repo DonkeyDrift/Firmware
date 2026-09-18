@@ -274,8 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.9.2"' in build_info
-    assert "v1.9.2" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.9.3"' in build_info
+    assert "v1.9.3" in changelog
     assert "v1.9.1" in changelog
     assert "v1.9.0" in changelog
     assert "v1.8.79" in changelog
@@ -2453,7 +2453,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     # v1.8.21：OTA 按钮与 DEV 开关恢复至 DC 头部（PR #124 曾移至 DonkeyDrifter 顶栏，现加回）
     assert '<a href="/update" class="otaLink"' in source
     assert 'id="devModeToggle"' in source
-    assert '<select id="cmdTarget"><option value="serial" data-i18n="cmd.serial">Serial</option><option value="web" data-i18n="cmd.web">Web</option></select><div id="termTabs"></div><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
+    assert '<select id="cmdTarget"><option value="serial" data-i18n="cmd.serial">Serial</option><option value="web" data-i18n="cmd.web">Web</option></select><div id="termTabs"></div><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停" data-i18n-title="button.pause"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送" data-i18n-title="button.send"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
@@ -2885,8 +2885,8 @@ def test_web_console_host_wifi_status_bar_shows_host_report_state():
     assert "function closeWifiStaModal(){closeWifiScanPopover();maskStaPassword();stopHostWifiPoll();wifiStaModal.classList.remove('show')}" in assets
 
     # IDLE 分支：host_ip 非空且上报不超过 60s 视为上位机在线，否则等待上位机上报
-    assert "if(j.status==='IDLE'){if(j.host_ip&&j.host_ip_age_s<=60){lbl.textContent=t('wifi.hostStatus.hostOnline');ipEl.style.display='';ipEl.textContent='IP: '+j.host_ip}" in assets
-    assert "else{lbl.textContent=t('wifi.hostStatus.waitingHost');ipEl.style.display='none'}errEl.style.display='none'}" in assets
+    assert "if(j.status==='IDLE'){if(j.host_ip&&j.host_ip_age_s<=60){setHostWifiLabel('wifi.hostStatus.hostOnline');ipEl.style.display='';ipEl.textContent='IP: '+j.host_ip}" in assets
+    assert "else{setHostWifiLabel('wifi.hostStatus.waitingHost');ipEl.style.display='none'}errEl.style.display='none'}" in assets
     # connected/failed 分支保持现有自愈（拿到终态后停止轮询）
     # connected 分支：拿到终态后停止轮询并 toast（v1.8.63 在中间插入「完成」按钮改写，两者不再相邻，分开断言）
     assert "stopHostWifiPoll();const doneBtn=document.getElementById('staConnectBtn')" in assets
@@ -2897,11 +2897,16 @@ def test_web_console_host_wifi_status_bar_shows_host_report_state():
     assert "I18N.en['wifi.hostStatus.hostOnline']='Host online'" in assets
     assert "I18N.zh['wifi.hostStatus.waitingHost']='等待上位机上报'" in assets
     assert "I18N.en['wifi.hostStatus.waitingHost']='Waiting for host report'" in assets
-    # 状态条 label 不走 data-i18n：initLanguage() 异步 fetch /api/language 后 applyLanguage()
-    # 会按 data-i18n 重写 textContent，把首轮轮询已显示的「上位机在线」覆盖回占位文字（最长 5s 才自愈）——
-    # label 是状态驱动元素（与 refreshDynamicLabels 管辖的按钮同类），占位文字硬编码，首轮轮询 <1s 即被真实状态替换
-    assert 'id="hostWifiStatusLabel" style="color:var(--ink3)">等待上位机上报</b>' in assets
-    assert 'data-i18n="wifi.hostStatus.waitingHost"' not in assets
+    # v1.9.3：状态条 label 改为 data-i18n（原硬编码中文在 en 模式残留）。
+    # 原「不走 data-i18n」的理由是 applyLanguage() 会按 data-i18n 重写 textContent、把已显示的
+    # 真实状态覆盖回占位文字（最长 5s 才自愈）。现在状态经 setHostWifiLabel() 记录词条键，
+    # 且 refreshDynamicLabels()（applyLanguage 末尾调用）会立刻按记录键重渲染，窗口消失。
+    assert 'id="hostWifiStatusLabel" style="color:var(--ink3)" data-i18n="wifi.hostStatus.waitingHost">等待上位机上报</b>' in assets
+    assert "let hostWifiLabelKey='wifi.hostStatus.waitingHost'" in assets
+    assert "function refreshDynamicLabels(){setHostWifiLabel(hostWifiLabelKey);" in assets
+    assert "setHostWifiLabel('wifi.hostStatus.hostOnline')" in assets
+    assert "setHostWifiLabel('wifi.hostStatus.waitingHost')" in assets
+    assert "lbl.textContent={connecting:t('wifi.hostStatus.connecting')" not in assets
     assert "wifi.hostStatus.idle" not in assets
 
 

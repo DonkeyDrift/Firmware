@@ -263,6 +263,46 @@ Wireless command permissions are layered:
 
 Policy changes should be mirrored in [`wireless_console_policy.py`](wireless_console_policy.py) and covered by [`tests/test_wireless_console_policy.py`](tests/test_wireless_console_policy.py).
 
+## Web Console UI 约定（座舱 / Apple 双风格）
+
+四个内嵌页面（`/` Drifter Console、`/judge`、`/drift`、`/update`，源码在
+[`libraries/mus4_web/src/WebConsoleAssets.h`](libraries/mus4_web/src/WebConsoleAssets.h) 的 4 个 `R"rawliteral"`）
+共用一套 UI 风格开关，页头分段切换器（`座舱 / Apple`）即时切换，选择写入 `localStorage['mus4.ui.style']`
+（值 `cockpit` | `apple`，**默认 `apple`**，首屏内联脚本解析防闪烁）；`<html data-ui>` 为风格开关，
+`<html data-theme>` 为深浅色开关，两者正交，`?ui=` / `?theme=` URL 参数优先于 localStorage。
+
+- **座舱象限（`data-ui="cockpit"` 或无 `data-ui`）**：与 DonkeyDrifter（DD）和 Drifter Console 历史皮肤逐值对齐的
+  原始外观，即 `:root`（深色）与 `html[data-theme="light"]`（浅色）两个变量块，保持原值不动——深色页面
+  `#101318`、面板 `#171c24`、描边 `#2b3441`/`#344154`、强调色 FILL `#5cc8ff`（近黑字 `#061019`）、状态色
+  绿 `#39d98a` / 琥珀 `#ffcc66` / 红 `#ff6b6b`；浅色页面 `#eef1f5`、面板 `#fff`、描边 `#d5dce4`/`#ccd5df`。
+  **座舱象限是冻结象限：任何 UI 改动都必须以 `html[data-ui="apple"]`（或 apple 专属 media 查询）限定，
+  改完须用审计 harness 复测座舱计算样式与改动前逐值一致。**
+- **Apple 象限（`data-ui="apple"`，默认）**：只新增 `html[data-ui="apple"]` /
+  `html[data-ui="apple"][data-theme="light"]` 两个变量覆写块 + 一组同前缀的细修规则，不碰座舱值。
+  浅色 canvas `#f5f5f7` / surface `#fff` / ink `#1d1d1f` / accent `#0066cc`（fill `#0071e3`）/ 状态填充
+  `#34c759` `#ff9500` `#ff3b30` `#8e8e93`；深色 canvas `#000` / surface `#1c1c1e` / `#2c2c2e` / ink `#f5f5f7` /
+  accent `#2997ff`（fill `#0a84ff`）/ 状态填充 `#30d158` `#ff9f0a` `#ff453a` `#636366`。
+- **2026-09-18 Apple 深化（v1.9.3）**，四页统一：
+
+  | 维度 | 口径 |
+  |---|---|
+  | 字体 | 单一系统字族（`-apple-system, BlinkMacSystemFont, system-ui, …`）；`button/input/select/textarea{font-family:inherit}`（原回落 Arial）；等宽栈统一 `ui-monospace, SFMono-Regular, Menlo, Consolas, monospace` |
+  | 灰阶 | 浅色结构文字 `rgba(60,60,67,.72)`（≥4.5:1）、纯 meta `rgba(60,60,67,.62)`、正文次级 `rgba(60,60,67,.85)`；深色 `rgba(235,235,245,.72/.62/.85)`。**结构文字不得用 meta 档** |
+  | 语义色双轨 | 新增 `--ok-text` / `--warn-text` / `--bad-text`（浅 `#1a7f37` `#c93400` `#d70015`，深 `#30d158` `#ff9f0a` `#ff453a`）**只用于文字**；点/条/描边/渐变等填充继续用 `--ok` / `--warn` / `--bad`。主按钮填充保持 Apple 系统蓝（浅 `#0071e3` 白字 4.70:1、深 `#0a84ff` 白字 3.65:1）——这是「对齐 Apple 原生」优先于 AA 的刻意取舍 |
+  | 聚焦环 | 四页统一 `:focus-visible{outline:3px solid var(--accent);outline-offset:2px}`（**不透明**，浅 5.11:1 / 深 6.96:1）；覆盖 UA 默认黑描边；不再有 `outline:none` |
+  | 触控目标 | 每个可点元素命中区 ≥44×44：视觉尺寸不变，用 `::after{width:max(100%,44px);height:max(100%,44px)}` 铺不可见命中区；相邻目标只在**不冲突的轴**扩展并保证可见间距 ≥8px；表单控件实际高度提到 44px |
+  | 排版 | 四页 `h1` 统一 20px/600/-.02em；微标签去 uppercase、字距归 0、≥13px；大号数字 600 + `-.02em` + `tabular-nums`；中文行高 ≥1.35 |
+  | 发丝线 | 列表分隔走 Apple separator 档（浅 `rgba(60,60,67,.29)`、深 `rgba(255,255,255,.16)`）；卡片/页头描边保持弱档（浅 `rgba(0,0,0,.08)`、深 `rgba(255,255,255,.10)`）；同端 ≤2 档 |
+  | 材质 | 面板/卡片有可辨表面（`--card`/`--panel` + 16px 圆角 + 1px 发丝线）；浮层（modal/toast/帮助）半透明 + `backdrop-filter: saturate(180%) blur(20px)`；toast 改底部居中毛玻璃胶囊并上移避开 `.helpFab` |
+  | 圆角 | 收敛为 `8 / 12 / 16 / 22 / 9999` 五档 |
+  | 动效 | 统一缓动 `--ease-apple: cubic-bezier(.32,.72,0,1)`（交互 .15s / 状态 .2s / 材质 .32s）；禁用 `transition:all`；不用 `left/top/width` 做动画（`#driftNeedle` 改 `transform`）；常驻循环动画周期 ≥2s |
+  | 兜底 | `prefers-reduced-motion`（停循环动画、过渡近乎即时，状态转环保留）、`prefers-reduced-transparency`（材质退实色）、`prefers-contrast: more`（文字提到 ink1/ink2、描边加深）、`forced-colors: active`（用 `CanvasText` 画回分隔线与状态点）；`-webkit-tap-highlight-color: transparent`；`viewport-fit=cover` + 贴底元素 `env(safe-area-inset-bottom)` |
+  | 移动端页头 | ≤820px 收成「56px 不换行标题行 + 44px 横向可滚弱入口行」（`overflow-x:auto` + `scrollbar-width:none` + 右侧渐隐 `mask-image`），总高 ≤100px（原 390 下 204px、`#openDshBtn` 在屏外且无滚动提示） |
+
+  验收口径（Playwright 实测，改动前后对照见审计 harness）：浅色低于 AA 的文本节点 console 88→5、judge 37→5、
+  drift 24→4；390 下 console 命中区 <44px 的 41 项 → 0；`prefers-reduced-motion` 由 0 条规则 → 四页均生效；
+  座舱象限量测逐值零差异。
+
 ## Documentation
 
 - [`CLAUDE.md`](CLAUDE.md): repository guidance for Claude Code / coding agents.

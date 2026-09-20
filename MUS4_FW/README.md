@@ -131,7 +131,7 @@ Common commands:
 .\arduino-cli-wsl.ps1 -Compile -CheckPartition -Sketch MUS4_FW.ino
 
 # Compile and upload through Web Console HTTP OTA
-.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.144 -Sketch MUS4_FW.ino
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP> -Sketch MUS4_FW.ino
 
 # Upload an existing build_wsl artifact through HTTP OTA
 .\arduino-cli-wsl.ps1 -Upload -HttpOta -Sketch MUS4_FW.ino

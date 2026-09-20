@@ -274,8 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.9.3"' in build_info
-    assert "v1.9.3" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.9.4"' in build_info
+    assert "v1.9.4" in changelog
     assert "v1.9.1" in changelog
     assert "v1.9.0" in changelog
     assert "v1.8.79" in changelog

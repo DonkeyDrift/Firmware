@@ -140,14 +140,14 @@ ESP32 Arduino 对失败原因的细粒度支持有限；无法可靠区分时优
 ```powershell
 python -m pytest tests/test_wireless_console_policy.py tests/test_firmware_feature_flags.py
 .\arduino-cli-wsl.ps1 -Compile
-.\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost 192.168.3.144
+.\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost <设备IP>
 ```
 
-测试与编译通过后，默认通过 HTTP OTA 上传到当前 STA 地址 `192.168.3.144`；不自动执行串口上传或串口监视。
+测试与编译通过后，默认通过 HTTP OTA 上传到当前 STA 地址 `<设备IP>`；不自动执行串口上传或串口监视。
 
 4. 实机验证
 
-- 上传后打开 `http://192.168.3.144/` 进入 Web Console。
+- 上传后打开 `http://<设备IP>/` 进入 Web Console。
 - 输入错误密码，点击“保存并连接”，确认 15 秒左右出现页面内悬浮窗。
 - 输入不存在 SSID，确认出现“未找到目标 SSID”或保守失败提示。
 - 输入正确凭据，确认不弹失败窗，STA 卡片显示 connected 与 STA IP。

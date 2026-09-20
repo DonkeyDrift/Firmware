@@ -1,14 +1,15 @@
 [Unit]
 Description=MUS4 Provisioning Agent Service
-Documentation=https://github.com/dkc/mus4/provisioning_system
+Documentation=https://github.com/DonkeyDrift/Firmware/tree/main/MUS4_FW/provisioning_system
 After=network.target NetworkManager.service
 Wants=network.target NetworkManager.service
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/home/dkc/projects/Firmware/MUS4_FW/provisioning_system/linux_agent
-ExecStart=/usr/bin/python3 /home/dkc/projects/Firmware/MUS4_FW/provisioning_system/linux_agent/agent.py --port /dev/ttyS6 --interface wlp1s0
+# 安装前请将 /path/to/Firmware 替换为本仓库在本机的实际绝对路径
+WorkingDirectory=/path/to/Firmware/MUS4_FW/provisioning_system/linux_agent
+ExecStart=/usr/bin/python3 /path/to/Firmware/MUS4_FW/provisioning_system/linux_agent/agent.py --port /dev/ttyS6 --interface wlp1s0
 Restart=always
 RestartSec=5
 StandardOutput=journal

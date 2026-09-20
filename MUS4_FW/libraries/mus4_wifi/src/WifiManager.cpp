@@ -1015,7 +1015,7 @@ void setupWifiConsole()
     // begin；AP 关闭（stopWifiApForStaOnly）或 STA 失败（restoreApAfterStaLost）
     // 时不再切 mode，只启停对应接口。这样彻底避免 AP↔AP_STA 反复切换导致的
     // SoftAP 重置、配置页面断连和 STA netif race。
-    // 历史 v1.7.17 全程 WIFI_AP_STA 已验证 newhome_iot 等路由器可正常连接。
+    // 历史 v1.7.17 全程 WIFI_AP_STA 已验证常见家用路由器可正常连接。
     mus4LogLine("wifi", "setup: mode AP_STA");
     WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false);

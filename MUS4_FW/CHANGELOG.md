@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-20 v1.10.0
+
+- feat(ui)!: 移除座舱(cockpit)象限，Apple 成为 Drifter Console 唯一界面风格——与 find-car v1.6.0 同款手术；页头「座舱 / Apple」分段切换器删除，`<html>` 不再带 `data-ui` 属性，localStorage 键 `mus4.ui.style` 与 URL `?ui=` 参数不再读取（老用户残留键/旧链接被静默忽略、渲染恒为 Apple，无需任何操作）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（4 个 `R"rawliteral"` 页，逐页同构处理）：
+    - **CSS 拍平**：apple 覆写值成为唯一取值——先删 `html:not([data-ui="apple"]) .reconnectActions` 座舱专属隐藏规则（元素在 Apple 下恒渲染），再将全部 `[data-ui="apple"]` 属性选择器精确去除：类/元素目标规则以 `:root` 伪类顶替属性选择器（`html:root` 与原 `html[data-ui="apple"]` 特异度逐位相同 (0,1,1)，`button/input/select/textarea/body/h1/*` 等元素型规则拍平后也不会输给类级基值规则）；`@media (prefers-contrast: more)` 内根元素自身定义变量的块按 FDC 踩坑经验用裸 `:root`（与合并后 `:root` 同级、靠源码序后置生效，裸 `html` (0,0,1) 会输）。
+    - **变量合并**：每页 2+2 个无条件 apple 变量块（主块 + apple-deep 块）并入 `:root` 与 `html[data-theme="light"]` 基值定义——同名覆写、apple 独有追加；浅色块按级联仿真处理「cockpit 浅色值 vs apple 深色值同特异度 (0,1,1) 源码序 tie-break」情形（apple 块在后 → 取 apple 深色值）；座舱专有基值删除。切换器专用 `--seg*` 变量逐个统计引用后删除（`--segHover` 仍被 `.langTabs/.themeButton` hover 使用，保留；其余 8–9 个清零删除）。
+    - **切换器与 JS 机制**：四页 `#skinSwitch` 页头分段切换器 HTML、`.skinSwitch`/`.skinSeg` 全部 CSS（含 @media 内）、`UI_STYLE_STORAGE_KEY`/`uiStyleOverride`/`readUrlUiStyle`/`readStoredUiStyle`/`readParentUiStyle`（judge）/`resolvedUiStyle`/`applyUiStyle`/`setUiStyle` 整段删除；启动脚本只留 theme 分支（`?theme=` 与 prefers-color-scheme 逻辑原样）；i18n `uiStyle.title/.cockpit/.apple` 词条（四页中英）删除；`aria-label="切换 UI 风格"` 随切换器一并移除。
+    - **消费方恒 Apple 展开**：`terminalUrl()`、`initEmbedTuneFrames()` iframe src、`/drift` `/judge` 设置入口与 `driftTuneLink`、三页 `#backLink` 的 `&ui=` 拼接全部去除；console `#driftNeedle` 定位的 `dataset.ui==='apple'` 分支按恒 apple 展开（保留 transform 分支，删除座舱 `left` 百分比分支）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.9.3 → v1.10.0；`terminalUrl`/启动脚本/init 链（`applyUiStyle();`）/`&ui=` 拼接/i18n 前缀门等 12 处机制断言改写；页头切换器断言反转为「无切换器残留」回归；座舱色板断言（`--card`/`--termTabLine`/`--tabActive*`/`--fabGlow`/`--fabBg`/`--line`/`--cardGrad`/`--cardShadow`/`--canvasBg`/`--chartBg`/`--logBg`/`--accentFill` 浅色块前缀等）按 Apple 取值同步。`tests/web_console_fixes.test.mjs`——terminalUrl 用例去掉 ui 维度（4 例 → 3 例），新增「座舱象限移除回归」断言（15 个机制 token 无残留），**30 → 31 全过**。pytest **362 例 + 31 subtests 全过**；`tests/zcode_remote_url.test.mjs` 27 全过。
+  - 级联等价验证：静态级联仿真（自写解析器，含 @media prefers-contrast 分支）——四页 × 深浅 × contrast on/off 共 16 组有效 CSS 变量**全部一致**（唯一允许差为随切换器删除的 `--seg*`）；Playwright 计算样式前后对比（冻结 Date.now + 禁动画 + `/api/*` 统一空 JSON 桩）——四页 × 深浅 × 390/1280 共 16 组：`:root` 全量变量、36/27/20/15 个关键元素选择器的 24 个计算属性**全部一致**，差异严格局限于被删切换器（页头行高/整页高度收缩）；截图比对差异同样仅见于切换器区域。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.9.3 → v1.10.0。
+  - 体积：固件 .bin 基线 1,802,784 字节 → 改后 1,775,248 字节（**−27,536B**，与源码 −27,456B 一致）；text+data（xtensa-esp32-elf-size）1,824,554 → 1,798,462 字节；min_spiffs APP 分区 1,966,080 占用 **92.80% → 91.47%**。
+  - 本轮只改文件与本地静态验证：**未 commit、未 push、未 OTA、未连车**。
+
 ## 2026-09-18 v1.9.3
 
 - feat(ui): Drifter Console 四页（`/` `/judge` `/drift` `/update`）Apple 风格深化——聚焦环、44pt 命中区、语义色双轨、降级媒体特性、移动端页头等 22 项按《Apple 深化规格 v1》定稿落地

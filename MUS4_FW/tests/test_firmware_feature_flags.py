@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.9.4"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.0"' in build_info
+    assert "v1.10.0" in changelog
     assert "v1.9.4" in changelog
     assert "v1.9.1" in changelog
     assert "v1.9.0" in changelog
@@ -484,9 +485,9 @@ def test_sta_scan_popover_light_theme_selector():
     # 扫描弹层只剩颜色/阴影覆盖（底色/边框由基础规则经 CSS 变量随主题切换）
     assert 'html[data-theme="light"] .scanPopover{color:var(--popInk);box-shadow:var(--scanShadow)}' in assets
     assert "scanPopoverhtml" not in assets
-    # 弹层深浅底都齐全（基础规则 background:var(--card)，深色值 #111820 在 :root 变量块）
+    # 弹层深浅底都齐全（基础规则 background:var(--card)，v1.10.0 起深色值为 Apple #1c1c1e，在 :root 变量块）
     assert ".scanPopover{display:none" in assets
-    assert "--card:#111820" in assets
+    assert "--card:#1c1c1e" in assets
 
 
 def test_mode_command_channel_and_arbitration():
@@ -622,9 +623,10 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert 'id="termTabs"' in source
     assert 'id="terminalFrame"' not in source
     # 终端 URL 由上位机 HOSTIP 上报自动发现（_launcherIp），不硬编码；
-    # 拼 ?theme=&ui= 把当前页面主题带给终端页（终端配色跟随 DC 页面，
-    # 与 initEmbedTuneFrames 同一惯例；launcher 终端页缺省保持原深色）
-    assert "function terminalUrl(){var de=document.documentElement;return 'http://'+_launcherIp+':8090/terminal?theme='+(de.getAttribute('data-theme')||'dark')+'&ui='+(de.getAttribute('data-ui')||'apple');}" in source
+    # 拼 ?theme= 把当前页面主题带给终端页（终端配色跟随 DC 页面，
+    # 与 initEmbedTuneFrames 同一惯例；launcher 终端页缺省保持原深色）；
+    # v1.10.0 起 UI 风格恒为 Apple，不再拼 ui 参数
+    assert "function terminalUrl(){var de=document.documentElement;return 'http://'+_launcherIp+':8090/terminal?theme='+(de.getAttribute('data-theme')||'dark');}" in source
     # 选择持久化：localStorage 键 + 写入/读取 + 默认 serial + 启动时恢复
     assert "const CMD_TARGET_KEY='donkeydrifter.ui.cmdTarget'" in source
     assert "localStorage.setItem(CMD_TARGET_KEY,src)" in source
@@ -699,8 +701,8 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert '.termTab{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:2px 8px;height:22px;border:1px solid var(--termTabLine);border-radius:6px;background:var(--termTabBg);color:var(--inkT);' in source
     assert '.termTab.active{color:var(--tabActiveInk);border-color:var(--tabActiveInk);background:var(--tabActiveBg)}' in source
     assert '.termTabClose:hover{opacity:1;color:var(--bad2);background:var(--badSoft)}' in source
-    assert '--termTabLine:#c3ccd6;--termTabBg:#fff' in source
-    assert '--tabActiveInk:#0b6bcb;--tabActiveBg:#eaf3fb' in source
+    assert '--termTabLine:rgba(0,0,0,.08);--termTabBg:#fff' in source
+    assert '--tabActiveInk:#0066cc;--tabActiveBg:#fff' in source
     # 新开浏览器标签的旧逻辑已删除
     assert "openNewTerminal" not in source
     assert "window.open(terminalUrl" not in source
@@ -880,7 +882,8 @@ def test_web_console_has_collapsed_glow_fab_with_radial_actions():
     assert "window.addEventListener('touchmove',collapseFabActions" in source
     assert ".fabToggle{position:fixed;right:24px;bottom:24px;width:18px;height:18px" in source
     assert "box-shadow:var(--fabGlow)" in source
-    assert "--fabGlow:0 0 18px #5cc8ff,0 0 36px rgba(92,200,255,.55)" in source
+    # v1.10.0 起 Apple 为唯一风格：FAB 无座舱辉光，变量收敛为 none（box-shadow:var(--fabGlow) 规则不变）
+    assert "--fabGlow:none" in source
     assert ".fabToggle:hover,.fabToggle:focus-visible,.fabToggle:active{background:var(--fabBgHover);border-color:var(--fabBgHover);" in source
     assert ".fabActions.show .helpFab" in source
     assert source.index('id="fabToggle"') < source.index('id="fabActions"') < source.index('id="helpFab"')
@@ -1898,7 +1901,7 @@ def test_web_console_header_logo_left_of_title():
 
     assert ".headerLogo{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);align-self:center}" in source
     # 浅色描边经变量块切换（Apple UI 改造：元素级浅色覆盖规则已收敛为 CSS 变量）
-    assert '--line:#d5dce4' in source
+    assert '--line:rgba(0,0,0,.08)' in source
     # 位置：logo 在 headerRow 内、主标题 <h1> 左边
     header_pos = source.index('<div class="headerRow">')
     logo_pos = source.index('<img class="headerLogo" src="/favicon.png" alt="Drifter Console">')
@@ -1914,7 +1917,7 @@ def test_web_console_header_logo_left_of_title():
     # zinc-100 前景色；标题↔功能 32px = gap 12 + margin-right 20）
     assert "h1{margin:0;font-size:1.25rem;font-weight:700;line-height:1.75rem}" in source
     assert ".headerRow h1{color:var(--ink);margin:0 20px 0 0}" in source
-    assert 'html[data-theme="light"]{--bg:#eef1f5;--ink:#1a2330;' in source
+    assert 'html[data-theme="light"]{--bg:#f5f5f7;--ink:#1d1d1f;' in source
 
 
 def test_web_console_mobile_header_layout():
@@ -1944,10 +1947,10 @@ def test_web_console_mobile_header_layout():
     # v1.8.21：Donkey / OTA / DEV 恢复至 DC 头部，br2/br3 随之加回
     assert '<span class="rowBreak br2"></span>' in source
     assert '<span class="rowBreak br3"></span>' in source
-    # Apple UI 改造：版本号与 br1 之间插入座舱/Apple 风格切换器 #skinSwitch（窄屏 order:5 与 br1 相同、靠 DOM 序排前）
-    assert '<span class="version" id="versionLabel">--</span><div id="skinSwitch" class="skinSwitch"' in source
-    assert '</div><span class="rowBreak br1"></span>' in source
-    assert '#skinSwitch{order:5}' in source
+    # v1.10.0：座舱/Apple 切换器随座舱象限整体移除——版本号后直接接 br1，全仓库不得再有切换器残留
+    assert '<span class="version" id="versionLabel">--</span><span class="rowBreak br1"></span>' in source
+    assert 'skinSwitch' not in source and 'skinSeg' not in source
+    assert 'skinCockpit' not in source and 'skinApple' not in source
     assert "@media (max-width:820px){.headerRow{align-items:center;gap:8px}" in source
     assert ".rowBreak{display:block;flex-basis:100%;height:0}" in source
     # 第 1 行：logo + 标题 + GitHub + 版本号
@@ -2669,7 +2672,7 @@ def test_web_console_settings_view_embeds_tune_sections():
     # /drift 页：embedded 时隐藏自身 headerRow（主页也有同名规则，必须切片到 DRIFT 段断言）；init 检测 embedded=1
     drift = source[source.index('WIFI_WEB_DRIFT_HTML'):]
     assert 'body.embedded .headerRow{display:none}' in drift
-    assert "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');initLanguage();initTheme();applyUiStyle();loadDriftConfig();" in drift
+    assert "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');initLanguage();initTheme();loadDriftConfig();" in drift
     # v1.8.53：embedded 时隐藏漂移页顶部 Status 状态栏面板（CC 设置页只留设置表单，与 v1.8.51 judge 页
     # #judgeHero/#gyroChartPanel 同款做法；JS 仍更新其元素、隐藏不影响运行）；车端独立 /drift 页完整保留
     assert '<div class="panel" id="driftStatusPanel">' in drift
@@ -2778,7 +2781,7 @@ def test_web_console_preinit_reveal_no_first_paint_flash():
 
     # 尾部 init 原有类赋值保留（幂等保险）；主页 wifi 分支弹窗逻辑不动
     tail_judge = "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');syncJudgeConfigInputs();"
-    tail_drift = "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');initLanguage();initTheme();applyUiStyle();loadDriftConfig();"
+    tail_drift = "if(location.search.indexOf('embedded=1')>=0)document.body.classList.add('embedded');initLanguage();initTheme();loadDriftConfig();"
     assert tail_judge in judge
     assert tail_drift in drift
     assert "if(location.search.indexOf('settings=1')>=0)document.body.classList.add('settings');if(location.search.indexOf('wifi=1')>=0){document.body.classList.add('wifi');openWifiApModal();openWifiStaModal();" in console
@@ -4141,7 +4144,7 @@ def test_drift_settings_button_next_to_joystick_calibration():
     ).read_text(encoding="utf-8")
 
     assert "button.driftSettings" in assets, "前端缺少漂移设置按钮的 data-i18n key"
-    assert "window.open('/drift?theme='+resolvedTheme()+'&ui='+resolvedUiStyle(),'_blank')" in assets, "漂移设置按钮应携带当前主题与 UI 风格跳转到 ESP32 自身 drift 配置页"
+    assert "window.open('/drift?theme='+resolvedTheme(),'_blank')" in assets, "漂移设置按钮应携带当前主题跳转到 ESP32 自身 drift 配置页（v1.10.0 起 UI 风格恒 Apple，不再携带 ui 参数）"
     assert "I18N.zh['button.driftSettings']" in assets, "缺少中文漂移设置文案"
     assert "I18N.en['button.driftSettings']" in assets, "缺少英文漂移设置文案"
     # 漂移设置按钮应与手柄校准按钮位于同一容器（设置视图调校行 / 诊断面板按钮行）
@@ -4171,7 +4174,7 @@ def test_drift_page_theme_and_title_hints():
 
     # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（进入时以控制台 ?theme= 参数为初值）
     assert "document.documentElement.dataset.theme" in page, "漂移页缺少防闪烁主题脚本"
-    assert 'html[data-theme="light"]{--bg:#eef1f5;--ink:#1a2330;' in page, "漂移页缺少浅色主题变量块"
+    assert 'html[data-theme="light"]{--bg:#f5f5f7;--ink:#1d1d1f;' in page, "漂移页缺少浅色主题变量块"
     assert "function initTheme()" in page, "漂移页缺少 initTheme"
     assert "function readUrlTheme()" in page, "漂移页缺少 ?theme= 参数解析"
     assert "function initTheme(){uiTheme=readUrlTheme()||'auto';applyTheme();" in page, "漂移页 initTheme 应以 ?theme= 参数优先、缺省 auto"
@@ -4186,9 +4189,10 @@ def test_drift_page_theme_and_title_hints():
 
     # 控制台三处入口携带主题参数
     assert "href=\"/drift\" id=\"driftTuneLink\"" in assets, "Drift 卡 Tune 链接缺少 driftTuneLink id"
-    assert "dl.href='/drift?theme='+resolvedTheme()+'&ui='+resolvedUiStyle()" in assets, "applyTheme 未同步 Tune 链接主题与 UI 风格参数"
-    assert "window.open('/drift?theme='+resolvedTheme()+'&ui='+resolvedUiStyle(),'_blank')" in assets
-    assert "location.href='/drift?theme='+resolvedTheme()+'&ui='+resolvedUiStyle()" in assets
+    assert "dl.href='/drift?theme='+resolvedTheme()" in assets, "applyTheme 未同步 Tune 链接主题参数"
+    assert "window.open('/drift?theme='+resolvedTheme(),'_blank')" in assets
+    assert "location.href='/drift?theme='+resolvedTheme()" in assets
+    assert "'&ui='" not in assets, "v1.10.0 起任何跳转均不携带 ui 参数（UI 风格恒 Apple，残留 ?ui= 被忽略）"
 
     # Apple UI 改造：标题悬停灰字提示（.titleHint + .hintSpan）作为无意义小字全部删除，
     # 原 4 处包装（h1 版本小字/Status/Steering/Throttle 描述）连同 i18n 键一并移除
@@ -4279,8 +4283,8 @@ def test_judge_page_theme_and_title_hints():
 
     # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（头部自带切换按钮，进入时以控制台 ?theme= 参数为初值）
     assert "document.documentElement.dataset.theme" in page, "Judge 页缺少防闪烁主题脚本"
-    assert 'html[data-theme="light"]{--bg:#eef1f5;--ink:#1a2330;' in page, "Judge 页缺少浅色主题变量块"
-    assert '--chartBg:#f4f6f9' in page, "Judge 页缺少浅色图表底色变量"
+    assert 'html[data-theme="light"]{--bg:#f5f5f7;--ink:#1d1d1f;' in page, "Judge 页缺少浅色主题变量块"
+    assert '--chartBg:#f5f5f7' in page, "Judge 页缺少浅色图表底色变量"
     assert "function initTheme()" in page, "Judge 页缺少 initTheme"
     assert "function readUrlTheme()" in page, "Judge 页缺少 ?theme= 参数解析"
     assert "function initTheme(){uiTheme=readUrlTheme()||readParentTheme()||'auto';applyTheme();" in page, "Judge 页 initTheme 应以 ?theme= 参数优先、内嵌时读父页主题、缺省 auto"
@@ -4297,10 +4301,10 @@ def test_judge_page_theme_and_title_hints():
     assert "light?'#f4f6f9':'#0f1720'" in page, "drawChart 缺浅色底色"
     assert "light?'#d5dce4':'#223042'" in page, "drawChart 缺浅色网格色"
     assert "light?'#0c9bd6':'#5cc8ff'" in page, "drawChart 缺浅色曲线色"
-    assert "initTheme();applyUiStyle();drawChart();" in page, "初始化序列应先 initTheme/applyUiStyle 再 drawChart"
+    assert "initTheme();drawChart();" in page, "初始化序列应先 initTheme 再 drawChart（v1.10.0 起无 applyUiStyle）"
 
     # 控制台「Judge 设置」入口携带主题参数
-    assert "location.href='/judge?theme='+resolvedTheme()+'&ui='+resolvedUiStyle()" in assets, "控制台 Judge 设置入口未携带 ?theme=/?ui= 参数"
+    assert "location.href='/judge?theme='+resolvedTheme()" in assets, "控制台 Judge 设置入口未携带 ?theme= 参数"
 
     # Apple UI 改造：标题悬停灰字提示（.titleHint + .hintSpan，原 6 处）作为无意义小字
     # 全部删除（含 h1 硬编码英文副标题），标题恢复纯文本，相关 i18n 键一并移除
@@ -5139,13 +5143,13 @@ def test_web_console_sub_pages_follow_device_language():
         en_keys = _page_i18n_keys(page, "en")
         assert zh_keys, f"{marker} 缺少 zh 字典"
         assert zh_keys == en_keys, f"{marker} zh/en 键不对齐: {zh_keys ^ en_keys}"
-        # Apple UI 改造：四页新增 uiStyle.title/.cockpit/.apple 切换器词条，放行 uiStyle. 前缀；
-        # 子页头部主题/语言切换按钮的 aria 文案用共享键 theme.title/language.title，放行 theme./language. 前缀
+        # 子页头部主题/语言切换按钮的 aria 文案用共享键 theme.title/language.title，放行 theme./language. 前缀；
+        # v1.10.0 起 uiStyle.* 切换器词条随座舱象限移除，不再放行
         assert all(
-            k.startswith(prefix) or k.startswith("uiStyle.")
+            k.startswith(prefix)
             or k.startswith("theme.") or k.startswith("language.")
             for k in zh_keys
-        ), f"{marker} 存在非 {prefix}/uiStyle./theme./language. 前缀键"
+        ), f"{marker} 存在非 {prefix}/theme./language. 前缀键"
 
 
 def test_web_console_language_switch_rerenders_joystick_cal_status():
@@ -5292,8 +5296,9 @@ def test_web_console_theme_toggle():
     assert "mq.addListener(onThemeChange)" in assets
 
     # 防闪烁：<head> 内第一个 <style> 之前的内联脚本，直接按 matchMedia 预置 data-theme（不读任何存储，刷新即重新跟随系统）；
-    # Apple UI 改造：同一脚本追加 data-ui 预置（?ui= URL 参数 → localStorage mus4.ui.style → 默认 apple）
-    assert "<script>try{let t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t;let u='apple';const m=/[?&]ui=(cockpit|apple)(?:&|$)/.exec(window.location.search);if(m)u=m[1];else{const v=localStorage.getItem('mus4.ui.style');if(v==='cockpit'||v==='apple')u=v}document.documentElement.dataset.ui=u}catch(e){}</script>" in assets
+    # v1.10.0：data-ui 预置随座舱象限移除——残留 ?ui=cockpit 与 localStorage mus4.ui.style 旧键被静默忽略，渲染恒为 Apple
+    assert "<script>try{let t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t}catch(e){}</script>" in assets
+    assert "mus4.ui.style" not in assets and "dataset.ui" not in assets and "data-ui" not in assets
     assert assets.index("<title>Drifter Console</title>") < assets.index("window.matchMedia('(prefers-color-scheme: light)')")
     assert assets.index("window.matchMedia('(prefers-color-scheme: light)')") < assets.index("<style>")
 
@@ -5608,12 +5613,12 @@ def test_web_console_light_theme_overrides():
 
     # Apple UI 改造：浅色样式收敛为 html[data-theme="light"] 变量块——基础规则全部改用
     # CSS 变量，浅色只覆盖变量值；深浅两态渲染值与旧版逐值一致（级联等价）
-    assert 'html[data-theme="light"]{--bg:#eef1f5;--ink:#1a2330;' in assets
+    assert 'html[data-theme="light"]{--bg:#f5f5f7;--ink:#1d1d1f;' in assets
     # 变量块关键色：基底 / 日志终端 / 状态卡片 / 画布
-    assert '--logBg:#f4f7f5;--logInk:#1a7f37' in assets
-    assert '--cardGrad:linear-gradient(135deg,#fff,#edf1f6)' in assets
-    assert '--cardShadow:0 1px 3px rgba(15,23,42,.08)' in assets
-    assert '--canvasBg:#fbfcfe' in assets
+    assert '--logBg:#f5f5f7;--logInk:#1a7f37' in assets
+    assert '--cardGrad:#fff' in assets
+    assert '--cardShadow:0 1px 3px rgba(0,0,0,.06)' in assets
+    assert '--canvasBg:#fff' in assets
     # 基础规则经变量随主题切换（选择器与结构不动、色值变量化）
     assert '.log{height:calc(5 * 1.35em + 16px);overflow:auto;background:var(--logBg);color:var(--logInk)' in assets
     assert 'canvas{width:100%;height:auto;aspect-ratio:38/13;background:var(--canvasBg)' in assets
@@ -5621,8 +5626,8 @@ def test_web_console_light_theme_overrides():
     assert '@keyframes pulse{50%{box-shadow:0 0 18px var(--badGlow);transform:translateY(-1px)}}' in assets
     assert '.parkLocked{border-color:var(--bad);animation:pulse 1.2s infinite}' in assets
     assert 'pulseLight' not in assets
-    # 浅色变量：fabToggle 保持青色发光圆点身份（hover/focus/active 加深为 #3aa8dd）
-    assert '--fabBg:#5cc8ff;--fabBgHover:#3aa8dd' in assets
+    # v1.10.0 起 Apple 为唯一风格：fabToggle 浅色取 Apple 系统蓝（hover/focus/active 加深为 #0066cc）
+    assert '--fabBg:#0071e3;--fabBgHover:#0066cc' in assets
     # rcNum 浅色透明底并入基础规则；胶囊按钮组未激活段透明由基础规则承担
     assert '.rcNum{flex:0 0 auto;min-width:0;max-width:none;width:4.5ch;font:700 14px Consolas,monospace;text-align:center;background:transparent' in assets
     assert '.langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;background:transparent;color:var(--ink3)' in assets
@@ -5638,7 +5643,7 @@ def test_web_console_light_theme_overrides():
     # JS：主题解析与应用（auto 经 matchMedia 跟随系统），切换时网格缓存失效并重绘
     assert "function systemTheme(){try{return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){return 'dark'}}" in assets
     assert "function resolvedTheme(){return uiTheme==='auto'?systemTheme():(uiTheme==='light'?'light':'dark')}" in assets
-    assert "function applyTheme(){document.documentElement.dataset.theme=resolvedTheme();gridReady=false;draw();const dl=document.getElementById('driftTuneLink');if(dl)dl.href='/drift?theme='+resolvedTheme()+'&ui='+resolvedUiStyle()}" in assets
+    assert "function applyTheme(){document.documentElement.dataset.theme=resolvedTheme();gridReady=false;draw();const dl=document.getElementById('driftTuneLink');if(dl)dl.href='/drift?theme='+resolvedTheme()}" in assets
     assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in assets
     assert "function readUrlTheme(){try{const m=/[?&]theme=(light|dark)(?:&|$)/.exec(window.location.search);if(m)return m[1]}catch(e){}return null}function initTheme(){uiTheme=readUrlTheme()||'auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
 
@@ -5657,9 +5662,9 @@ def test_web_console_light_theme_overrides():
     assert "let uiTheme='auto'" in assets
     assert "localStorage.getItem(THEME_STORAGE_KEY)" not in assets
     assert "initTheme();" in assets
-    # 激活胶囊色值两主题保持 #5cc8ff/#061019（:root --accentFill/--onAccent）
+    # v1.10.0 起 Apple 为唯一风格：激活胶囊取 Apple 系统蓝填充 #0a84ff + 白字（:root --accentFill/--onAccent）
     assert '.langTabs button.active{background:var(--accentFill);color:var(--onAccent)}' in assets
-    assert "--accentFill:#5cc8ff;--onAccent:#061019" in assets
+    assert "--accentFill:#0a84ff;--onAccent:#fff" in assets
 
 
 def test_wifi_sta_history_retry_rescans_after_exhaustion():

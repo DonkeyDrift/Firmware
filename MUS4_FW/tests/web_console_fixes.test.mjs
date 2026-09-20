@@ -629,16 +629,29 @@ await test('关闭标签释放编号：最小空闲编号可被再次占用', ()
   assert.equal(env.x.termList[env.x.termList.length - 1].num, 1);
 });
 
-await test('terminalUrl 跟随 DC 页面主题：拼接 ?theme=&ui= 参数', () => {
+await test('terminalUrl 跟随 DC 页面主题：只拼 ?theme=（v1.10.0 起 UI 风格恒 Apple，无 ui 参数）', () => {
   const cases = [
-    [{}, 'http://192.0.2.1:8090/terminal?theme=dark&ui=apple'], // 缺省：深色 + Apple（页面默认 data-ui="apple"）
-    [{ 'data-theme': 'light', 'data-ui': 'apple' }, 'http://192.0.2.1:8090/terminal?theme=light&ui=apple'],
-    [{ 'data-theme': 'dark', 'data-ui': 'cockpit' }, 'http://192.0.2.1:8090/terminal?theme=dark&ui=cockpit'],
-    [{ 'data-theme': 'light', 'data-ui': 'cockpit' }, 'http://192.0.2.1:8090/terminal?theme=light&ui=cockpit'],
+    [{}, 'http://192.0.2.1:8090/terminal?theme=dark'], // 缺省：深色
+    [{ 'data-theme': 'light' }, 'http://192.0.2.1:8090/terminal?theme=light'],
+    [{ 'data-theme': 'dark' }, 'http://192.0.2.1:8090/terminal?theme=dark'],
   ];
   for (const [attrs, want] of cases) {
     const env = makeEnv({ docAttrs: attrs });
     assert.equal(env.x.terminalUrl(), want, `attrs=${JSON.stringify(attrs)}`);
+  }
+});
+
+await test('座舱象限移除回归：切换器/存储键/JS 机制/data-ui 全部无残留', () => {
+  // v1.10.0：座舱(cockpit)/Apple 双象限体系移除，Apple 成为唯一界面风格——
+  // 残留 localStorage mus4.ui.style=cockpit 与 URL ?ui=cockpit 因机制整体消失而被静默忽略
+  for (const tok of [
+    'skinSwitch', 'skinSeg', 'skinCockpit', 'skinApple',
+    'mus4.ui.style', 'UI_STYLE_STORAGE_KEY', 'uiStyleOverride',
+    'resolvedUiStyle', 'applyUiStyle', 'setUiStyle',
+    'readUrlUiStyle', 'readStoredUiStyle', 'readParentUiStyle',
+    'uiStyle.', 'data-ui', 'dataset.ui',
+  ]) {
+    assert.ok(!src.includes(tok), `应无残留: ${tok}`);
   }
 });
 

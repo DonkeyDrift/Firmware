@@ -12,7 +12,21 @@
   - 级联等价验证：静态级联仿真（自写解析器，含 @media prefers-contrast 分支）——四页 × 深浅 × contrast on/off 共 16 组有效 CSS 变量**全部一致**（唯一允许差为随切换器删除的 `--seg*`）；Playwright 计算样式前后对比（冻结 Date.now + 禁动画 + `/api/*` 统一空 JSON 桩）——四页 × 深浅 × 390/1280 共 16 组：`:root` 全量变量、36/27/20/15 个关键元素选择器的 24 个计算属性**全部一致**，差异严格局限于被删切换器（页头行高/整页高度收缩）；截图比对差异同样仅见于切换器区域。
   - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.9.3 → v1.10.0。
   - 体积：固件 .bin 基线 1,802,784 字节 → 改后 1,775,248 字节（**−27,536B**，与源码 −27,456B 一致）；text+data（xtensa-esp32-elf-size）1,824,554 → 1,798,462 字节；min_spiffs APP 分区 1,966,080 占用 **92.80% → 91.47%**。
-  - 本轮只改文件与本地静态验证：**未 commit、未 push、未 OTA、未连车**。
+  - 注：本轮只改 Web UI 与版本号，无行车控制逻辑变更。
+
+## 2026-09-20 v1.9.4
+
+- fix(security): 隐私泄露审计清理——真实 Wi-Fi 凭据占位化、本机文件取消跟踪、私人路径/内网 IP 脱敏
+  - 背景：对两仓库做 .gitignore / 文档 / 私人文件全面审计，发现 MUS4 智能配网链路把真实家庭 Wi-Fi SSID/密码（配网页预填表单、Playwright 用例、pytest 用例、测试报告）以及本机绝对路径、内网 IP 提交进了公开仓库，本轮集中清理（历史提交按既定决定不重写，真实凭据需用户侧更换作废）。
+  - 凭据清理（一律改占位 `TestSSID`/`testpass123`）：`provisioning_system/esp32/esp32_wifi_provisioning/web_ui.h` 与 `provisioning_system/esp32/main/web_ui.h` 两份配网页表单不再预填真实 SSID/密码（`value=''`）；`provisioning_system/playwright_tests/provisioning.spec.js`（预填断言改为空串、填表与串口期望值占位化）；`provisioning_system/tests/test_agent.py`（4 处）；`provisioning_system/docs/deployment_and_testing.md`；`libraries/mus4_wifi/src/WifiManager.cpp` 注释去真实 SSID。
+  - 取消跟踪（`git rm --cached`，本地保留，且已被 .gitignore 覆盖不再回库）：`MUS4_FW/.vscode/tasks.json`（本机 U 盘便携编译环境配置）；`provisioning_system/playwright_tests/reports/`（48 张测试截图 + `results.json`，含本机绝对路径）、`performance_metrics.json`、`test_report.md`（含真实凭据与内网 IP 的测试产物）。
+  - 私人路径/内网 IP 脱敏：`MUS4_FW/README.md`、`MUS4_FW/README.zh-CN.md`、`docs/Guide/HTTP_Update_OTA上传操作说明.md` 及 4 份 `docs/Plan/*` 方案文档的 `192.168.3.x` 设备示例 IP → `<设备IP>`；`docs/Tools/mus4_pilot_infer.md`（`/home/dkc/mus4/` → `~/mus4/`）、`docs/Tools/train_tub_driver.md`（`C:/Users/cross/` → `C:/Users/<user>/`）、`provisioning_system/docs/deployment_and_testing.md`（`/home/dkc/project/mus4` → `~/project/mus4`）；`docs/Inspect/wifi-ap-sta-lifecycle-inspection.md` 示例 JSON、`libraries/mus4_cloud/src/CloudReporter.cpp` 注释示例、`libraries/mus4_web/src/WebConsoleFavicon.h` 源图注释；`provisioning_system/linux_agent/mus4-provisioning-agent.service` 改为 `/path/to/Firmware` 占位模板（`Documentation=` 改指本仓库真实地址）。
+  - 配置与工具默认值：`wslbuild.yaml` 的 `distro: DKC` 与 `work_dir: /home/dkc/...` 改为注释占位（回落「自动探测发行版」与 `~/arduino-build/<项目名>` 默认）；`tools/mus4_pilot_infer.py` 默认 ESP32 URL 由 `http://192.168.3.39` 改为 `http://192.168.4.1`（设备 AP 标准地址）；`tests/test_wireless_console_policy.py` fixture IP 中性化。
+  - .gitignore 补漏：根 `.gitignore` 显式补 `.pytest_cache/`；`MUS4_FW/.gitignore` 补 `.vscode/` 与 `.pytest_cache/`（子项目自包含）。
+  - 根 `README.md` 版本表由 v1.7.72 追平至当前版本（v1.9.4）。
+  - 保留未动：两仓库 CHANGELOG 历史条目中的内网 IP（历史记录、低敏感、量大）；`WebConsoleAssets.h` 的上位机回退 IP `192.168.3.41`（功能性回退默认值，改动涉及行为取舍，另行跟进）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言升至 v1.9.4；`tests/test_wireless_console_policy.py` fixture 同步。`pytest tests/` 362 项、`pytest provisioning_system/tests/` 13 项全部通过。
+  - 注：配网固件（`provisioning_system/esp32`）为独立工程、不上车；车上固件本轮仅注释级改动（行为不变），版本号随审计条目升至 v1.9.4。
 
 ## 2026-09-18 v1.9.3
 

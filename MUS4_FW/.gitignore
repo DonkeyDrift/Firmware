@@ -29,6 +29,8 @@ build
 settings.json
 node_modules/
 .superpowers/
+.vscode/
+.pytest_cache/
 
 # Log files
 *.log

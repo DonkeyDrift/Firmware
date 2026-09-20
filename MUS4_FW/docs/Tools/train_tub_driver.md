@@ -31,13 +31,13 @@
 如果采集了半自动或全自动数据，`pt/ps` 也可能造成泄漏，可追加排除：
 
 ```bash
-python tools/train_tub_driver.py C:/Users/cross/Downloads/2136.json --add-exclude-columns pt,ps --dry-run
+python tools/train_tub_driver.py C:/Users/<user>/Downloads/2136.json --add-exclude-columns pt,ps --dry-run
 ```
 
 ## 数据检查
 
 ```bash
-python tools/train_tub_driver.py C:/Users/cross/Downloads/2136.json --dry-run
+python tools/train_tub_driver.py C:/Users/<user>/Downloads/2136.json --dry-run
 ```
 
 输出包括：
@@ -55,7 +55,7 @@ python tools/train_tub_driver.py C:/Users/cross/Downloads/2136.json --dry-run
 ## 只生成报告
 
 ```bash
-python tools/train_tub_driver.py C:/Users/cross/Downloads/2136.json --report-only --out-dir C:/Users/cross/Downloads/mus4_tub_report --overwrite
+python tools/train_tub_driver.py C:/Users/<user>/Downloads/2136.json --report-only --out-dir C:/Users/<user>/Downloads/mus4_tub_report --overwrite
 ```
 
 输出：
@@ -65,7 +65,7 @@ python tools/train_tub_driver.py C:/Users/cross/Downloads/2136.json --report-onl
 ## 训练 baseline
 
 ```bash
-python tools/train_tub_driver.py C:/Users/cross/Downloads/2136.json --out-dir C:/Users/cross/Downloads/mus4_gru_baseline --epochs 50 --window-size 16 --overwrite
+python tools/train_tub_driver.py C:/Users/<user>/Downloads/2136.json --out-dir C:/Users/<user>/Downloads/mus4_gru_baseline --epochs 50 --window-size 16 --overwrite
 ```
 
 输出目录包含：

@@ -82,13 +82,13 @@ test.describe('MUS4 智能配网端到端自动化测试', () => {
       // 检查页面元素
       await expect(page.locator('h2')).toContainText('MUS4 智能配网设置');
       
-      // 检查预填充值
+      // 检查预填充值（安全审计后不再预填真实凭据，应为空）
       const ssidValue = await page.inputValue('#ssid');
       const pwdValue = await page.inputValue('#pwd');
-      
-      expect(ssidValue).toBe('newhome_iot');
-      expect(pwdValue).toBe('wxl922922');
-      logInfo('页面加载成功且预填充正确');
+
+      expect(ssidValue).toBe('');
+      expect(pwdValue).toBe('');
+      logInfo('页面加载成功且凭据预填充为空');
 
       // 截图: 断言页
       await page.screenshot({ path: `reports/case1-assert-${timestamp}-pass.png`, fullPage: true });
@@ -109,9 +109,9 @@ test.describe('MUS4 智能配网端到端自动化测试', () => {
       // 截图: 初始页
       await page.screenshot({ path: `reports/case2-init-${timestamp}.png`, fullPage: true });
 
-      // 填充表单以防预填充失败
-      await page.fill('#ssid', 'newhome_iot');
-      await page.fill('#pwd', 'wxl922922');
+      // 填充表单（使用占位测试凭据）
+      await page.fill('#ssid', 'TestSSID');
+      await page.fill('#pwd', 'testpass123');
 
       // 点击提交按钮前增加更长的缓冲，确保页面完全渲染
       await page.waitForTimeout(1000); 
@@ -132,10 +132,10 @@ test.describe('MUS4 智能配网端到端自动化测试', () => {
       // 截图: 断言页 (下发中)
       await page.screenshot({ path: `reports/case2-assert-sending-${timestamp}.png`, fullPage: true });
 
-      // 检查串口日志中是否出现了期望的 "WIFI|newhome_iot|wxl922922" 字符串
+      // 检查串口日志中是否出现了期望的 "WIFI|TestSSID|testpass123" 字符串
       let found = false;
       for(let i=0; i<30; i++) {
-        if (serialLogs.some(l => l.includes('WIFI|newhome_iot|wxl922922'))) {
+        if (serialLogs.some(l => l.includes('WIFI|TestSSID|testpass123'))) {
           found = true;
           break;
         }

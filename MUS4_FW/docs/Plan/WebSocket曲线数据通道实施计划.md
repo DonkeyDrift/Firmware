@@ -110,7 +110,7 @@
 
 3. 编译通过后按已授权流程 OTA：
    ```powershell
-   .\arduino-cli-wsl.ps1 -Upload -Ota -OtaHost 192.168.3.140
+   .\arduino-cli-wsl.ps1 -Upload -Ota -OtaHost <设备IP>
    ```
 
 4. 页面验证：

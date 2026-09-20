@@ -15,7 +15,7 @@ from typing import Callable, NamedTuple, Sequence
 
 
 LEAKAGE_COLUMNS = {"ch1", "ch2", "rct", "rcs", "thr", "str"}
-DEFAULT_ESP32_URL = "http://192.168.3.39"
+DEFAULT_ESP32_URL = "http://192.168.4.1"
 
 
 class ControlLimits(NamedTuple):

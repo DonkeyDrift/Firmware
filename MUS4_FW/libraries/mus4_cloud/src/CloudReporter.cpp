@@ -13,7 +13,7 @@
 //
 // 协议（POST /report，JSON body，去 token 公开上报）：
 //   {"device_id":"<硬件ID>","type":"esp32",
-//    "lan_ip":"192.168.3.46","port":"80","hostname":"mus4-esp","version":"v1.8.79"}
+//    "lan_ip":"192.168.3.x","port":"80","hostname":"mus4-esp","version":"v1.8.79"}
 //
 // 节奏：首次拿到 IP 立即上报；此后每 5 分钟心跳一次；开机尚未成功上报过时按
 // 1 分钟快速重试（失败不写 KV，不额外消耗云端写入额度）；IP 变化时立即补报。

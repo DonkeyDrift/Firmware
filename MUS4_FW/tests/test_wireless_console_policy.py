@@ -211,14 +211,14 @@ class TestWirelessConsolePolicy(unittest.TestCase):
             ssid="HomeWiFi",
             password_set=True,
             ap_ip="192.168.4.1",
-            sta_ip="192.168.3.144",
+            sta_ip="192.168.3.123",
             last_error="timeout",
             last_error_message="STA 连接超时，请检查 SSID、密码与路由器信号。",
         )
 
         self.assertEqual(state["last_error"], "")
         self.assertEqual(state["last_error_message"], "")
-        self.assertEqual(state["sta_ip"], "192.168.3.144")
+        self.assertEqual(state["sta_ip"], "192.168.3.123")
 
     def test_web_command_permissions_match_wireless_console(self):
         scenarios = [

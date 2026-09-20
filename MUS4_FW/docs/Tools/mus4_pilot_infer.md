@@ -22,8 +22,8 @@
 
 ```bash
 python tools/mus4_pilot_infer.py \
-  --esp32-url http://192.168.3.39 \
-  --model-dir /home/dkc/mus4/models/mus4_gru_baseline \
+  --esp32-url http://192.168.4.1 \
+  --model-dir ~/mus4/models/mus4_gru_baseline \
   --mode dry-run \
   --rate-hz 5 \
   --duration-sec 60
@@ -33,8 +33,8 @@ python tools/mus4_pilot_infer.py \
 
 ```bash
 python tools/mus4_pilot_infer.py \
-  --esp32-url http://192.168.3.39 \
-  --model-dir /home/dkc/mus4/models/mus4_gru_baseline \
+  --esp32-url http://192.168.4.1 \
+  --model-dir ~/mus4/models/mus4_gru_baseline \
   --serial-port /dev/serial/by-id/<actual-device> \
   --baud 115200 \
   --mode zero-output \
@@ -54,8 +54,8 @@ python tools/mus4_pilot_infer.py \
 
 ```bash
 python tools/mus4_pilot_infer.py \
-  --esp32-url http://192.168.3.39 \
-  --model-dir /home/dkc/mus4/models/mus4_gru_baseline \
+  --esp32-url http://192.168.4.1 \
+  --model-dir ~/mus4/models/mus4_gru_baseline \
   --serial-port /dev/serial/by-id/<actual-device> \
   --baud 115200 \
   --mode live \
@@ -92,7 +92,7 @@ ACK:seq
 推荐：
 
 ```text
-/home/dkc/mus4/
+~/mus4/
 ├── repo/
 ├── models/mus4_gru_baseline/
 ├── logs/pilot/
@@ -128,7 +128,7 @@ sudo usermod -aG dialout dkc
 可使用：
 
 ```bash
---log-file /home/dkc/mus4/logs/pilot/pilot.ndjson
+--log-file ~/mus4/logs/pilot/pilot.ndjson
 ```
 
 日志为 NDJSON，每行记录最新遥测、预测、命令和 ACK 状态，不记录密码。

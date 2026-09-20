@@ -38,7 +38,7 @@ class TestWifiManager(unittest.TestCase):
         ]
 
         wm = WifiManager('wlan0')
-        success, result = wm.connect('newhome_iot', 'wxl922922')
+        success, result = wm.connect('TestSSID', 'testpass123')
 
         self.assertTrue(success)
         self.assertEqual(result, '192.168.1.100')
@@ -182,14 +182,14 @@ class TestProvisioningAgentE2E(unittest.TestCase):
         mock_serial = MockSerialComm.return_value
         mock_wifi = MockWifiManager.return_value
 
-        mock_serial.read_line.side_effect = ["WIFI|newhome_iot|wxl922922", ""]
+        mock_serial.read_line.side_effect = ["WIFI|TestSSID|testpass123", ""]
         mock_wifi.connect.return_value = (True, "192.168.1.150")
 
         agent = ProvisioningAgent()
-        agent.handle_provisioning_request("WIFI|newhome_iot|wxl922922")
+        agent.handle_provisioning_request("WIFI|TestSSID|testpass123")
 
         mock_wifi.disconnect_ap.assert_called_once()
-        mock_wifi.connect.assert_called_with("newhome_iot", "wxl922922")
+        mock_wifi.connect.assert_called_with("TestSSID", "testpass123")
         mock_serial.write_line.assert_any_call("STATUS|connecting")
         mock_serial.write_line.assert_any_call("OK|192.168.1.150")
 

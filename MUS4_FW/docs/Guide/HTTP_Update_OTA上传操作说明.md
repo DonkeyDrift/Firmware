@@ -50,7 +50,7 @@ HTTP `/update` 端点复用现有的安全策略，上传前必须满足以下�
 ### 基本命令
 
 ```powershell
-curl.exe -X POST http://192.168.3.140/update `
+curl.exe -X POST http://<设备IP>/update `
   -H "Content-Type: multipart/form-data" `
   -F "firmware=@build_wsl\mus4.ino.bin" `
   --progress-bar
@@ -73,7 +73,7 @@ curl.exe -X POST "http://$target/update" -F "firmware=@build_wsl\mus4.ino.bin" -
 ### 编译 + HTTP OTA 上传
 
 ```powershell
-.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.140
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP>
 ```
 
 ### 使用 `.mus4_ota_target` 免输入 IP
@@ -89,7 +89,7 @@ curl.exe -X POST "http://$target/update" -F "firmware=@build_wsl\mus4.ino.bin" -
 ### 仅上传已有固件（不重新编译）
 
 ```powershell
-.\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost 192.168.3.140
+.\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost <设备IP>
 ```
 
 ### 常用参数
@@ -122,7 +122,7 @@ curl.exe -X POST "http://$target/update" -F "firmware=@build_wsl\mus4.ino.bin" -
 - 添加 `-HttpOtaHost <IP>` 参数，或
 - 在项目根目录创建 `.mus4_ota_target` 文件，第一行写入设备 IP：
   ```
-  192.168.3.140
+  <设备IP>
   ```
 
 ### curl.exe 返回 exit code 22 或 HTTP 403/500
@@ -134,7 +134,7 @@ curl 的 `--fail` 会在 HTTP 状态码 >= 400 时返回 22。
 1. **认证**：在 Web Console 发送 `AUTH:mus4-debug`。
 2. **Park 锁定**：确认 Park 状态为 LOCKED。如果未锁定，发送 `ENABLE_OTA`（会自动锁定）。
 3. **开发模式**：如果已开启开发模式（`Auto OTA` 开关为 ON），可免认证免 Park 上传。
-4. **网络连通性**：`Test-NetConnection 192.168.3.140 -Port 80` 是否成功。
+4. **网络连通性**：`Test-NetConnection <设备IP> -Port 80` 是否成功。
 
 ### 上传后设备无响应
 

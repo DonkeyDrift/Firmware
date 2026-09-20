@@ -310,7 +310,7 @@ pytest tests/
 编译成功后，按当前项目约定自动 HTTP OTA 到测试主板：
 
 ```powershell
-.\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost 192.168.3.157 -Sketch MUS4_FW.ino
+.\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost <设备IP> -Sketch MUS4_FW.ino
 ```
 
 ---

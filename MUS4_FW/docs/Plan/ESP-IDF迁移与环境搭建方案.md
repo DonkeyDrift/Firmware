@@ -158,15 +158,20 @@ app1,     app,  ota_1,   0x1F0000, 0x1E0000,
 spiffs,   data, spiffs,  0x3D0000, 0x30000,
 ~~~
 
-`sdkconfig.defaults`（最小集）：
+`sdkconfig.defaults`（最小集，**已实测可用**）：
 
 ~~~
 CONFIG_IDF_TARGET="esp32"
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_FREERTOS_HZ=1000
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_ESPTOOLPY_BAUD_115200B=y
 ~~~
+
+> ⚠️ 两个必须注意的点（本机实测踩过）：
+> 1. **`CONFIG_FREERTOS_HZ=1000` 必须显式设置**。arduino-esp32 组件在 CMake 配置阶段硬性检查：`esp32-arduino requires CONFIG_FREERTOS_HZ=1000 (currently 100)`，IDF 默认是 100，不设就配置失败。
+> 2. **`app_main` 要由应用自己提供**。arduino-esp32 作为组件时不提供 `app_main`（直接链接会报 `undefined reference to app_main`），必须像上面 `main/main.cpp` 那样定义 `app_main`，调用 `initArduino()` 后驱动 `setup()/loop()`。
 
 本地 `libraries/` 的第三方库需要包成 IDF 组件：优先用组件管理器（`idf_component.yml` 里声明 `espressif/arduino-esp32` 等），其余没有 IDF 元数据的库（FastLED、Adafruit_*、mus4_*）在 `components/` 下为每个库生成一个 `CMakeLists.txt`，把源码与 include 目录注册进去（例如 `components/mus4_rc/CMakeLists.txt` 指向 `libraries/mus4_rc/src`）。
 
@@ -302,6 +307,9 @@ idf.py -p /dev/ttyACM1 flash monitor
 4. 串口权限：把用户加入 `dialout`。
 5. 分区/Flash：默认 2MB 的 hello_world 配置要改 `CONFIG_ESPTOOLPY_FLASHSIZE_4MB`，业务工程用自定义分区表。
 6. 组件管理器拉 GitHub：设置 `IDF_COMPONENT_REGISTRY_URL` 或改用镜像文件源。
+7. `arduino-esp32` 组件报 `requires CONFIG_FREERTOS_HZ=1000`：在 `sdkconfig.defaults` 加 `CONFIG_FREERTOS_HZ=1000`，并删除已生成的 `sdkconfig` 让其按新默认值重新生成。
+8. 链接报 `undefined reference to app_main`：`main.cpp` 里必须自己定义 `app_main`（见 2.1 示例）。
+9. 组件下载被中断（Ctrl-C / 会话中断）会留下 0 字节的 `managed_components/espressif__xxx/*` 与 `dependencies.lock`，再次构建报 `File .component_hash or CHECKSUMS.json ... does not exist`。处理：`rm -rf managed_components dependencies.lock sdkconfig` 后重新 `idf.py build`。
 
 ---
 
@@ -313,10 +321,13 @@ idf.py -p /dev/ttyACM1 flash monitor
 | 工具链 | xtensa-esp-elf-gcc 14.2.0（crosstool-NG esp-14.2.0_20260121）；esptool.py 4.12.0 |
 | `idf.py --version` | ESP-IDF v5.4.4 |
 | 系统 Python | 3.12.3（IDF venv：`~/.espressif/python_env/idf5.4_py3.12_env`） |
-| 编译 | `hello_world` 在 `/home/aidlux/esp/projects/hello_world` 用 `idf.py build` 成功 |
+| 原生编译 | `hello_world` 在 `/home/aidlux/esp/projects/hello_world` 用 `idf.py build` 成功 |
+| 阶段 A 编译 | `arduino-esp32` 组件工程 `/home/aidlux/esp/projects/arduino_shim` 编译成功（解析并拉取 33 个组件；`arduino_shim.bin` 约 236KB） |
 | 串口设备 | `1a86:55d2 USB_Dual_Serial` → `/dev/ttyACM0` / `/dev/ttyACM1` |
 | 下载口 | `/dev/ttyACM1`（esptool 识别到 ESP32-D0WD-V3 rev v3.1，40MHz，MAC 94:51:dc:48:f5:4c） |
+| Flash | 4MB（Manufacturer 46 / Device 4016，与 `min_spiffs` 双 app 分区方案一致） |
 | 另一路 | `/dev/ttyACM0` 不能连接芯片（`No serial data received`），符合 SERIAL-A/B 双通道拓扑 |
+| 下载验证程度 | 已用 `esptool.py chip_id` / `flash_id` 完成只读握手（等价确认 bootloader 下载链路可用）；**未执行 flash 覆盖**，以免清掉板上现有 MUS4 固件 |
 
 烧录命令（会覆盖板上现有固件，确认后再执行）：
 

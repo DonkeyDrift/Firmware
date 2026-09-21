@@ -68,6 +68,7 @@
 #include "WifiIdentity.h"
 #include "WifiStaHistory.h"
 #include "WifiOta.h"
+#include "CloudReporter.h"
 #include "WebTelemetry.h"
 #include "WifiManager.h"
 #include "ControlMixer.h"
@@ -659,6 +660,7 @@ void loop()
       updateWifiConsole();
       updateWifiWebConsole();
       updateWifiSta();
+      mus4cloud::update();
       updateWifiStaHistoryRetry();
       updateWifiBootResetButton();
       updateWifiOta(otaRuntime, wifiRuntime);

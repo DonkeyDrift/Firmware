@@ -97,7 +97,7 @@ pytest tests/ -v
 HTTP OTA 目标：
 
 ```powershell
-.\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost 192.168.3.39
+.\arduino-cli-wsl.ps1 -Upload -HttpOta -HttpOtaHost <设备IP>
 ```
 
 ## 手工验收

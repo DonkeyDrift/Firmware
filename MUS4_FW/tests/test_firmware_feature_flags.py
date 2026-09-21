@@ -274,7 +274,24 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.8.66"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.0"' in build_info
+    assert "v1.10.0" in changelog
+    assert "v1.9.4" in changelog
+    assert "v1.9.1" in changelog
+    assert "v1.9.0" in changelog
+    assert "v1.8.79" in changelog
+    assert "v1.8.78" in changelog
+    assert "v1.8.77" in changelog
+    assert "v1.8.76" in changelog
+    assert "v1.8.75" in changelog
+    assert "v1.8.74" in changelog
+    assert "v1.8.73" in changelog
+    assert "v1.8.72" in changelog
+    assert "v1.8.71" in changelog
+    assert "v1.8.70" in changelog
+    assert "v1.8.69" in changelog
+    assert "v1.8.68" in changelog
+    assert "v1.8.67" in changelog
     assert "v1.8.66" in changelog
     assert "v1.8.65" in changelog
     assert "v1.8.64" in changelog
@@ -361,6 +378,19 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert "v1.7.74" in changelog
     assert "v1.7.73" in changelog
     # 条目顺序按日期+版本标题行比较（条目正文允许交叉引用其它版本号，不受影响）
+    assert changelog.index("## 2026-09-11 v1.9.0") < changelog.index("## 2026-09-11 v1.8.79")
+    assert changelog.index("## 2026-09-11 v1.8.79") < changelog.index("## 2026-09-10 v1.8.78")
+    assert changelog.index("## 2026-09-10 v1.8.78") < changelog.index("## 2026-09-08 v1.8.77")
+    assert changelog.index("## 2026-09-08 v1.8.77") < changelog.index("## 2026-09-07 v1.8.76")
+    assert changelog.index("## 2026-09-07 v1.8.75") < changelog.index("## 2026-09-06 v1.8.74")
+    assert changelog.index("## 2026-09-06 v1.8.73") < changelog.index("## 2026-09-06 v1.8.72")
+    assert changelog.index("## 2026-09-06 v1.8.72") < changelog.index("## 2026-09-06 v1.8.71")
+    assert changelog.index("## 2026-09-06 v1.8.71") < changelog.index("## 2026-09-06 v1.8.70")
+    assert changelog.index("## 2026-09-06 v1.8.70") < changelog.index("## 2026-09-06 v1.8.69")
+    assert changelog.index("## 2026-09-06 v1.8.69") < changelog.index("## 2026-09-06 v1.8.68")
+    assert changelog.index("## 2026-09-06 v1.8.68") < changelog.index("## 2026-09-06 v1.8.67")
+    assert changelog.index("## 2026-09-06 v1.8.67") < changelog.index("## 2026-09-03 v1.8.66")
+    assert changelog.index("## 2026-09-03 v1.8.66") < changelog.index("## 2026-08-23 v1.8.65")
     assert changelog.index("## 2026-08-23 v1.8.65") < changelog.index("## 2026-08-23 v1.8.64")
     assert changelog.index("## 2026-08-23 v1.8.64") < changelog.index("## 2026-08-23 v1.8.63")
     assert changelog.index("## 2026-08-23 v1.8.63") < changelog.index("## 2026-08-23 v1.8.62")
@@ -451,11 +481,13 @@ def test_sta_scan_popover_light_theme_selector():
     """
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
-    assert 'html[data-theme="light"] .scanPopover,html[data-theme="light"] .foldHead{' in assets
+    # Apple UI 改造：浅色差异收敛进 html[data-theme="light"] 变量块，
+    # 扫描弹层只剩颜色/阴影覆盖（底色/边框由基础规则经 CSS 变量随主题切换）
+    assert 'html[data-theme="light"] .scanPopover{color:var(--popInk);box-shadow:var(--scanShadow)}' in assets
     assert "scanPopoverhtml" not in assets
-    # 弹层深色底与浅色覆盖都齐全（浅色覆盖修复后必须覆盖深色底 #111820）
+    # 弹层深浅底都齐全（基础规则 background:var(--card)，v1.10.0 起深色值为 Apple #1c1c1e，在 :root 变量块）
     assert ".scanPopover{display:none" in assets
-    assert "background:#111820" in assets
+    assert "--card:#1c1c1e" in assets
 
 
 def test_mode_command_channel_and_arbitration():
@@ -553,12 +585,12 @@ def test_web_console_has_multi_source_log_selector_and_megabyte_buffers():
 
     assert 'id="cmdTarget"' in source
     assert 'id="logSource"' not in source
-    assert '<option value="web">Web</option>' in source
-    assert '<option value="serial">Serial</option>' in source
+    assert '<option value="web" data-i18n="cmd.web">Web</option>' in source
+    assert '<option value="serial" data-i18n="cmd.serial">Serial</option>' in source
     assert '<option value="serial1">Serial1</option>' not in source
     # Serial（上位机终端）排第一位，是默认目标
-    assert source.index('<option value="serial">Serial</option>') < \
-        source.index('<option value="web">Web</option>')
+    assert source.index('<option value="serial" data-i18n="cmd.serial">Serial</option>') < \
+        source.index('<option value="web" data-i18n="cmd.web">Web</option>')
     assert "const LOG_SOURCE_MAX_BYTES=1024*1024" in source
     assert "const LOG_DISPLAY_MAX_BYTES=16000" in source
     assert "sourceBuffers={web:'',serial:'',serial1:''}" in source
@@ -590,8 +622,11 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert 'id="terminalHint"' in source
     assert 'id="termTabs"' in source
     assert 'id="terminalFrame"' not in source
-    # 终端 URL 由上位机 HOSTIP 上报自动发现（_launcherIp），不硬编码
-    assert "function terminalUrl(){return 'http://'+_launcherIp+':8090/terminal';}" in source
+    # 终端 URL 由上位机 HOSTIP 上报自动发现（_launcherIp），不硬编码；
+    # 拼 ?theme= 把当前页面主题带给终端页（终端配色跟随 DC 页面，
+    # 与 initEmbedTuneFrames 同一惯例；launcher 终端页缺省保持原深色）；
+    # v1.10.0 起 UI 风格恒为 Apple，不再拼 ui 参数
+    assert "function terminalUrl(){var de=document.documentElement;return 'http://'+_launcherIp+':8090/terminal?theme='+(de.getAttribute('data-theme')||'dark');}" in source
     # 选择持久化：localStorage 键 + 写入/读取 + 默认 serial + 启动时恢复
     assert "const CMD_TARGET_KEY='donkeydrifter.ui.cmdTarget'" in source
     assert "localStorage.setItem(CMD_TARGET_KEY,src)" in source
@@ -623,15 +658,16 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "document.createElement('iframe')" in source
     assert "f.setAttribute('scrolling','no')" in source
     assert "function selectTerminalTab(id)" in source
-    # 标签按位置连续编号（v1.7.80）：新建用 termList.length+1，杀标签后剩余标签重编号；
+    # 标签默认编号取最小空闲编号（#149）：freeTermNumber 找未被占用的最小 N（改名置空 num、关闭标签即释放）；
     # 标签文字放在 .termTabLabel 子 span（v1.7.87 起）；v1.7.93 起默认名智能缩写（放得下显示"终端 N"、放不下缩写为 N）；
     # #90 修复：fitTermTabLabels 每次先按长名统一测量、溢出才缩写（原按改名前布局判 packed，
     # 临界宽度下长名↔短名振荡，用户看到长名+溢出"没生效"）
-    assert "l.textContent=t('terminal.tab')+' '+(termList.length+1);" in source
+    assert "function freeTermNumber(){let n=1;const used=new Set();termList.forEach(x=>{if(x.num)used.add(x.num)});while(used.has(n))n++;return n;}" in source
+    assert "const num=freeTermNumber();const l=document.createElement('span');l.className='termTabLabel';l.textContent=t('terminal.tab')+' '+num;" in source
     assert "function fitTermTabLabels()" in source
     assert "termTabs.scrollWidth>termTabs.clientWidth" in source
-    assert "if(!x.name)x.l.textContent=t('terminal.tab')+' '+(j+1)" in source
-    assert "if(termTabs.scrollWidth>termTabs.clientWidth)termList.forEach((x,j)=>{if(!x.name)x.l.textContent=''+(j+1)})" in source
+    assert "termList.forEach(x=>{if(!x.name&&x.num)x.l.textContent=t('terminal.tab')+' '+x.num})" in source
+    assert "if(termTabs.scrollWidth>termTabs.clientWidth)termList.forEach(x=>{if(!x.name&&x.num)x.l.textContent=''+x.num})" in source
     assert "packed?" not in source
     assert "window.addEventListener('resize',fitTermTabLabels)" in source
     # × 单独关闭钮（v1.7.87）：每个标签左侧一个 ×，按 id 杀对应终端，
@@ -641,7 +677,9 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "function killTerminalTab(id)" in source
     # 保底一个终端（v1.7.97）：仅剩一个标签时 × 关闭钮隐藏（updateTermTabClose），
     # killTerminalTab 入口守卫拒绝关闭最后一个；term 对象持 × 元素引用 c 以控制显隐
-    assert "const term={id:id,f:f,b:b,l:l,c:c,name:null,state:'loading'}" in source
+    assert "const term={id:id,f:f,b:b,l:l,c:c,name:null,num:num,state:'loading'}" in source
+    # 改名经 window message 写入 cur.name 并置空 num 释放默认编号（#149）
+    assert "cur.name=d.name;cur.num=null;cur.l.textContent=d.name;cur.b.title=d.name;" in source
     assert "function updateTermTabClose(){const hide=termList.length<=1;" in source
     assert "x.c.style.display=hide?'none':''" in source
     assert "function killTerminalTab(id){if(termList.length<=1)return;" in source
@@ -654,19 +692,22 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert "d.type!=='donkeydrifter.term.name'" in source
     assert "x.f.contentWindow===e.source" in source
     assert "if(!cur||cur.name)return;" in source
-    assert "cur.name=d.name;cur.l.textContent=d.name;" in source
+    assert "cur.name=d.name;cur.num=null;cur.l.textContent=d.name;" in source
     assert ".termTabClose{" in source
     assert "I18N.zh['terminal.closeTab']" in source
     assert "I18N.en['terminal.closeTab']" in source
     # 标签浅色皮肤（v1.7.87）：未选中白底深字、选中蓝字浅蓝底；终端画布保持深色
-    assert 'html[data-theme="light"] .termTab{' in source
-    assert 'html[data-theme="light"] .termTab.active{' in source
-    assert 'html[data-theme="light"] .termTabClose:hover{' in source
+    # Apple UI 改造：基础规则改用 CSS 变量，浅色值收敛进 html[data-theme="light"] 变量块
+    assert '.termTab{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:2px 8px;height:22px;border:1px solid var(--termTabLine);border-radius:6px;background:var(--termTabBg);color:var(--inkT);' in source
+    assert '.termTab.active{color:var(--tabActiveInk);border-color:var(--tabActiveInk);background:var(--tabActiveBg)}' in source
+    assert '.termTabClose:hover{opacity:1;color:var(--bad2);background:var(--badSoft)}' in source
+    assert '--termTabLine:rgba(0,0,0,.08);--termTabBg:#fff' in source
+    assert '--tabActiveInk:#0066cc;--tabActiveBg:#fff' in source
     # 新开浏览器标签的旧逻辑已删除
     assert "openNewTerminal" not in source
     assert "window.open(terminalUrl" not in source
     # .termFrame CSS 保留 #57 白边修复属性（标识符由 #terminalFrame 改为 .termFrame）
-    assert ".termFrame{display:block;flex:1 1 auto;width:100%;min-height:0;border:0;border-radius:6px;background:#101318}" in source
+    assert ".termFrame{display:block;flex:1 1 auto;width:100%;min-height:0;border:0;border-radius:6px;background:var(--termBg)}" in source
     # 终端窗口全屏按钮（v1.7.99）：右下角图标按钮，UI/行为完全对齐 chartFullscreenBtn；
     # 按钮居 #terminalWrap DOM 末尾（#terminalHint 之后），压在 insertBefore 插入的 iframe 上；
     # #terminalWrap 加 position:relative 作定位父级；:fullscreen 抵消原 height/min-height/max-height 的 calc 钳制，
@@ -674,7 +715,7 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     assert 'id="termFullscreenBtn"' in source
     assert 'onclick="toggleTerminalFullscreen()"' in source
     assert '#termFullscreenBtn{position:absolute;right:8px;bottom:8px;z-index:2}' in source
-    assert '#terminalWrap:fullscreen{background:#101318;height:auto;min-height:0;max-height:none;padding:0;border-radius:0}' in source
+    assert '#terminalWrap:fullscreen{background:var(--termBg);height:auto;min-height:0;max-height:none;padding:0;border-radius:0}' in source
     assert 'html[data-theme="light"] #terminalWrap:fullscreen' not in source
     assert 'function toggleTerminalFullscreen(){if(document.fullscreenElement===terminalWrap)document.exitFullscreen();else terminalWrap.requestFullscreen()}' in source
     assert "tf.innerHTML=document.fullscreenElement===terminalWrap?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
@@ -801,13 +842,13 @@ def test_web_console_help_modal_mirrors_donkeydrifter_layout():
 
     # 帮助弹窗完全模仿 DonkeyDrifter：右下角锚定 + 蓝边渐变面板
     assert '.helpModal{position:fixed;right:18px;bottom:74px;width:min(340px,calc(100vw - 36px))' in source
-    assert 'background:linear-gradient(135deg,#1c2430,#121821);border:1px solid #5cc8ff;border-radius:14px;padding:14px' in source
+    assert 'background:var(--cardGrad);border:1px solid var(--accent);border-radius:14px;padding:14px' in source
     # 幽灵关闭按钮（与 DonkeyDrifter 一致：透明底 + zinc-400 ×，hover zinc-800）
-    assert '.helpClose{min-width:0;width:28px;height:28px;padding:0;border:none;border-radius:50%;background:transparent;color:#a1a1aa' in source
-    assert '.helpClose:hover{background:#27272a;color:#f4f4f5}' in source
+    assert '.helpClose{min-width:0;width:28px;height:28px;padding:0;border:none;border-radius:50%;background:transparent;color:var(--closeInk)' in source
+    assert '.helpClose:hover{background:var(--closeHoverBg);color:var(--closeHoverInk)}' in source
     # 功能分类 + 小标题（双语 i18n，uppercase 灰色小标题样式）
     assert 'class="helpSection"' in source
-    assert '.helpSection h3{margin:0 0 8px;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:#8fa1b5}' in source
+    assert '.helpSection h3{margin:0 0 8px;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3)}' in source
     assert 'data-i18n="help.groupStatus"' in source
     assert 'data-i18n="help.groupNetwork"' in source
     assert 'data-i18n="help.groupData"' in source
@@ -840,8 +881,10 @@ def test_web_console_has_collapsed_glow_fab_with_radial_actions():
     assert "window.addEventListener('scroll',collapseFabActions" in source
     assert "window.addEventListener('touchmove',collapseFabActions" in source
     assert ".fabToggle{position:fixed;right:24px;bottom:24px;width:18px;height:18px" in source
-    assert "box-shadow:0 0 18px #5cc8ff,0 0 36px rgba(92,200,255,.55)" in source
-    assert ".fabToggle:hover,.fabToggle:focus-visible,.fabToggle:active{background:#8bdcff;border-color:#8bdcff;" in source
+    assert "box-shadow:var(--fabGlow)" in source
+    # v1.10.0 起 Apple 为唯一风格：FAB 无座舱辉光，变量收敛为 none（box-shadow:var(--fabGlow) 规则不变）
+    assert "--fabGlow:none" in source
+    assert ".fabToggle:hover,.fabToggle:focus-visible,.fabToggle:active{background:var(--fabBgHover);border-color:var(--fabBgHover);" in source
     assert ".fabActions.show .helpFab" in source
     assert source.index('id="fabToggle"') < source.index('id="fabActions"') < source.index('id="helpFab"')
     # Issue #92：语言 FAB/弹出菜单死代码不残留
@@ -961,6 +1004,53 @@ def test_firmware_config_centralizes_core_compile_time_defaults():
     assert "#define ENABLE_WIFI_CONSOLE" not in sketch
     assert "#define CH1_PIN 36" not in sketch
     assert "#define PWM_FILTER_SIZE 5" not in sketch
+
+
+def test_cloud_report_url_has_in_repo_default_not_only_gitignored_secret():
+    """「找小车」上报地址必须有仓库内默认值（v1.8.77 教训）。
+
+    干净 worktree / 新 clone 里没有 gitignore 的 WirelessSecrets.h；若上报地址只来自
+    该文件，整块上报代码会被静默编译掉——车明明在线，find-dkc 网页却查不到（用户反馈）。
+    """
+    config = (
+        PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h"
+    ).read_text(encoding="utf-8")
+    reporter = (
+        PROJECT_ROOT / "libraries" / "mus4_cloud" / "src" / "CloudReporter.cpp"
+    ).read_text(encoding="utf-8")
+    sketch = MUS4_SKETCH.read_text(encoding="utf-8")
+
+    assert '#define ENABLE_CLOUD_REPORT' in config
+    assert '#define CLOUD_REPORT_URL_DEFAULT "https://find-dkc.pages.dev/report"' in config
+    assert '#include "FirmwareConfig.h"' in reporter
+    # 缺省回落：CLOUD_REPORT_URL 未定义时用仓库内默认值，门槛只看 ENABLE_CLOUD_REPORT
+    assert re.search(
+        r"#ifndef\s+CLOUD_REPORT_URL\s*\n#define\s+CLOUD_REPORT_URL\s+CLOUD_REPORT_URL_DEFAULT",
+        reporter,
+    )
+    assert "#if defined(ENABLE_CLOUD_REPORT) && defined(CLOUD_REPORT_URL)" not in reporter
+    assert "mus4cloud::update();" in sketch
+    # 上报节奏：稳态 5 分钟一跳、开机首报成功前 1 分钟快重试
+    assert "CLOUD_REPORT_INTERVAL_MS = 300000UL" in reporter
+    assert "CLOUD_REPORT_RETRY_MS = 60000UL" in reporter
+
+
+def test_cloud_report_retry_policy_is_bounded_and_ip_change_cannot_spin():
+    """上报重试不得把主循环拖死（同步 HTTPS 最长各 5 秒，主循环还要跑控制）。
+
+    两个约束：① 快速重试只在本次开机尚未成功上报过时启用，长时间断网退回
+    5 分钟一跳；② 换 IP 触发补报后无论成败都记住这次尝试过的 IP，否则
+    「换 IP + 上报失败」会让 ipChanged 每轮都为真，退化成死循环重试。
+    """
+    reporter = (
+        PROJECT_ROOT / "libraries" / "mus4_cloud" / "src" / "CloudReporter.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "everSucceeded ? CLOUD_REPORT_INTERVAL_MS : CLOUD_REPORT_RETRY_MS" in reporter
+    assert "lastReportedIp = ip;" in reporter
+    # 必须无条件记录尝试过的 IP，不能只在成功分支里记
+    assert "if (ok) {\n            lastReportedIp = ip;" not in reporter
+    assert "everSucceeded = true;" in reporter
 
 
 
@@ -1764,7 +1854,7 @@ def test_web_console_uses_dev_label_for_development_switch():
     assert "requestDevModeToggle" not in source
     # v1.8.21：DEV 开关恢复至 DC 头部（PR #124 曾移至 DonkeyDrifter 顶栏，现加回）
     # v1.8.24：改为 DD 同款文字胶囊按钮，role=switch + aria-checked 由 renderDevMode 同步
-    assert 'id="devModeToggle" class="devHint" onclick="toggleDevModeFromSwitch()" role="switch" aria-checked="false">DEV</button>' in source
+    assert 'id="devModeToggle" onclick="toggleDevModeFromSwitch()" role="switch" aria-checked="false">DEV</button>' in source
     assert '#devModeToggle' in source
     assert '#devModeToggle.devOn{' in source
     assert "function renderDevMode(v){uiDevMode=!!v" in source
@@ -1787,11 +1877,11 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     assert "body.embedded .headerRow{display:none}" in source
     assert ".toggleSwitch{position:relative;display:inline-flex;align-items:center;gap:8px;cursor:pointer}" in source
     assert ".otaLink" in source
-    assert ".devHint{position:relative}" in source
-    assert ".devHint:hover:after" in source
-    assert "content:'开发模式会持久化；Web Console 免 AUTH，但仍保留 Park Locked 安全限制。OTA 传输期间会默认 Park Locked。'" in source
-    assert ".version{color:#8fa1b5;font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block}" in source
-    assert ".ghLink{display:inline-flex;align-items:center;color:#8fa1b5;margin-left:6px}" in source
+    # Apple UI 改造：devHint 悬停小字已删除；安全提示由开启 DEV 时的确认弹窗 devModeModal 承担
+    assert "devHint" not in source
+    assert 'data-i18n="dev.body"' in source
+    assert ".version{color:var(--ink3);font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block}" in source
+    assert ".ghLink{display:inline-flex;align-items:center;color:var(--ink3);margin-left:6px}" in source
     assert ".stateGrid{display:grid;gap:10px;align-items:stretch;grid-template-columns:" in source
     assert "#modeCard{grid-area:mode}" in source
     assert "#parkCard{grid-area:park}" in source
@@ -1809,8 +1899,9 @@ def test_web_console_header_logo_left_of_title():
 
     source = firmware_source_text()
 
-    assert ".headerLogo{width:32px;height:32px;border-radius:8px;border:1px solid #2b3441;align-self:center}" in source
-    assert 'html[data-theme="light"] .headerLogo{border-color:#d5dce4}' in source
+    assert ".headerLogo{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);align-self:center}" in source
+    # 浅色描边经变量块切换（Apple UI 改造：元素级浅色覆盖规则已收敛为 CSS 变量）
+    assert '--line:rgba(0,0,0,.08)' in source
     # 位置：logo 在 headerRow 内、主标题 <h1> 左边
     header_pos = source.index('<div class="headerRow">')
     logo_pos = source.index('<img class="headerLogo" src="/favicon.png" alt="Drifter Console">')
@@ -1825,8 +1916,8 @@ def test_web_console_header_logo_left_of_title():
     # v1.8.15：标题字号/字重/字色与间距对齐 DD 主导航（text-xl 20px / font-bold 700 /
     # zinc-100 前景色；标题↔功能 32px = gap 12 + margin-right 20）
     assert "h1{margin:0;font-size:1.25rem;font-weight:700;line-height:1.75rem}" in source
-    assert ".headerRow h1{color:#e8edf2;margin:0 20px 0 0}" in source
-    assert 'html[data-theme="light"] .headerRow h1{color:#1a2330}' in source
+    assert ".headerRow h1{color:var(--ink);margin:0 20px 0 0}" in source
+    assert 'html[data-theme="light"]{--bg:#f5f5f7;--ink:#1d1d1f;' in source
 
 
 def test_web_console_mobile_header_layout():
@@ -1841,7 +1932,13 @@ def test_web_console_mobile_header_layout():
     v1.7.70 第 2 行新增"打开 Kimi Code Web"占位按钮，order 插入 8，后续顺移 +1。
     v1.8.7 第 2 行再新增"打开 DeepSeek Harness"按钮，order 插入 9，后续顺移 +1。
     v1.8.42 第 2 行再新增"ZCode"按钮（#openZCodeBtn，插在 Kimi Code Web 与
-    DeepSeek Harness 之间），order 插入 9，后续顺移 +1。"""
+    DeepSeek Harness 之间），order 插入 9，后续顺移 +1。
+    v1.8.67 第 2 行再新增"ZCode Remote"按钮（#openZCodeRemoteBtn，localStorage 远程控制
+    链接入口，排在 DeepSeek Harness 之后、GitHub 链接之前），order 追加 11，
+    .br2 换行分隔顺移 11→12。
+    v1.8.68 #openZCodeRemoteBtn 撤下——旧「ZCode」按钮（#openZCodeBtn）原地替换为
+    远程控制链接入口（有意行为变更，用户不要两个 ZCode 按钮并存），第 2 行恢复
+    5 个入口，order 复原（#openZCodeBtn 仍 9），.br2 回到 11。"""
 
     source = firmware_source_text()
 
@@ -1850,7 +1947,10 @@ def test_web_console_mobile_header_layout():
     # v1.8.21：Donkey / OTA / DEV 恢复至 DC 头部，br2/br3 随之加回
     assert '<span class="rowBreak br2"></span>' in source
     assert '<span class="rowBreak br3"></span>' in source
+    # v1.10.0：座舱/Apple 切换器随座舱象限整体移除——版本号后直接接 br1，全仓库不得再有切换器残留
     assert '<span class="version" id="versionLabel">--</span><span class="rowBreak br1"></span>' in source
+    assert 'skinSwitch' not in source and 'skinSeg' not in source
+    assert 'skinCockpit' not in source and 'skinApple' not in source
     assert "@media (max-width:820px){.headerRow{align-items:center;gap:8px}" in source
     assert ".rowBreak{display:block;flex-basis:100%;height:0}" in source
     # 第 1 行：logo + 标题 + GitHub + 版本号
@@ -1860,12 +1960,21 @@ def test_web_console_mobile_header_layout():
     assert "#versionLabel{order:4}" in source
     assert "#versionLabel{order:4;margin-left:auto}" not in source
     assert ".br1{order:5}" in source
-    # 第 2 行：Donkey / DonkeyDrifter / Kimi Code Web / ZCode / DeepSeek Harness
-    assert "#enterDonkeyBtn{order:6}" in source
-    assert "#enterDonkeyDrifterBtn{order:7}" in source
-    assert "#openKimiCodeWebBtn{order:8}" in source
-    assert "#openZCodeBtn{order:9}" in source
-    assert "#openDshBtn{order:10}" in source
+    # 第 2 行：Donkey / DonkeyDrifter / Kimi Code Web / ZCode / DeepSeek Harness（包在 .navLinks 里整组换行、可横向滚动）
+    assert '</h1><span class="navLinks"><a class="navTab" data-i18n="button.enterDonkey" id="enterDonkeyBtn"' in source
+    assert '<span data-i18n="button.openDsh">DeepSeek Harness</span></button></span><a class="ghLink"' in source
+    assert ".navLinks{display:inline-flex;align-items:center;gap:12px}" in source
+    assert ".navLinks{order:6;flex-basis:100%;overflow-x:auto;scrollbar-width:none}" in source
+    assert ".navLinks::-webkit-scrollbar{display:none}" in source
+    assert ".navLinks>*{flex:0 0 auto}" in source
+    assert "#enterDonkeyBtn{order:6}" not in source
+    assert "#enterDonkeyDrifterBtn{order:7}" not in source
+    assert "#openKimiCodeWebBtn{order:8}" not in source
+    assert "#openZCodeBtn{order:9}" not in source
+    assert "#openDshBtn{order:10}" not in source
+    # v1.8.68：v1.8.67 的 #openZCodeRemoteBtn 撤下，.br2 复原回 11
+    assert "#openZCodeRemoteBtn" not in source
+    assert ".br2{order:11}" in source
     # 第 3 行：静音（桌面右推 margin-left:auto 复位）+ 主题 + 语言（右对齐）
     assert ".headerRow .otaLink{order:13}" in source
     assert "#muteToggle{order:14;margin-left:0}" in source
@@ -1885,7 +1994,7 @@ def test_web_console_language_tabs_wired_to_set_language():
 
     source = firmware_source_text()
 
-    assert ".langTabs{display:inline-flex;align-items:center;gap:2px;background:#171c24;border:1px solid #344154;border-radius:999px;padding:0 2px;height:24px;box-sizing:border-box;box-shadow:inset 0 0 0 1px #2b3441}" in source
+    assert ".langTabs{display:inline-flex;align-items:center;gap:2px;background:var(--panel);border:1px solid var(--line2);border-radius:999px;padding:0 2px;height:24px;box-sizing:border-box;box-shadow:inset 0 0 0 1px var(--line)}" in source
     # 外大椭圆（box-sizing:border-box；v1.7.94 起外圈 border 1px #344154 +
     # 内嵌 box-shadow 1px #2b3441 = DC 粗框语言，inset 描边不占布局）
     # + 内连体分段（#ledBlinkTabs 覆写容器 34px 高 + 4px 纵向 padding，border 占 2px，
@@ -1893,17 +2002,17 @@ def test_web_console_language_tabs_wired_to_set_language():
     # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言；
     # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs 使用
     assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
-    assert ".langTabs button.active{background:#5cc8ff;color:#061019}" in source
+    assert ".langTabs button.active{background:var(--accentFill);color:var(--onAccent)}" in source
     # Issue #92 后续样式统一：三页面（DC/D/DD）语言按钮配色对齐 DC/D 深浅切换
     # （themeButton）——32×32 圆形、深色 #111820 底 + #344154 边框 + inset 1px
     # #2b3441 内圈、字色 #b9c5d3、hover #e8edf2；浅色 #f4f6f9/#ccd5df/#d5dce4/
     # #3f4f63、hover #1a2330；字体栈沿用 DD index.css :root（含 font-synthesis/
     # text-rendering/font-smoothing）；hover 补 background 锁定，抵消 DC 通用
     # button:hover 的背景覆盖
-    assert ".langButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border:1px solid #344154;border-radius:9999px;background:#111820;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans\",Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\";font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-size:12px;font-weight:600;line-height:1;cursor:pointer;transition:color .15s cubic-bezier(.4,0,.2,1),background-color .15s cubic-bezier(.4,0,.2,1),border-color .15s cubic-bezier(.4,0,.2,1)}" in source
-    assert ".langButton:hover,.langButton:focus-visible{color:#e8edf2;background:#111820}" in source
-    assert 'html[data-theme="light"] .langButton{background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4;color:#3f4f63}' in source
-    assert 'html[data-theme="light"] .langButton:hover,html[data-theme="light"] .langButton:focus-visible{color:#1a2330;background:#f4f6f9}' in source
+    assert ".langButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border:1px solid var(--line2);border-radius:9999px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);color:var(--inkPill);font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans\",Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\";font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-size:12px;font-weight:600;line-height:1;cursor:pointer;transition:color .15s cubic-bezier(.4,0,.2,1),background-color .15s cubic-bezier(.4,0,.2,1),border-color .15s cubic-bezier(.4,0,.2,1)}" in source
+    assert ".langButton:hover,.langButton:focus-visible{color:var(--ink);background:var(--card)}" in source
+    # Apple UI 改造：浅色值收敛进变量块（--card:#f4f6f9 / --inkPill:#3f4f63 / --ink:#1a2330），元素级浅色覆盖规则已移除
+    assert 'html[data-theme="light"] .langButton' not in source
     # DOM：单按钮 + 单击切换 + aria 标题走 i18n（沿用 language.title 词条）
     assert '<button type="button" id="langToggle" class="langButton" onclick="toggleLanguage()" aria-label="语言" data-i18n-aria="language.title">中</button>' in source
     # 分段控件死代码不残留（.langSwitch、data-lang 双按钮已随 Issue #92 移除）
@@ -1930,7 +2039,7 @@ def test_web_console_language_tabs_wired_to_set_language():
     assert "#voltageCard .stateMeta span,#networkCard .stateMeta span{font-size:13px}" in source
     assert "@media(max-width:620px){" in source
     assert ".rcGrid{grid-template-columns:repeat(3,minmax(72px,1fr))}" in source
-    assert ".stateCard{position:relative;overflow:hidden;border:1px solid #344154;border-radius:10px;padding:12px" in source
+    assert ".stateCard{position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:10px;padding:12px" in source
     assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.08}" in source
     assert ".stateMeta span{font-size:15px;font-weight:700;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.2}" in source
     assert "text-overflow:ellipsis" not in source
@@ -1948,8 +2057,8 @@ def test_web_console_header_github_link_replaces_version_label():
     assert '<svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58' in source
     # 位置：紧跟主标题 </h1>（原版本号位置）、在语言单按钮 langToggle 左边
     assert source.index('<h1><a class="titleLink" href="https://www.donkeydrift.com" target="_blank" rel="noopener" data-i18n="app.title">Drifter Console</a></h1>') < source.index('<a class="ghLink"') < source.index('id="langToggle"')
-    assert '.ghLink{display:inline-flex;align-items:center;color:#8fa1b5;' in source
-    assert '.ghLink:hover{color:#5cc8ff}' in source
+    assert '.ghLink{display:inline-flex;align-items:center;color:var(--ink3);' in source
+    assert '.ghLink:hover{color:var(--accent)}' in source
 
 
 def test_web_console_drift_card_tune_link_left_of_state_dot():
@@ -1962,10 +2071,10 @@ def test_web_console_drift_card_tune_link_left_of_state_dot():
     source = firmware_source_text()
 
     drift = source[source.index('id="driftCard"'):source.index('id="voltageCard"')]
-    assert '<span class="tunePair"><a href="/drift" id="driftTuneLink">Tune</a><span class="stateDot"></span></span>' in drift
+    assert '<span class="tunePair"><a href="/drift" id="driftTuneLink" data-i18n="state.tune">Tune</a><span class="stateDot"></span></span>' in drift
     assert 'id="driftNeedle"></i></div><span class="stateDot"></span></div>' not in drift
     assert '.tunePair{position:absolute;right:12px;top:11px;font-size:11px;line-height:10px;' in source
-    assert '.tunePair a{color:#5cc8ff;text-decoration:none;vertical-align:-1px}' in source
+    assert '.tunePair a{color:var(--accent);text-decoration:none;vertical-align:-1px}' in source
     # 圆点无 transform 位移，保持与其它卡片平行；只调 Tune 文字
     assert '.tunePair .stateDot{position:static;display:inline-block;vertical-align:middle;margin-left:5px;width:10px;height:10px}' in source
     assert '.stateDot{position:absolute;right:12px;top:12px;width:10px;height:10px;' in source
@@ -2001,8 +2110,8 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert "function netIpValid(v){return !!v&&v!=='--'&&v!=='0.0.0.0'&&v.toLowerCase()!=='disabled'}" in source
     assert "networkValue.classList.toggle('copyValue',netIpValid(networkCopyIp))" in source
     # v1.7.44：AP Disabled（STA-only 关 AP）与 HOST 未上报时卡片边框与小点变红（#ff6b6b）
-    assert ".netDown{border-color:#ff6b6b}" in source
-    assert ".netDown .stateDot{background:#ff6b6b}" in source
+    assert ".netDown{border-color:var(--bad)}" in source
+    assert ".netDown .stateDot{background:var(--bad)}" in source
     assert "'stateCard '+(hostIp?'mode0':'netDown')" in source
     assert "'stateCard '+(netIpValid(ap)?'mode0':'netDown')" in source
     assert "'stateCard '+(hostIp?'mode0':'driftOff')" not in source
@@ -2294,7 +2403,8 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
 
     assert "static const char WIFI_WEB_UPDATE_HTML[] PROGMEM" in assets_source
     assert "static const char WIFI_WEB_JUDGE_HTML[] PROGMEM" in assets_source
-    assert "WebSocket first / pseudoSpeed monitor-first scoring" in assets_source
+    assert "WebSocket first / pseudoSpeed monitor-first scoring" not in assets_source  # Apple UI 改造：Judge 页旧英文副标题小字已删除
+    assert "<h1>Drift Judge</h1>" in assets_source
     assert "MUS4 HTTP OTA" in assets_source
     assert "static const char WIFI_WEB_UPDATE_HTML[] PROGMEM" not in sketch_source
     assert source.index('<section class="panel" id="chartPanel">') < source.index('<section class="panel" id="serialPanel">')
@@ -2334,7 +2444,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert 'function updateTubMeta()' in source
     assert 'tubMeta.textContent=tubSamples.length' in source
     assert '<span class="recMeta"><span data-i18n="tub.recorded">录制量</span><b id="tubMeta">0</b></span>' in source
-    assert 'function clearChart(){pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;tubSamples=[];tubStartedMs=0;tubStoppedMs=0;tubLastSeq=0;tubRecording=false;updateTubMeta();draw()}' in source
+    assert "function clearChart(){const wasRecording=tubRecording;pointHead=0;pointCount=0;points.fill(null);scrollOffset=0;smoothedDt=16;gridReady=false;tubSamples=[];tubStartedMs=0;tubStoppedMs=0;tubLastSeq=0;tubRecording=false;updateTubMeta();refreshDynamicLabels();if(wasRecording)line(t('tub.clearedWhileRecording'));draw()}" in source
     assert "c.innerHTML=chartPaused?ICON_PLAY:ICON_PAUSE" in source
     assert "f.innerHTML=document.fullscreenElement===chartPanel?ICON_FULLSCREEN_EXIT:ICON_FULLSCREEN" in source
     assert '<button onclick="clearChart()">清空曲线</button>' not in source
@@ -2346,7 +2456,7 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     # v1.8.21：OTA 按钮与 DEV 开关恢复至 DC 头部（PR #124 曾移至 DonkeyDrifter 顶栏，现加回）
     assert '<a href="/update" class="otaLink"' in source
     assert 'id="devModeToggle"' in source
-    assert '<select id="cmdTarget"><option value="serial">Serial</option><option value="web">Web</option></select><div id="termTabs"></div><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
+    assert '<select id="cmdTarget"><option value="serial" data-i18n="cmd.serial">Serial</option><option value="web" data-i18n="cmd.web">Web</option></select><div id="termTabs"></div><button class="iconButton" onclick="addTerminalTab()" id="newTermBtn" title="新建终端" data-i18n-title="terminal.new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="iconButton" onclick="togglePause()" id="pauseBtn" title="暂停" data-i18n-title="button.pause"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button><button class="iconButton" onclick="sendCmd()" id="sendBtn" title="发送" data-i18n-title="button.send"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg></button><input id="cmd">' in source
     assert 'placeholder="PING / STATUS / AUTH:mus4-debug / 0:0"' not in source
     assert "input{flex:0 1 180px;min-width:120px;max-width:220px}" in source
     assert "p.innerHTML=logPaused?ICON_PLAY:ICON_PAUSE" in source
@@ -2379,7 +2489,7 @@ def test_web_console_network_ip_click_copies_with_non_blocking_toast():
     assert 'title="点击复制 IP"' not in source
     assert 'id="toast" class="toast"' in source
     assert ".copyValue{cursor:pointer;position:relative}" in source
-    assert ".copyValue:hover:after{content:'点击复制 IP';position:absolute;left:72px;top:-26px;background:#111820;border:1px solid #5cc8ff;border-radius:8px;padding:4px 8px;color:#dbeafe;font-size:12px;font-weight:600;white-space:nowrap;pointer-events:none;z-index:4}" in source
+    assert ".copyValue:hover:after{content:'点击复制 IP';position:absolute;left:72px;top:-26px;background:var(--card);border:1px solid var(--popBorder);border-radius:8px;padding:4px 8px;color:var(--popInk);font-size:12px;font-weight:600;white-space:nowrap;pointer-events:none;z-index:4}" in source
     assert ".gear{position:absolute;right:10px;top:32px;width:30px;height:30px;min-width:0;padding:0;border-radius:50%;font-size:16px;line-height:1;z-index:6}" in source
     assert "text-decoration:underline" not in source
     assert "text-decoration-style:dotted" not in source
@@ -2405,9 +2515,9 @@ def test_web_console_groups_rc_and_status_into_collapsible_sections():
 
     assert 'id="rcFold" class="fold"' in source
     assert 'id="statusFold" class="fold"' in source
-    assert '<span class="foldIcon">▸</span><span class="titleHint"><span data-i18n="panel.rcChannels">RC Channels</span>' in source
+    assert '<span class="foldIcon">▸</span><span data-i18n="panel.rcChannels">RC Channels</span>' in source
     assert '<span class="foldIcon">▸</span><span data-i18n="panel.statusDetails">STATUS Details</span>' in source
-    assert 'aria-expanded="false"><span class="foldIcon">▸</span><span class="titleHint"><span data-i18n="panel.rcChannels">RC Channels</span>' in source
+    assert 'aria-expanded="false"><span class="foldIcon">▸</span><span data-i18n="panel.rcChannels">RC Channels</span>' in source
     assert 'id="servoDutyValue"' in source
     assert 'id="escDutyValue"' in source
     assert '.fold:not(.open) .foldBody{display:none}' in source
@@ -2454,10 +2564,10 @@ def test_web_console_settings_view_shows_rc_channels_panel():
     assert "rcHead.removeAttribute('onclick')" in source
     assert "rcHead.setAttribute('aria-expanded','true')" in source
     # 压平 CSS（body.settings/body.wifi 作用域限定）：透明背景/无边框/无 hover/cursor:default/pointer-events:none、
-    # 隐藏 ▸ 箭头；titleHint 重新启用 pointer-events 以保留标题级 hintSpan 悬停灰字
+    # 隐藏 ▸ 箭头（Apple UI 改造：titleHint/hintSpan 悬停小字已全部删除，原 pointer-events 恢复规则随之移除）
     assert 'body.settings #rcFold .foldHead,body.wifi #rcFold .foldHead{background:transparent;border:none;cursor:default;pointer-events:none}' in source
     assert 'body.settings #rcFold .foldHead:hover,body.wifi #rcFold .foldHead:hover{background:transparent}' in source
-    assert 'body.settings #rcFold .foldHead .titleHint,body.wifi #rcFold .foldHead .titleHint{pointer-events:auto}' in source
+    assert 'titleHint' not in source
     assert 'body.settings #rcFold .foldIcon,body.wifi #rcFold .foldIcon{display:none}' in source
     # settingsView（车辆设置标题 + 调校行）移到 .grid 之前，内嵌视图里排在 RC Channels 面板前
     assert source.index('<div id="settingsView" class="settingsView">') < source.index('<div class="grid">')
@@ -2778,8 +2888,8 @@ def test_web_console_host_wifi_status_bar_shows_host_report_state():
     assert "function closeWifiStaModal(){closeWifiScanPopover();maskStaPassword();stopHostWifiPoll();wifiStaModal.classList.remove('show')}" in assets
 
     # IDLE 分支：host_ip 非空且上报不超过 60s 视为上位机在线，否则等待上位机上报
-    assert "if(j.status==='IDLE'){if(j.host_ip&&j.host_ip_age_s<=60){lbl.textContent=t('wifi.hostStatus.hostOnline');ipEl.style.display='';ipEl.textContent='IP: '+j.host_ip}" in assets
-    assert "else{lbl.textContent=t('wifi.hostStatus.waitingHost');ipEl.style.display='none'}errEl.style.display='none'}" in assets
+    assert "if(j.status==='IDLE'){if(j.host_ip&&j.host_ip_age_s<=60){setHostWifiLabel('wifi.hostStatus.hostOnline');ipEl.style.display='';ipEl.textContent='IP: '+j.host_ip}" in assets
+    assert "else{setHostWifiLabel('wifi.hostStatus.waitingHost');ipEl.style.display='none'}errEl.style.display='none'}" in assets
     # connected/failed 分支保持现有自愈（拿到终态后停止轮询）
     # connected 分支：拿到终态后停止轮询并 toast（v1.8.63 在中间插入「完成」按钮改写，两者不再相邻，分开断言）
     assert "stopHostWifiPoll();const doneBtn=document.getElementById('staConnectBtn')" in assets
@@ -2790,11 +2900,16 @@ def test_web_console_host_wifi_status_bar_shows_host_report_state():
     assert "I18N.en['wifi.hostStatus.hostOnline']='Host online'" in assets
     assert "I18N.zh['wifi.hostStatus.waitingHost']='等待上位机上报'" in assets
     assert "I18N.en['wifi.hostStatus.waitingHost']='Waiting for host report'" in assets
-    # 状态条 label 不走 data-i18n：initLanguage() 异步 fetch /api/language 后 applyLanguage()
-    # 会按 data-i18n 重写 textContent，把首轮轮询已显示的「上位机在线」覆盖回占位文字（最长 5s 才自愈）——
-    # label 是状态驱动元素（与 refreshDynamicLabels 管辖的按钮同类），占位文字硬编码，首轮轮询 <1s 即被真实状态替换
-    assert 'id="hostWifiStatusLabel" style="color:#8fa1b5">等待上位机上报</b>' in assets
-    assert 'data-i18n="wifi.hostStatus.waitingHost"' not in assets
+    # v1.9.3：状态条 label 改为 data-i18n（原硬编码中文在 en 模式残留）。
+    # 原「不走 data-i18n」的理由是 applyLanguage() 会按 data-i18n 重写 textContent、把已显示的
+    # 真实状态覆盖回占位文字（最长 5s 才自愈）。现在状态经 setHostWifiLabel() 记录词条键，
+    # 且 refreshDynamicLabels()（applyLanguage 末尾调用）会立刻按记录键重渲染，窗口消失。
+    assert 'id="hostWifiStatusLabel" style="color:var(--ink3)" data-i18n="wifi.hostStatus.waitingHost">等待上位机上报</b>' in assets
+    assert "let hostWifiLabelKey='wifi.hostStatus.waitingHost'" in assets
+    assert "function refreshDynamicLabels(){setHostWifiLabel(hostWifiLabelKey);" in assets
+    assert "setHostWifiLabel('wifi.hostStatus.hostOnline')" in assets
+    assert "setHostWifiLabel('wifi.hostStatus.waitingHost')" in assets
+    assert "lbl.textContent={connecting:t('wifi.hostStatus.connecting')" not in assets
     assert "wifi.hostStatus.idle" not in assets
 
 
@@ -3925,7 +4040,7 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     assert "judgeConfigSummary" in assets
     assert "基础阈值" in assets
     assert "评分参数" in assets
-    assert "基础阈值管判定边界，评分参数管评分手感" in assets
+    assert "基础阈值管判定边界，评分参数管评分手感" not in assets  # Apple UI 改造：该说明小字已删除
     assert "越小越容易触发碰撞。" in assets
     assert "越大越容易因为 pseudoSpeed 波动掉分。" in assets
     assert "已写入设备，设备重启后仍保留；后续样本立即生效" in assets
@@ -4029,7 +4144,7 @@ def test_drift_settings_button_next_to_joystick_calibration():
     ).read_text(encoding="utf-8")
 
     assert "button.driftSettings" in assets, "前端缺少漂移设置按钮的 data-i18n key"
-    assert "window.open('/drift?theme='+resolvedTheme(),'_blank')" in assets, "漂移设置按钮应携带当前主题跳转到 ESP32 自身 drift 配置页"
+    assert "window.open('/drift?theme='+resolvedTheme(),'_blank')" in assets, "漂移设置按钮应携带当前主题跳转到 ESP32 自身 drift 配置页（v1.10.0 起 UI 风格恒 Apple，不再携带 ui 参数）"
     assert "I18N.zh['button.driftSettings']" in assets, "缺少中文漂移设置文案"
     assert "I18N.en['button.driftSettings']" in assets, "缺少英文漂移设置文案"
     # 漂移设置按钮应与手柄校准按钮位于同一容器（设置视图调校行 / 诊断面板按钮行）
@@ -4045,78 +4160,88 @@ def test_drift_page_theme_and_title_hints():
     - <head> 内有防闪烁主题脚本（读 ?theme= URL 参数，缺省按系统 prefers-color-scheme）。
     - 控制台三处 /drift 入口（Drift 卡 Tune 链接 / Diagnostics 漂移设置按钮 /
       设置视图漂移设置按钮）都携带当前主题参数，实现"跟随 Drifter Console 深浅色"。
-    - 漂移页不自带主题切换按钮（v1.8.39 起删除）——主题完全跟随控制台
-      ?theme= 参数传递，缺省 auto 跟随系统，内存态不持久化。
-    - 大标题（h1）与各级小标题（面板 .label、小节 .sectionTitle）的描述文字改为
-      悬停时从标题右侧滑出的灰字提示（.titleHint + .hintSpan），参考 DonkeyDrifter
-      的 group-hover 标题提示样式。
-    - 「返回 Drifter Console」链接已删除。
+    - 头部自带主题切换按钮（Console 同款日月单图标 #themeToggle，内存态不写
+      localStorage），进入时以控制台 ?theme= 参数为初值、缺省 auto 跟随系统。
+    - Apple UI 改造：标题悬停灰字提示（.titleHint + .hintSpan）已全部删除（无意义小字
+      清理），drift.versionTag/status.desc/steering.desc/throttle.desc 键一并移除。
+    - 头部提供「返回 Drifter Console」链接（#backLink，data-i18n="drift.backLink"），
+      href 由 syncBackLink() 同步当前主题与 UI 风格参数。
     """
     assets = (
         PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
     ).read_text(encoding="utf-8")
     page = _page_region(assets, "WIFI_WEB_DRIFT_HTML")
 
-    # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（v1.8.39 起无切换按钮，完全跟随控制台 ?theme= 参数）
+    # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（进入时以控制台 ?theme= 参数为初值）
     assert "document.documentElement.dataset.theme" in page, "漂移页缺少防闪烁主题脚本"
-    assert 'html[data-theme="light"] body{' in page, "漂移页缺少浅色主题覆盖"
+    assert 'html[data-theme="light"]{--bg:#f5f5f7;--ink:#1d1d1f;' in page, "漂移页缺少浅色主题变量块"
     assert "function initTheme()" in page, "漂移页缺少 initTheme"
     assert "function readUrlTheme()" in page, "漂移页缺少 ?theme= 参数解析"
     assert "function initTheme(){uiTheme=readUrlTheme()||'auto';applyTheme();" in page, "漂移页 initTheme 应以 ?theme= 参数优先、缺省 auto"
     assert "mus4.ui.theme" not in page, "漂移页主题不应写 localStorage（与控制台一致的内存态）"
-    # v1.8.39：漂移页不再自带切换按钮——主题完全跟随 Drifter Console（经 ?theme= 参数传递）
-    assert 'id="themeToggle"' not in page, "漂移页不应再有主题切换按钮（应跟随控制台）"
-    assert "function toggleTheme()" not in page, "漂移页 toggleTheme 应已删除"
-    assert "function setTheme(theme)" not in page, "漂移页 setTheme 应已删除"
-    assert "drift.theme.title" not in page, "漂移页主题按钮 i18n 键应已删除"
+    # 头部自带主题切换按钮（Console 同款日月单图标，内存态切换）
+    assert 'id="themeToggle"' in page, "漂移页应有主题切换按钮"
+    assert "function toggleTheme(){setTheme(resolvedTheme()==='light'?'dark':'light')}" in page, "漂移页缺少 toggleTheme"
+    assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in page, "漂移页缺少 setTheme"
+    assert "drift.theme.title" not in page, "主题按钮用共享 theme.title 键，不应有 drift.theme.title"
+    assert 'data-i18n-aria="theme.title"' in page, "漂移页主题按钮缺少 theme.title aria i18n"
+    assert 'id="langToggle"' in page, "漂移页应有语言切换按钮"
 
     # 控制台三处入口携带主题参数
     assert "href=\"/drift\" id=\"driftTuneLink\"" in assets, "Drift 卡 Tune 链接缺少 driftTuneLink id"
     assert "dl.href='/drift?theme='+resolvedTheme()" in assets, "applyTheme 未同步 Tune 链接主题参数"
     assert "window.open('/drift?theme='+resolvedTheme(),'_blank')" in assets
     assert "location.href='/drift?theme='+resolvedTheme()" in assets
+    assert "'&ui='" not in assets, "v1.10.0 起任何跳转均不携带 ui 参数（UI 风格恒 Apple，残留 ?ui= 被忽略）"
 
-    # 标题悬停提示结构
-    assert page.count('class="titleHint"') == 4, "漂移页应有 4 处 titleHint（h1/Status/Steering/Throttle）"
-    assert page.count('class="hintSpan"') == 4, "漂移页应有 4 处 hintSpan"
-    assert ".titleHint:hover .hintSpan{" in page, "缺少悬停展开提示的 CSS"
-    assert 'data-i18n="drift.versionTag"' in page, "h1 的版本小字应保留为悬停提示"
-    assert 'data-i18n="drift.status.desc"' in page
-    assert 'data-i18n="drift.steering.desc"' in page
-    assert 'data-i18n="drift.throttle.desc"' in page
+    # Apple UI 改造：标题悬停灰字提示（.titleHint + .hintSpan）作为无意义小字全部删除，
+    # 原 4 处包装（h1 版本小字/Status/Steering/Throttle 描述）连同 i18n 键一并移除
+    assert page.count('class="titleHint"') == 0, "漂移页 titleHint 应已全部删除"
+    assert page.count('class="hintSpan"') == 0, "漂移页 hintSpan 应已全部删除"
+    assert ".titleHint:hover .hintSpan{" not in page
+    for key in ["drift.versionTag", "drift.status.desc", "drift.steering.desc", "drift.throttle.desc"]:
+        assert f'data-i18n="{key}"' not in page, f"{key} 悬停提示应已删除"
+        assert f"I18N.zh['{key}']" not in page, f"中文 i18n 键应已删除 {key}"
+        assert f"I18N.en['{key}']" not in page, f"英文 i18n 键应已删除 {key}"
 
-    # 返回链接已删除
-    assert "drift.backLink" not in page, "返回 Drifter Console 链接及其 i18n 键应已删除"
-    assert 'href="/"' not in page, "漂移页不应再有返回首页链接"
+    # 返回 Drifter Console 链接（#backLink），href 由 syncBackLink() 同步主题参数
+    assert 'data-i18n="drift.backLink"' in page, "漂移页缺少返回 Drifter Console 链接"
+    assert 'href="/"' in page, "漂移页缺少返回首页链接"
+    assert "function syncBackLink()" in page, "漂移页缺少 syncBackLink"
+    assert "'drift.backLink':'返回 Drifter Console'" in page, "缺少中文 drift.backLink 文案"
+    assert "'drift.backLink':'Back to Drifter Console'" in page, "缺少英文 drift.backLink 文案"
 
 
 def test_joystick_cal_and_rc_panel_title_hints():
-    """悬停灰字提示（.titleHint + .hintSpan）只保留在标题级元素上（v1.8.51 收敛）：
+    """标题悬停灰字提示（.titleHint + .hintSpan）已在 Apple UI 改造中全部删除（无意义小字清理）：
 
-    - 主控制台页面保留 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）。
-    - 标题级保留 2 处：手柄校准弹窗大标题（cal.title.hint）、RC Channels 折叠头
-      （rc.hint.panel）。
-    - v1.8.51：CH1~CH6 / OUT / Mid / Min / Max 共 12 个 rcCell 是字段标签而非小标题，
-      其 titleHint 包装与 12 组 rc.hint.* i18n 键已全部删除（用户：字段不需要悬停特效）。
+    - 主控制台页面 titleHint/hintSpan CSS（含 light 主题变体）整体移除。
+    - 原 v1.8.51 保留的 2 处标题级提示（手柄校准弹窗大标题 cal.title.hint、RC Channels
+      折叠头 rc.hint.panel）连同其 i18n 键一并删除。
+    - CH1~CH6 / OUT / Mid / Min / Max 共 12 个 rcCell 字段标签的 titleHint 包装与
+      12 组 rc.hint.* i18n 键保持已删除状态，不回潮。
     """
     assets = (
         PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
     ).read_text(encoding="utf-8")
     console = _page_region(assets, "WIFI_WEB_CONSOLE_HTML")
 
-    # 主控制台页面保留 titleHint/hintSpan CSS（含 light 主题变体，与 /drift 页一致）
-    assert ".titleHint{display:inline-flex;align-items:baseline" in console, "主控制台缺 titleHint 基础样式"
-    assert ".hintSpan{max-width:0;opacity:0;" in console, "主控制台缺 hintSpan 折叠样式"
-    assert ".titleHint:hover .hintSpan{max-width:340px;opacity:1;" in console, "主控制台缺悬停展开样式"
-    assert 'html[data-theme="light"] .hintSpan{' in console, "主控制台缺 light 主题 hintSpan 颜色变体"
+    # 主控制台 titleHint/hintSpan CSS 与全部包装已删除（Apple UI 改造，无意义小字清理）
+    assert 'class="titleHint"' not in console, "主控制台 titleHint 包装应已全部删除"
+    assert 'class="hintSpan"' not in console, "主控制台 hintSpan 应已全部删除"
+    assert ".titleHint{" not in console, "主控制台 titleHint CSS 应已删除"
+    assert ".hintSpan{" not in console, "主控制台 hintSpan CSS 应已删除"
+    assert 'html[data-theme="light"] .hintSpan{' not in console
 
-    # 弹窗大标题（标题级，保留）
-    assert '<div class="titleHint"><h3 data-i18n="cal.title">手柄校准</h3>' in console, "手柄校准弹窗大标题未包 titleHint"
-    assert 'data-i18n="cal.title.hint"' in console, "弹窗标题缺 cal.title.hint 悬停提示"
+    # 弹窗大标题恢复纯 h3（原 cal.title.hint 悬停提示一并删除）
+    assert '<h3 data-i18n="cal.title">手柄校准</h3>' in console, "手柄校准弹窗大标题应为纯 h3"
 
-    # RC Channels 折叠头（标题级，保留）
-    assert '<span class="titleHint"><span data-i18n="panel.rcChannels">RC Channels</span>' in console, "RC Channels 折叠头未包 titleHint"
-    assert 'data-i18n="rc.hint.panel"' in console, "RC Channels 折叠头缺 rc.hint.panel 悬停提示"
+    # RC Channels 折叠头恢复纯文本（原 rc.hint.panel 悬停提示一并删除）
+    assert '<span class="foldIcon">▸</span><span data-i18n="panel.rcChannels">RC Channels</span>' in console, "RC Channels 折叠头应为纯文本"
+    for key in ["cal.title.hint", "rc.hint.panel"]:
+        assert f'data-i18n="{key}"' not in console, f"{key} 悬停提示应已删除"
+        assert f"I18N.zh['{key}']" not in assets, f"中文 i18n 键应已删除 {key}"
+        assert f"I18N.en['{key}']" not in assets, f"英文 i18n 键应已删除 {key}"
 
     # 12 个 rcCell 字段标签：v1.8.51 起不再有悬停特效（无 titleHint 包装、无 i18n 键）
     removed_keys = [
@@ -4129,18 +4254,13 @@ def test_joystick_cal_and_rc_panel_title_hints():
         assert f'data-i18n="{key}"' not in console, f"rcCell 字段标签仍有悬停提示 {key}"
         assert f"I18N.zh['{key}']" not in assets, f"中文 i18n 键未删除 {key}"
         assert f"I18N.en['{key}']" not in assets, f"英文 i18n 键未删除 {key}"
-    # rcCell 标题恢复为纯 <b> 标签
-    assert '<div class="rcCell"><b>CH1 Steering</b>' in console, "CH1 字段标签应为纯 <b> 无包装"
-    assert '<div class="rcCell" style="flex:1"><b>Max T</b>' in console, "Max T 字段标签应为纯 <b> 无包装"
+    # rcCell 标题为 <b> 标签（无悬停包装），文案走 i18n 键 rc.*
+    assert '<div class="rcCell"><b data-i18n="rc.ch1">CH1 Steering</b>' in console, "CH1 字段标签应为无包装 <b> + data-i18n"
+    assert '<div class="rcCell" style="flex:1"><b data-i18n="rc.maxT">Max T</b>' in console, "Max T 字段标签应为无包装 <b> + data-i18n"
 
-    # 控制台页面 titleHint 包装总数：弹窗 1 + 折叠头 1 = 2（rcCell 12 处已于 v1.8.51 移除）
-    assert console.count('class="titleHint"') == 2, "控制台应仅剩 2 处标题级 titleHint（弹窗1+折叠头1）"
-    assert console.count('class="hintSpan"') == 2, "控制台应仅剩 2 处 hintSpan"
-
-    # 保留的 2 组中英 i18n 键齐全
-    for key in ["cal.title.hint", "rc.hint.panel"]:
-        assert f"I18N.zh['{key}']" in assets, f"缺中文 i18n 键 {key}"
-        assert f"I18N.en['{key}']" in assets, f"缺英文 i18n 键 {key}"
+    # 控制台页面 titleHint/hintSpan 包装总数为 0（Apple UI 改造全部删除）
+    assert console.count('class="titleHint"') == 0, "控制台 titleHint 应已全部删除"
+    assert console.count('class="hintSpan"') == 0, "控制台 hintSpan 应已全部删除"
 
 
 def test_judge_page_theme_and_title_hints():
@@ -4149,12 +4269,11 @@ def test_judge_page_theme_and_title_hints():
 
     - <head> 内有防闪烁主题脚本（读 ?theme= URL 参数，缺省按系统 prefers-color-scheme）。
     - 控制台设置视图「Judge 设置」入口携带当前主题参数，实现"跟随 Drifter Console 深浅色"。
-    - 页内不自带主题切换按钮、不写 localStorage——主题完全跟随控制台 ?theme= 参数传递，
-      缺省 auto 跟随系统，内存态。
+    - 头部自带主题切换按钮（Console 同款日月单图标 #themeToggle，内存态不写
+      localStorage），进入时以控制台 ?theme= 参数为初值、缺省 auto 跟随系统。
     - drawChart() 图表底色/网格线/曲线色按 resolvedTheme() 取色，浅色主题下图表不变黑。
-    - 大标题（h1）与各级小标题（面板 .label、小节 .sectionTitle）的描述文字改为
-      悬停时从标题右侧滑出的灰字提示（.titleHint + .hintSpan），共 6 处
-      （h1/gyroZ 曲线/评分阈值调参/基础阈值/评分参数/评分维度）。
+    - Apple UI 改造：标题悬停灰字提示（.titleHint + .hintSpan，原 6 处：h1/gyroZ 曲线/
+      评分阈值调参/基础阈值/评分参数/评分维度）已全部删除，相关 i18n 键一并移除。
     - 「返回 Drifter Console」链接保留（本次未要求删除）。
     """
     assets = (
@@ -4162,41 +4281,42 @@ def test_judge_page_theme_and_title_hints():
     ).read_text(encoding="utf-8")
     page = _page_region(assets, "WIFI_WEB_JUDGE_HTML")
 
-    # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（无切换按钮，完全跟随控制台 ?theme= 参数）
+    # 主题：防闪烁脚本 + 浅色覆盖 + 内存态 JS（头部自带切换按钮，进入时以控制台 ?theme= 参数为初值）
     assert "document.documentElement.dataset.theme" in page, "Judge 页缺少防闪烁主题脚本"
-    assert 'html[data-theme="light"] body{' in page, "Judge 页缺少浅色主题覆盖"
-    assert 'html[data-theme="light"] .chartWrap{' in page, "Judge 页缺少浅色图表容器覆盖"
+    assert 'html[data-theme="light"]{--bg:#f5f5f7;--ink:#1d1d1f;' in page, "Judge 页缺少浅色主题变量块"
+    assert '--chartBg:#f5f5f7' in page, "Judge 页缺少浅色图表底色变量"
     assert "function initTheme()" in page, "Judge 页缺少 initTheme"
     assert "function readUrlTheme()" in page, "Judge 页缺少 ?theme= 参数解析"
     assert "function initTheme(){uiTheme=readUrlTheme()||readParentTheme()||'auto';applyTheme();" in page, "Judge 页 initTheme 应以 ?theme= 参数优先、内嵌时读父页主题、缺省 auto"
     assert "function readParentTheme()" in page, "Judge 页缺少同源父页主题读取（CC 内嵌 iframe 跟随控制台）"
     assert "window.parent.document.documentElement.dataset.theme" in page
     assert "mus4.ui.theme" not in page, "Judge 页主题不应写 localStorage（与控制台一致的内存态）"
-    assert 'id="themeToggle"' not in page, "Judge 页不应有主题切换按钮（应跟随控制台）"
-    assert "function toggleTheme()" not in page, "Judge 页不应有 toggleTheme"
+    assert 'id="themeToggle"' in page, "Judge 页应有主题切换按钮"
+    assert "function toggleTheme(){setTheme(resolvedTheme()==='light'?'dark':'light')}" in page, "Judge 页缺少 toggleTheme"
+    assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in page, "Judge 页缺少 setTheme"
+    assert 'id="langToggle"' in page, "Judge 页应有语言切换按钮"
 
     # drawChart 按主题取色（浅色底/网格/曲线）
     assert "const light=resolvedTheme()==='light'" in page, "drawChart 未按主题取色"
     assert "light?'#f4f6f9':'#0f1720'" in page, "drawChart 缺浅色底色"
     assert "light?'#d5dce4':'#223042'" in page, "drawChart 缺浅色网格色"
     assert "light?'#0c9bd6':'#5cc8ff'" in page, "drawChart 缺浅色曲线色"
-    assert "initTheme();drawChart();" in page, "初始化序列应先 initTheme 再 drawChart"
+    assert "initTheme();drawChart();" in page, "初始化序列应先 initTheme 再 drawChart（v1.10.0 起无 applyUiStyle）"
 
     # 控制台「Judge 设置」入口携带主题参数
     assert "location.href='/judge?theme='+resolvedTheme()" in assets, "控制台 Judge 设置入口未携带 ?theme= 参数"
 
-    # 标题悬停提示结构（6 处：h1/gyroZ 曲线/评分阈值调参/基础阈值/评分参数/评分维度）
-    assert page.count('class="titleHint"') == 6, "Judge 页应有 6 处 titleHint"
-    assert page.count('class="hintSpan"') == 6, "Judge 页应有 6 处 hintSpan"
-    assert ".titleHint:hover .hintSpan{" in page, "缺少悬停展开提示的 CSS"
-    assert 'html[data-theme="light"] .hintSpan{' in page, "缺少 light 主题 hintSpan 颜色变体"
-    assert '<div class="titleHint"><h1>Drift Judge</h1>' in page, "h1 未包 titleHint"
-    assert 'data-i18n="judge.gyroChartHint"' in page, "gyroZ 曲线标题缺悬停提示"
-    assert "I18N.zh['judge.gyroChartHint']" in page, "缺中文 i18n 键 judge.gyroChartHint"
-    assert "I18N.en['judge.gyroChartHint']" in page, "缺英文 i18n 键 judge.gyroChartHint"
-    for key in ["judge.tuneDesc", "judge.section.thresholdsDesc", "judge.section.scoringDesc", "judge.dimDesc"]:
-        assert f'<span class="hintSpan" data-i18n="{key}">' in page, f"{key} 应转为 hintSpan 悬停提示"
-        assert f'class="sectionDesc" data-i18n="{key}"' not in page, f"{key} 不应再是常驻 sectionDesc"
+    # Apple UI 改造：标题悬停灰字提示（.titleHint + .hintSpan，原 6 处）作为无意义小字
+    # 全部删除（含 h1 硬编码英文副标题），标题恢复纯文本，相关 i18n 键一并移除
+    assert page.count('class="titleHint"') == 0, "Judge 页 titleHint 应已全部删除"
+    assert page.count('class="hintSpan"') == 0, "Judge 页 hintSpan 应已全部删除"
+    assert ".titleHint:hover .hintSpan{" not in page
+    assert "sectionDesc" not in page, "常驻 sectionDesc 小字应已删除"
+    assert '<h1>Drift Judge</h1>' in page, "h1 应为纯文本"
+    for key in ["judge.gyroChartHint", "judge.tuneDesc", "judge.section.thresholdsDesc", "judge.section.scoringDesc", "judge.dimDesc"]:
+        assert f'data-i18n="{key}"' not in page, f"{key} 悬停提示应已删除"
+        assert f"I18N.zh['{key}']" not in page, f"中文 i18n 键应已删除 {key}"
+        assert f"I18N.en['{key}']" not in page, f"英文 i18n 键应已删除 {key}"
 
     # 返回链接保留（本次未要求删除）
     assert 'data-i18n="judge.backLink"' in page, "返回 Drifter Console 链接应保留"
@@ -4798,7 +4918,7 @@ def test_web_console_wifi_sta_history_ui():
     assert "row.onclick=()=>selectWifiHistory(e.ssid||'',!!e.password_set)" in assets
     assert "ev.stopPropagation();deleteWifiHistoryEntry" in assets
     assert "fetch('/api/wifi-sta/password?ssid='+encodeURIComponent(ssid))" in assets
-    assert "border-radius:6px;color:#e8edf2;cursor:pointer}" in assets
+    assert "border-radius:6px;color:var(--ink);cursor:pointer}" in assets
 
     # i18n 补丁式追加：6 个键各有中英文文案
     for key in [
@@ -4828,9 +4948,9 @@ def test_web_console_mute_toggle_button_ui():
     assert ".muteButton.muted .icoMute{display:block}" in assets
     assert ".muteButton.muted .icoSound{display:none}" in assets
     # v1.8.16：静音键形态统一为 32×32 圆形图标按钮，深色样式与旁边主题按钮逐值一致
-    assert ".muteButton{display:inline-flex;align-items:center;justify-content:center;margin-left:auto;width:32px;height:32px;min-width:0;padding:0;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3;cursor:pointer}" in assets
-    assert ".muteButton:hover{color:#e8edf2}" in assets
-    assert ".muteButton.muted{background:rgba(92,200,255,.1);border-color:#5cc8ff;box-shadow:inset 0 0 0 1px #5cc8ff;color:#5cc8ff}" in assets
+    assert ".muteButton{display:inline-flex;align-items:center;justify-content:center;margin-left:auto;width:32px;height:32px;min-width:0;padding:0;border-radius:9999px;background:var(--card);border:1px solid var(--line2);box-shadow:inset 0 0 0 1px var(--line);color:var(--inkPill);cursor:pointer}" in assets
+    assert ".muteButton:hover{color:var(--ink)}" in assets
+    assert ".muteButton.muted{background:var(--accentSoft);border-color:var(--accentFill);box-shadow:inset 0 0 0 1px var(--accentFill);color:var(--accentFill)}" in assets
 
     # i18n 文案：中英文各一条
     assert "'mute.title':'静音'" in assets
@@ -4997,7 +5117,9 @@ def _page_i18n_keys(page, lang):
 def test_web_console_sub_pages_follow_device_language():
     """JUDGE/DRIFT/UPDATE 三个子页面与主控制台共享语言偏好：各页内嵌自包含
     i18n 核心（localStorage 键 mus4.ui.lang + 启动时 GET /api/language 恢复设备
-    语言），zh/en 字典键完全对齐且各页键统一前缀（judge./drift./ota.）。"""
+    语言），zh/en 字典键完全对齐且各页键统一前缀（judge./drift./ota.）。
+    各页头部另有语言切换按钮 #langToggle（toggleLanguage→setLanguage 写回设备偏好，
+    POST /api/language），主题/语言按钮 aria 用共享键 theme.title/language.title。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
     for marker, prefix in [
@@ -5013,13 +5135,21 @@ def test_web_console_sub_pages_follow_device_language():
         assert "function detectBrowserLanguage()" in page
         assert "j.lang==='auto'" in page
         assert page.count("initLanguage()") == 2, f"{marker} initLanguage 应恰好 1 定义 + 1 调用"
-        assert "setLanguage" not in page, f"{marker} 不应带语言切换 UI（跟随设备偏好）"
+        assert 'id="langToggle"' in page, f"{marker} 应带语言切换按钮"
+        assert "function toggleLanguage()" in page, f"{marker} 缺少 toggleLanguage"
+        assert "function setLanguage(" in page, f"{marker} 缺少 setLanguage（写回设备偏好）"
 
         zh_keys = _page_i18n_keys(page, "zh")
         en_keys = _page_i18n_keys(page, "en")
         assert zh_keys, f"{marker} 缺少 zh 字典"
         assert zh_keys == en_keys, f"{marker} zh/en 键不对齐: {zh_keys ^ en_keys}"
-        assert all(k.startswith(prefix) for k in zh_keys), f"{marker} 存在非 {prefix} 前缀键"
+        # 子页头部主题/语言切换按钮的 aria 文案用共享键 theme.title/language.title，放行 theme./language. 前缀；
+        # v1.10.0 起 uiStyle.* 切换器词条随座舱象限移除，不再放行
+        assert all(
+            k.startswith(prefix)
+            or k.startswith("theme.") or k.startswith("language.")
+            for k in zh_keys
+        ), f"{marker} 存在非 {prefix}/theme./language. 前缀键"
 
 
 def test_web_console_language_switch_rerenders_joystick_cal_status():
@@ -5119,8 +5249,8 @@ def test_web_console_theme_toggle():
     # theme-light.css 重映射后的实际渲染值）：32×32 圆形、深色 #111820 背景 +
     # #344154 边框 + #2b3441 内描边、浅色 #f4f6f9/#ccd5df/#d5dce4；
     # 图标色深色 #b9c5d3（hover #e8edf2）、浅色 #3f4f63（hover #1a2330）
-    assert ".themeButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border-radius:9999px;background:#111820;border:1px solid #344154;box-shadow:inset 0 0 0 1px #2b3441;color:#b9c5d3;cursor:pointer}" in assets
-    assert ".themeButton:hover{color:#e8edf2}" in assets
+    assert ".themeButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border-radius:9999px;background:var(--card);border:1px solid var(--line2);box-shadow:inset 0 0 0 1px var(--line);color:var(--inkPill);cursor:pointer}" in assets
+    assert ".themeButton:hover{color:var(--ink)}" in assets
     assert ".themeButton .icoSun{display:none}" in assets
     assert 'html[data-theme="light"] .themeButton .icoSun{display:block}' in assets
     assert 'html[data-theme="light"] .themeButton .icoMoon{display:none}' in assets
@@ -5165,8 +5295,10 @@ def test_web_console_theme_toggle():
     assert "mq.addEventListener('change',onThemeChange)" in assets
     assert "mq.addListener(onThemeChange)" in assets
 
-    # 防闪烁：<head> 内第一个 <style> 之前的内联脚本，直接按 matchMedia 预置 data-theme（不读任何存储，刷新即重新跟随系统）
+    # 防闪烁：<head> 内第一个 <style> 之前的内联脚本，直接按 matchMedia 预置 data-theme（不读任何存储，刷新即重新跟随系统）；
+    # v1.10.0：data-ui 预置随座舱象限移除——残留 ?ui=cockpit 与 localStorage mus4.ui.style 旧键被静默忽略，渲染恒为 Apple
     assert "<script>try{let t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t}catch(e){}</script>" in assets
+    assert "mus4.ui.style" not in assets and "dataset.ui" not in assets and "data-ui" not in assets
     assert assets.index("<title>Drifter Console</title>") < assets.index("window.matchMedia('(prefers-color-scheme: light)')")
     assert assets.index("window.matchMedia('(prefers-color-scheme: light)')") < assets.index("<style>")
 
@@ -5264,7 +5396,17 @@ def test_web_console_header_entry_buttons():
     沿用 _launcherIp，POST :8090/api/launch/dsh，交互与 Kimi Code Web 按钮同款。
     v1.8.42 Kimi Code Web 与 DeepSeek Harness 之间新增"ZCode"按钮（#openZCodeBtn），
     沿用 _launcherIp，POST :8090/api/launch/zcode，返回 launcher 网页终端 URL
-    并在新标签页打开（终端内运行 ZCode TUI agent），交互与 DeepSeek Harness 按钮同款、超时 15s。"""
+    并在新标签页打开（终端内运行 ZCode TUI agent），交互与 DeepSeek Harness 按钮同款、超时 15s。
+    v1.8.67 DeepSeek Harness 与 GitHub 链接之间再新增"ZCode Remote"按钮（#openZCodeRemoteBtn）：
+    本地书签型入口，单击读 localStorage（键 zcodeRemoteUrl）直接 window.open 新标签打开
+    （noopener），无值时 prompt 录入；双击重新 prompt 更新；链接须以 https:// 开头，
+    否则 alert 且不保存。真实远程链接是凭证，仅存浏览器 localStorage，代码内仅保留
+    占位示例 https://zcode.z.ai/remote/v4；单击经 260ms 定时器延迟以区分双击。
+    v1.8.68 #openZCodeRemoteBtn 撤下、远程链接行为原地并入旧「ZCode」按钮
+    （#openZCodeBtn，id/标签不变，原 launcher 行为——POST :8090/api/launch/zcode
+    拉起 TUI 网页终端——整体下线；有意行为变更，用户不要两个 ZCode 按钮并存）。
+    v1.8.69 ZCode 按钮点击即新鲜（fresh-t 现拼链接 + 复制剪贴板 + 唤醒桌面端），
+    正常点击零弹框，解决旧链接打开显示"手机连接已失效"。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(
         encoding="utf-8"
     )
@@ -5335,22 +5477,86 @@ def test_web_console_header_entry_buttons():
     assert "'toast.dshTimeout':'DeepSeek Harness 启动超时'" in assets
     assert "'toast.dshTimeout':'DeepSeek Harness launch timed out'" in assets
 
-    # v1.8.42："ZCode"按钮：交互与 DeepSeek Harness 按钮同款，
-    # POST http://<host>:8090/api/launch/zcode（毫秒级返回，15s 超时），
-    # about:blank 句柄 + 等待态禁用并切启动中文案，失败/超时走 toast；
-    # i18n 中英词条各出现 2 次
+    # v1.8.42 引入"ZCode"按钮（原 launcher 行为：POST :8090/api/launch/zcode 拉起 TUI 终端）；
+    # v1.8.68 起原地替换为远程控制链接入口（有意行为变更）：单击读 localStorage
+    # zcodeRemoteUrl 直接打开，无值 prompt 录入；双击重新录入。
+    # v1.8.69 点击即新鲜、不再失效（用户反馈存好的旧链接打开显示"手机连接已失效"——
+    # 远控链接带 t 生成时间戳，旧 t 会被 z.ai 拒收）：单击用已存链接里的持久化
+    # sid/hash 现拼带全新 t 的 URL（zcodeRemoteFreshUrl）后 window.open 直接
+    # 跳转、零弹框，并 best-effort POST :8090/api/launch/zcode-remote 唤醒桌面端
+    # （zcodeRemoteWake，失败静默不阻塞）；无存档或存档缺 sid/hash（早期裸链接）时才
+    # prompt 录入，校验升级为必须含 sid 与 hash 参数；双击 ondblclick 重新 prompt 更新；
+    # 单击经 260ms 定时器延迟以区分双击；title 提示走 data-i18n-title
+    # v1.8.70 宽容解析（用户反馈粘贴桌面端复制的链接被误判"链接无效"——桌面端链接
+    # 的参数可能在 # fragment 后，v1.8.69 校验只认 query；另一诱因是 prompt 预填了
+    # 早期存的无效裸链接诱导直接回车）：zcodeRemoteNormalize 统一归一化——trim+去
+    # 首尾引号（含「」“”‘’）→ new URL → 必须 https: → fragment 里有 = 就把参数
+    # 归并进 query（query 已有同名参数不覆盖）并清空 hash → 有 remoteControlToken
+    # 参数原样返回 → 否则必须含 sid+hash 且把 t 刷成 Date.now()；prompt 预填改为
+    # 存档归一化有效才预填（无效存档预填空串），保存归一化后的值
+    # v1.8.71 点击实时取活链（用户场景：Mac 浏览器点 DC 的 ZCode，要直接打开
+    # 远控 Linux 主机的页面、零弹框零粘贴）：单击先同步开 about:blank 占位标签
+    # （防异步 window.open 被拦截），再 POST :8000/api/zcode-remote/link 向 DD
+    # 后端实时取链（zcodeRemoteFetchLive，30s 超时——桌面端未开启会代开启、
+    # 不在线会拉起）；取到活链即存 localStorage 兜底并导航；取不到才回落
+    # localStorage 存档现拼/prompt 录入的旧流程，都无有效链接时关闭占位标签
     assert 'onclick="openZCode()"' in assets
-    assert 'async function openZCode()' in assets
-    assert ':8090/api/launch/zcode' in assets
-    assert "let zCodeLaunching=false" in assets
-    assert '15000' in assets
+    assert 'ondblclick="editZCodeUrl()"' in assets
+    assert 'data-i18n-title="zcode.remoteHint"' in assets
+    assert 'function openZCode(){if(zcodeClickTimer)return' in assets
+    assert "localStorage.getItem('zcodeRemoteUrl')" in assets
+    assert "localStorage.setItem('zcodeRemoteUrl',url)" in assets
+    # v1.8.71 实时取活链：占位标签（about:blank，opener 置空）+ DD 后端端点 +
+    # 占位导航/被拦兜底直开；活链落 localStorage 兜底
+    assert 'function zcodeRemoteFetchLive(' in assets
+    assert ":8000/api/zcode-remote/link" in assets
+    assert "window.open('about:blank','_blank')" in assets
+    assert 'win.opener=null' in assets
+    assert 'win.location.href=u' in assets
+    assert "window.open(u,'_blank','noopener')" in assets
+    assert "localStorage.setItem('zcodeRemoteUrl',live)" in assets
+    assert 'win.close()' in assets
+    # v1.8.70 宽容解析：query/fragment 两种参数形式都接受，remoteControlToken 链接原样通过
+    assert 'function zcodeRemoteNormalize(' in assets
+    assert "u.protocol!=='https:'" in assets
+    assert 'u.hash.slice(1)' in assets
+    assert 'remoteControlToken' in assets
+    # prompt 预填归一化后的有效存档（无效存档预填空串，不再诱导回车）
+    assert "window.prompt(t('zcode.remotePrompt'),cur)" in assets
+    assert 'https://zcode.z.ai/remote/v4?sid=…&hash=…' in assets  # 占位示例，非真实凭证
     assert assets.count("'button.openZCode':'ZCode'") == 2
-    assert "'button.openZCodeLaunching':'正在启动 ZCode...'" in assets
-    assert "'button.openZCodeLaunching':'Launching ZCode...'" in assets
-    assert "'toast.zCodeFailed':'ZCode 启动失败'" in assets
-    assert "'toast.zCodeFailed':'Failed to launch ZCode'" in assets
-    assert "'toast.zCodeTimeout':'ZCode 启动超时'" in assets
-    assert "'toast.zCodeTimeout':'ZCode launch timed out'" in assets
+    # fresh-t 重建：sid/hash 缺一视为无存档；每次点击 set('t',Date.now()) 现拼新链接
+    assert 'function zcodeRemoteFreshUrl()' in assets
+    assert "u.searchParams.get('sid')" in assets
+    assert "u.searchParams.get('hash')" in assets
+    assert "u.searchParams.set('t',String(Date.now()))" in assets
+    # v1.8.77 不再自动复制到剪贴板（用户反馈覆盖剪贴板内容）：打开 ZCode 时
+    # 绝不写剪贴板，zcodeRemoteCopy 与 zcode.remoteCopied 一并移除
+    assert 'zcodeRemoteCopy' not in assets
+    assert 'zcode.remoteCopied' not in assets
+    # 点击时唤醒桌面端（best-effort，_launcherIp 为空跳过，失败静默）
+    assert 'function zcodeRemoteWake()' in assets
+    assert ':8090/api/launch/zcode-remote' in assets
+    assert "'zcode.remoteHint':'单击打开 ZCode 远程控制，双击更新链接'" in assets
+    assert "'zcode.remoteHint':'Click to open ZCode Remote Control, double-click to update the link'" in assets
+    assert "'zcode.remotePrompt':'请粘贴 ZCode 桌面端「复制链接」给出的完整远控链接（形如 https://zcode.z.ai/remote/v4?sid=…&hash=…）'" in assets
+    assert "'zcode.remotePrompt':'Paste the full Remote Control link from the ZCode desktop \"Copy link\" button (e.g. https://zcode.z.ai/remote/v4?sid=…&hash=…)'" in assets
+    assert "'zcode.remoteInvalid':'链接无效：必须是桌面端复制的完整链接（含 sid 与 hash 参数），未保存'" in assets
+    assert "'zcode.remoteInvalid':'Invalid link: must be the full link copied from the desktop app (with sid and hash params), not saved'" in assets
+    # launcher 旧行为与 v1.8.67 并列按钮的残留一律不存在
+    # （旧 TUI 端点调用以收尾引号区分于新 /api/launch/zcode-remote 唤醒端点）
+    assert ":8090/api/launch/zcode'" not in assets
+    assert 'zCodeLaunching' not in assets
+    assert 'openZCodeLaunching' not in assets
+    assert 'toast.zCodeFailed' not in assets
+    assert 'toast.zCodeTimeout' not in assets
+    assert 'openZCodeRemote' not in assets
+    assert 'button.openZCodeRemote' not in assets
+
+    # v1.8.68：#openZCodeRemoteBtn 撤下（v1.8.67 并列新增一版后即按用户要求改为原地替换），
+    # 远程链接行为并入 #openZCodeBtn；此处保留"不存在"断言防回潮
+    assert 'id="openZCodeRemoteBtn"' not in assets
+    assert '<span data-i18n="button.openZCodeRemote">ZCode Remote</span>' not in assets
 
     # v1.7.59：enterDonkeyDrifter 指向 /launch/drive
     # v1.7.61：入口按钮改用 <a target="_blank">，不再使用 onclick + window.open
@@ -5368,10 +5574,10 @@ def test_web_console_header_entry_buttons():
     assert '.otaButton{' not in assets
     # v1.8.16：DC 顶栏标签复刻 DD 两类标签结构——D/DD 为 14px 功能标签(.navTab)，
     # KCW/ZCode/DSH 为 12px 弱化标签(.navTabWeak)并带 lucide 图标；仅 2 个 .navTab
-    assert '.navTab{font-family:inherit;color:#8fa1b5;font-size:0.875rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1.25rem;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer;margin-right:12px}' in assets
-    assert '.navTab:hover{color:#8bdcff;background:transparent}' in assets
-    assert '.navTabWeak{font-family:inherit;color:#6b7d90;font-size:0.75rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1rem;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-right:12px}' in assets
-    assert '.navTabWeak:hover{color:#b9c5d3;background:transparent}' in assets
+    assert '.navTab{font-family:inherit;color:var(--ink3);font-size:0.875rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1.25rem;white-space:nowrap;display:inline-flex;align-items:center;cursor:pointer;margin-right:12px}' in assets
+    assert '.navTab:hover{color:var(--navHover);background:transparent}' in assets
+    assert '.navTabWeak{font-family:inherit;color:var(--ink4);font-size:0.75rem;font-weight:500;text-decoration:none;background:transparent;border:none;padding:0;line-height:1rem;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-right:12px}' in assets
+    assert '.navTabWeak:hover{color:var(--inkPill);background:transparent}' in assets
     assert assets.count('class="navTab"') == 2
     assert assets.count('class="navTabWeak"') == 3
     assert '<a class="navTab" data-i18n="button.enterDonkey"' in assets
@@ -5398,42 +5604,41 @@ def test_web_console_light_theme_overrides():
     """浅色主题生效：setTheme/initTheme 通过 applyTheme 把解析结果写到
     document.documentElement.dataset.theme（'auto' 经 matchMedia 跟随系统，
     系统为浅色时解析为 light，否则为 dark），并使网格缓存失效重绘。
-    浅色样式全部以新增覆盖规则挂在 html[data-theme="light"] 选择器下
-    （第三个 <style> 块），深色原文逐字不动。
+    Apple UI 改造：浅色样式从逐元素覆盖规则收敛为 html[data-theme="light"]
+    CSS 变量块（基础规则全部变量化，浅色只覆盖变量值），深浅渲染值与旧版逐值一致。
     v1.8.3 起 setTheme/initTheme 不再渲染三态按钮组（#themeTabs 已移除，
     见 test_web_console_theme_toggle），仅保留主题解析与应用。
     canvas 图表与 toast 的 JS 颜色改从 CHART_THEMES 双主题色表取。"""
     assets = (PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h").read_text(encoding="utf-8")
 
-    # 浅色覆盖块：基底 / 日志终端 / 状态卡片 / 画布
-    assert 'html[data-theme="light"] body{background:#eef1f5;color:#1a2330}' in assets
-    assert 'html[data-theme="light"] .log{background:#f4f7f5;color:#1a7f37}' in assets
-    assert 'html[data-theme="light"] .stateCard{border-color:#ccd5df;background:linear-gradient(135deg,#fff,#edf1f6);box-shadow:0 1px 3px rgba(15,23,42,.08)}' in assets
-    assert 'html[data-theme="light"] canvas{background:#fbfcfe;border-color:#d5dce4}' in assets
-    # 浅色下脉冲动画换成柔和版（结构与深色 pulse 一致，仅换颜色）
-    assert '@keyframes pulseLight{50%{box-shadow:0 0 18px rgba(229,72,77,.3);transform:translateY(-1px)}}' in assets
-    assert 'html[data-theme="light"] .parkLocked{animation:pulseLight 1.2s infinite}' in assets
-    # 浅色特异性修正：fabToggle 保持青色发光圆点身份（hover/focus/active 加深为 #3aa8dd）
-    assert 'html[data-theme="light"] .fabToggle{background:#5cc8ff;border-color:#5cc8ff}' in assets
-    assert 'html[data-theme="light"] .fabToggle:hover,html[data-theme="light"] .fabToggle:focus-visible,html[data-theme="light"] .fabToggle:active{background:#3aa8dd;border-color:#3aa8dd}' in assets
-    assert 'html[data-theme="light"] .muteButton{background:#f4f6f9;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4;color:#3f4f63}' in assets
-    assert 'html[data-theme="light"] .muteButton:hover{color:#1a2330}' in assets
-    assert 'html[data-theme="light"] .muteButton.muted{background:rgba(92,200,255,.1);border-color:#5cc8ff;box-shadow:inset 0 0 0 1px #5cc8ff;color:#5cc8ff}' in assets
-    assert 'html[data-theme="light"] .rcNum{background:transparent}' in assets
-    # 浅色特异性修正：胶囊按钮组（语言/主题/LED）未激活段恢复透明，缝隙只露出容器底色，与深色行为一致
-    assert 'html[data-theme="light"] .langTabs button{background:transparent;color:#5b6b7d}' in assets
-    # v1.8.24：OTA/DEV 改为文字胶囊，浅色 .otaLink / #devModeToggle 规则取代原 .otaButton
-    assert 'html[data-theme="light"] .otaLink{background:#f4f6f9;border-color:#ccd5df' in assets
-    assert 'html[data-theme="light"] #devModeToggle{background:#f4f6f9;border-color:#ccd5df' in assets
-    assert 'html[data-theme="light"] #devModeToggle.devOn{background:rgba(92,200,255,.25)' in assets
+    # Apple UI 改造：浅色样式收敛为 html[data-theme="light"] 变量块——基础规则全部改用
+    # CSS 变量，浅色只覆盖变量值；深浅两态渲染值与旧版逐值一致（级联等价）
+    assert 'html[data-theme="light"]{--bg:#f5f5f7;--ink:#1d1d1f;' in assets
+    # 变量块关键色：基底 / 日志终端 / 状态卡片 / 画布
+    assert '--logBg:#f5f5f7;--logInk:#1a7f37' in assets
+    assert '--cardGrad:#fff' in assets
+    assert '--cardShadow:0 1px 3px rgba(0,0,0,.06)' in assets
+    assert '--canvasBg:#fff' in assets
+    # 基础规则经变量随主题切换（选择器与结构不动、色值变量化）
+    assert '.log{height:calc(5 * 1.35em + 16px);overflow:auto;background:var(--logBg);color:var(--logInk)' in assets
+    assert 'canvas{width:100%;height:auto;aspect-ratio:38/13;background:var(--canvasBg)' in assets
+    # 脉冲动画深浅合并为单个 pulse（box-shadow 走 --badGlow 变量），旧 pulseLight 已删除
+    assert '@keyframes pulse{50%{box-shadow:0 0 18px var(--badGlow);transform:translateY(-1px)}}' in assets
+    assert '.parkLocked{border-color:var(--bad);animation:pulse 1.2s infinite}' in assets
+    assert 'pulseLight' not in assets
+    # v1.10.0 起 Apple 为唯一风格：fabToggle 浅色取 Apple 系统蓝（hover/focus/active 加深为 #0066cc）
+    assert '--fabBg:#0071e3;--fabBgHover:#0066cc' in assets
+    # rcNum 浅色透明底并入基础规则；胶囊按钮组未激活段透明由基础规则承担
+    assert '.rcNum{flex:0 0 auto;min-width:0;max-width:none;width:4.5ch;font:700 14px Consolas,monospace;text-align:center;background:transparent' in assets
+    assert '.langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;background:transparent;color:var(--ink3)' in assets
+    # 旧元素级浅色覆盖规则均已移除（otaLink/devModeToggle/muteButton/rcNum/navTab/langTabs 等）
+    assert 'html[data-theme="light"] .otaLink' not in assets
+    assert 'html[data-theme="light"] #devModeToggle' not in assets
+    assert 'html[data-theme="light"] .muteButton' not in assets
+    assert 'html[data-theme="light"] .rcNum' not in assets
+    assert 'html[data-theme="light"] .navTab' not in assets
+    assert 'html[data-theme="light"] .langTabs' not in assets
     assert 'html[data-theme="light"] .otaButton' not in assets
-    # v1.8.14：入口标签 .navTab 浅色复刻 DD 主导航标签（弱化色，hover 主题色，透明无框）
-    assert 'html[data-theme="light"] .navTab{color:#5b6b7d;background:transparent;border:none}' in assets
-    assert 'html[data-theme="light"] .navTab:hover{color:#0a7eb2;background:transparent}' in assets
-    assert 'html[data-theme="light"] .navTabWeak{color:#7c8da0;background:transparent;border:none}' in assets
-    assert 'html[data-theme="light"] .navTabWeak:hover{color:#3f4f63;background:transparent}' in assets
-    # 浅色下胶囊容器加深底色并强化描边，使激活胶囊与外容器的嵌套轮廓与深色一样清晰
-    assert 'html[data-theme="light"] .langTabs{background:#dde3ec;border-color:#ccd5df;box-shadow:inset 0 0 0 1px #d5dce4}' in assets
 
     # JS：主题解析与应用（auto 经 matchMedia 跟随系统），切换时网格缓存失效并重绘
     assert "function systemTheme(){try{return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){return 'dark'}}" in assets
@@ -5457,8 +5662,9 @@ def test_web_console_light_theme_overrides():
     assert "let uiTheme='auto'" in assets
     assert "localStorage.getItem(THEME_STORAGE_KEY)" not in assets
     assert "initTheme();" in assets
-    # 深色原文不动：激活胶囊两主题保持 #5cc8ff/#061019
-    assert '.langTabs button.active{background:#5cc8ff;color:#061019}' in assets
+    # v1.10.0 起 Apple 为唯一风格：激活胶囊取 Apple 系统蓝填充 #0a84ff + 白字（:root --accentFill/--onAccent）
+    assert '.langTabs button.active{background:var(--accentFill);color:var(--onAccent)}' in assets
+    assert "--accentFill:#0a84ff;--onAccent:#fff" in assets
 
 
 def test_wifi_sta_history_retry_rescans_after_exhaustion():

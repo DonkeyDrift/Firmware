@@ -3,7 +3,7 @@
 # 优先级：命令行参数 > 环境变量 > 本配置文件 > 内置默认值
 
 # WSL 发行版名称（不设置则自动探测默认发行版）
-distro: DKC
+# distro: <你的WSL发行版名>
 
 # Arduino 开发板 FQBN（不设置则读取 sketch.yaml / config.yaml）
 fqbn: esp32:esp32:esp32:PartitionScheme=min_spiffs
@@ -14,8 +14,8 @@ sketch: MUS4_FW.ino
 # 项目内 Arduino 库目录；存在时编译会追加 --libraries 优先使用本地库
 libraries_path: libraries
 
-# WSL 端工作目录（编译时的工作路径，默认 ~/arduino-build/<项目名>）
-work_dir: /home/dkc/arduino-build/MUS4_FW
+# WSL 端工作目录（编译时的工作路径，默认 ~/arduino-build/<项目名>，按本机用户自动展开）
+# work_dir: ~/arduino-build/MUS4_FW
 
 # I/O 模式
 # native = 同步到 WSL 原生 ext4 分区编译（性能最优，默认）

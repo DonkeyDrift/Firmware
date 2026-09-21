@@ -26,6 +26,10 @@ extern "C" {
 /// @return true 表示该行已被 Auth 服务消费，无需继续分发
 bool processAuthCommand(const String& line, Print& out);
 
+/// 读取 eFuse MAC 派生的 12 位小写十六进制硬件 ID 字符串。
+/// @return 12 字符硬件 ID；eFuse 读取失败时返回空字符串
+String getHardwareId();
+
 #ifdef __cplusplus
 }
 #endif

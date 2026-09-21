@@ -131,7 +131,7 @@ http://192.168.4.1/
 .\arduino-cli-wsl.ps1 -Compile -CheckPartition -Sketch MUS4_FW.ino
 
 # 编译后通过 Web Console HTTP OTA 上传
-.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost 192.168.3.144 -Sketch MUS4_FW.ino
+.\arduino-cli-wsl.ps1 -Compile -Upload -HttpOta -HttpOtaHost <设备IP> -Sketch MUS4_FW.ino
 
 # 使用已有 build_wsl 产物通过 HTTP OTA 上传
 .\arduino-cli-wsl.ps1 -Upload -HttpOta -Sketch MUS4_FW.ino

@@ -1,5 +1,261 @@
 # CHANGELOG.md
 
+## 2026-09-20 v1.10.0
+
+- feat(ui)!: 移除座舱(cockpit)象限，Apple 成为 Drifter Console 唯一界面风格——与 find-car v1.6.0 同款手术；页头「座舱 / Apple」分段切换器删除，`<html>` 不再带 `data-ui` 属性，localStorage 键 `mus4.ui.style` 与 URL `?ui=` 参数不再读取（老用户残留键/旧链接被静默忽略、渲染恒为 Apple，无需任何操作）
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（4 个 `R"rawliteral"` 页，逐页同构处理）：
+    - **CSS 拍平**：apple 覆写值成为唯一取值——先删 `html:not([data-ui="apple"]) .reconnectActions` 座舱专属隐藏规则（元素在 Apple 下恒渲染），再将全部 `[data-ui="apple"]` 属性选择器精确去除：类/元素目标规则以 `:root` 伪类顶替属性选择器（`html:root` 与原 `html[data-ui="apple"]` 特异度逐位相同 (0,1,1)，`button/input/select/textarea/body/h1/*` 等元素型规则拍平后也不会输给类级基值规则）；`@media (prefers-contrast: more)` 内根元素自身定义变量的块按 FDC 踩坑经验用裸 `:root`（与合并后 `:root` 同级、靠源码序后置生效，裸 `html` (0,0,1) 会输）。
+    - **变量合并**：每页 2+2 个无条件 apple 变量块（主块 + apple-deep 块）并入 `:root` 与 `html[data-theme="light"]` 基值定义——同名覆写、apple 独有追加；浅色块按级联仿真处理「cockpit 浅色值 vs apple 深色值同特异度 (0,1,1) 源码序 tie-break」情形（apple 块在后 → 取 apple 深色值）；座舱专有基值删除。切换器专用 `--seg*` 变量逐个统计引用后删除（`--segHover` 仍被 `.langTabs/.themeButton` hover 使用，保留；其余 8–9 个清零删除）。
+    - **切换器与 JS 机制**：四页 `#skinSwitch` 页头分段切换器 HTML、`.skinSwitch`/`.skinSeg` 全部 CSS（含 @media 内）、`UI_STYLE_STORAGE_KEY`/`uiStyleOverride`/`readUrlUiStyle`/`readStoredUiStyle`/`readParentUiStyle`（judge）/`resolvedUiStyle`/`applyUiStyle`/`setUiStyle` 整段删除；启动脚本只留 theme 分支（`?theme=` 与 prefers-color-scheme 逻辑原样）；i18n `uiStyle.title/.cockpit/.apple` 词条（四页中英）删除；`aria-label="切换 UI 风格"` 随切换器一并移除。
+    - **消费方恒 Apple 展开**：`terminalUrl()`、`initEmbedTuneFrames()` iframe src、`/drift` `/judge` 设置入口与 `driftTuneLink`、三页 `#backLink` 的 `&ui=` 拼接全部去除；console `#driftNeedle` 定位的 `dataset.ui==='apple'` 分支按恒 apple 展开（保留 transform 分支，删除座舱 `left` 百分比分支）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.9.3 → v1.10.0；`terminalUrl`/启动脚本/init 链（`applyUiStyle();`）/`&ui=` 拼接/i18n 前缀门等 12 处机制断言改写；页头切换器断言反转为「无切换器残留」回归；座舱色板断言（`--card`/`--termTabLine`/`--tabActive*`/`--fabGlow`/`--fabBg`/`--line`/`--cardGrad`/`--cardShadow`/`--canvasBg`/`--chartBg`/`--logBg`/`--accentFill` 浅色块前缀等）按 Apple 取值同步。`tests/web_console_fixes.test.mjs`——terminalUrl 用例去掉 ui 维度（4 例 → 3 例），新增「座舱象限移除回归」断言（15 个机制 token 无残留），**30 → 31 全过**。pytest **362 例 + 31 subtests 全过**；`tests/zcode_remote_url.test.mjs` 27 全过。
+  - 级联等价验证：静态级联仿真（自写解析器，含 @media prefers-contrast 分支）——四页 × 深浅 × contrast on/off 共 16 组有效 CSS 变量**全部一致**（唯一允许差为随切换器删除的 `--seg*`）；Playwright 计算样式前后对比（冻结 Date.now + 禁动画 + `/api/*` 统一空 JSON 桩）——四页 × 深浅 × 390/1280 共 16 组：`:root` 全量变量、36/27/20/15 个关键元素选择器的 24 个计算属性**全部一致**，差异严格局限于被删切换器（页头行高/整页高度收缩）；截图比对差异同样仅见于切换器区域。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.9.3 → v1.10.0。
+  - 体积：固件 .bin 基线 1,802,784 字节 → 改后 1,775,248 字节（**−27,536B**，与源码 −27,456B 一致）；text+data（xtensa-esp32-elf-size）1,824,554 → 1,798,462 字节；min_spiffs APP 分区 1,966,080 占用 **92.80% → 91.47%**。
+  - 注：本轮只改 Web UI 与版本号，无行车控制逻辑变更。
+
+## 2026-09-20 v1.9.4
+
+- fix(security): 隐私泄露审计清理——真实 Wi-Fi 凭据占位化、本机文件取消跟踪、私人路径/内网 IP 脱敏
+  - 背景：对两仓库做 .gitignore / 文档 / 私人文件全面审计，发现 MUS4 智能配网链路把真实家庭 Wi-Fi SSID/密码（配网页预填表单、Playwright 用例、pytest 用例、测试报告）以及本机绝对路径、内网 IP 提交进了公开仓库，本轮集中清理（历史提交按既定决定不重写，真实凭据需用户侧更换作废）。
+  - 凭据清理（一律改占位 `TestSSID`/`testpass123`）：`provisioning_system/esp32/esp32_wifi_provisioning/web_ui.h` 与 `provisioning_system/esp32/main/web_ui.h` 两份配网页表单不再预填真实 SSID/密码（`value=''`）；`provisioning_system/playwright_tests/provisioning.spec.js`（预填断言改为空串、填表与串口期望值占位化）；`provisioning_system/tests/test_agent.py`（4 处）；`provisioning_system/docs/deployment_and_testing.md`；`libraries/mus4_wifi/src/WifiManager.cpp` 注释去真实 SSID。
+  - 取消跟踪（`git rm --cached`，本地保留，且已被 .gitignore 覆盖不再回库）：`MUS4_FW/.vscode/tasks.json`（本机 U 盘便携编译环境配置）；`provisioning_system/playwright_tests/reports/`（48 张测试截图 + `results.json`，含本机绝对路径）、`performance_metrics.json`、`test_report.md`（含真实凭据与内网 IP 的测试产物）。
+  - 私人路径/内网 IP 脱敏：`MUS4_FW/README.md`、`MUS4_FW/README.zh-CN.md`、`docs/Guide/HTTP_Update_OTA上传操作说明.md` 及 4 份 `docs/Plan/*` 方案文档的 `192.168.3.x` 设备示例 IP → `<设备IP>`；`docs/Tools/mus4_pilot_infer.md`（`/home/dkc/mus4/` → `~/mus4/`）、`docs/Tools/train_tub_driver.md`（`C:/Users/cross/` → `C:/Users/<user>/`）、`provisioning_system/docs/deployment_and_testing.md`（`/home/dkc/project/mus4` → `~/project/mus4`）；`docs/Inspect/wifi-ap-sta-lifecycle-inspection.md` 示例 JSON、`libraries/mus4_cloud/src/CloudReporter.cpp` 注释示例、`libraries/mus4_web/src/WebConsoleFavicon.h` 源图注释；`provisioning_system/linux_agent/mus4-provisioning-agent.service` 改为 `/path/to/Firmware` 占位模板（`Documentation=` 改指本仓库真实地址）。
+  - 配置与工具默认值：`wslbuild.yaml` 的 `distro: DKC` 与 `work_dir: /home/dkc/...` 改为注释占位（回落「自动探测发行版」与 `~/arduino-build/<项目名>` 默认）；`tools/mus4_pilot_infer.py` 默认 ESP32 URL 由 `http://192.168.3.39` 改为 `http://192.168.4.1`（设备 AP 标准地址）；`tests/test_wireless_console_policy.py` fixture IP 中性化。
+  - .gitignore 补漏：根 `.gitignore` 显式补 `.pytest_cache/`；`MUS4_FW/.gitignore` 补 `.vscode/` 与 `.pytest_cache/`（子项目自包含）。
+  - 根 `README.md` 版本表由 v1.7.72 追平至当前版本（v1.9.4）。
+  - 保留未动：两仓库 CHANGELOG 历史条目中的内网 IP（历史记录、低敏感、量大）；`WebConsoleAssets.h` 的上位机回退 IP `192.168.3.41`（功能性回退默认值，改动涉及行为取舍，另行跟进）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言升至 v1.9.4；`tests/test_wireless_console_policy.py` fixture 同步。`pytest tests/` 362 项、`pytest provisioning_system/tests/` 13 项全部通过。
+  - 注：配网固件（`provisioning_system/esp32`）为独立工程、不上车；车上固件本轮仅注释级改动（行为不变），版本号随审计条目升至 v1.9.4。
+
+## 2026-09-18 v1.9.3
+
+- feat(ui): Drifter Console 四页（`/` `/judge` `/drift` `/update`）Apple 风格深化——聚焦环、44pt 命中区、语义色双轨、降级媒体特性、移动端页头等 22 项按《Apple 深化规格 v1》定稿落地
+  - 背景：DC 四页此前的 Apple 象限只做了变量级改造（v1.9.0 起），控件级可用性未收口。先做只读审计（76 张截图 + 45 条实测缺陷，含逐项实测值），再按统一定稿规格逐项落地。**座舱象限（`html[data-ui="cockpit"]` / 无 `data-ui`）像素级冻结**：所有新增 CSS 规则一律以 `html[data-ui="apple"]`（或 apple 专属 media 查询）限定，新增选择器 0 处落在座舱象限。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（4 个 `R"rawliteral"` 页，各页末尾新增一段 `<style id="apple-deep">`）：
+    - **控件字体继承**：`html[data-ui="apple"] button,input,select,textarea{font-family:inherit}`——原来表单控件与部分按钮计算字体族回落到 Arial（全页 4 族 20 种组合），现统一 `-apple-system, BlinkMacSystemFont, system-ui, …`；等宽栈由 `Consolas,monospace` 统一为 `ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`（`.log`/`.statusRow span`/`.rcCell span`/`.rcNum`/`.legend b`/`.recMeta b`/`.termTab`/`.langButton`）。
+    - **聚焦环**：4 页统一 `html[data-ui="apple"] :focus-visible{outline:3px solid var(--accent);outline-offset:2px}`（不透明；浅 `#0066cc` 对 `#f5f5f7` 5.11:1、深 `#2997ff` 对 `#000` 6.96:1）。原 `:focus-visible` 只覆盖 `.skinSeg`/`.langButton`/`.helpFab`，Tab 遍历 24 个控件有 21 个落到 UA 默认 `rgb(16,16,16) auto 1px`（黑底 1.10:1 等于不可见）；`.rcNum:focus{outline:none}` 被 apple 象限的 3px 环覆盖（座舱保留原声明以维持冻结）。
+    - **座舱冻结补强**（主 agent 复验补）：本轮新增的断连「重试」入口原在两个象限都渲染，与「座舱像素级冻结」冲突 → 加基座规则 `html:not([data-ui="apple"]) .reconnectActions{display:none}`，座舱象限不渲染该元素。用「原件（origin/Tony 抽取）vs 改后」逐元素比对复核：4 页 × 深浅 × 14 个计算样式字段、**默认态与强制显示断连浮层态各一次，差异均为 0**，元素计数也一致。
+    - **设置行动作按钮**（`html[data-ui="apple"] .setActions button{min-height:44px}`，主 agent 复验补）：设置面板的「漂移设置 / Judge 设置 / 手柄校准」原高 39px（<44），apple 象限提到 44、座舱保持 39（实测两象限分别为 44 / 39）。
+    - **命中区 ≥44×44**：`::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:max(100%,44px);height:max(100%,44px)}` 铺不可见命中区（视觉尺寸不变），覆盖 `.themeButton/.langButton/.muteButton/.skinSeg/.navTabWeak/.navTab/.ghLink/.logoLink/.titleLink/.otaLink/#devModeToggle/.iconButton/.rcSetBtn/.netTabs button/#driftTuneLink/.foldHead/.copyValue/.gear/...`；表单控件（`input/select/textarea/.rcNum/input[type=range]/.toggleSwitch/.dialogActions button`）实际高度提到 44px。相邻冲突按规格只在**不冲突的轴**扩展：`.chartToolbar`/`.row` gap 6→18、`.netTabs` gap 4→12 让整行 pitch ≥44；`.iconButton` 26→保持视觉宽度 + 44 高命中区。
+      - **390 实测**：console 命中区 <44px 由 **41/41 → 0**（judge/drift/update 由 19/19/6 → 0）。唯一保留的相邻重叠带在 Network 卡右上角（AP/STA/HOST 分段、⚙、IP 复制区三者共用同一 30px 行高），已用显式层级解：`.netTabs{z-index:3}` > `.copyValue{z-index:1}`、`.gear{z-index:6}`——较小的精确控件优先；IP 复制区仍在其余整宽范围内保持 44 高。卡片 `overflow:hidden` 会裁掉命中区顶部，对 `.netTabs button`/`#driftTuneLink`/`.copyValue` 的 `::after` 加 `top:calc(50% + 3px / +7px)` 补回 44px。
+    - **`#fabToggle`**：原 18×18 空白按钮（帮助弹窗的唯一入口，`.helpFab` 展开前 `opacity:0`）→ 44×44 + 可见图标（`::before` + `-webkit-mask` SVG 闪电，沿用页面既有 mask 图标语言，不用 emoji）；`.fabActions`/`.helpFab` 随之带上 `env(safe-area-inset-bottom)`。
+    - **语义色双轨**：新增 `--ok-text`/`--warn-text`/`--bad-text`（浅 `#1a7f37`/`#c93400`/`#d70015`，深 `#30d158`/`#ff9f0a`/`#ff453a`）**只用于文字**；点/条/描边/渐变等填充继续用 `--ok`/`--warn`/`--bad`。点名修复：judge/drift 的 `#judgeConfigStatus`/`#driftConfigStatus` JS 内联 `color='#39d98a'`（浅色白底 1.83:1 / drift 1.68:1）改为读主题变量（新增 `semText(name,fallback)` 助手，座舱取不到变量时回落原字面量，逐值不变）；`.legend .c1/.c4 b`（浅色 `#34c759` 2.04 / `#ff3b30` 3.26）、judge `.dimTrendUp/.dimTrendDown`、update `setStatus` 的 `var(--ok)/var(--bad)` 同改文字轨。
+    - **`prefers-reduced-motion`**：4 页原 **0 条**规则 → 每页新增 apple 限定的降级块：`animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important`，仅保留状态转环 `.reconnectSpinner`（1.2s infinite）。emulate `reduce` 后实测过渡全部 `1e-06s`、循环动画仅剩转环。
+    - **灰阶分层**：浅色结构文字 `rgba(60,60,67,.62)`（3.50:1，用于 `.navTab/.version/.stateHead/.backSub/.backLink` 等 12–14px）→ 结构文字 `.72`（4.53/4.74，AA）、正文次级 `.85`、纯 meta 保留 `.62`；深色同步 `.72/.85`；`--segInk`（分段控件非激活标签，压在 `rgba(120,120,128,…)` 轨道上）提到 `.85`（3.35 → 5.7）。update `.muted` 由 `.5`（2.62）→ `.72`。`--logInk` 浅色 `#248a3d`（4.04）→ `#1a7f37`（4.66）。
+      - **实测**：浅色低于 AA 的文本节点 console **89→0**、judge **37→0**、drift **24→0**、update **4→0**；深色 console 3 / judge 2 / drift 1 / update 1，全部是「主按钮填充保持 Apple 系统蓝」带来的白字 3.65:1（浅 `#0071e3` 4.70 达 AA）——按规格第 2 节这是「对齐 Apple 原生」优先于 AA 的刻意取舍。
+    - **移动端页头**：390 实测页头 **204px（占 844 视口 24%）**、`.navLinks` 内容 541px/可视 366px、`#openDshBtn` 起点 x=413.6 在屏外且无横滚提示 → 改为「56px 不换行标题行 + 44px 横向可滚弱入口行」，实测 **100px**（`.headerRow{gap:12px;row-gap:0}`，56 = 标题行 `h1{min-height:56px}`，44 = `.navLinks` 高度）。弱入口行 `overflow-x:auto; scrollbar-width:none` + `-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent)`（右侧渐隐滚动提示）；390 实测 `.navLinks` clientWidth 129 / scrollWidth 561。行内顺序由 `order` 排布：标题行 = 标题 + 静音/主题/语言 + 版本 + GitHub，入口行 = 座舱/Apple 分段 + OTA + DEV + 弱入口；`.br3` 重新启用为 100% 宽换行占位，保证弱入口行恒为独立一行。
+    - **排版**：四页 `h1` 统一 20px/600/-.02em（原 update 17 / console 20 / drift 22 / judge 24；judge 的 56px hero 保留为页内大标题）；`.stateHead/.version/.helpSection h3/.stateMeta b/.toggleLabel/.setRow h3` 去 uppercase、字距归 0、12→13px；`.stateValue` 24px/800 → 600 + `letter-spacing:-.02em`；`.stateSub/.stateMeta/.fieldHint/.summaryItem .k/.dimName/.fieldTitle/.label` 等中文文本补 ≥1.35 行高；judge 18%、drift 36% 的 ≤11.5px 正文提到 13px。
+    - **发丝线与圆角**：列表分隔走 Apple separator 档（浅 `rgba(60,60,67,.29)` 1.70:1 / 深 `rgba(255,255,255,.16)` 1.65:1，用于 `.setRow`/`.tuneSection`/`#drop`），卡片描边保持弱档（`.08`/`.10`）；update 页 apple 象限 `--line` 由 `.18` 与其它页统一为 `.10`。圆角由 6 档（6/8/12/16/18/9999）收敛为 **8/12/16/22/9999**（`.log/.rcCell/canvas` 12、`.panel/.stateCard/.embedTuneFrame` 16、`.dialog/.helpModal/.toast` 22）。
+    - **toast**：原 `.toast{right:18px;bottom:18px}` 与 `.helpFab{right:18px;bottom:18px;46×46}` **完全重叠** → 改底部居中毛玻璃胶囊：`inset-inline:18px; margin-inline:auto; width:fit-content; min-height:44px`，`background:--mat` + `backdrop-filter:saturate(180%) blur(20px)`，`.28s cubic-bezier(.32,.72,0,1)` 进场，`bottom:calc(90px + env(safe-area-inset-bottom))` 上移避开 FAB。
+    - **面板材质**：`section.panel` 原 `transparent + radius 0 + padding 10px`（深色下完全无表面）→ `var(--card)` + 1px 发丝线 + 16px 圆角；`.stateCard` 原 5 张卡 5 种饱和色描边（`.mode0/.mode1/.mode2/.parkUnlocked/.driftOff` 各一色）→ 常态走发丝线，仅异常态用语义色（`.parkLocked`/`.netDown` → `--bad`、`.driftArmed` → `--warn`、`.driftActive` → `--drift`）；弹窗/遮罩/帮助浮层给材质 + `--elev` 阴影（补深色卡片层级）。
+    - **禁用态**：console 原**无** `button:disabled` 规则 → 补统一禁用态（降饱和灰底 + `--ink3` 文字 + `cursor:not-allowed`，文字对比 ≥6:1，不用 `opacity:.5` 糊字）；judge/drift/update 原有 `opacity:.5` 一并按 appple 象限覆盖（4.5–6.8:1）。
+    - **动效**：`#driftNeedle` 由 `transition:left` 改 `transform:translateX()`（JS 分支：apple 走 transform、座舱仍写 `left` 百分比，逐值不变）；`.stateCard{transition:.25s}`（=`transition:all`）→ 显式 `background-color/border-color/box-shadow .2s`；同页 6 套缓动统一为 `--ease-apple: cubic-bezier(.32,.72,0,1)`（交互 .15s / 状态 .2s / 材质 .32s）；常驻循环动画 `pulse 1s→2s`、`scan 1.4s→2.8s`、judge `.statusDot 1.2s→2.4s`。
+    - **兜底**：`prefers-reduced-transparency`（材质退实色 + `backdrop-filter:none`）、`prefers-contrast: more`（文字提到 `#f5f5f7`/`#1d1d1f`、发丝线加深到 `.34`/`.55`、材质退实色）、`forced-colors: active`（`CanvasText` 画回卡片描边与状态点、`forced-color-adjust:none`）；`-webkit-tap-highlight-color: transparent`；4 页 `<meta viewport>` 补 `viewport-fit=cover`，固定贴底元素（toast/FAB/对话框）补 `env(safe-area-inset-bottom)`。
+    - **空态/断连态**：全 `/api/*` 失败时原只剩 `--` 占位 + 空日志 → `#reconnectOverlay` 补「重试」按钮（`#reconnectRetryBtn` → `manualReconnect()`），i18n 新键 `reconnect.retry`（中「重试」/英「Retry」）；解释文案沿用既有 `reconnect.title/body`。
+    - **i18n**：console 8 处硬编码中文 `title`（`#chartFullscreenBtn`/`#chartBtn`/`#pauseBtn`/`#sendBtn`/`#termFullscreenBtn`/`#tubRecordBtn` 与两个 `.embedTuneFrame`）补 `data-i18n-title`（新键 `embed.driftTune`/`embed.judgeTune`，其余复用既有 `button.*` 键）；`#hostWifiStatusLabel` 的 `等待上位机上报` 补 `data-i18n`（en 下唯一残留中文）——原「不走 data-i18n」是为避免 `applyLanguage()` 把已显示的真实状态覆盖回占位文字（最长 5s 才自愈），现改为状态经 `setHostWifiLabel(key)` 记录词条键 + `refreshDynamicLabels()`（`applyLanguage` 末尾调用）立刻按键重渲染，窗口消失，同时错误态不再回显后端原文；`.copyValue:hover:after{content:'点击复制 IP'}` 改真实 `data-i18n-title="button.copyIp"`（apple 象限的 `::after` 已被命中区占用，CSS 提示不再显示；座舱保留原伪元素提示）。
+    - **其它**：update `#drop` 由 `2px dashed` 改 1px 实线发丝线 + 材质容器；`button` 冲突的 `border-radius:9999px!important` / `6px` 两条规则在 appple 象限收敛为单一 22px（44 高 = 胶囊）；返回链接改 iOS 返回样式（`::before` 画 `‹` 雪佛龙 + accent 色，`font-size:15px!important` 压过内联 `12px`）；judge `#statusPill` 状态加字形双通道（`.statusOnline::before{content:"✓"}` / `.statusWaiting::before{content:"…"}` / `.statusOffline::before{content:"×"}`）。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.9.2 → v1.9.3；`#pauseBtn`/`#sendBtn` 终端行整串断言补 `data-i18n-title`；`#hostWifiStatusLabel` 断言由「不得带 data-i18n」反转为「必须带 data-i18n + 状态键重渲染机制」（原负断言保留了它的原始理由，改后新增机制断言）；host-wifi IDLE 分支断言由 `lbl.textContent=t(...)` 改 `setHostWifiLabel(...)`。pytest **361 例 + 31 subtests 全过**；`tests/web_console_fixes.test.mjs` 30 全过。
+  - 验收（Playwright 审计 harness，改动前后同口径对照）：浅色低于 AA 文本节点 console 89→0 / judge 37→0 / drift 24→0 / update 4→0；390 与 1280 下命中区 <44px console 41→0、judge 19→0、drift 19→0、update 6→0；`prefers-reduced-motion` 0 条规则 → 4 页均生效；`prefers-reduced-transparency`/`prefers-contrast: more`/`forced-colors: active` 均实测生效。
+  - 座舱冻结复核：judge/drift/update 三页 cockpit 计算样式与几何 **0 差异**；console cockpit 差异仅为 `.driftActive` 循环动画与 `#driftNeedle` 过渡的**相位噪声**——同一未改版本连跑两次得到完全相同的 21 处残差（改前 vs 改前 = 21，改前 vs 改后 = 21，差 0），另有 3 页 × 2 个新增节点（`#reconnectRetryBtn`/`.reconnectActions`，位于默认 `display:none` 的断连浮层内，不改变任何既有元素的计算样式）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.9.2 → v1.9.3。
+  - 体积（同机同工具链前后对比）：基线 text+data **1,790,682** 字节 → 改后 **1,824,554** 字节（**+33,872B**，与 `WebConsoleAssets.h` 源码净增 33,896B 一致）；min_spiffs APP 分区 1,966,080 → 占用 **92.80%**。（v1.9.2 条目记录的 1,767,456 为上一次单独测量的本机值，与本次基线相差 23,226B，属工具链/基线差异；本条目给出的差值来自同一环境的前后各编一次。）
+  - 本轮只改文件与本地静态验证：**未 commit、未 push、未 OTA、未连车**。
+
+## 2026-09-16 v1.9.2（仓库维护，无固件变更）
+
+- chore(repo): 将 `MUS4_FW/docs/architecture-guide.html` 移出 git 跟踪（本机保留，不改写历史），与 DonkeyDrift (222) 同口径
+  - 背景：该 HTML 是写给本机看的固件架构科普页，属本机资料，用户要求不再入库。
+  - `git rm --cached MUS4_FW/docs/architecture-guide.html`：仅从索引移除，本地文件保留；`.gitignore` 新增 `MUS4_FW/docs/architecture-guide.html` 条目防再次误入库。历史提交中原样保留旧版本，此后不再跟踪。
+  - 固件源码零变更：`libraries/mus4_core/src/BuildInfo.h` 保持 v1.9.2，编译产物不变，**无需 OTA**。
+  - 测试同步：纯仓库维护改动，无代码/测试变更。
+
+## 2026-09-15 v1.9.2
+
+- feat(DC): Web Console 四页切换器与 DD/FDC 统一为同一规格；/update 补浅色主题；子页头部统一；Console 中文标签补齐等 13 项视觉修复
+  - 背景：用户反馈 DD/DC/FDC 三端「座舱/Apple」切换按键样式完全不一样，要求统一成一样的。三端同落地《统一切换器规格 v1》（配套 DonkeyDrift (221)、find-car v1.2.0 同口径）。
+  - 切换器：`libraries/mus4_web/src/WebConsoleAssets.h` 4 页 `#skinSwitch`/`.skinSeg` CSS 统一重写为同一段文本——几何 28px 轨道（2px padding/gap）/24px 段/12px·600/999px 圆角；cockpit 激活 = accentFill/onAccent（原样保留语义）；apple = iOS 填充灰轨道 + 浮起滑块（light #fff / dark #636366 + 阴影）+ 非激活 hover 字色反馈（原 Apple 象限 hover 无反馈）；保留各页布局微调（Console `order:5`、judge `margin-left:auto`）；各页 `:root`/`[data-theme="light"]`/`[data-ui="apple"]` 变量块补齐轨道/滑块语义变量。
+  - /update：接入与其他三页一致的 `data-theme` 解析（`?theme=` 参数 + localStorage + prefers-color-scheme）与主题切换按钮，补齐 light 变量组（原无任何主题处理、恒深色）；移动端容器补水平 padding（原标题/拖放框/说明文字贴屏边）。
+  - 子页头部统一：/judge、/drift、/update 补齐「返回 Drifter Console」链接（携带当前 ui/theme 象限参数——judge 原返回裸 `/` 丢参数）+ 主题切换 + 语言切换按钮（原仅 Console 有）；update 页 headerRow gap/h1 字号微调，防 480px 容器头部换行溢出。
+  - Console：图表 Y 轴窄屏只画 1/0/-1 三刻度（原 9 刻度在移动端约 90px 高度内全部重叠）；「STA 切换提示」弹窗加 localStorage 记忆 + 「不再提示」按钮（原每次进首页都弹）；中文模式补齐 MODE/RC/PARK/DRIFT/VOLTAGE/NETWORK/Serial/RC Channels/STATUS Details/Throttle/Steering/GyroZ 等标签 data-i18n 与中英词条（原中文界面大量残留英文，英文模式 70 元素反向完好）；终端标签页（终端 1/Term 1）切语言即时重渲染（原等下次 ws 状态推送才更新）；Apple 象限移动端终端面板补容器边框/背景（原文字直接浮在页面上）；「录制量 0」label 与计数同行、整行垂直居中；头部五个外链包 `.navLinks`，≤820px 整组换行 + 横向滚动（原移动端头部占首屏约 1/3）。
+  - /judge：碰撞「状态正常」徽章改 inline 药丸绿边（原像只读输入框、浅色对比度低）；开始计分/恢复默认值/选择文件补 :hover（与同页既有按钮一致）；seq 序号小字收进 title tooltip；「拖分原因：拖分分析中，继续保持当前动作。」占位机制文案精简。/drift 序号小字同收 tooltip。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 断言更新（cmdTarget/tunePair/rcCell 补 data-i18n 断言、`.navLinks` 存在性取代五条 order 断言、drift/judge 头部控件由「不存在」反转为「存在」、子页语言机制白名单加 theme./language. 前缀）；pytest **361 例 + 31 subtests 全过**；`tests/web_console_fixes.test.mjs` 30 全过、`tests/zcode_remote_url.test.mjs` 27 全过。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.9.1 → v1.9.2。
+  - 体积：编译 flash 1,767,456 字节（较 v1.9.1 +15,552B，约 89.9%，余量约 194KB，OTA 安全）；合并后按流程 HTTP OTA 刷车并验证 `version=v1.9.2`（结果见当天工程日志）。
+
+## 2026-09-12 v1.9.1
+
+- feat(DC): Serial 终端配色跟随 DC 页面主题——终端 iframe URL 拼 `?theme=&ui=`，深色终端不再是唯一外观
+  - 背景：用户反馈 DC 的终端（cmdTarget=Serial 的上位机 xterm.js iframe）固定黑色，浅色/Apple 主题下突兀，要求跟随 DC 页面主题。配套 DonkeyDrift 侧 launcher 终端页解析 `?theme=light|dark&ui=cockpit|apple` 应用四象限调色板（缺省 cockpit-dark 与历史逐值一致，launcher 菜单直开不受影响）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`terminalUrl()` 拼 `?theme=<data-theme||'dark'>&ui=<data-ui||'apple'>`（与 `initEmbedTuneFrames` 子 iframe 拼参同一惯例）；新建终端标签即按当前主题配色，已开标签保持创建时主题（切主题后重开标签即可，不重载进行中会话）。
+  - 测试同步：`tests/web_console_fixes.test.mjs` 真码提取沙箱新增 `terminalUrl` 四象限拼参用例（29→30 全过）；`tests/test_firmware_feature_flags.py` 终端 URL 断言同步新契约（pytest 362+31 全过）。
+  - 编译 1,751,904 字节（较 v1.9.0 +112B）；合并后按流程 HTTP OTA 刷车并验证 `version=v1.9.1`（结果见当天工程日志）。
+
+## 2026-09-11 v1.9.0
+
+- feat(DC): Web Console 四页新增「座舱 / Apple」双 UI 风格切换——Apple 风为新默认，座舱风逐值保留可随时切回
+  - 背景与考据：v1.7.36 曾加入 UI 风格分段切换条（09bfc8e），v1.7.40 移除只留 Drifter Console 皮肤（6a53932）；本次按用户要求复活切换器，第二档换成 Apple 设计语言（单一 Action Blue 强调色、负字距排版、hairline 卡片、按压缩放反馈）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - CSS 变量化：4 个 rawliteral 页（Console/Judge/Drift/Update）的硬编码颜色全部抽成 `:root`（深色）+ `html[data-theme="light"]`（浅色）变量块，226 处浅色覆盖规则改引变量；座舱象限（无 `data-ui` 或 `data-ui="cockpit"`）计算样式与旧版逐值一致。
+    - Apple 象限：新增 `html[data-ui="apple"]` / `html[data-ui="apple"][data-theme="light"]` 变量覆写块（accent `#2997ff`/`#0066cc`、canvas `#000`/`#f5f5f7`、surface `#1c1c1e`/`#fff`、hairline 分隔、iOS system 状态色）+ 少量作用域规则（卡片去渐变改 hairline、`:active scale(.97)` 按压反馈、200–350ms `cubic-bezier(.32,.72,0,1)` 过渡、标题负字距、数字 tabular-nums）。
+    - 风格机制：`<html data-ui>` + preinit 解析（`?ui=` URL 参数 → localStorage `mus4.ui.style` → 默认 apple）；新增 `readUrlUiStyle/readStoredUiStyle/resolvedUiStyle/applyUiStyle/setUiStyle`；`/drift`、`/judge` 内部跳转与 embedTuneFrames 子 iframe 像 `?theme=` 一样拼 `&ui=`。
+    - 切换器：4 页页头新增 `#skinSwitch` 分段控件（座舱 / Apple），新 i18n 键 `uiStyle.title/.cockpit/.apple`（zh/en × 4 页）。
+    - 删小字（用户要求）：删除 17 组无操作价值的说明文字——`devHint` 悬停提示、`rc.hint.panel`、`cal.title.hint`（含 `.titleHint`/`.hintSpan` CSS）、`judge.gyroChartHint/tuneDesc/thresholdsDesc/scoringDesc/dimDesc` 与 h1 硬编码英文副标题、`drift.versionTag/status.desc/steering.desc/throttle.desc`；zh/en 字典条目同步删除。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.79 → v1.9.0。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 52 处断言/docstring 更新（删除键的反向断言、双风格机制正断言、版本断言与 CHANGELOG 顺序链补 v1.9.0）；362 例 + 31 subtests 全过；`tests/web_console_fixes.test.mjs` 29 例全过。
+  - 体积：编译 flash 1,742,544 → 1,751,792 字节（88.63% → 89.10%，+9,248 字节即 .h 源增量），余量 214KB，OTA 安全。
+  - 顺带修复：浅色主题 `helpFab:focus-visible` 阴影漏配（`rgba(0,0,0,.35)` → `rgba(15,23,42,.16)`）；`@keyframes pulseLight` 合并入 `pulse`（box-shadow 走 `--badGlow` 变量）。
+
+## 2026-09-11 v1.8.79
+
+- fix(cloud): 云端上报重试策略收紧——快速重试只在开机首报成功前启用，换 IP 补报不再可能死循环
+  - 背景：v1.8.78 引入「失败 1 分钟重试」时留了两个隐患：① 持续断网（连着 Wi-Fi 但外网不通）时，同步 HTTPS 上报（连接 + 总超时各 5 秒）每分钟都会阻塞主循环一次，而主循环还要跑 RC 遥控采样与控制输出；② `lastReportedIp` 只在成功时记录——「DHCP 换了 IP + 该次上报失败」会让 `ipChanged` 每轮都为真，退化成不停重试、把主循环卡死在同步 HTTPS 上。
+  - `libraries/mus4_cloud/src/CloudReporter.cpp`：新增 `everSucceeded`（本次开机是否成功上报过）——未成功前按 1 分钟快速重试（车重启后尽快出现在网页上），成功过一次后一律 5 分钟稳态心跳；`lastReportedIp` 改为**无论成败**都记录本次尝试过的 IP，换 IP 只触发一次补报；移除不再使用的 `lastReportOk`。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.78 → v1.8.79。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_cloud_report_retry_policy_is_bounded_and_ip_change_cannot_spin`（断言快速重试受 `everSucceeded` 约束、IP 记录无条件写、成功分支不再记 IP），版本断言与 CHANGELOG 顺序链补 v1.8.79。
+
+## 2026-09-10 v1.8.78
+
+- fix(cloud): 「找 Donkey Car」上报地址改为仓库内默认值——干净 worktree 编译不再把整块云端上报静默编译掉（车在线却在 find-dkc 网页上查不到）
+  - 背景：用户反馈 find-dkc 网页点「刷新」只看到 DonkeyDrift 主机（TONY007），看不到 ESP32（Drifter Console）。实测车上 v1.8.77 的 DC Web 日志连续 20 分钟无任何 `cloud` 记录、云端 KV 亦无 esp32 记录 → 上报代码根本没进固件。
+  - 根因：v1.8.77 是在**新建的会话 worktree**（`Firmware/.worktrees/session-zcode-no-autocopy`）里编译的，而 `WirelessSecrets.h` 是 gitignore 的本机文件、不会随 worktree 出现，`CLOUD_REPORT_URL` 未定义 → 编译门槛 `ENABLE_CLOUD_REPORT && CLOUD_REPORT_URL` 不成立 → `mus4cloud::update()` 退化成空操作（无任何日志，静默失效）。
+  - `libraries/mus4_core/src/FirmwareConfig.h`：新增 `CLOUD_REPORT_URL_DEFAULT "https://find-dkc.pages.dev/report"`（公开端点、非机密）；本机 `WirelessSecrets.h` 里的 `CLOUD_REPORT_URL` 仍可覆盖它。
+  - `libraries/mus4_cloud/src/CloudReporter.cpp`：编译门槛改为只看 `ENABLE_CLOUD_REPORT`，`CLOUD_REPORT_URL` 缺省时回落到 `CLOUD_REPORT_URL_DEFAULT`；`reportNow()` 返回是否 2xx；上报节奏改为「成功 5 分钟一跳 / 失败 1 分钟快重试」（失败不写 KV，不额外消耗云端写入额度）、DHCP 换 IP 时立即补报；首次上报打印 `report armed: <url>` 便于日后排查。
+  - `libraries/mus4_cloud/src/CloudReporter.h`、`libraries/mus4_core/src/WirelessSecrets.example.h`：说明同步（URL 为可选覆盖项，缺省即用官方端点）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.77 → v1.8.78。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_cloud_report_url_has_in_repo_default_not_only_gitignored_secret`（断言仓库内默认值、`#ifndef` 回落链、门槛不再要求 URL、快重试常量、`.ino` 挂钩仍在），版本断言与 CHANGELOG 顺序链补 v1.8.78。
+  - 顺带修复（v1.8.77 收尾遗漏）：`tests/zcode_remote_url.test.mjs` 仍在断言 v1.8.77 已删除的 `zcodeRemoteCopy` 函数与「自动复制」行为，导致该 node 行为测试整套挂掉（v1.8.77 只同步了 `test_firmware_feature_flags.py`，漏了这个文件）。改为断言「打开远控完全不碰剪贴板」——clipboard 可用也不调用 `writeText`、无复制相关 toast 与日志；另把 `localStorage.setItem` 抛错用例的断言同步为「不复制」。27 例全过。
+
+## 2026-09-08 v1.8.77
+
+- fix(DC): ZCode 按钮打开远控时不再自动复制链接到剪贴板（不再覆盖用户剪贴板内容）
+  - 背景：用户反馈从 DC 页面点「ZCode」进入 ZCode 后，剪贴板内容会被 ZCode 远控链接覆盖（v1.8.71 起的"自动复制"行为），用户不希望剪贴板被覆盖。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`openZCode()` 导航回调 `nav` 移除 `zcodeRemoteCopy(u)` 调用（打开流程不变：实时取活链 → localStorage 兜底 → prompt 录入，仅不再写剪贴板）；整体删除 `zcodeRemoteCopy()` 函数（clipboard API + textarea/execCommand 降级复制逻辑）与 `zcode.remoteCopied` toast 文案；`zcode.remoteHint` 中英文提示同步去掉"自动复制链接"措辞。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.76 → v1.8.77。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 改为反向断言 `zcodeRemoteCopy`/`zcode.remoteCopied` 不存在、hint 新文案正断言，版本断言与 CHANGELOG 顺序链补 v1.8.77。176 例全过；arduino-cli 编译通过、HTTP OTA 刷车验证 version=v1.8.77。
+
+## 2026-09-07 v1.8.76
+
+- fix(DC): 终端标签默认编号改取最小空闲编号——首个标签改名后新建标签复用「终端 1」而非「终端 2」（GitHub issue #149）
+  - 背景：DC Serial 终端里第一个标签执行命令后被改名为命令名（如「Donkey」），此时新建标签仍按 `termList.length+1` 编号得到「终端 2」，但页面上已没有任何叫「终端 1」的标签。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `freeTermNumber()` 取未被占用的最小 N；`addTerminalTab()` 为新标签分配并保存 `num` 字段（不再按标签总数 +1）；`fitTermTabLabels()` 未改名标签按各自 `num` 显示（不再按数组下标重排）；`donkeydrifter.term.name` message 监听在改名时把 `num` 置空释放编号。标签关闭后其编号同样自动空闲可复用。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.75 → v1.8.76。
+  - 测试同步：`tests/web_console_fixes.test.mjs` 新增 4 例（首个标签编号 1 / 改名释放编号后新标签复用 1（issue 复现场景）/ 未改名标签保持各自编号不按下标重排 / 关闭标签释放编号可再次占用），node 行为测试 29 例全过；`tests/test_firmware_feature_flags.py` 版本断言与 CHANGELOG 顺序链补 v1.8.76。arduino-cli 编译通过。
+
+## 2026-09-07 v1.8.75
+
+- feat(cloud): 恢复「找 Donkey Car」云端上报（去 token、公开查询），网页改名 find-dkc
+  - 背景：用户要求「不要 IP，要网站；不要叫小车，叫 Donkey Car」。上一条 v1.8.74 曾为「去 token」关掉了云端上报、改走 DD 局域网直连；本次按用户最新意愿恢复云端上报（让公网网页 find-dkc.pages.dev 打开即查，零 token），并把措辞从「小车」改为「Donkey Car」。
+  - `libraries/mus4_cloud/src/CloudReporter.cpp`、`CloudReporter.h`：去掉 token 字段与 `CLOUD_REPORT_TOKEN` 编译门槛——上报 JSON 不再含 token，仅需 `ENABLE_CLOUD_REPORT` + `CLOUD_REPORT_URL`。
+  - `libraries/mus4_core/src/FirmwareConfig.h`：重新启用 `ENABLE_CLOUD_REPORT`。
+  - `libraries/mus4_core/src/WirelessSecrets.example.h`：移除 `CLOUD_REPORT_TOKEN` 占位，只保留 `CLOUD_REPORT_URL` 示例（指向 `find-dkc.pages.dev/report`）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.74 → v1.8.75。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 v1.8.75、CHANGELOG 顺序链补 v1.8.75。arduino-cli 编译通过、OTA 刷车。
+
+
+## 2026-09-06 v1.8.74
+
+- fix(cloud): 关闭云端上报、移除共享 token，改走 DD 局域网直连「一键找车」
+  - 背景：原「找小车」依赖 Cloudflare Pages Functions + 共享 token 的云端上报方案（v1.8.73），用户要求去掉 token、在 DD 网页里一键查询局域网内小车；改为 ESP32 不做任何云端上报，由 DD 后端在局域网内直接发现小车与 DD 的 IP，零 token、零云端依赖。
+  - `libraries/mus4_core/src/FirmwareConfig.h`：注释掉 `ENABLE_CLOUD_REPORT`（云端上报开关停用；`mus4_cloud` 库与 `AuthService::getHardwareId()` 保留为 dormant 代码，不删除）。
+  - `libraries/mus4_core/src/WirelessSecrets.example.h`：移除 `CLOUD_REPORT_URL`/`CLOUD_REPORT_TOKEN` 占位示例。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.73 → v1.8.74。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 v1.8.74、CHANGELOG 顺序链补 v1.8.74。arduino-cli 编译通过。
+
+## 2026-09-06 v1.8.73
+
+- feat(cloud): 一键找车——ESP32 连上 Wi-Fi 后周期上报局域网信息到 Cloudflare Pages Functions，配合「找小车」网页在局域网内一键发现小车
+  - 背景：用户希望在一个网页里点击一下就能搜索局域网内有没有小车，看到 ESP32 的 IP 或 DonkeyDrift 的 IP。方案 A：车辆与 DD 后端分别周期上报自身局域网信息到云端（Cloudflare Pages Functions + KV），网页读 KV 列出在线设备。
+  - 新增库 `MUS4_FW/libraries/mus4_cloud/`（`library.properties` + `src/mus4_cloud.h` + `src/CloudReporter.{h,cpp}`）：轻量 HTTPS 上报器——`mus4cloud::update()` 每循环调用，首次拿到 IP 立即上报一次、此后每 5 分钟（`CLOUD_REPORT_INTERVAL_MS=300000`）心跳上报；未联网/未拿 IP 时跳过，失败静默重试不阻塞主循环。POST JSON 到 `CLOUD_REPORT_URL`（`/report` 端点），字段为 token/device_id/type=esp32/lan_ip/port=80/hostname/version；请求带浏览器 UA（`Mozilla/5.0 (ESP32) DonkeyDrift-FindCar/1.0`）规避 Cloudflare 对默认 ESP32 HTTPClient UA 的 403。
+  - `libraries/mus4_auth/src/AuthService.h`、`AuthService.cpp`：新增公开 `String getHardwareId()`——返回 eFuse MAC 派生的稳定硬件标识，作为云端 device_id。
+  - `libraries/mus4_core/src/FirmwareConfig.h`：新增 `ENABLE_CLOUD_REPORT` 开关（已启用）；`CLOUD_REPORT_URL`/`CLOUD_REPORT_TOKEN` 走本地 `WirelessSecrets.h`（不入库），缺任一即 `update()` 退化为空操作。
+  - `libraries/mus4_core/src/WirelessSecrets.example.h`：新增注释掉的 `CLOUD_REPORT_URL`/`CLOUD_REPORT_TOKEN` 占位示例（真实凭据不写死，参照既有 WIFI_STA 占位模式）。
+  - `MUS4_FW.ino`：`#include "CloudReporter.h"` + 在 Wi-Fi 更新块调用 `mus4cloud::update()`（约 663 行）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.72 → v1.8.73。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.73、CHANGELOG 顺序链补 v1.8.73。arduino-cli 编译通过。
+
+## 2026-09-06 v1.8.72
+
+- fix(WebConsole): Drift Console 整页三步审查修复——安全门禁四补（空 POST /update 不再无条件重启、WIFI| 配网密码日志脱敏、devmode/serial 命令补鉴权）+ OTA 中断卡死双保险 + 重启后遥测静默自愈 + STA 配网假失败假成功 + tub 录制丢点/静默清空 + 校准反馈静默 + drift/judge 保存合并为单次 NVS 写
+  - 背景：对整个 Drift Console 页面（服务端 C++ + 内嵌前端 JS）做「边界情况 / 陌生 CodeReviewer 复审 / 上线严重 Bug 预演」三步审查，发现 4 高 5 中共 9 条实锤问题，本次全部修复；DD 侧配套修复见 DonkeyDrift (198)。
+  - 安全门禁（`libraries/mus4_web/src/WebConsoleServer.cpp`、`libraries/mus4_command/src/WirelessConsole.cpp`）：
+    - 空 POST `/update` 不再重启：新增静态标志 `s_wifiWebUpdateStarted`（UPLOAD_FILE_START 鉴权通过才置位），POST 完成处理器要求"确实发生过鉴权通过的上传且 errorMsg 为空"才走 ACK+`ESP.restart()`，否则 400 `NACK:NO_UPLOAD`；`Update.abort()` 移到鉴权检查之后（原顺序允许未认证请求中止进行中的 OTA 会话）。
+    - `redactWirelessConsoleLine` 新增 `WIFI|` 分支：`WIFI|<ssid>|<password>` 脱敏为 `WIFI|<ssid>|<redacted>`——此前 DC「上位机配网」发出的明文家庭 Wi-Fi 密码会进 web 环形日志（无鉴权 `/api/log` 可读、经 WS 实时广播）。
+    - `POST /api/devmode` 补全文件统一的 `consoleAuthenticated || devModeEnabled || isWirelessConsoleAuthDisabled()` 门禁（403 `{"error":"auth_required"}`）——它本是唯一无鉴权写端点，且开 DEV 即绕过全部鉴权与 OTA 免密。
+    - `/api/cmd?target=serial/serial1` 直转 Serial2 分支补同款 403 门禁（默认空密码配置下行为不变）。
+  - OTA 中断卡死双保险（`WebConsoleServer.cpp`、`libraries/mus4_wifi/src/WifiOta.cpp`、`libraries/mus4_core/src/WifiConsoleTypes.h`）：本机 core 3.3.10 实测 abort 时 POST handler 不执行（原注释假设相反）——(a) upload handler 直接处理 `UPLOAD_FILE_ABORTED` 就地 `resetOtaAfterFailedUpload()`+`closeWifiOtaWindow()`；(b) 新增空闲超时兜底 `WIFI_OTA_IDLE_TIMEOUT_MS=60000`：upload WRITE 刷新活动时间戳，`updateWifiOta()` 检测到 `inProgress` 且空闲超 60s 即复位清理（ArduinoOTA 通道经 `wifiWebOtaLastActivityMs()` 返回 0 豁免，不误杀）。修复前：上传中途浏览器关页/休眠/Wi-Fi 抖动 → 控制台全 503 + 车永久 Park Locked，只能重启。
+  - 重启后遥测/日志静默自愈（`libraries/mus4_web/src/WebConsoleAssets.h`）：服务端 seq 重启归零而前端 `lastDataSeq/lastLogSeq` 只增不减，轮询模式下新数据被 since 过滤永久静默。新增 `resetDataSeqOnRollback(seq)`：WS `hello` 帧与 HTTP `/api/data` 的 `latest.seq` 两处检测到回退即重置双 seq 并提示（i18n `data.seqReset`）。
+  - STA 配网三连（`WebConsoleServer.cpp` + `WebConsoleAssets.h`）：(a) `staSsid` 编辑即清密码掩码占位/dirty 等全部状态，`saveWifiSta` 不再拿旧密码连新网；`renderStaPasswordState` 增加 SSID 失配跳过回填（防 5s 轮询复活旧掩码）；(b) 服务端收到新配置即 `clearWifiStaLastError()` 并在 `/api/wifi-sta` JSON 新增 `apply_pending` 字段（`scheduleWifiStaApply`→apply 执行期间为 true），前端等待循环在 `apply_pending` 期间不评估陈旧 connected/last_error——消除 800ms apply 窗口内的秒弹假失败与旧 IP 假成功；(c) handoff 成功 modal 去重顺序修正——调用点不再预写 `handoffShownForStaIp`（原先函数内去重恒命中导致成功 modal 永不显示），`updateNetworkCard` 场景保留"只标记不弹窗"并加注释。
+  - 校准与命令反馈（`WebConsoleAssets.h`）：`explainCommandError` 补映射——小写 `auth_required`（新 403 JSON 契约）、`NACK:JOYSTICK_INVALID_RANGE`（提示重新校准打满杆）、`NACK:JOYSTICK_SAVE_FAILED`，及 NACK/error 兜底原文展示（i18n `error.joystickInvalidRange`/`error.joystickSaveFailed`）；`joystickCalLive` 死元素接线——DONE 步骤「请检查下方数值」下方真正显示解析出的 min/mid/max。
+  - tub 录制（`WebConsoleAssets.h`）：`handleDataPayload` 对帧内 `points[]` 逐点 `tp()`（原先只录每帧 latest，HTTP 轮询/主循环繁忙时一帧多点全丢；`tp()` 移除 `ch6===undefined` 门槛——plot point 本就无 ch6，下游转换工具对缺失字段填 0 容错）；`clearChart()` 末尾 `refreshDynamicLabels()`（录制按钮状态正确回弹）+ 录制中被清空时 `line()` 提示（i18n `tub.clearedWhileRecording`）。
+  - drift/judge 保存单次 NVS 写（`libraries/mus4_wifi/src/WifiManager.cpp`）：`saveDriftConfigPreference`/`saveJudgeConfigPreference` 由 12/10 次逐键 put（每次 put 都 `nvs_commit` 写 flash，主循环同步执行致行车中保存时控制输出停顿数十~数百 ms）改为单次 `putBytes` 定长 blob（`judge_cfg`/`drift_cfg`，首字节格式版本 + `static_assert` 钉尺寸）；load 先读 blob、读不到回退旧逐键（旧车参数无损），仅当值真来自旧键且校验通过才一次性迁移写 blob；旧键保留不删，回滚旧固件仍可读。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.71 → v1.8.72。
+  - 测试同步：新增 `tests/test_web_console_security.py` 10 例（devmode/serial 门禁存在与顺序、update POST 需上传发生标志、`Update.abort()` 在鉴权后、ABORTED 就地清理、活动时间戳与空闲超时、WIFI| 脱敏、`apply_pending` 字段、清错误先于 schedule apply）；新增 `tests/web_console_fixes.test.mjs` 25 例 node:vm 沙箱行为测试（seq 回退两通道、错误映射矩阵、staSsid 清占位、apply_pending 假失败/假成功、handoff 标记语义、tub 逐点去重与上限自动停、clearChart 两态、joystickCalLive 两态、全部 `<script>` 块编译完整性）+ `tests/test_web_console_fixes_node.py` 包装（无 node 自动 skip）；新增 `tests/test_drift_judge_nvs_single_write.py` 5 例（单次 putBytes、无逐键 put、版本字段与 static_assert、blob 优先 + 旧键回退 + isKey 门控迁移）；`tests/test_wireless_console_policy.py` +6 例（WIFI| 脱敏、MODE 认证放行/未认证拒绝/大小写敏感——顺带修复 Python 策略镜像缺失 MODE 分支的实锤漂移）；`tests/wireless_console_policy.py` 镜像同步补 WIFI| 脱敏与 `is_wireless_mode_command()`；`tests/test_firmware_feature_flags.py` 版本断言 v1.8.72、CHANGELOG 顺序链补 v1.8.72、`clearChart` 逐字钉扎串按新行为更新。`pytest MUS4_FW/tests/` 360 passed + 31 subtests；arduino-cli 编译通过。
+
+## 2026-09-06 v1.8.71
+
+- feat(WebConsole): DC「ZCode」点击实时取活链——单击先开占位标签，再 POST DD 后端 `:8000/api/zcode-remote/link` 实时向 ZCode 桌面端取新鲜远控链接，零弹框零粘贴；取不到才回落 localStorage 存档/prompt 录入
+  - 背景：用户场景是 Mac 浏览器打开 DC 点「ZCode」、直接跳出远控这台 Linux 主机的页面。桌面端远控凭证（sid/hash）此前只能靠手工「复制链接」粘贴录入；本次由 DD 后端新增 `/api/zcode-remote/link` 端点实时取链（桌面端未开启则经 CDP 代开启、不在线则拉起，详见 DonkeyDrift 侧 CHANGELOG），DC 点击即用，彻底免录入。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片）：
+    - JS 新增 `zcodeRemoteFetchLive(cb)`：`POST http://<_launcherIp>:8000/api/zcode-remote/link`（AbortController 30s 超时——桌面端冷启动需数十秒），成功回 `{status:"ok",url}` 则回调活链，任何失败回调 null。
+    - `openZCode()` 改造：单击（260ms 双击去抖不变）先同步 `window.open('about:blank','_blank')` 开占位标签（`opener` 置空）——防止异步取链后 `window.open` 被浏览器弹窗拦截；拿到链接后写占位标签 `location.href` 完成导航（占位被拦则 `window.open(url)` 直开兜底）。取到活链即写入 localStorage 作离线兜底存档；取不到活链才走 v1.8.70 的存档现拼/`zcodeRemotePrompt()` 录入流程，两者都无果时关闭占位标签。
+    - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例，不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.70 → v1.8.71。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.71、CHANGELOG 顺序链补 v1.8.71；`test_web_console_header_entry_buttons` ZCode 断言块新增 `zcodeRemoteFetchLive`/`:8000/api/zcode-remote/link`/占位标签（`about:blank`、`win.opener=null`、`win.location.href=u`、被拦兜底 `window.open(u,...)`、活链存档、`win.close()`）断言；`window.open(url,...)` 断言随变量更名更新为 `u`。
+
+## 2026-09-06 v1.8.70
+
+- fix(WebConsole): ZCode 远控链接宽容解析——兼容 fragment 形式参数与 remoteControlToken 链接，无效存档不再回填 prompt 诱导回车
+  - 背景：用户反馈粘贴 ZCode 桌面端「复制链接」给出的链接被误判「链接无效」——桌面端链接的参数可能在 `#` fragment 之后（形如 `https://zcode.z.ai/remote/v4#sid=…&hash=…`），而 v1.8.69 的校验只认 query 参数；另一诱因是早期存入的无效裸链接被原样回填进 prompt 预填，诱导用户直接回车再次校验失败。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片）：
+    - JS 新增 `zcodeRemoteNormalize(raw)` 统一归一化：trim + 去首尾引号（含「」“”‘’）→ `new URL()` 解析（失败返回空）→ 必须 `https:` → fragment 里有 `=` 就把参数归并进 query（query 已有同名参数不覆盖）并清空 hash → 有 `remoteControlToken` 参数原样返回（token 链接不刷 t）→ 否则必须含 `sid`+`hash` 且把 `t` 刷成 `Date.now()`。
+    - `zcodeRemoteFreshUrl()` 与 `zcodeRemotePrompt()` 均改走 `zcodeRemoteNormalize`：prompt 预填改为存档归一化有效才预填、无效存档预填空串（不再诱导回车）；保存的是归一化后的值（fragment 形式链接存档后即为 query 形式 + 新鲜 t）。
+    - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例，不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.69 → v1.8.70。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.70、CHANGELOG 顺序链补 v1.8.70；`test_web_console_header_entry_buttons` ZCode 断言块更新：删除已失效的 `url.indexOf('https://')===0` 断言（新代码用 `u.protocol!=='https:'`），新增 `zcodeRemoteNormalize`/`u.hash.slice(1)`/`remoteControlToken`/`window.prompt(t('zcode.remotePrompt'),cur)` 断言，sid/hash/t 刷新相关断言保留，注释块同步描述新行为。node 打桩功能验证 32 例通过（query/fragment/token/垃圾输入/引号容忍/无效存档预填空串等），pytest 与固件编译验证通过。
+  - 审查补强（2026-09-06 合并前三步审查，不影响固件行为、版本号不变）：ZCode 远控链接逻辑此前只有 `test_firmware_feature_flags.py` 字符串断言，v1.8.69/v1.8.70 开发时的 node 打桩验证（32 例）是未入库的临时脚本——本次固化为 `tests/zcode_remote_url.test.mjs`（23 例：从 WebConsoleAssets.h 提取真实函数实体进 node:vm 沙箱执行，覆盖 normalize 边界矩阵——query/fragment/带路径 fragment/同名不覆盖/token 原样/裸链接/缺参/非 https/垃圾输入/空值/引号包裹——及单击去抖/双击/prompt 预填/存储读写抛错容错/复制降级失败/唤醒跳过等交互流）+ `tests/test_zcode_remote_node.py` pytest 包装（无 node 环境自动 skip）。审查结论：固件侧 localStorage 已有 try/catch 容错，无需源码改动；DD 侧同款容错修复见 DonkeyDrift (196)。
+
+## 2026-09-06 v1.8.69
+
+- feat(WebConsole): DC「ZCode」按钮点击即新鲜、正常点击零弹框——单击用已存凭证现拼带全新时间戳的远控链接，复制到剪贴板后直接新标签打开，并后台唤醒 PC 上的 Z Code 桌面端
+  - 背景：v1.8.68 把 ZCode 按钮改为打开 localStorage 里保存的远控链接，但链接里的 `t` 生成时间戳会过期（z.ai 远控页明示"不要复用旧复制的链接，请扫最新二维码"），旧链接打开即显示「手机连接已失效」；无存档时还会 prompt 弹框。本次让每次点击都现拼一条带全新 `t` 的链接（sid/hash 为持久化设备凭证不变），只有点击后才向 Z Code 发请求，且复制到剪贴板再打开，保证每次打开都不失效、不再弹框。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片）：
+    - JS 新增 `zcodeRemoteFreshUrl()`：读 localStorage 键 `zcodeRemoteUrl`，`new URL()` 解析后校验含 `sid` 与 `hash` 参数（缺一视为无存档，返回空走录入），`searchParams.set('t', String(Date.now()))` 现拼新鲜链接返回。
+    - JS 新增 `zcodeRemoteCopy(url)`：复制到剪贴板——`navigator.clipboard.writeText` 优先，http 非安全上下文降级隐藏 textarea + `document.execCommand('copy')`；成功 `showToast`（`zcode.remoteCopied`），失败仅记日志不阻塞跳转。
+    - JS 新增 `zcodeRemoteWake()`：点击时 best-effort `POST http://<host_ip>:8090/api/launch/zcode-remote` 唤醒/拉起 PC 上的 Z Code 桌面端（`_launcherIp` 为空跳过、失败静默、不 await 不阻塞跳转）。
+    - `openZCode()` 改造：单击（260ms 双击去抖不变）→ `zcodeRemoteFreshUrl() || zcodeRemotePrompt()` → 有值则复制 + `window.open(url,'_blank','noopener')` + `zcodeRemoteWake()`；正常点击零弹框。
+    - `zcodeRemotePrompt()`：预填值改为当前存档（不再预填必失效的裸占位链接）；校验升级为必须 `https://` 且含 `sid=`、`hash=` 参数，失败 alert 不保存不打开——杜绝再存进必失效的裸链接。
+    - i18n：`zcode.remoteHint`/`zcode.remotePrompt`/`zcode.remoteInvalid` 中英词条更新（引导粘贴桌面端「复制链接」给出的完整链接），新增 `zcode.remoteCopied`（远控链接已复制到剪贴板 / Remote control link copied to clipboard）；按钮静态 title 同步更新。
+    - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例（`https://zcode.z.ai/remote/v4?sid=…&hash=…`），不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.68 → v1.8.69。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.69、CHANGELOG 顺序链补 v1.8.69；`test_web_console_header_entry_buttons` ZCode 断言块改写为 v1.8.69 新行为（`zcodeRemoteFreshUrl`/sid/hash 校验/`set('t',String(Date.now()))`/`zcodeRemoteCopy`/clipboard+execCommand/`zcodeRemoteWake`/`:8090/api/launch/zcode-remote`/新中英词条；旧端点残留断言改为带收尾引号的 `:8090/api/launch/zcode'` 以区分新 `-remote` 端点）。pytest 与固件编译验证通过。
+
+## 2026-09-06 v1.8.68
+
+- feat(WebConsole): DC 顶栏「ZCode」按钮行为原地替换为远程控制链接跳转——单击打开 localStorage 链接、双击重录；v1.8.67 并列新增的 #openZCodeRemoteBtn 撤下（有意行为变更）
+  - 背景：用户明确不要两个 ZCode 按钮并存——撤下 v1.8.67 新增的「ZCode Remote」按钮，把旧的 launcher 版「ZCode」按钮（#openZCodeBtn，原 POST :8090/api/launch/zcode 拉起 TUI 网页终端）原地替换为远程链接入口，id 与标签「ZCode」均不变。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片）：
+    - headerRow：`#openZCodeBtn` 保留原位（Kimi Code Web 与 DeepSeek Harness 之间），`onclick="openZCode()"` 指向新实现并新增 `ondblclick="editZCodeUrl()"`，title 提示走 `data-i18n-title="zcode.remoteHint"`（单击打开 ZCode 远程控制，双击更新链接 / Click to open ZCode Remote Control, double-click to update the link）；v1.8.67 的 `#openZCodeRemoteBtn` DOM 整段移除（含 lucide link 图标）。
+    - JS：旧 launcher 版 `openZCode()`（about:blank 句柄 + AbortController 15s 超时 + toast 报错）整体删除，替换为远程链接实现——单击读 localStorage 键 `zcodeRemoteUrl`，有值 `window.open(url,'_blank','noopener')`；无值 `window.prompt` 录入（预填现有值或占位示例 `https://zcode.z.ai/remote/v4`），trim 后校验 `https://` 前缀，失败 alert 且不保存不打开；双击重新 prompt 更新；单击经 260ms 定时器延迟以区分双击。
+    - i18n：移除 `button.openZCodeLaunching` / `toast.zCodeFailed` / `toast.zCodeTimeout`（中英，随 launcher 行为下线）与 v1.8.67 的 `button.openZCodeRemote`；保留 `zcode.remoteHint` / `zcode.remotePrompt` / `zcode.remoteInvalid`（中英各 3 条）；`button.openZCode`（ZCode）标签不变。
+    - 窄屏布局：`#openZCodeRemoteBtn{order:11}` 规则移除，`.br2` 复原 12→11，第 2 行恢复 5 个入口按钮。
+    - 安全不变：真实远程链接是凭证，只存浏览器 localStorage；代码与测试内仅出现占位示例，不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.67 → v1.8.68。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.68、CHANGELOG 顺序链补 v1.8.68；`test_web_console_mobile_header_layout` 移除 #openZCodeRemoteBtn order 断言、复原 `.br2{order:11}` 并加"不存在"断言；`test_web_console_header_entry_buttons` 原 v1.8.42 launcher 断言块改写为新行为断言（ondblclick、data-i18n-title、localStorage 读写、noopener、https:// 校验、中英词条，及 launcher/并列按钮残留不存在），v1.8.67 ZCode Remote 断言块改写为 v1.8.68 撤下防回潮断言，`.navTabWeak` 计数恢复 3，DOM 序链复原。node 打桩功能验证与固件编译验证通过。
+
+## 2026-09-06 v1.8.67
+
+- feat(WebConsole): DC 顶栏新增「ZCode Remote」入口按钮——单击新标签页打开 localStorage 里的 ZCode 远程控制链接，双击重新录入
+  - 背景：ZCode 桌面端可生成远程控制链接（形如 https://zcode.z.ai/remote/v4#配对凭证，链接本身是凭证）；用户希望在 DC 头部一键打开。与既有「ZCode」按钮（#openZCodeBtn，走 launcher :8090/api/launch/zcode 拉起 TUI 网页终端）是两个功能，本版为并列新增、旧按钮不动。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`（仅 CONSOLE 切片；JUDGE 无 headerRow、DRIFT 的 headerRow 仅标题，不属同一结构，未动；body.embedded 下 headerRow 本就隐藏）：
+    - headerRow：`#openDshBtn` 之后、GitHub 链接之前新增 `#openZCodeRemoteBtn`（.navTabWeak 弱化标签 + lucide link 14px 图标，沿用 KCW/ZCode/DSH 同款结构）；`onclick="openZCodeRemote()"`、`ondblclick="editZCodeRemoteUrl()"`，title 提示走 `data-i18n-title="zcode.remoteHint"`。
+    - 交互（原生 JS）：单击读 localStorage 键 `zcodeRemoteUrl`，有值直接 `window.open(url,'_blank','noopener')`；无值 `window.prompt` 录入，校验须以 `https://` 开头（失败 alert 提示且不保存不打开），合法则 trim 后存入并打开；双击重新 prompt 更新（预填现有值，无值时预填占位示例 `https://zcode.z.ai/remote/v4`）。单击经 260ms 定时器延迟以区分双击（否则 dblclick 前的两次 click 会误开两个标签页）。
+    - 窄屏布局（max-width:820px）：第 2 行末尾追加 `#openZCodeRemoteBtn{order:11}`，`.br2` 换行分隔顺移 11→12，其余 order 不变。
+    - i18n 中英各 4 词条：`button.openZCodeRemote`（ZCode 远程 / ZCode Remote）、`zcode.remoteHint`（单击打开 ZCode 远程控制，双击更新链接 / Click to open ZCode Remote Control, double-click to update the link）、`zcode.remotePrompt`、`zcode.remoteInvalid`。
+    - 安全：真实远程链接是凭证，只存用户浏览器 localStorage；代码与测试内仅出现占位示例，不含真实链接。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.8.66 → v1.8.67。
+  - 测试同步：`tests/test_firmware_feature_flags.py`——版本断言 v1.8.67、CHANGELOG 顺序链补 v1.8.67（并补 v1.8.66→v1.8.65 缺失链节）；`test_web_console_mobile_header_layout` 第 2 行补 `#openZCodeRemoteBtn{order:11}` 与 `.br2{order:12}` 断言；`test_web_console_header_entry_buttons` 新增 ZCode Remote 断言块（DOM 序链 dsh<zcodeRemote<gh、onclick/ondblclick、data-i18n-title、localStorage 读写、noopener、https:// 校验、占位示例、中英词条、lucide link 图标），`.navTabWeak` 计数 3→4。另用 node 对新增 JS 函数做打桩功能验证 11/11 通过；固件编译验证通过。
+
 ## 2026-09-03 v1.8.66
 
 - fix(security): 隐私泄露清理——真实 Wi-Fi 凭据与本机 agent 私人文件移出版本控制，防止继续随公开仓库扩散

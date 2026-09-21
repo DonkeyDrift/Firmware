@@ -243,7 +243,7 @@ mDNS 跟随 STA：
   "password_set": true,
   "password_len": 8,
   "ap_ip": "192.168.4.1",
-  "sta_ip": "192.168.3.144",
+  "sta_ip": "192.168.3.x",
   "mdns_host": "mus4-debug",
   "mdns_url": "http://mus4-debug.local/",
   "mdns_started": true,

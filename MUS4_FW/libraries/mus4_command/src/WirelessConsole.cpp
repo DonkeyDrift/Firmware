@@ -57,6 +57,13 @@ String redactWirelessConsoleLine(const String& line)
 {
     if (line.startsWith("AUTH:")) return "AUTH:<redacted>";
     if (line.startsWith("WIFI_STA_PASSWORD:")) return "WIFI_STA_PASSWORD:<redacted>";
+    // WIFI|<ssid>|<password>（Serial2 上位机配网协议）：保留 ssid，脱敏密码段；
+    // 前缀大小写敏感，与 isWirelessModeCommand 等现有 startsWith 判断一致。
+    if (line.startsWith("WIFI|")) {
+        int secondPipe = line.indexOf('|', 5);
+        if (secondPipe > 5) return line.substring(0, secondPipe + 1) + "<redacted>";
+        return "WIFI|<redacted>";
+    }
     return line;
 }
 

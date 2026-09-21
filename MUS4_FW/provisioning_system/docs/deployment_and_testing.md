@@ -14,7 +14,7 @@
 ### 1. ESP32 固件编译与烧录
 环境依赖：Arduino IDE / Arduino-CLI 及 Python
 ```bash
-cd /home/dkc/project/mus4
+cd ~/project/mus4
 # 使用工作区内置的 arduino-cli.py 脚本进行一键编译、烧录和监控
 # 假设 sketch 路径为 provisioning_system/esp32/esp32_wifi_provisioning
 python arduino-cli.py -cus --sketch provisioning_system/esp32/esp32_wifi_provisioning --port /dev/ttyACM1
@@ -37,7 +37,7 @@ sudo apt update && sudo apt install -y python3-serial network-manager
 sudo apt update && sudo apt install -y python3-serial network-manager
 
 # 2. 复制服务文件到 systemd 目录
-sudo cp /home/dkc/project/mus4/provisioning_system/linux_agent/mus4-provisioning-agent.service /etc/systemd/system/
+sudo cp ~/project/mus4/provisioning_system/linux_agent/mus4-provisioning-agent.service /etc/systemd/system/
 
 # 3. 重新加载 systemd 配置
 sudo systemctl daemon-reload
@@ -58,7 +58,7 @@ sudo journalctl -u mus4-provisioning-agent -f
 ## 方式二：手动运行 (调试使用)
 
 ```bash
-cd /home/dkc/project/mus4/provisioning_system/linux_agent
+cd ~/project/mus4/provisioning_system/linux_agent
 sudo python3 agent.py
 ```
 ```
@@ -88,7 +88,7 @@ OK
 *   **单元测试 (Unit Test)**:
     *   `WifiManager`: 模拟了 `nmcli` 的成功与失败返回码，验证了正则提取 IPv4 地址的逻辑 (`test_wifi_connect_success` / `test_wifi_connect_failure`)。
 *   **集成与端到端测试 (E2E Test)**:
-    *   **正向配网流程**: 模拟串口收到完整的 `WIFI|newhome_iot|wxl922922` 字符串，验证了 `disconnect_ap` -> `connect` -> 串口写回 `OK|IP` 的全链路调用 (`test_end_to_end_success_flow`)。
+    *   **正向配网流程**: 模拟串口收到完整的 `WIFI|TestSSID|testpass123` 字符串，验证了 `disconnect_ap` -> `connect` -> 串口写回 `OK|IP` 的全链路调用 (`test_end_to_end_success_flow`)。
     *   **异常处理边界**: 模拟了密码错误或路由器不在范围内导致的连接超时，验证了系统能正确捕获并回传 `FAIL|连接超时` 至 ESP32，且网页能正确渲染红色报错警告。
 
 ---

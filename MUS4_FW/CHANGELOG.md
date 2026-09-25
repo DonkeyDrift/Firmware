@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-09-25 v1.10.3
+
+- feat(web): DD 内嵌设置视图（embedded+settings）向父页面上报文档高度——DD 车辆设置 iframe 自适应、设置页整页一滑到底
+  - 背景：DD Car Connector 的车辆设置板块以跨域 iframe 内嵌车端 `?embedded=1&settings=1` 视图，固定 80vh 高度导致 iframe 内部单独出滚动条；DD 侧要整页滚动需车端上报内容高度（跨域只能走 postMessage）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `initEmbedHeightReporter()`——仅 embedded+settings 视图调用，向 `window.parent` postMessage `{type:'dd-embed-height', height}`（取 documentElement 与 body scrollHeight 较大者）；注册 load/resize 监听 + ResizeObserver 同时观察 body 与 documentElement，覆盖 /drift、/judge 两个懒加载子 iframe（initEmbedTuneFrames 注入 data-src）加载后撑高页面的场景。独立打开车端页面（无 embedded）不注册、行为完全不变。
+  - 配套：DD 侧 `CarSettingsPanel` 监听该消息把 iframe 高度设为内容高度（DonkeyDrift 同主题改动）；未刷本固件的旧车端不回发消息，DD 侧保持 min-h 兜底高度，向后兼容不坏。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 → v1.10.3（CHANGELOG 断言同步追加）。
+  - 验证：`python arduino-cli.py -c` 编译通过（esp32:esp32:esp32 min_spiffs）；新增 JS 块 `node --check` 通过；OTA 刷车后 DD 设置页生效整页滚动。
+
 ## 2026-09-25 v1.10.2
 
 - docs(readme): 对外文档修复——根 README 版本表追平、MUS4_FW 双语 README 死链批量修复

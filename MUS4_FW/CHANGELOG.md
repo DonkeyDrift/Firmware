@@ -1,5 +1,23 @@
 # CHANGELOG.md
 
+## 2026-09-25 v1.10.4
+
+- feat(DC): 五张状态卡底色统一为基础卡色——语义状态只留边框/圆点/数值色
+  - 背景：用户视觉评审发现 DC 主页模式/驻车/漂移/电压/网络五张状态卡呈现三种不同色相的底色——所有卡共用的蓝灰渐变底（`--stateCardGrad`，深色 `linear-gradient(135deg,#1c2430,#121821)` / 浅色 `linear-gradient(135deg,#fff,#edf1f6)`）叠加各状态类语义色边框与光晕后的整体观感。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：`--stateCardGrad` 深色改为 `#1c1c1e`、浅色改为 `#fff`，与基础卡 token `--cardGrad` 完全对齐，五卡底色完全一致；CSS 体积还缩小约 55 字节。
+  - 保留不动的语义点缀：状态类 `border-color`（绿/橙/蓝/红/紫/灰）、`.stateDot` 圆点色、`.parkLocked/.driftActive` pulse 光晕、`.driftActive` 紫色扫描条纹（动态指示非静态底色）；网络卡 AP/STA/HOST 分段样式与全站字体（v1.10.2 用户要求恢复版）零改动。
+  - 测试：`arduino-cli.py -c` 编译通过；`tests/web_console_fixes.test.mjs` + `test_web_console_security.py` 共 11 项全绿；深浅两主题 Playwright 截图核验五卡底色一致。
+  - OTA：合入后刷车（HTTP 通道），版本号 `BuildInfo.h` v1.10.4。
+
+## 2026-09-25 v1.10.3
+
+- feat(web): DD 内嵌设置视图（embedded+settings）向父页面上报文档高度——DD 车辆设置 iframe 自适应、设置页整页一滑到底
+  - 背景：DD Car Connector 的车辆设置板块以跨域 iframe 内嵌车端 `?embedded=1&settings=1` 视图，固定 80vh 高度导致 iframe 内部单独出滚动条；DD 侧要整页滚动需车端上报内容高度（跨域只能走 postMessage）。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：新增 `initEmbedHeightReporter()`——仅 embedded+settings 视图调用，向 `window.parent` postMessage `{type:'dd-embed-height', height}`（取 documentElement 与 body scrollHeight 较大者）；注册 load/resize 监听 + ResizeObserver 同时观察 body 与 documentElement，覆盖 /drift、/judge 两个懒加载子 iframe（initEmbedTuneFrames 注入 data-src）加载后撑高页面的场景。独立打开车端页面（无 embedded）不注册、行为完全不变。
+  - 配套：DD 侧 `CarSettingsPanel` 监听该消息把 iframe 高度设为内容高度（DonkeyDrift 同主题改动）；未刷本固件的旧车端不回发消息，DD 侧保持 min-h 兜底高度，向后兼容不坏。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 → v1.10.3（CHANGELOG 断言同步追加）。
+  - 验证：`python arduino-cli.py -c` 编译通过（esp32:esp32:esp32 min_spiffs）；新增 JS 块 `node --check` 通过；OTA 刷车后 DD 设置页生效整页滚动。
+
 ## 2026-09-25 v1.10.2
 
 - docs(readme): 对外文档修复——根 README 版本表追平、MUS4_FW 双语 README 死链批量修复

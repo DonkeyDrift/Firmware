@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.0"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.1"' in build_info
+    assert "v1.10.1" in changelog
     assert "v1.10.0" in changelog
     assert "v1.9.4" in changelog
     assert "v1.9.1" in changelog
@@ -472,6 +473,49 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert changelog.index("## 2026-08-15 v1.7.77") < changelog.index("## 2026-08-15 v1.7.76")
     assert changelog.index("## 2026-08-15 v1.7.76") < changelog.index("## 2026-08-15 v1.7.75")
 
+
+def test_console_state_cards_restore_cockpit_look():
+    """v1.10.1：五张状态卡恢复座舱质感（10px 圆角、渐变底、座舱边框/阴影），
+    大数字恢复 800 字重；共享变量 --cardGrad 不被改动（弹窗等保持 Apple）。"""
+    assets = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
+    ).read_text(encoding="utf-8")
+
+    # Apple 压平覆写已删除
+    assert "html:root .stateValue{font-weight:600;letter-spacing:-.02em;line-height:1.15}" not in assets
+    assert "html:root .stateCard{border-radius:16px}" not in assets
+    assert "html:root .stateMeta,html:root .stateHead{line-height:1.35}" not in assets
+    # .stateMeta b 不再被压平（恢复大写小标签），设置页标签仍保留 Apple 风格
+    assert "html:root .stateMeta b,html:root .toggleLabel" not in assets
+    assert "html:root .toggleLabel,html:root .settingsView .setRow h3{text-transform:none" in assets
+    # 座舱卡片变量（深浅两套）
+    assert "--stateCardGrad:linear-gradient(135deg,#1c2430,#121821)" in assets
+    assert "--stateCardLine:#344154" in assets
+    assert "--stateCardGrad:linear-gradient(135deg,#fff,#edf1f6)" in assets
+    assert "--stateCardLine:#ccd5df" in assets
+    assert "background:var(--stateCardGrad)" in assets
+    assert "border:1px solid var(--stateCardLine)" in assets
+    # 网络卡 AP/STA/HOST 激活页签恢复座舱青色
+    assert "#networkCard .netTabs button.active{background:#5cc8ff;color:#061019}" in assets
+
+
+def test_refresh_wifi_sta_no_longer_auto_pops_handoff_modal():
+    """v1.10.1：进入控制台不再自动弹出「STA 切换提示」——handoffShownForStaIp
+    是 window 级变量、每次加载重置，只要车辆连着家用 Wi-Fi 就必弹；现仅保留
+    Wi-Fi 切换流程内（saveWifiSta/waitWifiStaConnectionResult）的主动弹窗。"""
+    assets = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
+    ).read_text(encoding="utf-8")
+
+    body = re.search(
+        r"function refreshWifiSta\(forceFill=false\)\{(?P<body>.*?)\}\nfunction openWifiScanPopover",
+        assets,
+        re.DOTALL,
+    ).group("body")
+    assert "showWifiStaHandoffModal" not in body, "refreshWifiSta 不得再自动弹 handoff 窗"
+    assert "sees connected IP" not in assets
+    # 切换流程内的主动弹窗保留
+    assert "showWifiStaHandoffModal({...j,connecting:true})" in assets
 
 def test_sta_scan_popover_light_theme_selector():
     """v1.8.54：STA 配网「搜索网络」扫描弹层的浅色覆盖选择器必须带逗号。
@@ -2039,7 +2083,7 @@ def test_web_console_language_tabs_wired_to_set_language():
     assert "#voltageCard .stateMeta span,#networkCard .stateMeta span{font-size:13px}" in source
     assert "@media(max-width:620px){" in source
     assert ".rcGrid{grid-template-columns:repeat(3,minmax(72px,1fr))}" in source
-    assert ".stateCard{position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:10px;padding:12px" in source
+    assert ".stateCard{position:relative;overflow:hidden;border:1px solid var(--stateCardLine);border-radius:10px;padding:12px" in source
     assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.08}" in source
     assert ".stateMeta span{font-size:15px;font-weight:700;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.2}" in source
     assert "text-overflow:ellipsis" not in source

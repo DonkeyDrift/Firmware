@@ -1,5 +1,22 @@
 # CHANGELOG.md
 
+## 2026-09-25 v1.10.1
+
+- fix(ui): Drifter Console 恢复座舱质感（状态卡与大数字），并删除进页自动弹出的「STA 切换提示」
+  - 背景：用户反馈 v1.10.0（Apple 唯一风格）后 DC 字体不如座舱时期好看、且更喜欢原来的网络卡风格；另每次进入控制台都会弹出「STA 切换提示」弹窗。
+  - 字体恢复（`WebConsoleAssets.h` 控制台页，均回到座舱取值）：
+    - `.stateValue`：删除压平的 `html:root .stateValue{font-weight:600;letter-spacing:-.02em;line-height:1.15}` 覆写——五张状态卡数值回到 **18px/800 重数字**（座舱观感），其余 `.stateValue` 回到 24px/800。
+    - `.stateMeta b` 从压平规则 `html:root .stateMeta b,.toggleLabel,...{text-transform:none;letter-spacing:0;font-size:13px}` 中剔除——卡内标签恢复座舱的 11px / 大写 / .08em 字距；`.toggleLabel`/`.setRow h3`（设置页）保留 Apple 风格不受影响。
+    - 删除 `html:root .stateMeta,.stateHead{line-height:1.35}` 覆写。
+  - 状态卡（模式/驻车/漂移/电压/网络五卡）恢复座舱质感：
+    - 删除压平的 `html:root .stateCard{border-radius:16px}` 与 `html:root .stateCard{border-color:var(--cardLine);transition:...}` 两条覆写——回到 10px 圆角。
+    - 新增卡片专属变量 `--stateCardGrad/--stateCardLine/--stateCardShadow`（深色 `linear-gradient(135deg,#1c2430,#121821)` / `#344154` / 无阴影；浅色 `linear-gradient(135deg,#fff,#edf1f6)` / `#ccd5df` / `0 1px 3px rgba(15,23,42,.08)`），`.stateCard` 背景/边框/阴影改用之——座舱渐变卡回归，且不触碰共享变量 `--cardGrad`（弹窗等其它用户保持 Apple）。
+    - 网络卡 AP/STA/HOST 激活页签恢复座舱青色：`#networkCard .netTabs button.active{background:#5cc8ff;color:#061019}`。
+  - 删除进页自动弹窗：`refreshWifiSta()` 删除两个自动弹窗分支（`j.connected && sta_ip` 有效且未标记过 → 弹；`j.handoff_active && handoff_sta_ip` 有效 → 弹）——此前 `handoffShownForStaIp` 是 window 级变量、每次页面加载即重置，导致只要车辆连着家用 Wi-Fi，每次进入控制台都弹「STA 切换提示」。Wi-Fi 切换流程内的弹窗（`saveWifiSta`/`waitWifiStaConnectionResult` 主动触发）保留不动，后端 `handoff_*` JSON 字段保留不动。
+  - 终端浅色、页头、图表、弹窗等其余部分保持 Apple 风格不变（2026-08 用户已定终端不黑）。
+  - `libraries/mus4_core/src/BuildInfo.h`：版本号 v1.10.0 → v1.10.1。
+  - 测试：`tests/test_firmware_feature_flags.py` 版本断言同步 v1.10.1；新增座舱恢复与弹窗删除的回归断言。
+
 ## 2026-09-20 v1.10.0
 
 - feat(ui)!: 移除座舱(cockpit)象限，Apple 成为 Drifter Console 唯一界面风格——与 find-car v1.6.0 同款手术；页头「座舱 / Apple」分段切换器删除，`<html>` 不再带 `data-ui` 属性，localStorage 键 `mus4.ui.style` 与 URL `?ui=` 参数不再读取（老用户残留键/旧链接被静默忽略、渲染恒为 Apple，无需任何操作）

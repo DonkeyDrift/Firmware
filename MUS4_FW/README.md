@@ -4,7 +4,7 @@
 
 MUS4 (LP-MU-S4) is an ESP32 + Arduino based low-level control firmware for RC vehicles and robotics platforms. It handles RC PWM input capture, host-side Pilot serial control, multi-mode control blending, Park / emergency braking, I2C sensor sampling, terminal UI output, Wi-Fi/TCP/Web Console, OTA updates, and optional BLE Gamepad output when Wi-Fi Console is disabled.
 
-The current main Arduino sketch is [`MUS4_FW.ino`](MUS4_FW.ino). Firmware version metadata is defined in [`BuildInfo.h`](BuildInfo.h), and release notes are maintained in [`CHANGELOG.md`](CHANGELOG.md).
+The current main Arduino sketch is [`MUS4_FW.ino`](MUS4_FW.ino). Firmware version metadata is defined in [`BuildInfo.h`](libraries/mus4_core/src/BuildInfo.h), and release notes are maintained in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -21,7 +21,7 @@ The current main Arduino sketch is [`MUS4_FW.ino`](MUS4_FW.ino). Firmware versio
 
 ## Hardware Pins
 
-Authoritative pin definitions are documented in [`Doc/Hardware/pin_definitions.md`](Doc/Hardware/pin_definitions.md). The current firmware targets the MUS4 v2.4.2 / v2.3 pin layout.
+Authoritative pin definitions are documented in [`docs/Hardware/pin_definitions.md`](docs/Hardware/pin_definitions.md). The current firmware targets the MUS4 v2.4.2 / v2.3 pin layout.
 
 | Function | GPIO | Notes |
 | --- | --- | --- |
@@ -208,10 +208,10 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 ## Repository Layout
 
 - [`MUS4_FW.ino`](MUS4_FW.ino): main firmware sketch and runtime state machine.
-- [`SharedTypes.h`](SharedTypes.h): shared data structures and enums.
-- [`BuildInfo.h`](BuildInfo.h): firmware name, version, and build metadata macros.
-- [`TUI.h`](TUI.h) / [`TUI.cpp`](TUI.cpp): ANSI terminal dashboard rendering.
-- [`Buzzer.h`](Buzzer.h) / [`Buzzer.cpp`](Buzzer.cpp): buzzer state machine.
+- [`SharedTypes.h`](libraries/mus4_core/src/SharedTypes.h): shared data structures and enums.
+- [`BuildInfo.h`](libraries/mus4_core/src/BuildInfo.h): firmware name, version, and build metadata macros.
+- [`TUI.h`](libraries/mus4_ui/src/TUI.h) / [`TUI.cpp`](libraries/mus4_ui/src/TUI.cpp): ANSI terminal dashboard rendering.
+- [`Buzzer.h`](libraries/mus4_ui/src/Buzzer.h) / [`Buzzer.cpp`](libraries/mus4_ui/src/Buzzer.cpp): buzzer state machine.
 - [`arduino-cli.py`](arduino-cli.py): cross-platform Arduino CLI wrapper.
 - [`arduino-cli-wsl.ps1`](arduino-cli-wsl.ps1): Windows/WSL accelerated build and OTA wrapper.
 - [`wireless_console_policy.py`](wireless_console_policy.py): Python mirror of Wi-Fi/TCP/Web Console permission policy.
@@ -219,7 +219,6 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 - [`tests/`](tests/): Python tests for build tools, policy, feature flags, training, and Pilot inference.
 - [`examples/`](examples/): standalone sensor and I2C example sketches.
 - [`provisioning_system/`](provisioning_system/): independent Wi-Fi provisioning and Linux agent tooling.
-- [`multi_agent_framework/`](multi_agent_framework/): independent Python multi-agent framework, not part of the main ESP32 firmware path.
 
 ## Runtime Architecture
 
@@ -231,7 +230,7 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 6. ESP32 `ledc` outputs PWM to the steering servo and ESC.
 7. TUI, I2C sensors, Web charts/logs, WebSocket telemetry, and BLE Gamepad operate as side systems that read current state and publish display or peripheral data.
 
-See [`Doc/Arch/architecture.md`](Doc/Arch/architecture.md) for more details.
+See [`docs/Arch/architecture.md`](docs/Arch/architecture.md) for more details.
 
 ## Wi-Fi Console, Web Console, and OTA
 
@@ -305,18 +304,17 @@ Policy changes should be mirrored in [`wireless_console_policy.py`](wireless_con
 
 ## Documentation
 
-- [`CLAUDE.md`](CLAUDE.md): repository guidance for Claude Code / coding agents.
 - [`CHANGELOG.md`](CHANGELOG.md): release notes.
-- [`Doc/Arch/architecture.md`](Doc/Arch/architecture.md): firmware loop, state machines, and data flow.
-- [`Doc/Hardware/pin_definitions.md`](Doc/Hardware/pin_definitions.md): authoritative MUS4 v2.3 / v2.4.2 pin definitions.
-- [`Doc/Hardware/CONFIG.md`](Doc/Hardware/CONFIG.md): hardware configuration notes.
-- [`Doc/Tools/ArduinoCLI.md`](Doc/Tools/ArduinoCLI.md): `arduino-cli.py` usage.
-- [`Doc/Tools/arduino-cli-wsl_manual.md`](Doc/Tools/arduino-cli-wsl_manual.md): WSL build wrapper manual.
-- [`Doc/Tools/train_tub_driver.md`](Doc/Tools/train_tub_driver.md): Tub JSON reporting and GRU baseline training.
-- [`Doc/Tools/mus4_pilot_infer.md`](Doc/Tools/mus4_pilot_infer.md): Pilot inference controller and safety gates.
-- [`Doc/README/OPERATIONS.md`](Doc/README/OPERATIONS.md): runtime serial commands and data frames.
-- [`Doc/Inspect/wifi-ap-sta-lifecycle-inspection.md`](Doc/Inspect/wifi-ap-sta-lifecycle-inspection.md): Wi-Fi AP / STA lifecycle, captive portal, switching flow, and troubleshooting notes.
-- [`Doc/Plan/`](Doc/Plan/): design plans and historical implementation notes.
+- [`docs/Arch/architecture.md`](docs/Arch/architecture.md): firmware loop, state machines, and data flow.
+- [`docs/Hardware/pin_definitions.md`](docs/Hardware/pin_definitions.md): authoritative MUS4 v2.3 / v2.4.2 pin definitions.
+- [`docs/Hardware/CONFIG.md`](docs/Hardware/CONFIG.md): hardware configuration notes.
+- [`docs/Tools/ArduinoCLI.md`](docs/Tools/ArduinoCLI.md): `arduino-cli.py` usage.
+- [`docs/Tools/arduino-cli-wsl_manual.md`](docs/Tools/arduino-cli-wsl_manual.md): WSL build wrapper manual.
+- [`docs/Tools/train_tub_driver.md`](docs/Tools/train_tub_driver.md): Tub JSON reporting and GRU baseline training.
+- [`docs/Tools/mus4_pilot_infer.md`](docs/Tools/mus4_pilot_infer.md): Pilot inference controller and safety gates.
+- [`docs/README/OPERATIONS.md`](docs/README/OPERATIONS.md): runtime serial commands and data frames.
+- [`docs/Inspect/wifi-ap-sta-lifecycle-inspection.md`](docs/Inspect/wifi-ap-sta-lifecycle-inspection.md): Wi-Fi AP / STA lifecycle, captive portal, switching flow, and troubleshooting notes.
+- [`docs/Plan/`](docs/Plan/): design plans and historical implementation notes.
 
 ## Safety Notes
 

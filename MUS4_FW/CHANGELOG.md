@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-09-25 v1.10.1
+
+- docs(readme): 对外文档修复——根 README 版本表追平 v1.10.0、MUS4_FW 双语 README 死链批量修复
+  - 背景：对外材料过时审查（GitHub README / 对外宣传资料）发现 Firmware 侧 README 存在版本过时与大量死链（GitHub 上大小写敏感或文件已移动，全部 404）。
+  - 根 `README.md`：子项目版本表 v1.9.4 → v1.10.0（2026-09-20 v1.10.0 条目合入时漏追平）。
+  - `MUS4_FW/README.md` 与 `MUS4_FW/README.zh-CN.md`（两语言同构修复）：
+    - `BuildInfo.h` 链接（每语言 2 处）→ 真实路径 `libraries/mus4_core/src/BuildInfo.h`（模块化拆分后根目录已无此文件）；
+    - 仓库结构清单同步拆分后新位置：`SharedTypes.h` → `libraries/mus4_core/src/`、`TUI.h`/`TUI.cpp` 与 `Buzzer.h`/`Buzzer.cpp` → `libraries/mus4_ui/src/`；删除已不在仓库的 `multi_agent_framework/` 条目；
+    - 全部 `Doc/...` 路径（每语言 12 行、显示文本与链接目标共 24 处）→ 实际小写目录 `docs/...`（目标文件均存在，纯大小写问题）；
+    - 删除 `CLAUDE.md` 条目（文件不存在于仓库，且按防隐私泄露铁规本就不入库）。
+  - 链接校验：脚本提取三份 README 全部相对链接逐一对照文件系统，全部命中真实路径。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 v1.10.0 → v1.10.1（CHANGELOG 断言同步追加）；`pytest tests/` 362 例 + 31 subtests 全过。
+  - 注：纯文档改动、无固件行为变更；版本号按仓库惯例随条目升至 v1.10.1（`libraries/mus4_core/src/BuildInfo.h` 同步）。
+
 ## 2026-09-20 v1.10.0
 
 - feat(ui)!: 移除座舱(cockpit)象限，Apple 成为 Drifter Console 唯一界面风格——与 find-car v1.6.0 同款手术；页头「座舱 / Apple」分段切换器删除，`<html>` 不再带 `data-ui` 属性，localStorage 键 `mus4.ui.style` 与 URL `?ui=` 参数不再读取（老用户残留键/旧链接被静默忽略、渲染恒为 Apple，无需任何操作）

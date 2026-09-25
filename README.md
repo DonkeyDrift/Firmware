@@ -6,7 +6,7 @@ DonkeyDrift 项目的固件仓库，与上位机软件仓库 [DonkeyDrift](https
 
 | 子项目 | 说明 | 当前版本 |
 | --- | --- | --- |
-| [MUS4_FW/](MUS4_FW/) | MUS4（LP-MU-S4）ESP32 + Arduino 遥控车/机器人底层控制固件 | v1.9.4 |
+| [MUS4_FW/](MUS4_FW/) | MUS4（LP-MU-S4）ESP32 + Arduino 遥控车/机器人底层控制固件 | v1.10.2 |
 
 固件版本号以 [`MUS4_FW/libraries/mus4_core/src/BuildInfo.h`](MUS4_FW/libraries/mus4_core/src/BuildInfo.h) 为准，发布记录见 [`MUS4_FW/CHANGELOG.md`](MUS4_FW/CHANGELOG.md)。
 

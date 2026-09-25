@@ -4,7 +4,7 @@
 
 MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人底层控制固件。固件负责 RC PWM 输入采集、Pilot 上位机串口控制、多模式控制融合、Park/紧急制动、I2C 传感器采集、TUI 状态显示、Wi-Fi/TCP/Web Console、OTA 更新，以及在未启用 Wi-Fi Console 时可选的 BLE Gamepad 输出。
 
-当前主 Arduino sketch 是 [`MUS4_FW.ino`](MUS4_FW.ino)。固件版本信息定义在 [`BuildInfo.h`](BuildInfo.h)，发布记录维护在 [`CHANGELOG.md`](CHANGELOG.md)。
+当前主 Arduino sketch 是 [`MUS4_FW.ino`](MUS4_FW.ino)。固件版本信息定义在 [`BuildInfo.h`](libraries/mus4_core/src/BuildInfo.h)，发布记录维护在 [`CHANGELOG.md`](CHANGELOG.md)。
 
 ## 主要功能
 
@@ -21,7 +21,7 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 
 ## 硬件引脚
 
-权威引脚定义见 [`Doc/Hardware/pin_definitions.md`](Doc/Hardware/pin_definitions.md)。当前固件以 MUS4 v2.4.2 / v2.3 引脚布局为准。
+权威引脚定义见 [`docs/Hardware/pin_definitions.md`](docs/Hardware/pin_definitions.md)。当前固件以 MUS4 v2.4.2 / v2.3 引脚布局为准。
 
 | 功能 | GPIO | 说明 |
 | --- | --- | --- |
@@ -208,10 +208,10 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 ## 仓库结构
 
 - [`MUS4_FW.ino`](MUS4_FW.ino)：主固件 sketch 与运行时状态机。
-- [`SharedTypes.h`](SharedTypes.h)：共享数据结构与枚举。
-- [`BuildInfo.h`](BuildInfo.h)：固件名称、版本与构建信息宏。
-- [`TUI.h`](TUI.h) / [`TUI.cpp`](TUI.cpp)：ANSI 终端仪表盘渲染。
-- [`Buzzer.h`](Buzzer.h) / [`Buzzer.cpp`](Buzzer.cpp)：蜂鸣器状态机。
+- [`SharedTypes.h`](libraries/mus4_core/src/SharedTypes.h)：共享数据结构与枚举。
+- [`BuildInfo.h`](libraries/mus4_core/src/BuildInfo.h)：固件名称、版本与构建信息宏。
+- [`TUI.h`](libraries/mus4_ui/src/TUI.h) / [`TUI.cpp`](libraries/mus4_ui/src/TUI.cpp)：ANSI 终端仪表盘渲染。
+- [`Buzzer.h`](libraries/mus4_ui/src/Buzzer.h) / [`Buzzer.cpp`](libraries/mus4_ui/src/Buzzer.cpp)：蜂鸣器状态机。
 - [`arduino-cli.py`](arduino-cli.py)：跨平台 Arduino CLI 包装脚本。
 - [`arduino-cli-wsl.ps1`](arduino-cli-wsl.ps1)：Windows/WSL 加速构建与 OTA 上传包装脚本。
 - [`wireless_console_policy.py`](wireless_console_policy.py)：Wi-Fi/TCP/Web Console 权限策略的 Python 镜像。
@@ -219,7 +219,6 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 - [`tests/`](tests/)：构建工具、权限策略、功能开关、训练工具和 Pilot 推理测试。
 - [`examples/`](examples/)：传感器、I2C 等独立示例 sketch。
 - [`provisioning_system/`](provisioning_system/)：独立 Wi-Fi provisioning 与 Linux agent 工具链。
-- [`multi_agent_framework/`](multi_agent_framework/)：独立 Python 多智能体框架，不属于 ESP32 固件主链路。
 
 ## 运行时架构
 
@@ -231,7 +230,7 @@ python tools/mus4_pilot_infer.py --model-dir <model_dir> --serial-port COM9 --mo
 6. ESP32 `ledc` 输出 PWM，驱动转向舵机与油门电调。
 7. TUI、I2C 传感器、Web 曲线/日志、WebSocket 遥测和 BLE Gamepad 作为旁路功能读取状态并输出显示或外设数据。
 
-更多架构细节见 [`Doc/Arch/architecture.md`](Doc/Arch/architecture.md)。
+更多架构细节见 [`docs/Arch/architecture.md`](docs/Arch/architecture.md)。
 
 ## Wi-Fi Console、Web Console 与 OTA
 
@@ -265,18 +264,17 @@ mDNS：固件按当前 AP 名称发布 Web Console 为 `http://<AP名称小写>.
 
 ## 文档
 
-- [`CLAUDE.md`](CLAUDE.md)：Claude Code / 编码代理仓库指南。
 - [`CHANGELOG.md`](CHANGELOG.md)：发布记录。
-- [`Doc/Arch/architecture.md`](Doc/Arch/architecture.md)：固件循环、状态机和数据流。
-- [`Doc/Hardware/pin_definitions.md`](Doc/Hardware/pin_definitions.md)：MUS4 v2.3 / v2.4.2 权威引脚定义。
-- [`Doc/Hardware/CONFIG.md`](Doc/Hardware/CONFIG.md)：硬件配置说明。
-- [`Doc/Tools/ArduinoCLI.md`](Doc/Tools/ArduinoCLI.md)：`arduino-cli.py` 使用说明。
-- [`Doc/Tools/arduino-cli-wsl_manual.md`](Doc/Tools/arduino-cli-wsl_manual.md)：WSL 构建脚本手册。
-- [`Doc/Tools/train_tub_driver.md`](Doc/Tools/train_tub_driver.md)：Tub JSON 报告与 GRU baseline 训练说明。
-- [`Doc/Tools/mus4_pilot_infer.md`](Doc/Tools/mus4_pilot_infer.md)：Pilot 推理控制器与安全门控说明。
-- [`Doc/README/OPERATIONS.md`](Doc/README/OPERATIONS.md)：运行时串口命令与数据帧。
-- [`Doc/Inspect/wifi-ap-sta-lifecycle-inspection.md`](Doc/Inspect/wifi-ap-sta-lifecycle-inspection.md)：Wi-Fi AP / STA 生命周期、Captive Portal、切换流程与排查说明。
-- [`Doc/Plan/`](Doc/Plan/)：设计方案与历史实施记录。
+- [`docs/Arch/architecture.md`](docs/Arch/architecture.md)：固件循环、状态机和数据流。
+- [`docs/Hardware/pin_definitions.md`](docs/Hardware/pin_definitions.md)：MUS4 v2.3 / v2.4.2 权威引脚定义。
+- [`docs/Hardware/CONFIG.md`](docs/Hardware/CONFIG.md)：硬件配置说明。
+- [`docs/Tools/ArduinoCLI.md`](docs/Tools/ArduinoCLI.md)：`arduino-cli.py` 使用说明。
+- [`docs/Tools/arduino-cli-wsl_manual.md`](docs/Tools/arduino-cli-wsl_manual.md)：WSL 构建脚本手册。
+- [`docs/Tools/train_tub_driver.md`](docs/Tools/train_tub_driver.md)：Tub JSON 报告与 GRU baseline 训练说明。
+- [`docs/Tools/mus4_pilot_infer.md`](docs/Tools/mus4_pilot_infer.md)：Pilot 推理控制器与安全门控说明。
+- [`docs/README/OPERATIONS.md`](docs/README/OPERATIONS.md)：运行时串口命令与数据帧。
+- [`docs/Inspect/wifi-ap-sta-lifecycle-inspection.md`](docs/Inspect/wifi-ap-sta-lifecycle-inspection.md)：Wi-Fi AP / STA 生命周期、Captive Portal、切换流程与排查说明。
+- [`docs/Plan/`](docs/Plan/)：设计方案与历史实施记录。
 
 ## 安全注意事项
 

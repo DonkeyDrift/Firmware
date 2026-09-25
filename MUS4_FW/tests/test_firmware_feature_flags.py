@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.2"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.3"' in build_info
+    assert "v1.10.3" in changelog
     assert "v1.10.2" in changelog
     assert "v1.10.1" in changelog
     assert "v1.10.0" in changelog
@@ -2679,7 +2680,8 @@ def test_web_console_settings_view_embeds_tune_sections():
     # v1.8.50：子 iframe 按内容自动撑高（无内部滚动条），仅 embedded+settings 视图初始化
     assert 'function initEmbedTuneFrames()' in source
     assert 'new ResizeObserver(fit)' in source
-    assert "if(document.body.classList.contains('embedded')&&document.body.classList.contains('settings'))initEmbedTuneFrames();" in source
+    # v1.10.3：同一条件块内追加 initEmbedHeightReporter()（向 DD 父页面上报文档高度，整页滚动配套）
+    assert "if(document.body.classList.contains('embedded')&&document.body.classList.contains('settings')){initEmbedTuneFrames();initEmbedHeightReporter();}" in source
     # v1.8.64：fit() 高度公式只量 body（scrollHeight/offsetHeight 取大）+ getComputedStyle 上下外边距，
     # 不再取 documentElement——其 scrollHeight 被 iframe 自身视口高度钳制（>=占位高 820/1000），
     # 内容较短时 iframe 底部留出大片空白（漂移子页实测多出 ~158px），是两 iframe 间过大间隙的根因
@@ -2687,6 +2689,11 @@ def test_web_console_settings_view_embeds_tune_sections():
     assert "parseFloat(cs.marginTop)||0" in source
     assert "parseFloat(cs.marginBottom)||0" in source
     assert "doc.documentElement?doc.documentElement.scrollHeight:0" not in source
+    # v1.10.3：initEmbedHeightReporter 本体——postMessage(dd-embed-height) 仅发到父窗口、
+    # load/resize + ResizeObserver 覆盖懒加载子 iframe 撑高；独立打开车端页面不调用
+    assert 'function initEmbedHeightReporter()' in source
+    assert "window.parent.postMessage({type:'dd-embed-height',height:h},'*')" in source
+    assert "new ResizeObserver(post).observe(document.body)" in source
     # 主页：两个跳转按钮保留 id（v1.8.47 引入）；v1.8.48 起整个「车辆设置」标题与「调校」行在
     # body.embedded.settings 作用域整行隐藏（含手柄校准按钮——已移至 DD CC 页顶栏）
     assert 'id="driftSettingsBtn"' in source

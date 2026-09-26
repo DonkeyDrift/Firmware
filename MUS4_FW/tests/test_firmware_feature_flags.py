@@ -274,8 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.0"' in build_info
-    assert "v1.10.0" in changelog
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.1"' in build_info
+    assert "v1.10.1" in changelog
     assert "v1.9.4" in changelog
     assert "v1.9.1" in changelog
     assert "v1.9.0" in changelog
@@ -1197,7 +1197,7 @@ def test_serial1_telemetry_has_dedicated_web_log_buffer():
     assert "if (shouldEmitSerial1Telemetry(otaRuntime)) {" in sketch_source
     # v1.7.33 起 T<t>S<s> 与 $IMU、M:P 统一拼入 s1Buf 后一次性 Serial1.write 发出，
     # 不再使用单独的 Serial1.print(telem)。
-    assert "Serial1.write((const uint8_t*)s1Buf" in sketch_source
+    assert "serialTelemetry.write((const uint8_t*)s1Buf" in sketch_source
     assert "car_output.mode == CAR_MODE_MANUAL" in sketch_source
 
     # Dedicated compact buffer for high-rate Serial1 telemetry.
@@ -1252,7 +1252,7 @@ def test_serial1_uplink_matches_host_pilot_protocol():
     assert "IMU_TELEMETRY_INTERVAL_MS" in sketch_source
     assert "char s1Buf[512]" in sketch_source
     assert "snprintf(s1Buf + s1Len, sizeof(s1Buf) - s1Len," in sketch_source
-    assert "Serial1.write((const uint8_t*)s1Buf" in sketch_source
+    assert "serialTelemetry.write((const uint8_t*)s1Buf" in sketch_source
     # MPU 未在线时静默：必须显式判 valid。
     assert "mpu6050Data.valid" in sketch_source
     # $IMU 文本流不能镜像进 Web Console 日志窗口：100Hz JSON 会顶爆 AsyncWebSocket
@@ -5712,3 +5712,41 @@ def test_wifi_sta_history_retry_window_accepts_unconfigured_sta():
     assert "wifiStaHistoryCount() > 0" in window
     # 历史为空时仍由函数体内既有兜底分支拦截，不会空转扫描
     assert "if (wifiStaHistoryCount() == 0)" in retry_body
+
+
+def test_serial_role_swap_macro_routes_telemetry():
+    """v1.10.1 起 MUS4_SWAP_SERIAL0_SERIAL1 支持 Serial0(USB) 与 Serial1(TTL) 角色对调：
+
+    - 需要从 USB Type-C 口输出主遥测信息时必须启用（当前固件默认启用）。
+    - 角色引用 serialTelemetry/serialConsole 声明于 mus4_core/SerialRole.h，
+      定义在 sketch；主遥测单次 write、TUI、mus4Log SERIAL 目标均按角色路由。
+    - WebLog 源标签按角色归类（serialRoleSourceFor），物理口对调后
+      "serial1" 标签仍命中 SERIAL1 专用高吞吐环形缓冲。
+    """
+    sketch_source = MUS4_SKETCH.read_text(encoding="utf-8")
+    config_source = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h").read_text(encoding="utf-8")
+    role_header = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "SerialRole.h").read_text(encoding="utf-8")
+    log_source = (PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "Mus4Log.cpp").read_text(encoding="utf-8")
+    reader_source = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "SerialLineReader.cpp").read_text(encoding="utf-8")
+
+    # 当前设置为对调（遥测走 USB Type-C）。
+    assert "#define MUS4_SWAP_SERIAL0_SERIAL1" in config_source
+    # 对调分支：遥测=Serial、控制台=Serial1；默认分支相反。
+    assert "#ifdef MUS4_SWAP_SERIAL0_SERIAL1" in role_header
+    assert "extern HardwareSerial& serialTelemetry;" in role_header
+    assert "extern HardwareSerial& serialConsole;" in role_header
+    assert "inline const char* serialRoleSourceFor(HardwareSerial& ser)" in role_header
+
+    assert "#ifdef MUS4_SWAP_SERIAL0_SERIAL1" in sketch_source
+    assert "HardwareSerial& serialTelemetry = Serial;" in sketch_source
+    assert "HardwareSerial& serialConsole   = Serial1;" in sketch_source
+    # TUI 与遥测发送走角色引用，不允许再直绑物理口。
+    assert "TUI tui(serialConsole);" in sketch_source
+    assert "TUI tui(Serial);" not in sketch_source
+    assert "serialTelemetry.write((const uint8_t*)s1Buf" in sketch_source
+    # 对调模式下 USB(UART0) 承载高频遥测：TX 缓冲扩容必须先于 begin()（v1.7.34 结论）。
+    assert re.search(r"MUS4_SWAP_SERIAL0_SERIAL1\s*\n?\s*Serial\.setTxBufferSize\(1024\)", sketch_source) or \
+        re.search(r"#ifdef MUS4_SWAP_SERIAL0_SERIAL1.*?Serial\.setTxBufferSize\(1024\).*?#endif", sketch_source, re.DOTALL)
+    # mus4Log 的 SERIAL 目标与 WebLog 源标签均角色化。
+    assert "serialConsole.println(\"[\" + String(source) + \"] \" + line);" in log_source
+    assert "return serialRoleSourceFor(ser);" in reader_source

@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-09-26 v1.10.1
+
+- feat(serial): 新增 `MUS4_SWAP_SERIAL0_SERIAL1` 宏，支持 Serial0（USB Type-C）与 Serial1（TTL 16/17）角色对调——**需要从 USB Type-C 口输出主遥测信息时切换**（当前固件默认即为对调状态）
+  - `libraries/mus4_core/src/FirmwareConfig.h`：新增开关宏并启用。定义后主遥测端口（上行 `T..S..`/`M:P`/`$IMU` + 下行 `<t>:<s>`）改走 USB Type-C，日志/ANSI TUI/本地命令控制台改走 TTL RX1=16/TX1=17；注释掉宏即恢复原布局（遥测走 TTL、控制台走 USB）。硬件初始化（引脚/波特率）不随角色变化。
+  - 新增 `libraries/mus4_core/src/SerialRole.h`：`serialTelemetry`/`serialConsole` 两个角色引用的声明 + `serialRoleSourceFor()` 角色化 WebLog 源标签——主遥测端口恒记 `serial1`（命中 `SERIAL1_WEB_LOG_CAPACITY=64` 专用高吞吐环形缓冲），控制台端口恒记 `serial`；物理口对调后标签不漂移，避免 60Hz 遥测帧在对调模式下涌入通用 64 槽日志环挤掉一般日志。
+  - `MUS4_FW.ino`：定义两个角色引用（`#ifdef` 分支绑定 Serial/Serial1）；`TUI tui(serialConsole)`；主遥测单次 `write` 走 `serialTelemetry`；开机 banner 按模式分流（对调后输出 `ESP32 Receiver Telemetry Ready! (USB, roles swapped)`）；对调模式下 `Serial.setTxBufferSize(1024)` 前置于 `Serial.begin()`（100Hz IMU + 60Hz T/S 改走 UART0 后沿用 v1.7.34 结论：默认 256B TX 缓冲会溢出）；`ENABLE_SERIAL2_ECHO_TO_SERIAL0` 调试透传与 `#ifdef DEBUG` RC 打印改绑控制台端口（宏名不变）。
+  - `libraries/mus4_log/src/Mus4Log.cpp`：`LOG_SERIAL` 目标输出改绑 `serialConsole`（默认行为不变）。
+  - `libraries/mus4_command/src/SerialLineReader.cpp`：`serialSourceFor()` 改为角色判定（默认行为不变）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 v1.10.0 → v1.10.1；`Serial1.write((const uint8_t*)s1Buf` 两处断言随角色化改写为 `serialTelemetry.write(...)`；新增 `test_serial_role_swap_macro_routes_telemetry`（宏已定义、SerialRole.h 角色绑定、TUI/遥测 write/banner 走角色引用、WebLog 源标签角色化）。
+  - 注：Serial2（19/18，配网/Auth/PING 通道）不参与对调；对调模式下 USB Type-C 同时承担主遥测，固件烧录前需停掉占用串口的上位机。
+
 ## 2026-09-20 v1.10.0
 
 - feat(ui)!: 移除座舱(cockpit)象限，Apple 成为 Drifter Console 唯一界面风格——与 find-car v1.6.0 同款手术；页头「座舱 / Apple」分段切换器删除，`<html>` 不再带 `data-ui` 属性，localStorage 键 `mus4.ui.style` 与 URL `?ui=` 参数不再读取（老用户残留键/旧链接被静默忽略、渲染恒为 Apple，无需任何操作）

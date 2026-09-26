@@ -22,6 +22,11 @@
   - MANUAL: M<m>:P<p>\n         (状态变化时立即发 + 1Hz 心跳)
   - ALL:    $IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n  (~100Hz, m/s² + rad/s)
   Serial1 下行协议（保留）：<thr>:<str>[:seq][*CRC]\n
+3. 串口角色对调（FirmwareConfig.h: MUS4_SWAP_SERIAL0_SERIAL1，当前启用）：
+   主遥测（上行 T/S、M:P、$IMU + 下行 <t>:<s>）改走 USB Type-C（Serial0），
+   日志 / TUI / 本地命令改走 TTL RX1=16/TX1=17（Serial1）。需要从 USB Type-C
+   口输出主遥测信息时必须切换到此模式；注释掉该宏即恢复原布局。
+   角色映射与 WebLog 源标签规则见 libraries/mus4_core/src/SerialRole.h。
 */
 
 #include "FirmwareConfig.h"
@@ -54,6 +59,7 @@
 #include "I2CBusTools.h"
 #include "LedStatus.h"
 #include "Mus4Log.h"
+#include "SerialRole.h"
 #include "JoystickCalibration.h"
 #include "Sensors.h"
 #include "GamepadMode.h"
@@ -86,7 +92,19 @@
 #include "MutePreference.h"
 // #include "test_runner.h"
 
-TUI tui(Serial);
+// ── 串口角色绑定（声明见 mus4_core/src/SerialRole.h）─────────────────────────
+// 主遥测端口 serialTelemetry / 控制台端口 serialConsole；对调开关
+// MUS4_SWAP_SERIAL0_SERIAL1 见 FirmwareConfig.h。TUI 与 mus4Log 的 SERIAL
+// 目标均绑定 serialConsole，主遥测单次 write 与开机 banner 绑定 serialTelemetry。
+#ifdef MUS4_SWAP_SERIAL0_SERIAL1
+HardwareSerial& serialTelemetry = Serial;   // 主遥测：USB Type-C（对调后）
+HardwareSerial& serialConsole   = Serial1;  // 控制台：TTL RX1=16/TX1=17（对调后）
+#else
+HardwareSerial& serialTelemetry = Serial1;  // 主遥测：TTL RX1=16/TX1=17（默认）
+HardwareSerial& serialConsole   = Serial;   // 控制台：USB Type-C（默认）
+#endif
+
+TUI tui(serialConsole);
 Buzzer buzzer(BUZZER_PIN);
 
 #ifdef ENABLE_GAMEPAD_MODE
@@ -427,18 +445,19 @@ static void handleSerial2()
         char c = Serial2.read();
 #ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
         lastSerial2ByteMs = millis();
-        // 逐字节实时输出到 Serial0（可打印字符直接显示，不可打印用 \xNN 转义）
+        // 逐字节实时输出到控制台端口（可打印字符直接显示，不可打印用 \xNN 转义）。
+        // 宏名沿用 SERIAL0，实际绑定 serialConsole 角色（Serial0/1 对调后即 TTL 口）。
         if (c >= 32 && c <= 126)
-            Serial.print(c);
+            serialConsole.print(c);
         else
-            Serial.printf("\\x%02X", (unsigned char)c);
+            serialConsole.printf("\\x%02X", (unsigned char)c);
 #endif
         if (c == '\r') continue;
         if (c == '\n')
         {
             line[idx] = '\0';
 #ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
-            Serial.println();
+            serialConsole.println();
 #endif
             if (strncmp(line, "STATUS|", 7) == 0)
             {
@@ -512,9 +531,9 @@ static void handleSerial2()
             idx = 0;
         }
 #ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
-        // buffer 满时强制换行（debug echo 开启时同步刷新 Serial0）
+        // buffer 满时强制换行（debug echo 开启时同步刷新控制台端口）
         if (idx >= sizeof(line) - 1) {
-            Serial.println();
+            serialConsole.println();
             idx = 0;
         }
 #endif
@@ -522,7 +541,7 @@ static void handleSerial2()
 #ifdef ENABLE_SERIAL2_ECHO_TO_SERIAL0
     // 超时刷新：超过 200ms 无新数据则换行
     if (idx > 0 && (millis() - lastSerial2ByteMs > 200)) {
-        Serial.println();
+        serialConsole.println();
         idx = 0;
     }
 #endif
@@ -553,11 +572,19 @@ void setup()
     digitalWrite(UART_SEL, HIGH); // Set HIGH to enable TTL <=> CPU: RX_2_PIN = 19, TX_2_PIN = 18      
                            
     Serial.begin(BAUD_RATE_0);                                  // TypeC
+#ifdef MUS4_SWAP_SERIAL0_SERIAL1
+    // 对调模式下主遥测（100Hz IMU + 60Hz T/S）改走 USB/UART0，沿用 v1.7.34
+    // 的结论：setTxBufferSize 必须在 begin() 之前调用，否则 begin() 分配的
+    // 默认 256B TX 环形缓冲在高频遥测下会溢出，造成帧内字符丢失。
+    Serial.setTxBufferSize(1024);
+    Serial.setRxBufferSize(1024);
+#endif
     // v1.7.34: setTxBufferSize must be called BEFORE Serial1.begin(), otherwise
     // begin() allocates the default 256B TX ring buffer and the size change
     // has no effect. This leads to buffer overflow under 100Hz IMU + 60Hz
     // telemetry, causing lost commas/newlines and the $IMU/T/S frame corruption
-    // seen on the host.
+    // seen on the host. (默认布局下 Serial1 承载主遥测；对调模式下 TTL 口承载
+    // 低速控制台输出，1024B 缓冲保留不动。)
     Serial1.setTxBufferSize(1024);
     Serial1.setRxBufferSize(1024);
     Serial1.begin(BAUD_RATE_1, SERIAL_8N1, RX_1_PIN, TX_1_PIN); // TTL <=> CPU: RX_1_PIN = 16, TX_1_PIN = 17
@@ -568,7 +595,11 @@ void setup()
         MUS4_BUILD_DATE,
         MUS4_BUILD_TIME);
     mus4LogLine("boot", "ESP32 Receiver Serial Ready!");
-    Serial1.println("ESP32 Receiver Serial1 Ready!");
+#ifdef MUS4_SWAP_SERIAL0_SERIAL1
+    serialTelemetry.println("ESP32 Receiver Telemetry Ready! (USB, roles swapped)");
+#else
+    serialTelemetry.println("ESP32 Receiver Serial1 Ready!");
+#endif
 
 #ifdef ENABLE_BOOT_STEERING_SELF_TEST
     run_steering_tests(); // Run unit tests for steering signal processing
@@ -788,10 +819,11 @@ void loop()
         lastUICycleDuration = 0;
     }
 
-    // ── Serial1 上行帧拼装与发送 ──────────────────────────────────────
-    // v1.7.33：将所有 Serial1 上行数据（T<S>, M:P, $IMU）拼入单一栈缓冲，
+    // ── 主遥测端口上行帧拼装与发送（默认 Serial1，对调后 USB Type-C）────
+    // v1.7.33：将所有主遥测上行数据（T<S>, M:P, $IMU）拼入单一栈缓冲，
     // 一次 write() 发出，彻底消除多次 print/write 调用导致的 TX 环形缓冲区
-    // 指针竞争与帧拼接（字符丢失、\n 被吞并）。
+    // 指针竞争与帧拼接（字符丢失、\n 被吞并）。v1.10.1 起物理口由
+    // serialTelemetry 角色决定（MUS4_SWAP_SERIAL0_SERIAL1 可对调到 USB）。
     //
     // 发送策略：
     //   - 遥测  T<t>S<s>\n    60Hz（仅 MANUAL 模式）
@@ -858,7 +890,7 @@ void loop()
 
         // ── 一次性发出 ──
         if (s1Len > 0) {
-            size_t written = Serial1.write((const uint8_t*)s1Buf, (size_t)s1Len);
+            size_t written = serialTelemetry.write((const uint8_t*)s1Buf, (size_t)s1Len);
             if (written != (size_t)s1Len) {
                 // 即使增大了 TX 缓冲区，仍可能因极端抖动导致写入不完整。
                 // 此处仅做调试计数，避免在 release 版本刷屏。
@@ -873,12 +905,12 @@ void loop()
     // Read the RC receiver values
     for (int i = 0; i < RC_CHANNEL_COUNT; i++)
     {
-        Serial.print(" CH");
-        Serial.print(i + 1);
-        Serial.print(": ");
-        Serial.print(pwm_value[i]);
+        serialConsole.print(" CH");
+        serialConsole.print(i + 1);
+        serialConsole.print(": ");
+        serialConsole.print(pwm_value[i]);
         if (i == 3)
-            Serial.println(" ");
+            serialConsole.println(" ");
     }
 
 #endif

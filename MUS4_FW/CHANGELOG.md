@@ -1,5 +1,109 @@
 # CHANGELOG.md
 
+## 2026-10-02 v1.10.12
+
+- feat(ota): OTA 双启动槽位 A/B 切换——车固件与 RC_BLE_Bridge 手柄桥共存于两个 OTA 槽位，切换=改启动标志+重启（约 10 秒），不再每次整刷固件
+  - 背景（用户需求）：上一条目的桥固件 OTA 往返（每次玩模拟器要整刷两次固件、各约 1 分钟）用户嫌繁，要求「DD 页面切换手柄时自动完成」。方案二（双槽位切换）相对整刷自动化：10 秒 vs 60 秒、零 flash 擦写、无版本偏差（车槽位永不被刷旧）。
+  - 槽位身份约定：两固件各嵌入 `MUS4APP:CAR` / `MUS4APP:BRIDGE` 标记字符串（`__attribute__((used))`），对端槽位装的是什么通过整分区扫描识别（有效镜像但无标记=旧固件=unknown；无有效镜像=empty）。
+  - 车端新增（`libraries/mus4_web/src/WebConsoleServer.cpp`）：
+    - `GET /api/slot-info`：JSON 返回 `{"app":"car","running":"ota_x","other":"ota_y","other_kind":"car|bridge|unknown|empty"}`；
+    - `POST /api/switch-slot`：与 HTTP OTA 同款鉴权；对面槽位空返回 `NACK:NO_IMAGE`；切换前强制 Park Locked（`forceWifiOtaParkLocked()`），成功回 `ACK:SWITCHING` 后重启进对面槽位；
+    - `POST /update?boot=0` 补种模式：镜像写入对面槽位后立即把启动标志拨回运行槽位，回 `ACK:SEED_OK`、**不重启**——不打断当前固件即可给对面槽位装/更新桥固件；
+    - `/api/status` 末尾追加 `running_slot` 与 `other_slot_kind` 字段（身份扫描惰性缓存，OTA 写入后失效，轮询零开销）。
+  - 桥固件新增（`examples/RC_BLE_Bridge/RC_BLE_Bridge.ino`）：对称的 `GET /api/slot-info` 与 `POST /api/switch-slot`（切回车固件）；`setup()` 调 `esp_ota_mark_app_valid_cancel_rollback()`——否则桥槽位长期 PENDING_VERIFY，下次 reset 会被 bootloader 回滚到车固件；根页面 `/` 改为含 "Drifter Console" 字样的桥状态页（DD 局域网控制台发现据此在桥模式下也能认出设备），页面上有一键切回按钮与 OTA 表单。
+  - DD 侧配套（DonkeyDrift 仓库同批 PR）：DrivePage 新增手柄桥卡片，经既有 `/api/console/proxy` 直连上述接口，一键切换 + 切换中轮询。
+  - 测试同步：`test_firmware_feature_flags.py` 版本断言 → v1.10.12 + changelog 链补 v1.10.11，新增 `test_ota_dual_boot_slot_switching`（标记/路由/鉴权/Park 顺序/补种拨回/状态字段）；`test_rc_ble_bridge_example.py` 新增 `test_rc_ble_bridge_dual_boot_slot_switching`（桥侧对称断言 + 回滚取消 + 根页面发现标记）。
+  - 验证：pytest 371 + 31 subtests 全绿；车固件与桥固件编译均通过（min_spiffs），strings 实测两 bin 各含身份标记。
+  - 实车演练：OTA 升 v1.10.12 → `?boot=0` 补种桥（ACK:SEED_OK、车不重启）→ `/api/switch-slot` 双向切换实测。
+  - 运维约定：每次正常 OTA 升级车固件会覆盖对面槽位（桥被抹掉），想继续用桥需重新补种一次（README 有命令）。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.12。
+
+## 2026-10-02（RC_BLE_Bridge 增加 WiFi/OTA 回刷通道，车上固件无版本变更）
+
+- feat(examples): RC_BLE_Bridge 桥固件新增 WiFi STA + ArduinoOTA(3232) + HTTP /update(80) + 兜底 AP——用户无备用 ESP32 开发板，直接复用车上的 ESP32 当桥，刷桥/游玩/刷回全程无线往返，车端固件源码零改动
+  - 背景（用户需求）：上一版桥固件需有线刷到一块独立 ESP32 开发板；用户没有开发板，要求直接用车上的那块，且不影响其它功能。方案：桥固件自带 OTA 双通道回刷能力，玩完经 WiFi 把车固件刷回去即可。
+  - 实现（`RC_BLE_Bridge.ino`）：`__has_include("WirelessSecrets.h")` 与 `MUS4_FW.ino` 同款 sketch 目录模式引入本机密钥（文件名已被 .gitignore 全局忽略，不入库）；无密钥文件时占位空 SSID 跳过 STA；STA 15s 超时后开兜底开放 AP `MUS4-RC-Bridge`（192.168.4.1）；ArduinoOTA 主机名 `mus4-rc-bridge`、密码 `mus4-debug`（与车端一致）；HTTP `/update` GET 返回上传表单、POST 免鉴权刷机，成功回 `ACK:UPDATE_OK` 并自动重启。BLE 广播先于 WiFi 启动，WiFi 连接等待期间手柄已可配对。
+  - 测试同步：`tests/test_rc_ble_bridge_example.py` 增至 5 项（新增 WiFi STA/OTA 双通道/AP 兜底代码在位断言）；pytest 369 + 31 subtests 全绿。
+  - 编译：`--fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs` 通过，1265467 字节（64%），车端 1.9MB OTA 槽位内。
+  - 实车演练（车上 ESP32 全链路实测）：车 v1.10.11 → HTTP OTA 刷桥（`ACK:UPDATE_OK`）→ 无密钥桥固件兜底 AP 实测可用、BLE 广播「Gamepad MU02」扫到（MAC 94:51:DC:48:F5:32，RSSI -27）→ 经兜底 AP 二次刷入带家 WiFi 密钥的桥固件 → STA 上线 192.168.3.46（`/update` 返回 200，兜底 AP 自动关闭，BLE 广播保持）→ 经家 WiFi 刷回车固件 v1.10.11，`/api/status` 确认车功能复原（mode=0 park=1）。全程无线、车端固件零改动。
+  - 用法与接线见 `examples/RC_BLE_Bridge/README.md`（含 Mac 蓝牙配对「Gamepad MU02」与 DD 驾驶页手柄源选择步骤）；桥模式期间车 Web Console 离线、车不动属预期，刷回后即复原。
+
+## 2026-10-02（示例固件 RC_BLE_Bridge，车上固件无版本变更）
+
+- feat(examples): 新增 `examples/RC_BLE_Bridge`——CT-8B 蓝牙手柄桥，Mac 蓝牙配对「Gamepad MU02」后即可在 DD 页面当手柄输入源（含模拟器）
+  - 背景（用户需求）：用遥控真车的 HOT RC CT-8B 枪控蓝牙连 Mac 操控 DD 模拟器。CT-8B 无蓝牙/无 USB/无任何电脑接口（纯 2.4GHz 对自家 F-08A 接收机），必须经「接收机 + ESP32」桥接。
+  - 路线取舍：车端固件本有 BLE Gamepad 模式（`ENABLE_GAMEPAD_MODE`，设备名 `Gamepad MU02`），但与 WiFi Console 互斥。实测解除互斥后 flash 超限：min_spiffs 分区上限 1966080 字节，共存需 2021163（102%）；裁剪 NimBLE（关 Central/Observer 角色、连接数 3→1，该裁剪已随路线放弃一并还原）后仍 2006211（102%），超 40131 字节——车端 flash 无共存余量，改做独立示例固件（623108 字节 / 47%），车端零改动、零风险。
+  - 实现（`examples/RC_BLE_Bridge/RC_BLE_Bridge.ino`，自包含）：ISR 测 CH1(GPIO36)/CH2(GPIO39) 脉宽（800-2200µs 窗口过滤）；按 `RC_*_MIN/MID/MAX` 校准分段线性映射到 0..32767 轴（中位精确 16384；校准值与 `FirmwareConfig.h` 一致并由测试钉住）；油门按手柄惯例反向（配套 DD 默认 z-axis 预设 invert=true）；失控保护（超时 1s 或脉宽越界回中位）；50Hz 发送节流；串口 500ms 打印脉宽便于脱机核对。
+  - DD 侧零改动：`DrivePage.tsx` 已有完整 HTML5 Gamepad API 链路（useGamepadDrive + GamepadConfigPanel），默认 z-axis 预设与本桥映射一致，通常免校准。
+  - 测试同步：新增 `tests/test_rc_ble_bridge_example.py` 4 项（文件存在 / 设备身份 / 引脚与校准值对齐车端 / 失控保护与映射约定）；pytest 368 + 31 subtests 全绿。
+  - 验证：`arduino-cli compile --fqbn esp32:esp32:esp32 --libraries libraries examples/RC_BLE_Bridge` 编译通过（623108 字节 / 47%）。
+  - 刷机说明：不涉及车上固件，**无需 OTA 刷车**；桥固件需有线刷到一块 ESP32 开发板（接收机可临时拆用车上的 F-08A，或另购一只与 CT-8B 对码），接线与用法见 `examples/RC_BLE_Bridge/README.md`。
+
+## 2026-10-02 v1.10.11
+
+- fix(DC): 四页标题字重恢复 700——撤下 v1.9.0 引入的 `html:root h1` 600 细体+紧字距覆写，恢复 v1.9.0 前的粗标题
+  - 起因（用户报障）：字体栈回最初版（v1.10.10）刷车后，用户实机评审「DC 页面的标题的字体还是细的，不是之前那种样式的」。
+  - 考古：`b0e664e`（8-17）时代 Console 标题为 `h1{margin:0;font-size:22px}`（UA 默认 700 粗体、正常字距）；`cdedfe4`（9-11，Apple 化前最后一刻）已对齐 DD 主导航为 20px/700；`2ecbbdc`（v1.9.0 座舱/Apple 双 UI）引入高优先级 `html:root h1{font-weight:600;letter-spacing:-0.02em}`——以 (0,1,2) 特异性静默压倒基础规则 `h1{...font-weight:700}` (0,0,1)，四页标题从此渲染成 600 细体+紧字距（Playwright 实测车上计算样式 font-weight=600、letter-spacing=-0.4px 佐证）。
+  - 修复（`libraries/mus4_web/src/WebConsoleAssets.h`）：四页共 4 处 `html:root h1{font-weight:600;letter-spacing:-0.02em}` → `html:root h1{font-weight:700}`——标题恢复 700 粗体、字距回正常；各页基础字号不动（Console 20px / Judge 24px / Drift 22px / OTA 17px，即 v1.9.0 前规格）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 → v1.10.11 + changelog 链补 v1.10.10；新增 `html:root h1{font-weight:700}` 在位与 600 覆写不复存在两条断言。
+  - 验证：pytest 364 + 31 subtests、node 31+27 全绿；编译通过。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.11。
+
+## 2026-10-02 v1.10.10
+
+- fix(DC): 四页字体栈回最初版——body 与 headerRow 换回 -apple-system 优先的首版栈，标题字形更宽
+  - 起因（用户报障）：v1.10.8 恢复的 `system-ui,sans-serif` 仍不是用户要的「最开始那种」字体——用户描述最初版更宽、类似苹果自带/Safari 字体，且 DD 页面同样不喜欢现字体，要求全部改回最初样式。
+  - 考据：DD 前端首版（fe144ad5）`:root` 字体栈为 `-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,...`；DD 侧 0784d454（双 UI 切换）曾统一改成 system-ui 优先，此后各页标题字形变窄。DC 侧 headerRow（标题行）亦用 system-ui 优先栈。
+  - 实测（本机 Chrome + Playwright 宽度指纹，20px/700「Drifter Console」）：system-ui 优先栈解析到 Noto Sans CJK SC（148.3px），首版栈解析到 Noto Sans（151.0px，更宽）；Apple 设备上 -apple-system 即 SF Pro（苹果自带字体）。
+  - 修复（`libraries/mus4_web/src/WebConsoleAssets.h`）：四页 body（4 处）+ Console 页 .headerRow（1 处）字体栈换为 `-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji"`；.langButton 本就该栈不动；等宽栈（Consolas,monospace 等）不动；其余 Apple 打磨成果（磨砂/热区/弹窗/圆角/间距/字重 700）全部保留。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 → v1.10.10 + changelog 链补 v1.10.9；.headerRow 字体断言更新为新栈并补注释。
+  - 验证：编译通过；pytest 364 + 31 subtests、node 31+27 全绿。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.10。
+
+## 2026-10-02 v1.10.9
+
+- fix(DC): 遥测图 Y 轴数字「重叠」发虚修复——draw() 改每帧整幅清画布，标签不再逐帧原地叠印
+  - 现象（用户报障）：Console 页手柄遥测图（油门/转向/GyroZ）左侧 Y 轴数字栏看久了发粗发虚、呈「重叠」观感，每个刻度像叠了多个数字。
+  - 根因：`draw()` 每帧只 `ctx.clearRect(36,0,w-52,h)` 清绘图区，Y 轴标签条 x∈[0,36) 永不清除；遥测数据驱动 scheduleDraw 约 60 次/秒原地重复 fillText 同一批标签，抗锯齿边缘 alpha 逐帧累积饱和——Playwright 实测连画 3000 帧（≈50 秒）后标签条亮度 +10.6%、边缘像素最大增量 100，页面挂得越久数字越糊。
+  - 修复（`libraries/mus4_web/src/WebConsoleAssets.h`）：`draw()` 首行改 `ctx.clearRect(0,0,w,h)` 整幅清屏，标签每帧在干净画布上只画一次；网格仍由离屏 gridCanvas 按原区域贴回（网格线本就起于 x=36），主题切换/长时运行均不再留残影。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 draw() 整幅清屏断言（注释注明根因）；版本断言 → v1.10.9 + changelog 链补 v1.10.8。
+  - 验证：编译通过；pytest 364 + 31 subtests、node 31+27 全绿；Playwright 3000 帧累积 A/B 实测修复后标签条亮度零漂移（本地提取 HTML 与车上实况双测零像素变化）。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.9（注：并行分支 Tony-font-restore 的字体恢复先占用 v1.10.8，本修复顺延至 v1.10.9）。
+
+## 2026-10-02 v1.10.8
+
+- fix(DC): 四页字体栈恢复 v1.10.5 第一版写法——用户评审明确不喜欢 v1.10.6 的 -apple-system/SF Pro 栈
+  - 背景：v1.10.6 打磨把四页 body 改为 `-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif`、等宽改 `ui-monospace,SFMono-Regular,...` 栈并在 body 加 `-webkit-font-smoothing:antialiased`；用户实机查看后明确还是喜欢第一版（v1.10.5 时代）的字体，要求改回。其余打磨成果（磨砂/热区/弹窗/对比度/圆角/间距等）用户未提异议，全部保留。
+  - `libraries/mus4_web/src/WebConsoleAssets.h` 共 11 处恢复：四页 body 回 `font-family:system-ui,sans-serif` 并删 body 的 `-webkit-font-smoothing:antialiased`；`.statusRow span`/`.rcCell span`/`.rcNum`/`.log`/`.legend b`/`.recMeta b` 六处等宽回 `Consolas,monospace`；`joystickCalLive` 内联回 `font-family:monospace`。`headerRow`/`.langButton` 的 99379ba 原有栈本就未动；`.termTabClose`/`.histRow` 的 `font-family:inherit`（按钮化必需）保留。
+  - 与 v1.10.7（PR #172 全宽修复）零冲突对齐：本分支内容 = Tony@4ccf6f1 + 恰好 11 处字体 delta（difflib 全文比对确认无其它差异）。
+  - 测试同步：版本断言 → v1.10.8（链补 `v1.10.7`/`v1.10.6`）；`rcNum` 断言回 `Consolas,monospace` 栈；drift embedded 断言随 v1.10.7 原文。
+  - 验证：pytest **364 + 31 subtests** 全绿；node `web_console_fixes.test.mjs` 31 + `zcode_remote_url.test.mjs` 27 全绿；`arduino-cli.py -c` 编译通过（33.8s）。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.8。
+
+## 2026-10-02 v1.10.7
+
+- fix(DC): Console/Drift 两页恢复全宽布局——撤下 v1.10.6 的 max-width 容器限宽，修复宽屏「比例不对、没有放到正常大小」
+  - 现象（用户报障）：v1.10.6 打磨后进入 Drifter Console，宽屏（2560px）下整个页面被压缩成屏幕中间一条 1200px 窄列（Drift 页 760px），两侧大片空白，比例明显不对。Playwright 2560px A/B 实测复现：v1.10.5 全宽铺开 vs v1.10.6 居中窄列。
+  - 根因：v1.10.6 打磨清单 P2 第 15 项给 Console 页 `body` 加了 `max-width:1200px;margin:12px auto`、Drift 页加了 `max-width:760px;margin:16px auto`（向 Judge 页居中看齐的建议项）——审查建议在大屏上适得其反，用户的「正常」就是全宽布局。
+  - 修复（`libraries/mus4_web/src/WebConsoleAssets.h`）：Console 页 body 回 `margin:12px` 全宽；Drift 页 body 回 `margin:12px` 全宽（同步去掉随限宽引入的 `padding:0 12px`）；Drift 的 `body.embedded` 规则撤掉不再需要的 `max-width:none`（Judge 760px/OTA 480px 为 v1.10.6 之前原有的居中布局，不动）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` drift embedded 断言回 `body.embedded{margin-top:0;margin-bottom:10px}`（注释更新为 v1.10.7）；版本断言 → v1.10.7 + changelog 链补 v1.10.6。
+  - 验证：`arduino-cli.py -c` 编译通过；pytest 364 + 31 subtests、node 31+27 全绿；修复后 2560px/1280px/390px 截图复核两页恢复全宽且无横向溢出。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.7。
+
+## 2026-10-02 v1.10.6
+
+- feat(DC): Drifter Console 四页经典 Apple 风格彻底打磨——磨砂遮罩/对比度/触控目标/焦点环/动效曲线全量精修
+  - 背景：v1.10.5 恢复第一轮 Apple 外观后，用户完整审查 DC/DD/Find Car 三页面，点名要求按**经典 Apple 风格（传统磨砂感，明确非 2025 Liquid Glass）**彻底打磨（P0–P2 全量）。本轮聚焦执行层细节，是用户批准的完整打磨，与此前被撤下的「自行深化」性质不同。
+  - 材质与弹窗（`libraries/mus4_web/src/WebConsoleAssets.h`，四页同步）：`.modal/.helpOverlay/.reconnectOverlay` 加 `backdrop-filter:blur(12px) saturate(1.8)` 传统磨砂遮罩；`.dialog` 撤掉全局橙色 `--warn` 边框（6 个弹窗无论是否警告一律橙边的样式残留）改中性 `--line`、仅破坏性确认保留 `.warn`、`.helpModal` 蓝边同改中性；新增统一 confirmModal/authModal 替换全部原生 confirm/prompt（校准鉴权改弹窗内密码输入），命令错误 alert 改非阻塞 toast。
+  - 色彩与对比度：四页补 `color-scheme:dark/light`（暗色下原生 select/range/滚动条不再浅色渲染）；亮模式 `--ink2` 透明度 .62→.72（小字 ≈4.6:1）；`CHART_THEMES` 与 CSS 系统色对齐（dark `#30d158/#0a84ff/#ff453a`、light `#34c759/#0071e3/#ff3b30`），消除图例色≠曲线色；跨页 `--ink/--ink2/--ink3/--ink4` 统一为 Apple 四档 label 语义（修正 Judge 页 ink3/ink4 含义颠倒）。
+  - 触控与控件：iconButton/termTab/termTabClose/histDel/netTabs/gear/主题语言静音钮/rcSetBtn 等全部 `::after inset:-8px` 扩热区至 ≥44px（视觉尺寸不变）；弹窗主按钮 min-height:44px；移除右下角 18px fabToggle 蓝点中间态，helpFab 46px 常显直开帮助；Console 页主按钮 `--accentFill` 填充化、「取消」`.alt` 描边，四页按钮统一胶囊语言；`input[type=range]{accent-color:var(--accentFill)}`。
+  - 可访问性：四页 `prefers-reduced-motion` 守卫（pulse/scan 常驻动画可关、过渡归零）；全局 `:focus-visible` 焦点环 + toggle 隐藏 checkbox 焦点样式（`.rcNum:focus{outline:none}` 改可见焦点）；全部弹窗 `role="dialog" aria-modal` + Esc 关闭链 + 打开焦点入内；toast `role="status" aria-live="polite"`；`.histRow`/`.termTabClose` 改 `<button type="button">`。
+  - 动效与字体：按钮 `:active` 缩放补 `transition:transform .15s ease-out`（消除按下/松开瞬移）；`--ease:cubic-bezier(.32,.72,0,1)` token 全站过渡统一引用；字体栈统一 `-apple-system` 优先 + `ui-monospace,SFMono-Regular,...` 等宽栈（替换 Consolas 裸用）；body 补抗锯齿；大数字 800/900→700；emoji 图标（👁🙈🗑⌕⚙）换 stroke-width:2 描边 SVG（eye/eye-off/trash/search/settings），与工具栏 lucide 风格统一；折叠图标 ▸/▾ JS 换字符改单字符旋转动画。
+  - 细节：`-webkit-tap-highlight-color:transparent`、`touch-action:manipulation`、`meta theme-color` 随主题 JS 切换（dark #000/light #f5f5f7）、`apple-mobile-web-app-capable`；主 gap 10→12px 归 8pt；圆角收敛 4 档（8/12/18/胶囊）；Console 页 `max-width:1200px` 居中、Drift 页对齐 Judge `max-width:760px`（`body.embedded` 解除限宽保内嵌）；uppercase+宽字距标签仅保留 2 处；`.langTabs` 死样式与 fabToggle 遗留 `--fabBg/--fabGlow` 系列 6 个死变量清理。
+  - 测试同步（`tests/test_firmware_feature_flags.py` 17 处断言翻转到 v1.10.6 新形态，docstring 注明新行为）：fab 用例改名重写为 helpFab 常显断言；langTabs 死样式断言翻转（`git show Tony` 证实 `#ledBlinkTabs` 在 Tony 已无引用，零活代码误删）；alert→toast、prompt→authModal、emoji→SVG、gap 12、圆角档、字重 700、ink2 .72、theme-color meta、CHART_THEMES 新色值等断言同步；`tests/web_console_fixes.test.mjs` test 8 断言改 toast 路径；版本断言 → v1.10.6 + changelog 链补 v1.10.5。
+  - 验证：`arduino-cli.py -c` 编译通过（170.85s）；pytest **364 + 31 subtests** 全绿；node `web_console_fixes.test.mjs` 31 + `zcode_remote_url.test.mjs` 27 全绿；真实回归为零。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.6。
+
 ## 2026-10-02 v1.10.5
 
 - fix(DC): Drifter Console 全站 UI 恢复第一轮 Apple 外观（v1.9.2 时代）——撤下 Apple 深化与座舱质感卡片

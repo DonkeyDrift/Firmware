@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-10-02 v1.10.10
+
+- fix(DC): 四页字体栈回最初版——body 与 headerRow 换回 -apple-system 优先的首版栈，标题字形更宽
+  - 起因（用户报障）：v1.10.8 恢复的 `system-ui,sans-serif` 仍不是用户要的「最开始那种」字体——用户描述最初版更宽、类似苹果自带/Safari 字体，且 DD 页面同样不喜欢现字体，要求全部改回最初样式。
+  - 考据：DD 前端首版（fe144ad5）`:root` 字体栈为 `-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,...`；DD 侧 0784d454（双 UI 切换）曾统一改成 system-ui 优先，此后各页标题字形变窄。DC 侧 headerRow（标题行）亦用 system-ui 优先栈。
+  - 实测（本机 Chrome + Playwright 宽度指纹，20px/700「Drifter Console」）：system-ui 优先栈解析到 Noto Sans CJK SC（148.3px），首版栈解析到 Noto Sans（151.0px，更宽）；Apple 设备上 -apple-system 即 SF Pro（苹果自带字体）。
+  - 修复（`libraries/mus4_web/src/WebConsoleAssets.h`）：四页 body（4 处）+ Console 页 .headerRow（1 处）字体栈换为 `-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji"`；.langButton 本就该栈不动；等宽栈（Consolas,monospace 等）不动；其余 Apple 打磨成果（磨砂/热区/弹窗/圆角/间距/字重 700）全部保留。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 → v1.10.10 + changelog 链补 v1.10.9；.headerRow 字体断言更新为新栈并补注释。
+  - 验证：编译通过；pytest 364 + 31 subtests、node 31+27 全绿。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.10。
+
 ## 2026-10-02 v1.10.9
 
 - fix(DC): 遥测图 Y 轴数字「重叠」发虚修复——draw() 改每帧整幅清画布，标签不再逐帧原地叠印

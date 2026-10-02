@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.10"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.11"' in build_info
+    assert "v1.10.10" in changelog
     assert "v1.10.9" in changelog
     assert "v1.10.8" in changelog
     assert "v1.10.7" in changelog
@@ -1972,6 +1973,10 @@ def test_web_console_header_logo_left_of_title():
     # zinc-100 前景色；标题↔功能 32px = gap 12 + margin-right 20）
     assert "h1{margin:0;font-size:1.25rem;font-weight:700;line-height:1.75rem}" in source
     assert ".headerRow h1{color:var(--ink);margin:0 20px 0 0}" in source
+    # v1.10.11：标题字重恢复 700——v1.9.0 引入的 html:root h1{font-weight:600;letter-spacing:-0.02em}
+    # 高优先级覆写把四页标题压成 600 细体+紧字距，用户实机评审要求恢复 v1.9.0 前的粗标题
+    assert 'html:root h1{font-weight:700}' in source
+    assert 'html:root h1{font-weight:600' not in source
     assert 'html[data-theme="light"]{--bg:#f5f5f7;--ink:#1d1d1f;' in source
 
 

@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.6"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.7"' in build_info
+    assert "v1.10.6" in changelog
     assert "v1.10.5" in changelog
     assert "v1.10.4" in changelog
     assert "v1.10.3" in changelog
@@ -2738,8 +2739,8 @@ def test_web_console_settings_view_embeds_tune_sections():
     assert 'body.embedded #driftStatusPanel{display:none}' in drift
     # v1.8.64：embedded 下 drift 页 body 上边距清零、下边距收紧为 10px（对齐板块间距）——
     # 与 judge 页 margin-top:0 配合，把「保存漂移配置」行到 Judge 首个板块的可见间隙压到 ~22px
-    # v1.10.6：embedded 追加 max-width:none——drift 页正文限宽 760px 居中后，内嵌时须解除限宽撑满 iframe
-    assert 'body.embedded{margin-top:0;margin-bottom:10px;max-width:none}' in drift
+    # v1.10.7：drift 页正文恢复全宽（撤下 v1.10.6 的 760px 限宽居中，用户反馈宽屏比例不对），embedded 规则同步撤掉 max-width:none
+    assert 'body.embedded{margin-top:0;margin-bottom:10px}' in drift
 
 
 def test_web_console_embedded_view_dd_native_styling():

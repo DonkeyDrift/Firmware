@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.9"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.10"' in build_info
+    assert "v1.10.9" in changelog
     assert "v1.10.8" in changelog
     assert "v1.10.7" in changelog
     assert "v1.10.6" in changelog
@@ -5668,7 +5669,8 @@ def test_web_console_header_entry_buttons():
     # v1.8.16 追加：顶栏字体渲染对齐 DD 导航——font-synthesis:none 阻止 500 字重被合成加粗，
     # text-rendering + font-smoothing 让字形更细更清晰（否则 Donkey/DonkeyDrifter 显得更粗更大）
     # v1.8.20：主 DC 页标题行默认显示，仅在 DD 嵌入（?embedded=1）时经 body.embedded 隐藏（Issue #234）
-    assert '.headerRow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}' in assets
+    # v1.10.10：字体栈回最初版（DD 初始 :root 同款）——-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",...
+    assert '.headerRow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji";font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}' in assets
     assert 'body.embedded .headerRow{display:none}' in assets
 
 def test_web_console_light_theme_overrides():

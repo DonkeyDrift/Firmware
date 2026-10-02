@@ -26,6 +26,8 @@
 #include <WiFi.h>
 #include <Update.h>
 #include <Preferences.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
 
 // Hardware/framework globals defined in MUS4_FW.ino
 extern WebServer wifiWebServer;
@@ -80,6 +82,9 @@ static size_t wifiWebUpdateReceived = 0;
 // 活动时间戳，供 updateWifiOta() 做空闲超时兜底（客户端 abort 时 core
 // 3.3.10 的 WebServer 不会执行 POST handler）。
 static bool s_wifiWebUpdateStarted = false;
+// POST /update?boot=0 补种模式：镜像只写入对面槽位并拨回启动标志，不重启——
+// 用于在不打断当前固件的前提下给对面槽位补种 RC_BLE_Bridge 桥固件
+static bool s_otaSeedNoBoot = false;
 static unsigned long s_lastOtaActivityMs = 0;
 static unsigned long lastWifiWebUpdateMs = 0;
 static uint32_t wifiWebUpdateMaxDtMs = 0;
@@ -108,9 +113,12 @@ String hostWifiError = "";
 String hostReportedIp = "";
 unsigned long hostReportedIpMs = 0;
 
+// OTA 槽位身份缓存助手，定义在本文件 OTA 段（见「OTA 双启动槽位」注释块）
+static const char* otherSlotKind();
+
 void printWirelessStatus(Print& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s mdns_host=\"%s\" mdns_url=%s mdns_started=%d host_ip=%s host_ip_age_s=%lu web_log_dropped=%lu\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s mdns_host=\"%s\" mdns_url=%s mdns_started=%d host_ip=%s host_ip_age_s=%lu web_log_dropped=%lu running_slot=%s other_slot_kind=%s\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -173,7 +181,9 @@ void printWirelessStatus(Print& out)
         wifiRuntime.mdnsStarted ? 1 : 0,
         hostReportedIp.c_str(),
         hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL,
-        (unsigned long)webLogBufferDropped());
+        (unsigned long)webLogBufferDropped(),
+        esp_ota_get_running_partition() ? esp_ota_get_running_partition()->label : "?",
+        otherSlotKind());
 }
 
 static void redirectWifiWebCaptivePortalToRoot()
@@ -1387,6 +1397,113 @@ static void handleWifiWebData()
     recordWifiWebHandlerDt(startedMs, wifiWebDataMaxDtMs);
 }
 
+// ---------- OTA 双启动槽位（A/B 切换：车固件 ↔ RC_BLE_Bridge 手柄桥） ----------
+static bool isWifiWebUpdateAuthOk(); // 定义在下方 /update 段，切换接口复用同款鉴权
+// 槽位身份标记：桥固件（examples/RC_BLE_Bridge）嵌入 "MUS4APP:BRIDGE"，本固件
+// 嵌入 "MUS4APP:CAR"，互相通过分区扫描识别对端槽位装的是什么。扫描约定与
+// 测试断言在 tests/test_firmware_feature_flags.py / test_rc_ble_bridge_example.py 钉住。
+static const char MUS4_SLOT_ID_MARKER[] __attribute__((used)) = "MUS4APP:CAR";
+
+// 返回当前运行分区的「对面」OTA 应用分区；无则 nullptr
+static const esp_partition_t* otherOtaAppPartition()
+{
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    if (!running) return nullptr;
+    return esp_ota_get_next_update_partition(running);
+}
+
+// 识别分区里装的是哪类固件：扫 "MUS4APP:" 身份标记得 "car"/"bridge"；
+// 镜像有效但没有标记（旧固件）返回 "unknown"；无有效镜像返回 "empty"。
+// 标记在 .rodata 里的位置不做假设，整分区扫描（仅端点低频调用时执行）。
+static String identifyOtaPartitionKind(const esp_partition_t* part)
+{
+    if (!part) return "empty";
+    esp_app_desc_t desc;
+    if (esp_ota_get_partition_description(part, &desc) != ESP_OK) return "empty";
+    static const char MAGIC[] = "MUS4APP:";
+    const size_t MAGIC_LEN = sizeof(MAGIC) - 1;
+    uint8_t buf[1024 + 16];
+    for (uint32_t off = 0; off < part->size; off += 1024) {
+        size_t chunk = (part->size - off > 1024) ? 1024 : (part->size - off);
+        // 与上一块重叠 16 字节，防止标记跨块边界漏检
+        uint32_t readOff = (off >= 16) ? off - 16 : 0;
+        size_t readLen = chunk + ((off >= 16) ? 16 : 0);
+        if (esp_partition_read(part, readOff, buf, readLen) != ESP_OK) break;
+        for (size_t i = 0; i + MAGIC_LEN + 1 <= readLen; i++) {
+            if (memcmp(buf + i, MAGIC, MAGIC_LEN) != 0) continue;
+            if (memcmp(buf + i + MAGIC_LEN, "CAR", 3) == 0) return "car";
+            if (memcmp(buf + i + MAGIC_LEN, "BRIDGE", 6) == 0) return "bridge";
+        }
+    }
+    return "unknown";
+}
+
+// 对端槽位种类的惰性缓存：/api/status 轮询高频，不能每次都整分区扫描；
+// 首次请求时扫描一次，OTA 写入对端槽位后失效重来。
+static String s_otherSlotKind;
+static bool s_otherSlotKindCached = false;
+static const char* otherSlotKind()
+{
+    if (!s_otherSlotKindCached) {
+        s_otherSlotKind = identifyOtaPartitionKind(otherOtaAppPartition());
+        s_otherSlotKindCached = true;
+    }
+    return s_otherSlotKind.c_str();
+}
+
+static void handleWifiWebSlotInfo()
+{
+    sendWifiWebApiHeaders();
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    const esp_partition_t* other = otherOtaAppPartition();
+    // id 字段引用身份标记字符串：既让响应对端自描述，也确保链接器保留该标记
+    //（对端固件靠整分区扫描它识别本槽位；无人引用的 static const 会被 GC 掉）
+    String json = "{\"app\":\"car\",\"id\":\"";
+    json += MUS4_SLOT_ID_MARKER;
+    json += "\",\"running\":\"";
+    json += running ? running->label : "?";
+    json += "\",\"other\":\"";
+    json += other ? other->label : "";
+    json += "\",\"other_kind\":\"";
+    json += otherSlotKind();
+    json += "\"}";
+    wifiWebServer.send(200, "application/json", json);
+}
+
+// 切到对面槽位重启：车 → 手柄桥（或旧车固件）。与 HTTP OTA 同款鉴权；
+// 切换前强制 Park Locked，保证重启期间输出安全态。
+static void handleWifiWebSwitchSlot()
+{
+    unsigned long startedMs = millis();
+    sendWifiWebApiHeaders();
+    if (!isWifiWebUpdateAuthOk()) {
+        wifiWebServer.send(401, "text/plain", "NACK:AUTH_REQUIRED\n");
+        recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
+        return;
+    }
+    const esp_partition_t* other = otherOtaAppPartition();
+    String kind = identifyOtaPartitionKind(other); // 切换前实时扫，不用缓存
+    s_otherSlotKindCached = false;                 // 扫描结果可能比缓存新，顺手失效
+    if (!other || kind == "empty") {
+        wifiWebServer.send(400, "text/plain", "NACK:NO_IMAGE\n");
+        recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
+        return;
+    }
+    os.parkGuardActive = true;
+    forceWifiOtaParkLocked();
+    mus4Logf("ota", "switch-slot: %s -> %s (kind=%s)",
+             esp_ota_get_running_partition()->label, other->label, kind.c_str());
+    if (esp_ota_set_boot_partition(other) != ESP_OK) {
+        wifiWebServer.send(500, "text/plain", "NACK:SET_BOOT_FAILED\n");
+        recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
+        return;
+    }
+    wifiWebServer.send(200, "text/plain", "ACK:SWITCHING\n");
+    recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
+    delay(100);
+    ESP.restart();
+}
+
 static void handleWifiWebUpdateGet()
 {
     wifiWebServer.sendHeader("Cache-Control", "no-store");
@@ -1452,6 +1569,10 @@ static void handleWifiWebUpdateUpload()
         // 鉴权通过才计为一次真实上传：POST 完成处理器据此拒绝空 POST 重启。
         s_wifiWebUpdateStarted = true;
         s_lastOtaActivityMs = millis();
+        // 补种模式（?boot=0）：镜像写入对面槽位但不切换启动、不重启
+        s_otaSeedNoBoot = wifiWebServer.hasArg("boot") && wifiWebServer.arg("boot") == "0";
+        // 上传会改写对面槽位内容，槽位身份缓存作废
+        s_otherSlotKindCached = false;
         // 防御：如果上次更新异常退出导致 Update 对象仍处 running 状态，
         // 先 abort 再 begin，避免 "already running" 导致新上传无法开始。
         // 必须在鉴权通过之后再 abort，避免未认证请求干扰进行中的 OTA。
@@ -1509,7 +1630,18 @@ static void handleWifiWebUpdateUpload()
             mus4Logf("ota", "http update end failed: %s", Update.errorString());
         } else {
             os.lastProgressPct = 100;
-            mus4LogLine("ota", "http update success");
+            if (s_otaSeedNoBoot) {
+                // Update.end() 已把启动标志指到新写入的对面槽位；补种模式
+                // 立刻拨回当前运行槽位——镜像落盘但本次不启动它、不重启。
+                if (esp_ota_set_boot_partition(esp_ota_get_running_partition()) == ESP_OK) {
+                    mus4LogLine("ota", "seed mode: image written to other slot, boot flag kept on running slot");
+                } else {
+                    wifiWebUpdateErrorMsg = "NACK:SEED_BOOTFLAG_FAILED";
+                    mus4LogLine("ota", "seed mode: failed to restore boot flag");
+                }
+            } else {
+                mus4LogLine("ota", "http update success");
+            }
         }
     } else if (upload.status == UPLOAD_FILE_ABORTED) {
         // ESP32 core 3.3.10：客户端 abort 时 _parseForm() 返回 false，POST
@@ -1542,6 +1674,16 @@ static void handleWifiWebUpdatePost()
         // 未发生鉴权通过的上传（如空 POST）：绝不走成功分支，更不重启。
         wifiWebServer.send(400, "text/plain", "NACK:NO_UPLOAD\n");
         recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
+        return;
+    }
+    if (s_otaSeedNoBoot) {
+        // 补种模式：镜像已落对面槽位、启动标志已拨回，不重启。
+        // 复用失败路径的清理把 OTA 运行时状态归位（inProgress/parkGuard/window），
+        // 否则不重启会让这些状态永久卡住。
+        s_otaSeedNoBoot = false;
+        wifiWebServer.send(200, "text/plain", "ACK:SEED_OK\n");
+        recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
+        resetOtaAfterFailedUpload();
         return;
     }
     wifiWebServer.send(200, "text/plain", "ACK:UPDATE_OK\n");
@@ -1581,6 +1723,8 @@ void setupWebConsoleServer()
     wifiWebServer.on("/mobile/status.php", HTTP_GET, handleWifiWebCaptivePortal);
     wifiWebServer.on("/connectivity-check.html", HTTP_GET, handleWifiWebCaptivePortal);
     wifiWebServer.on("/api/status", HTTP_GET, handleWifiWebStatus);
+    wifiWebServer.on("/api/slot-info", HTTP_GET, handleWifiWebSlotInfo);
+    wifiWebServer.on("/api/switch-slot", HTTP_POST, handleWifiWebSwitchSlot);
     wifiWebServer.on("/api/cmd", HTTP_POST, handleWifiWebCommand);
     wifiWebServer.on("/api/devmode", HTTP_GET, handleWifiWebDevMode);
     wifiWebServer.on("/api/devmode", HTTP_POST, handleWifiWebDevModeSet);

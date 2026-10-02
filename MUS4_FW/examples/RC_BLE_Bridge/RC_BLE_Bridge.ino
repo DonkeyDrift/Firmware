@@ -35,6 +35,8 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Update.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include <ArduinoOTA.h>
 #include <BleGamepad.h>
 
@@ -155,6 +157,102 @@ void sendGamepadPacket()
 // ---------- HTTP /update（回刷通道 2）：POST multipart 文件字段 "update" ----------
 static bool otaStarted = false;
 
+// ---------- OTA 双启动槽位（与车固件互为 A/B 面） ----------
+// 槽位身份标记：车固件嵌入 "MUS4APP:CAR"，本桥嵌入 "MUS4APP:BRIDGE"，
+// 互相通过分区扫描识别对面槽位。约定由两侧测试钉住。
+static const char MUS4_SLOT_ID_MARKER[] __attribute__((used)) = "MUS4APP:BRIDGE";
+
+// 返回当前运行分区的「对面」OTA 应用分区；无则 nullptr
+static const esp_partition_t *otherOtaAppPartition()
+{
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (!running) return nullptr;
+    return esp_ota_get_next_update_partition(running);
+}
+
+// 识别分区固件种类：扫 "MUS4APP:" 标记得 "car"/"bridge"；有效但无标记（旧
+// 固件）返回 "unknown"；无有效镜像返回 "empty"。整分区扫描（低频端点调用）。
+static String identifyOtaPartitionKind(const esp_partition_t *part)
+{
+    if (!part) return "empty";
+    esp_app_desc_t desc;
+    if (esp_ota_get_partition_description(part, &desc) != ESP_OK) return "empty";
+    static const char MAGIC[] = "MUS4APP:";
+    const size_t MAGIC_LEN = sizeof(MAGIC) - 1;
+    uint8_t buf[1024 + 16];
+    for (uint32_t off = 0; off < part->size; off += 1024)
+    {
+        size_t chunk = (part->size - off > 1024) ? 1024 : (part->size - off);
+        // 与上一块重叠 16 字节，防止标记跨块边界漏检
+        uint32_t readOff = (off >= 16) ? off - 16 : 0;
+        size_t readLen = chunk + ((off >= 16) ? 16 : 0);
+        if (esp_partition_read(part, readOff, buf, readLen) != ESP_OK) break;
+        for (size_t i = 0; i + MAGIC_LEN + 1 <= readLen; i++)
+        {
+            if (memcmp(buf + i, MAGIC, MAGIC_LEN) != 0) continue;
+            if (memcmp(buf + i + MAGIC_LEN, "CAR", 3) == 0) return "car";
+            if (memcmp(buf + i + MAGIC_LEN, "BRIDGE", 6) == 0) return "bridge";
+        }
+    }
+    return "unknown";
+}
+
+static void handleSlotInfo()
+{
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    const esp_partition_t *other = otherOtaAppPartition();
+    // id 字段引用身份标记字符串：既自描述，也确保链接器保留该标记
+    //（对端固件靠整分区扫描它识别本槽位；无人引用的 static const 会被 GC 掉）
+    String json = "{\"app\":\"bridge\",\"id\":\"";
+    json += MUS4_SLOT_ID_MARKER;
+    json += "\",\"running\":\"";
+    json += running ? running->label : "?";
+    json += "\",\"other\":\"";
+    json += other ? other->label : "";
+    json += "\",\"other_kind\":\"";
+    json += identifyOtaPartitionKind(other);
+    json += "\"}";
+    otaServer.send(200, "application/json", json);
+}
+
+// 切回对面槽位（车固件）并重启。与 /update 同样免鉴权（局域网桥设备）；
+// 对面槽位无有效镜像时拒绝。
+static void handleSwitchSlot()
+{
+    const esp_partition_t *other = otherOtaAppPartition();
+    String kind = identifyOtaPartitionKind(other);
+    if (!other || kind == "empty")
+    {
+        otaServer.send(400, "text/plain", "NACK:NO_IMAGE");
+        return;
+    }
+    Serial.printf("switch-slot: %s -> %s (kind=%s)\n",
+                  esp_ota_get_running_partition()->label, other->label, kind.c_str());
+    if (esp_ota_set_boot_partition(other) != ESP_OK)
+    {
+        otaServer.send(500, "text/plain", "NACK:SET_BOOT_FAILED");
+        return;
+    }
+    otaServer.send(200, "text/plain", "ACK:SWITCHING");
+    delay(100);
+    ESP.restart();
+}
+
+// 根页面：含 "Drifter Console" 字样（DD 的局域网控制台发现据此识别本设备），
+// 提供浏览器一键切回车固件 + OTA 刷机表单。
+static void handleRoot()
+{
+    otaServer.send(200, "text/html",
+                   "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Drifter Console</title></head><body>"
+                   "<h1>Drifter Console — RC BLE Bridge 手柄桥模式</h1>"
+                   "<p>桥固件运行中：BLE 广播「Gamepad MU02」，Mac 配对后即可在 DD 页面当手柄。车辆驾驶功能已暂停。</p>"
+                   "<form method='POST' action='/api/switch-slot'><button type='submit'>切回车固件（重启）</button></form>"
+                   "<h2>OTA 刷机</h2>"
+                   "<form method='POST' action='/update' enctype='multipart/form-data'>"
+                   "<input type='file' name='update'><input type='submit' value='Update'></form>"
+                   "</body></html>");
+}
+
 static void handleUpdateGet()
 {
     otaServer.send(200, "text/html",
@@ -243,8 +341,12 @@ static void setupWifiAndOta()
     ArduinoOTA.begin();
 
     // 回刷通道 2：HTTP /update（端口 80）
+    otaServer.on("/", HTTP_GET, handleRoot);
     otaServer.on("/update", HTTP_GET, handleUpdateGet);
     otaServer.on("/update", HTTP_POST, handleUpdatePost, handleUpdateUpload);
+    // A/B 槽位：身份查询与切回车固件
+    otaServer.on("/api/slot-info", HTTP_GET, handleSlotInfo);
+    otaServer.on("/api/switch-slot", HTTP_POST, handleSwitchSlot);
     otaServer.begin();
     Serial.println("OTA 双通道就绪：ArduinoOTA(3232) + HTTP /update(80)");
 }
@@ -252,6 +354,10 @@ static void setupWifiAndOta()
 void setup()
 {
     Serial.begin(115200);
+    // 与车端一致：启动后把本固件标记为 VALID，取消 bootloader 的 OTA 回滚——
+    // 否则桥槽位长期处于 PENDING_VERIFY，下次 reset 会被回滚到车固件，
+    // 桥模式下重启/掉电后桥会「神秘消失」。
+    esp_ota_mark_app_valid_cancel_rollback();
     pinMode(CH1_PIN, INPUT);
     pinMode(CH2_PIN, INPUT);
     attachInterrupt(digitalPinToInterrupt(CH1_PIN), isrCh1, CHANGE);

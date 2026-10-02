@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-10-02 v1.10.11
+
+- fix(DC): 四页标题字重恢复 700——撤下 v1.9.0 引入的 `html:root h1` 600 细体+紧字距覆写，恢复 v1.9.0 前的粗标题
+  - 起因（用户报障）：字体栈回最初版（v1.10.10）刷车后，用户实机评审「DC 页面的标题的字体还是细的，不是之前那种样式的」。
+  - 考古：`b0e664e`（8-17）时代 Console 标题为 `h1{margin:0;font-size:22px}`（UA 默认 700 粗体、正常字距）；`cdedfe4`（9-11，Apple 化前最后一刻）已对齐 DD 主导航为 20px/700；`2ecbbdc`（v1.9.0 座舱/Apple 双 UI）引入高优先级 `html:root h1{font-weight:600;letter-spacing:-0.02em}`——以 (0,1,2) 特异性静默压倒基础规则 `h1{...font-weight:700}` (0,0,1)，四页标题从此渲染成 600 细体+紧字距（Playwright 实测车上计算样式 font-weight=600、letter-spacing=-0.4px 佐证）。
+  - 修复（`libraries/mus4_web/src/WebConsoleAssets.h`）：四页共 4 处 `html:root h1{font-weight:600;letter-spacing:-0.02em}` → `html:root h1{font-weight:700}`——标题恢复 700 粗体、字距回正常；各页基础字号不动（Console 20px / Judge 24px / Drift 22px / OTA 17px，即 v1.9.0 前规格）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 → v1.10.11 + changelog 链补 v1.10.10；新增 `html:root h1{font-weight:700}` 在位与 600 覆写不复存在两条断言。
+  - 验证：pytest 364 + 31 subtests、node 31+27 全绿；编译通过。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.11。
+
 ## 2026-10-02 v1.10.10
 
 - fix(DC): 四页字体栈回最初版——body 与 headerRow 换回 -apple-system 优先的首版栈，标题字形更宽

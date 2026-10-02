@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.3"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.5"' in build_info
+    assert "v1.10.4" in changelog
     assert "v1.10.3" in changelog
     assert "v1.10.2" in changelog
     assert "v1.10.1" in changelog
@@ -476,29 +477,35 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     assert changelog.index("## 2026-08-15 v1.7.76") < changelog.index("## 2026-08-15 v1.7.75")
 
 
-def test_console_state_cards_restore_cockpit_look():
-    """v1.10.1：五张状态卡恢复座舱质感（10px 圆角、渐变底、座舱边框/阴影），
-    大数字恢复 800 字重；共享变量 --cardGrad 不被改动（弹窗等保持 Apple）。"""
+def test_console_state_cards_restore_apple_first_look():
+    """v1.10.5：五张状态卡回到 v1.9.2 时代 Apple 初版外观——基础规则恢复共享变量
+    （--line2 边框 + --cardGrad 底 + --cardShadow 阴影），并重新加入第一轮规则
+    html:root .stateCard{border-radius:16px}；v1.10.1 引入的座舱卡片专属变量
+    （--stateCardGrad/--stateCardLine/--stateCardShadow，含 v1.10.4 的基础卡色
+    统一取值）整体删除；网络卡 AP/STA/HOST 激活页签回到 var(--accentFill) 蓝。"""
     assets = (
         PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
     ).read_text(encoding="utf-8")
 
-    # Apple 压平覆写已删除
+    # 基础规则恢复共享变量 + 第一轮 16px 圆角规则重新加入
+    assert ".stateCard{position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:10px;padding:12px;background:var(--cardGrad);box-shadow:var(--cardShadow);transition:.25s}" in assets
+    assert "html:root .stateCard{border-radius:16px}" in assets
+    # 座舱卡片专属变量（深浅两套）整体删除，引用点随之消失
+    assert "--stateCardGrad" not in assets
+    assert "--stateCardLine" not in assets
+    assert "--stateCardShadow" not in assets
+    assert "background:var(--stateCardGrad)" not in assets
+    assert "border:1px solid var(--stateCardLine)" not in assets
+    # Apple 深化压平覆写不复活
     assert "html:root .stateValue{font-weight:600;letter-spacing:-.02em;line-height:1.15}" not in assets
-    assert "html:root .stateCard{border-radius:16px}" not in assets
     assert "html:root .stateMeta,html:root .stateHead{line-height:1.35}" not in assets
-    # .stateMeta b 不再被压平（恢复大写小标签），设置页标签仍保留 Apple 风格
+    # 微标签大写恢复：深化期 text-transform:none 覆写已删除，.stateMeta b 回到大写小标签
     assert "html:root .stateMeta b,html:root .toggleLabel" not in assets
-    assert "html:root .toggleLabel,html:root .settingsView .setRow h3{text-transform:none" in assets
-    # 座舱卡片变量（深浅两套）
-    assert "--stateCardGrad:linear-gradient(135deg,#1c2430,#121821)" in assets
-    assert "--stateCardLine:#344154" in assets
-    assert "--stateCardGrad:linear-gradient(135deg,#fff,#edf1f6)" in assets
-    assert "--stateCardLine:#ccd5df" in assets
-    assert "background:var(--stateCardGrad)" in assets
-    assert "border:1px solid var(--stateCardLine)" in assets
-    # 网络卡 AP/STA/HOST 激活页签恢复座舱青色
-    assert "#networkCard .netTabs button.active{background:#5cc8ff;color:#061019}" in assets
+    assert "html:root .toggleLabel,html:root .settingsView .setRow h3{text-transform:none" not in assets
+    assert ".stateMeta b{color:var(--ink3);font-size:11px;letter-spacing:.08em;text-transform:uppercase}" in assets
+    # 网络卡 AP/STA/HOST 激活页签回到 var(--accentFill) 蓝（v1.10.1 座舱青色覆写已删除）
+    assert "#networkCard .netTabs button.active{background:#5cc8ff;color:#061019}" not in assets
+    assert ".netTabs button.active{background:var(--accentFill);color:var(--onAccent);font-weight:800}" in assets
 
 
 def test_refresh_wifi_sta_no_longer_auto_pops_handoff_modal():
@@ -2085,7 +2092,8 @@ def test_web_console_language_tabs_wired_to_set_language():
     assert "#voltageCard .stateMeta span,#networkCard .stateMeta span{font-size:13px}" in source
     assert "@media(max-width:620px){" in source
     assert ".rcGrid{grid-template-columns:repeat(3,minmax(72px,1fr))}" in source
-    assert ".stateCard{position:relative;overflow:hidden;border:1px solid var(--stateCardLine);border-radius:10px;padding:12px" in source
+    # v1.10.5：状态卡基础规则恢复共享变量 --line2 边框（v1.10.1 的 --stateCardLine 已删除）
+    assert ".stateCard{position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:10px;padding:12px" in source
     assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.08}" in source
     assert ".stateMeta span{font-size:15px;font-weight:700;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.2}" in source
     assert "text-overflow:ellipsis" not in source
@@ -5667,9 +5675,11 @@ def test_web_console_light_theme_overrides():
     # CSS 变量，浅色只覆盖变量值；深浅两态渲染值与旧版逐值一致（级联等价）
     assert 'html[data-theme="light"]{--bg:#f5f5f7;--ink:#1d1d1f;' in assets
     # 变量块关键色：基底 / 日志终端 / 状态卡片 / 画布
-    assert '--logBg:#f5f5f7;--logInk:#1a7f37' in assets
+    # v1.10.5：console 页回到 Apple 初版取值——浅色 --logInk:#248a3d、--cardShadow:none
+    assert '--logBg:#f5f5f7;--logInk:#248a3d' in assets
     assert '--cardGrad:#fff' in assets
-    assert '--cardShadow:0 1px 3px rgba(0,0,0,.06)' in assets
+    assert '--cardShadow:none' in assets
+    assert '--cardShadow:0 1px 3px rgba(0,0,0,.06)' not in assets
     assert '--canvasBg:#fff' in assets
     # 基础规则经变量随主题切换（选择器与结构不动、色值变量化）
     assert '.log{height:calc(5 * 1.35em + 16px);overflow:auto;background:var(--logBg);color:var(--logInk)' in assets

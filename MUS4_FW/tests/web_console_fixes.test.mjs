@@ -383,14 +383,16 @@ await test('explainCommandError 映射矩阵（含 403 auth_required 新契约�
   }
 });
 
-await test('showCommandError：有映射才弹窗（正常输出/空串/null 不弹）', () => {
+await test('showCommandError：有映射才弹 toast（正常输出/空串/null 不弹）', () => {
   const env = makeEnv();
   env.x.showCommandError('NACK:PARK_REQUIRED');
   env.x.showCommandError('OK');
   env.x.showCommandError('');
   env.x.showCommandError(null);
   env.x.showCommandError('NACK:JOYSTICK_SAVE_FAILED');
-  assert.deepEqual(env.calls.alert, [['error.parkRequired'], ['error.joystickSaveFailed']]);
+  // v1.10.6：原生 alert 改为非阻塞 toast（showToast(msg, false)）
+  assert.deepEqual(env.calls.toast, [['error.parkRequired', false], ['error.joystickSaveFailed', false]]);
+  assert.deepEqual(env.calls.alert, []);
 });
 
 // ---------- ③ STA 配网：改 SSID 清旧密码占位 ----------

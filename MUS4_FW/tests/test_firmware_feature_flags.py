@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.5"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.6"' in build_info
+    assert "v1.10.5" in changelog
     assert "v1.10.4" in changelog
     assert "v1.10.3" in changelog
     assert "v1.10.2" in changelog
@@ -479,17 +480,17 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
 
 def test_console_state_cards_restore_apple_first_look():
     """v1.10.5：五张状态卡回到 v1.9.2 时代 Apple 初版外观——基础规则恢复共享变量
-    （--line2 边框 + --cardGrad 底 + --cardShadow 阴影），并重新加入第一轮规则
-    html:root .stateCard{border-radius:16px}；v1.10.1 引入的座舱卡片专属变量
+    （--line2 边框 + --cardGrad 底 + --cardShadow 阴影；v1.10.6 起圆角统一收敛为
+    12px 档、过渡走 --ease）；v1.10.1 引入的座舱卡片专属变量
     （--stateCardGrad/--stateCardLine/--stateCardShadow，含 v1.10.4 的基础卡色
     统一取值）整体删除；网络卡 AP/STA/HOST 激活页签回到 var(--accentFill) 蓝。"""
     assets = (
         PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleAssets.h"
     ).read_text(encoding="utf-8")
 
-    # 基础规则恢复共享变量 + 第一轮 16px 圆角规则重新加入
-    assert ".stateCard{position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:10px;padding:12px;background:var(--cardGrad);box-shadow:var(--cardShadow);transition:.25s}" in assets
-    assert "html:root .stateCard{border-radius:16px}" in assets
+    # 基础规则恢复共享变量（v1.10.6：圆角 16/10 收敛为统一 12px 档，transition 走 --ease）
+    assert ".stateCard{position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:12px;padding:12px;background:var(--cardGrad);box-shadow:var(--cardShadow);transition:.25s var(--ease)}" in assets
+    assert "html:root .stateCard{border-radius:12px}" in assets
     # 座舱卡片专属变量（深浅两套）整体删除，引用点随之消失
     assert "--stateCardGrad" not in assets
     assert "--stateCardLine" not in assets
@@ -499,10 +500,11 @@ def test_console_state_cards_restore_apple_first_look():
     # Apple 深化压平覆写不复活
     assert "html:root .stateValue{font-weight:600;letter-spacing:-.02em;line-height:1.15}" not in assets
     assert "html:root .stateMeta,html:root .stateHead{line-height:1.35}" not in assets
-    # 微标签大写恢复：深化期 text-transform:none 覆写已删除，.stateMeta b 回到大写小标签
+    # 微标签大写恢复：深化期 text-transform:none 覆写已删除
+    # （v1.10.6：去全大写改 letter-spacing:0/font-weight:500，uppercase 全站仅保留 .stateHead）
     assert "html:root .stateMeta b,html:root .toggleLabel" not in assets
     assert "html:root .toggleLabel,html:root .settingsView .setRow h3{text-transform:none" not in assets
-    assert ".stateMeta b{color:var(--ink3);font-size:11px;letter-spacing:.08em;text-transform:uppercase}" in assets
+    assert ".stateMeta b{color:var(--ink3);font-size:11px;letter-spacing:0;font-weight:500}" in assets
     # 网络卡 AP/STA/HOST 激活页签回到 var(--accentFill) 蓝（v1.10.1 座舱青色覆写已删除）
     assert "#networkCard .netTabs button.active{background:#5cc8ff;color:#061019}" not in assets
     assert ".netTabs button.active{background:var(--accentFill);color:var(--onAccent);font-weight:800}" in assets
@@ -759,8 +761,8 @@ def test_web_console_serial_option_is_host_terminal_with_persistent_default():
     # 新开浏览器标签的旧逻辑已删除
     assert "openNewTerminal" not in source
     assert "window.open(terminalUrl" not in source
-    # .termFrame CSS 保留 #57 白边修复属性（标识符由 #terminalFrame 改为 .termFrame）
-    assert ".termFrame{display:block;flex:1 1 auto;width:100%;min-height:0;border:0;border-radius:6px;background:var(--termBg)}" in source
+    # .termFrame CSS 保留 #57 白边修复属性（标识符由 #terminalFrame 改为 .termFrame；v1.10.6 圆角 6→8）
+    assert ".termFrame{display:block;flex:1 1 auto;width:100%;min-height:0;border:0;border-radius:8px;background:var(--termBg)}" in source
     # 终端窗口全屏按钮（v1.7.99）：右下角图标按钮，UI/行为完全对齐 chartFullscreenBtn；
     # 按钮居 #terminalWrap DOM 末尾（#terminalHint 之后），压在 insertBefore 插入的 iframe 上；
     # #terminalWrap 加 position:relative 作定位父级；:fullscreen 抵消原 height/min-height/max-height 的 calc 钳制，
@@ -893,15 +895,15 @@ def test_web_console_has_help_floating_modal():
 def test_web_console_help_modal_mirrors_donkeydrifter_layout():
     source = firmware_source_text()
 
-    # 帮助弹窗完全模仿 DonkeyDrifter：右下角锚定 + 蓝边渐变面板
+    # 帮助弹窗完全模仿 DonkeyDrifter：右下角锚定（v1.10.6：蓝边改中性 --line，圆角 14→18）
     assert '.helpModal{position:fixed;right:18px;bottom:74px;width:min(340px,calc(100vw - 36px))' in source
-    assert 'background:var(--cardGrad);border:1px solid var(--accent);border-radius:14px;padding:14px' in source
+    assert 'background:var(--cardGrad);border:1px solid var(--line);border-radius:18px;padding:14px' in source
     # 幽灵关闭按钮（与 DonkeyDrifter 一致：透明底 + zinc-400 ×，hover zinc-800）
     assert '.helpClose{min-width:0;width:28px;height:28px;padding:0;border:none;border-radius:50%;background:transparent;color:var(--closeInk)' in source
     assert '.helpClose:hover{background:var(--closeHoverBg);color:var(--closeHoverInk)}' in source
-    # 功能分类 + 小标题（双语 i18n，uppercase 灰色小标题样式）
+    # 功能分类 + 小标题（双语 i18n；v1.10.6：去全大写，改 letter-spacing:0 灰色小标题样式）
     assert 'class="helpSection"' in source
-    assert '.helpSection h3{margin:0 0 8px;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3)}' in source
+    assert '.helpSection h3{margin:0 0 8px;font-size:12px;font-weight:500;letter-spacing:0;color:var(--ink3)}' in source
     assert 'data-i18n="help.groupStatus"' in source
     assert 'data-i18n="help.groupNetwork"' in source
     assert 'data-i18n="help.groupData"' in source
@@ -914,32 +916,26 @@ def test_web_console_help_modal_mirrors_donkeydrifter_layout():
     assert "状态卡片：查看模式、Park、OTA、连接状态" in source
 
 
-def test_web_console_has_collapsed_glow_fab_with_radial_actions():
-    """FAB 展开组（v1.8.3，Issue #92）：语言入口移到顶栏单按钮 #langToggle 后，
-    langFab/langMenu 弹出菜单入口及其 CSS/JS 一并移除，展开组只剩 helpFab；
-    fabActions 容器与全局滚动/触摸收起监听保留。"""
+def test_web_console_help_fab_is_always_on_without_fab_toggle():
+    """帮助 FAB 常显（v1.10.6 Apple 打磨）：fabToggle 18px 蓝点中间态与 fabActions
+    展开组整体移除——#helpFab 常显（46px 圆形，满足 ≥44px 触控目标），点击直接
+    openHelpModal()，不再有展开/收起逻辑与全局滚动/触摸收起监听；--fabBg/--fabGlow
+    系列死变量一并清理（--fabAction*/--fabShadow* 仍被 helpFab 使用，保留）。
+    （v1.8.3 Issue #92：语言入口早已移到顶栏 #langToggle，langFab/langMenu 不残留。）"""
 
     source = firmware_source_text()
 
-    assert 'id="fabToggle"' in source
-    assert 'class="fabToggle"' in source
-    assert 'id="fabActions"' in source
-    assert 'class="fabActions"' in source
-    assert 'id="helpFab"' in source
-    assert "?" in source
-    assert "toggleFabActions" in source
-    assert "collapseFabActions" in source
-    assert "fabActions.classList.toggle('show')" in source
-    assert "fabActions.classList.remove('show')" in source
-    assert "window.addEventListener('scroll',collapseFabActions" in source
-    assert "window.addEventListener('touchmove',collapseFabActions" in source
-    assert ".fabToggle{position:fixed;right:24px;bottom:24px;width:18px;height:18px" in source
-    assert "box-shadow:var(--fabGlow)" in source
-    # v1.10.0 起 Apple 为唯一风格：FAB 无座舱辉光，变量收敛为 none（box-shadow:var(--fabGlow) 规则不变）
-    assert "--fabGlow:none" in source
-    assert ".fabToggle:hover,.fabToggle:focus-visible,.fabToggle:active{background:var(--fabBgHover);border-color:var(--fabBgHover);" in source
-    assert ".fabActions.show .helpFab" in source
-    assert source.index('id="fabToggle"') < source.index('id="fabActions"') < source.index('id="helpFab"')
+    # v1.10.6：中间态与展开组（CSS/HTML/JS）不残留
+    assert "fabToggle" not in source
+    assert "fabActions" not in source
+    assert "toggleFabActions" not in source
+    assert "collapseFabActions" not in source
+    assert "--fabBg" not in source
+    assert "--fabGlow" not in source
+    # helpFab 常显 FAB：46px 圆形固定右下，点击直接打开帮助弹窗
+    assert '<button id="helpFab" class="helpFab" onclick="openHelpModal()" aria-label="功能说明" data-i18n-aria="help.title">?</button>' in source
+    assert ".helpFab{position:fixed;right:18px;bottom:18px;width:46px;height:46px" in source
+    assert ".helpFab:hover,.helpFab:focus-visible{background:var(--accentHi);border-color:var(--accentHi);box-shadow:var(--fabShadowHover)}" in source
     # Issue #92：语言 FAB/弹出菜单死代码不残留
     assert "langFab" not in source
     assert "langMenu" not in source
@@ -1933,9 +1929,11 @@ def test_web_console_header_and_state_cards_keep_compact_layout():
     # Apple UI 改造：devHint 悬停小字已删除；安全提示由开启 DEV 时的确认弹窗 devModeModal 承担
     assert "devHint" not in source
     assert 'data-i18n="dev.body"' in source
-    assert ".version{color:var(--ink3);font-size:12px;text-transform:uppercase;letter-spacing:.08em;display:inline-block}" in source
+    # v1.10.6：版本号标签去全大写（letter-spacing:0;font-weight:500），uppercase 全站仅保留 .stateHead 一处
+    assert ".version{color:var(--ink3);font-size:12px;letter-spacing:0;font-weight:500;display:inline-block}" in source
     assert ".ghLink{display:inline-flex;align-items:center;color:var(--ink3);margin-left:6px}" in source
-    assert ".stateGrid{display:grid;gap:10px;align-items:stretch;grid-template-columns:" in source
+    # v1.10.6：卡片网格间距 10→12
+    assert ".stateGrid{display:grid;gap:12px;align-items:stretch;grid-template-columns:" in source
     assert "#modeCard{grid-area:mode}" in source
     assert "#parkCard{grid-area:park}" in source
     assert "#driftCard{grid-area:drift}" in source
@@ -2043,26 +2041,22 @@ def test_web_console_language_tabs_wired_to_set_language():
     默认语言跟随浏览器：readStoredLanguage 对非 zh/en 存值回退
     detectBrowserLanguage()（navigator.language zh* → zh，其余 → en）；
     手动选择仍经 setLanguage 持久化 localStorage（mus4.ui.lang）。
-    原 .langSwitch 中文/English 分段控件移除；.langTabs 仅供 #ledBlinkTabs 使用。"""
+    原 .langSwitch 中文/English 分段控件移除。
+    v1.10.6：#ledBlinkTabs 元素早已移除，仅剩空壳定义的 .langTabs 分段控件 CSS
+    （容器/分段/选中态 3 条规则）作为死样式整体清理，源中不再残留 langTabs。"""
 
     source = firmware_source_text()
 
-    assert ".langTabs{display:inline-flex;align-items:center;gap:2px;background:var(--panel);border:1px solid var(--line2);border-radius:999px;padding:0 2px;height:24px;box-sizing:border-box;box-shadow:inset 0 0 0 1px var(--line)}" in source
-    # 外大椭圆（box-sizing:border-box；v1.7.94 起外圈 border 1px #344154 +
-    # 内嵌 box-shadow 1px #2b3441 = DC 粗框语言，inset 描边不占布局）
-    # + 内连体分段（#ledBlinkTabs 覆写容器 34px 高 + 4px 纵向 padding，border 占 2px，
-    # 分段保持 24px 满高，蓝色选中段与 OTA 按钮蓝对蓝），
-    # 与 DonkeyDrifter Web UI 手动/自动模式切换条同款内外嵌套语言；
-    # v1.7.78 起 .langTabs 仅供 #ledBlinkTabs 使用
-    assert ".langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;" in source
-    assert ".langTabs button.active{background:var(--accentFill);color:var(--onAccent)}" in source
+    # v1.10.6：.langTabs 分段控件 CSS（容器/分段/选中态）已随死样式清理整体移除
+    # （#ledBlinkTabs 元素早已不存在，规则无任何元素使用）
+    assert ".langTabs" not in source
     # Issue #92 后续样式统一：三页面（DC/D/DD）语言按钮配色对齐 DC/D 深浅切换
     # （themeButton）——32×32 圆形、深色 #111820 底 + #344154 边框 + inset 1px
     # #2b3441 内圈、字色 #b9c5d3、hover #e8edf2；浅色 #f4f6f9/#ccd5df/#d5dce4/
     # #3f4f63、hover #1a2330；字体栈沿用 DD index.css :root（含 font-synthesis/
     # text-rendering/font-smoothing）；hover 补 background 锁定，抵消 DC 通用
     # button:hover 的背景覆盖
-    assert ".langButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border:1px solid var(--line2);border-radius:9999px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);color:var(--inkPill);font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans\",Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\";font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-size:12px;font-weight:600;line-height:1;cursor:pointer;transition:color .15s cubic-bezier(.4,0,.2,1),background-color .15s cubic-bezier(.4,0,.2,1),border-color .15s cubic-bezier(.4,0,.2,1)}" in source
+    assert ".langButton{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:0;padding:0;border:1px solid var(--line2);border-radius:9999px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);color:var(--inkPill);font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Noto Sans\",Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\";font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-size:12px;font-weight:600;line-height:1;cursor:pointer;transition:color .15s var(--ease),background-color .15s var(--ease),border-color .15s var(--ease)}" in source
     assert ".langButton:hover,.langButton:focus-visible{color:var(--ink);background:var(--card)}" in source
     # Apple UI 改造：浅色值收敛进变量块（--card:#f4f6f9 / --inkPill:#3f4f63 / --ink:#1a2330），元素级浅色覆盖规则已移除
     assert 'html[data-theme="light"] .langButton' not in source
@@ -2093,8 +2087,10 @@ def test_web_console_language_tabs_wired_to_set_language():
     assert "@media(max-width:620px){" in source
     assert ".rcGrid{grid-template-columns:repeat(3,minmax(72px,1fr))}" in source
     # v1.10.5：状态卡基础规则恢复共享变量 --line2 边框（v1.10.1 的 --stateCardLine 已删除）
-    assert ".stateCard{position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:10px;padding:12px" in source
-    assert ".stateValue{font-size:24px;font-weight:800;margin-top:4px;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.08}" in source
+    # v1.10.6：状态卡圆角收敛 10→12（全站圆角四档 8/12/18/胶囊）
+    assert ".stateCard{position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:12px;padding:12px" in source
+    # v1.10.6：大数字字重 800→700
+    assert ".stateValue{font-size:24px;font-weight:700;margin-top:4px;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.08}" in source
     assert ".stateMeta span{font-size:15px;font-weight:700;white-space:normal;overflow:visible;text-overflow:clip;word-break:normal;overflow-wrap:normal;line-height:1.2}" in source
     assert "text-overflow:ellipsis" not in source
 
@@ -2157,7 +2153,8 @@ def test_web_console_network_card_uses_ap_sta_tabs_with_ssid_and_ip():
     assert 'id="networkSub"' not in source
     assert '<b data-i18n="state.ssid">SSID</b><span id="networkSsidValue">--</span>' in source
     assert '<b>LAN</b><span id="networkMdnsValue" onclick="openNetworkLanUrl()">--</span>' not in source
-    assert '<b data-i18n="state.remain">REMAIN</b><span id="voltageSub">--</span>' in source
+    # v1.10.6：state.remain 去全大写（REMAIN→Remain，与 .stateMeta b 去 uppercase 同步）
+    assert '<b data-i18n="state.remain">Remain</b><span id="voltageSub">--</span>' in source
     assert 'onclick="event.stopPropagation();openNetworkSettings()"' in source
     # v1.7.42：无可复制 IP 时去掉 copyValue，悬停不再出现"点击复制 IP"；
     # v1.7.44 起统一抽为 netIpValid()（含大写 Disabled——固件 ap_ip 直报 Disabled）
@@ -2467,7 +2464,8 @@ def test_web_console_header_ota_button_and_log_area_are_compact():
     assert "#serialPanel .log{flex:1 1 auto;min-height:calc(5 * 1.35em + 16px);max-height:calc(20 * 1.35em + 16px)}" in source
     assert "@media(min-width:900px){.grid{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}.wide{grid-column:1/-1}#diagnosticsPanel{grid-column:1/-1}}" in source
     # Issue #90：grid 列必须 minmax(0,…) 可收缩，否则终端标签条永远不会溢出、智能缩写不触发
-    assert ".grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}" in source
+    # v1.10.6：网格间距 10→12
+    assert ".grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}" in source
     assert "grid-template-columns:2fr 1fr}" not in source
     assert "canvas{width:100%;height:auto;aspect-ratio:38/13;" in source
     assert "#chartPanel:fullscreen .chartCanvasWrap{width:min(100%,calc((100vh - 118px) * 38 / 13))}" in source
@@ -2637,8 +2635,9 @@ def test_web_console_settings_view_shows_rc_channels_panel():
     assert source.index(rc_first) > source.index("if(settingsView&&wifiAp&&wifiSta){settingsView.parentNode.insertBefore(wifiAp,settingsView)")
     assert source.index(rc_first) < source.index("rcFold.classList.add('open')")
     # v1.8.45：融合单卡去掉 STA 卡上边框（浅色主题 .dialog 边框色 #d99a17 会在 AP/STA 之间形成一条黄杠）
-    assert 'body.wifi #wifiApModal .dialog{margin:0;border-bottom:none;border-radius:14px 14px 0 0;padding-bottom:8px;box-shadow:none}' in source
-    assert 'body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-top:none;border-radius:0 0 14px 14px;padding-top:4px}' in source
+    # v1.10.6：融合卡圆角随弹窗统一 14→18
+    assert 'body.wifi #wifiApModal .dialog{margin:0;border-bottom:none;border-radius:18px 18px 0 0;padding-bottom:8px;box-shadow:none}' in source
+    assert 'body.wifi #wifiStaModal .dialog{margin:0 0 14px;border-top:none;border-radius:0 0 18px 18px;padding-top:4px}' in source
 
 
 def test_web_console_embedded_main_view_hides_settings_panels():
@@ -2739,7 +2738,8 @@ def test_web_console_settings_view_embeds_tune_sections():
     assert 'body.embedded #driftStatusPanel{display:none}' in drift
     # v1.8.64：embedded 下 drift 页 body 上边距清零、下边距收紧为 10px（对齐板块间距）——
     # 与 judge 页 margin-top:0 配合，把「保存漂移配置」行到 Judge 首个板块的可见间隙压到 ~22px
-    assert 'body.embedded{margin-top:0;margin-bottom:10px}' in drift
+    # v1.10.6：embedded 追加 max-width:none——drift 页正文限宽 760px 居中后，内嵌时须解除限宽撑满 iframe
+    assert 'body.embedded{margin-top:0;margin-bottom:10px;max-width:none}' in drift
 
 
 def test_web_console_embedded_view_dd_native_styling():
@@ -2874,7 +2874,9 @@ def test_web_console_explains_auth_and_park_rejections():
     assert "'error.parkRequired':'当前操作需要 Park Locked。请将 CH3/Park 切到锁定状态后重试。'" in source
     assert "'error.authRequired':'当前操作需要授权。请先 AUTH，或开启 DEV MODE 后重试。'" in source
     assert "请先 AUTH，或开启 DEBUG MODE 后重试" not in source
-    assert "alert(msg)" in source
+    # v1.10.6：错误提示从原生 alert 改为非阻塞 toast（showToast(msg,false)）
+    assert "showToast(msg,false)" in source
+    assert "alert(msg)" not in source
 
 
 def test_web_console_tub_recorder_is_browser_side_and_reuses_telemetry_points():
@@ -3065,7 +3067,10 @@ def test_web_console_sta_settings_support_scan_and_password_visibility():
     assert "async function fetchSavedStaPassword" in source
     assert "function maskStaPassword" in source
     assert "function updateStaPasswordEye" in source
-    assert "staPasswordEye.textContent=staPasswordVisible?'🙈':'👁'" in source
+    # v1.10.6：眼睛 emoji（👁/🙈）改 lucide 风格描边 SVG 图标（innerHTML 渲染）
+    assert "staPasswordEye.innerHTML=staPasswordVisible?ICON_EYE_OFF:ICON_EYE" in source
+    assert "const ICON_EYE=" in source
+    assert "const ICON_EYE_OFF=" in source
     assert "fetch('/api/wifi-sta/password')" in source
     assert "staPassword.type='text'" in source
     assert "staPassword.type='password'" in source
@@ -4186,7 +4191,9 @@ def test_joystick_cal_modal_handles_auth_and_nack():
     assert "function postJoystickCalAction" in assets, "前端缺少 postJoystickCalAction 统一处理"
     assert "function sendAuthCommand" in assets, "前端缺少 sendAuthCommand 认证辅助"
     assert "text.startsWith('NACK')" in assets, "前端应识别 NACK 响应并停止刷新状态"
-    assert "prompt(t('cal.prompt.auth'))" in assets, "未认证时应提示用户输入 AP 密码"
+    assert "const pwd=await openAuthModal()" in assets, "未认证时应弹出自定义密码弹窗 authModal（v1.10.6 起取代原生 prompt）"
+    assert "prompt(t('cal.prompt.auth'))" not in assets, "原生 prompt 已由 authModal 取代"
+    assert 'data-i18n="cal.prompt.auth"' in assets, "authModal 提示语应复用 cal.prompt.auth 词条"
     assert "showCommandError(text)" in assets, "NACK 响应应通过 showCommandError 提示用户"
     assert "I18N.zh['cal.prompt.auth']" in assets, "缺少中文 cal.prompt.auth 提示文案"
     assert "I18N.en['cal.prompt.auth']" in assets, "缺少英文 cal.prompt.auth 提示文案"
@@ -4294,7 +4301,7 @@ def test_joystick_cal_and_rc_panel_title_hints():
     assert 'html[data-theme="light"] .hintSpan{' not in console
 
     # 弹窗大标题恢复纯 h3（原 cal.title.hint 悬停提示一并删除）
-    assert '<h3 data-i18n="cal.title">手柄校准</h3>' in console, "手柄校准弹窗大标题应为纯 h3"
+    assert '<h3 id="joystickCalTitle" data-i18n="cal.title">手柄校准</h3>' in console, "手柄校准弹窗大标题应为纯 h3（v1.10.6 起带 id 供弹窗 aria-labelledby）"
 
     # RC Channels 折叠头恢复纯文本（原 rc.hint.panel 悬停提示一并删除）
     assert '<span class="foldIcon">▸</span><span data-i18n="panel.rcChannels">RC Channels</span>' in console, "RC Channels 折叠头应为纯文本"
@@ -4978,7 +4985,8 @@ def test_web_console_wifi_sta_history_ui():
     assert "row.onclick=()=>selectWifiHistory(e.ssid||'',!!e.password_set)" in assets
     assert "ev.stopPropagation();deleteWifiHistoryEntry" in assets
     assert "fetch('/api/wifi-sta/password?ssid='+encodeURIComponent(ssid))" in assets
-    assert "border-radius:6px;color:var(--ink);cursor:pointer}" in assets
+    # v1.10.6：历史行改为语义化 <button>（宽度 100%、样式重置、圆角 6→8）
+    assert ".histRow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;margin-top:4px;padding:6px 8px;background:var(--card);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-family:inherit;cursor:pointer}" in assets
 
     # i18n 补丁式追加：6 个键各有中英文文案
     for key in [
@@ -5688,11 +5696,13 @@ def test_web_console_light_theme_overrides():
     assert '@keyframes pulse{50%{box-shadow:0 0 18px var(--badGlow);transform:translateY(-1px)}}' in assets
     assert '.parkLocked{border-color:var(--bad);animation:pulse 1.2s infinite}' in assets
     assert 'pulseLight' not in assets
-    # v1.10.0 起 Apple 为唯一风格：fabToggle 浅色取 Apple 系统蓝（hover/focus/active 加深为 #0066cc）
-    assert '--fabBg:#0071e3;--fabBgHover:#0066cc' in assets
-    # rcNum 浅色透明底并入基础规则；胶囊按钮组未激活段透明由基础规则承担
-    assert '.rcNum{flex:0 0 auto;min-width:0;max-width:none;width:4.5ch;font:700 14px Consolas,monospace;text-align:center;background:transparent' in assets
-    assert '.langTabs button{padding:0 10px;height:24px;min-width:0;border:none;border-radius:999px;background:transparent;color:var(--ink3)' in assets
+    # v1.10.6：fabToggle 中间态移除，--fabBg/--fabBgHover/--fabGlow 系列死变量已清理
+    assert '--fabBg' not in assets
+    assert '--fabGlow' not in assets
+    # rcNum 浅色透明底并入基础规则（v1.10.6：等宽字体统一 ui-monospace 栈）
+    assert '.rcNum{flex:0 0 auto;min-width:0;max-width:none;width:4.5ch;font:700 14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;text-align:center;background:transparent' in assets
+    # v1.10.6：.langTabs 分段控件死样式已整体移除（#ledBlinkTabs 元素早已不存在）
+    assert '.langTabs' not in assets
     # 旧元素级浅色覆盖规则均已移除（otaLink/devModeToggle/muteButton/rcNum/navTab/langTabs 等）
     assert 'html[data-theme="light"] .otaLink' not in assets
     assert 'html[data-theme="light"] #devModeToggle' not in assets
@@ -5705,15 +5715,17 @@ def test_web_console_light_theme_overrides():
     # JS：主题解析与应用（auto 经 matchMedia 跟随系统），切换时网格缓存失效并重绘
     assert "function systemTheme(){try{return window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){return 'dark'}}" in assets
     assert "function resolvedTheme(){return uiTheme==='auto'?systemTheme():(uiTheme==='light'?'light':'dark')}" in assets
-    assert "function applyTheme(){document.documentElement.dataset.theme=resolvedTheme();gridReady=false;draw();const dl=document.getElementById('driftTuneLink');if(dl)dl.href='/drift?theme='+resolvedTheme()}" in assets
+    # v1.10.6：applyTheme 同步 <meta name="theme-color">（深 #000 / 浅 #f5f5f7）
+    assert "function applyTheme(){document.documentElement.dataset.theme=resolvedTheme();const mc=document.querySelector('meta[name=\"theme-color\"]');if(mc)mc.content=resolvedTheme()==='light'?'#f5f5f7':'#000';gridReady=false;draw();const dl=document.getElementById('driftTuneLink');if(dl)dl.href='/drift?theme='+resolvedTheme()}" in assets
     assert "function setTheme(theme){uiTheme=theme;applyTheme()}" in assets
     assert "function readUrlTheme(){try{const m=/[?&]theme=(light|dark)(?:&|$)/.exec(window.location.search);if(m)return m[1]}catch(e){}return null}function initTheme(){uiTheme=readUrlTheme()||'auto';applyTheme();try{const mq=window.matchMedia('(prefers-color-scheme: light)');const onThemeChange=()=>{if(uiTheme==='auto')applyTheme()};if(mq.addEventListener)mq.addEventListener('change',onThemeChange);else if(mq.addListener)mq.addListener(onThemeChange)}catch(e){}}" in assets
 
     # 图表/toast 双主题色表：深浅的 grid 与 str 关键色
+    # v1.10.6：曲线色对齐 Apple 系统色（str：dark #0a84ff / light #0071e3）
     assert "grid:'#233041'" in assets
     assert "grid:'#dbe2ea'" in assets
-    assert "str:'#5cc8ff'" in assets
-    assert "str:'#0c9bd6'" in assets
+    assert "str:'#0a84ff'" in assets
+    assert "str:'#0071e3'" in assets
     # JS 取色走色表而非硬编码
     assert "gridCtx.strokeStyle=CHART_THEMES[resolvedTheme()].grid" in assets
     assert "drawSeries('thr',ct.thr,-1,1,100)" in assets
@@ -5725,7 +5737,7 @@ def test_web_console_light_theme_overrides():
     assert "localStorage.getItem(THEME_STORAGE_KEY)" not in assets
     assert "initTheme();" in assets
     # v1.10.0 起 Apple 为唯一风格：激活胶囊取 Apple 系统蓝填充 #0a84ff + 白字（:root --accentFill/--onAccent）
-    assert '.langTabs button.active{background:var(--accentFill);color:var(--onAccent)}' in assets
+    # （v1.10.6：承载该规则的 .langTabs 死样式已移除，系统蓝填充由 .primary 主按钮等承担）
     assert "--accentFill:#0a84ff;--onAccent:#fff" in assets
 
 

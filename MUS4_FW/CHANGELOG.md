@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-10-02 v1.10.6
+
+- feat(DC): Drifter Console 四页经典 Apple 风格彻底打磨——磨砂遮罩/对比度/触控目标/焦点环/动效曲线全量精修
+  - 背景：v1.10.5 恢复第一轮 Apple 外观后，用户完整审查 DC/DD/Find Car 三页面，点名要求按**经典 Apple 风格（传统磨砂感，明确非 2025 Liquid Glass）**彻底打磨（P0–P2 全量）。本轮聚焦执行层细节，是用户批准的完整打磨，与此前被撤下的「自行深化」性质不同。
+  - 材质与弹窗（`libraries/mus4_web/src/WebConsoleAssets.h`，四页同步）：`.modal/.helpOverlay/.reconnectOverlay` 加 `backdrop-filter:blur(12px) saturate(1.8)` 传统磨砂遮罩；`.dialog` 撤掉全局橙色 `--warn` 边框（6 个弹窗无论是否警告一律橙边的样式残留）改中性 `--line`、仅破坏性确认保留 `.warn`、`.helpModal` 蓝边同改中性；新增统一 confirmModal/authModal 替换全部原生 confirm/prompt（校准鉴权改弹窗内密码输入），命令错误 alert 改非阻塞 toast。
+  - 色彩与对比度：四页补 `color-scheme:dark/light`（暗色下原生 select/range/滚动条不再浅色渲染）；亮模式 `--ink2` 透明度 .62→.72（小字 ≈4.6:1）；`CHART_THEMES` 与 CSS 系统色对齐（dark `#30d158/#0a84ff/#ff453a`、light `#34c759/#0071e3/#ff3b30`），消除图例色≠曲线色；跨页 `--ink/--ink2/--ink3/--ink4` 统一为 Apple 四档 label 语义（修正 Judge 页 ink3/ink4 含义颠倒）。
+  - 触控与控件：iconButton/termTab/termTabClose/histDel/netTabs/gear/主题语言静音钮/rcSetBtn 等全部 `::after inset:-8px` 扩热区至 ≥44px（视觉尺寸不变）；弹窗主按钮 min-height:44px；移除右下角 18px fabToggle 蓝点中间态，helpFab 46px 常显直开帮助；Console 页主按钮 `--accentFill` 填充化、「取消」`.alt` 描边，四页按钮统一胶囊语言；`input[type=range]{accent-color:var(--accentFill)}`。
+  - 可访问性：四页 `prefers-reduced-motion` 守卫（pulse/scan 常驻动画可关、过渡归零）；全局 `:focus-visible` 焦点环 + toggle 隐藏 checkbox 焦点样式（`.rcNum:focus{outline:none}` 改可见焦点）；全部弹窗 `role="dialog" aria-modal` + Esc 关闭链 + 打开焦点入内；toast `role="status" aria-live="polite"`；`.histRow`/`.termTabClose` 改 `<button type="button">`。
+  - 动效与字体：按钮 `:active` 缩放补 `transition:transform .15s ease-out`（消除按下/松开瞬移）；`--ease:cubic-bezier(.32,.72,0,1)` token 全站过渡统一引用；字体栈统一 `-apple-system` 优先 + `ui-monospace,SFMono-Regular,...` 等宽栈（替换 Consolas 裸用）；body 补抗锯齿；大数字 800/900→700；emoji 图标（👁🙈🗑⌕⚙）换 stroke-width:2 描边 SVG（eye/eye-off/trash/search/settings），与工具栏 lucide 风格统一；折叠图标 ▸/▾ JS 换字符改单字符旋转动画。
+  - 细节：`-webkit-tap-highlight-color:transparent`、`touch-action:manipulation`、`meta theme-color` 随主题 JS 切换（dark #000/light #f5f5f7）、`apple-mobile-web-app-capable`；主 gap 10→12px 归 8pt；圆角收敛 4 档（8/12/18/胶囊）；Console 页 `max-width:1200px` 居中、Drift 页对齐 Judge `max-width:760px`（`body.embedded` 解除限宽保内嵌）；uppercase+宽字距标签仅保留 2 处；`.langTabs` 死样式与 fabToggle 遗留 `--fabBg/--fabGlow` 系列 6 个死变量清理。
+  - 测试同步（`tests/test_firmware_feature_flags.py` 17 处断言翻转到 v1.10.6 新形态，docstring 注明新行为）：fab 用例改名重写为 helpFab 常显断言；langTabs 死样式断言翻转（`git show Tony` 证实 `#ledBlinkTabs` 在 Tony 已无引用，零活代码误删）；alert→toast、prompt→authModal、emoji→SVG、gap 12、圆角档、字重 700、ink2 .72、theme-color meta、CHART_THEMES 新色值等断言同步；`tests/web_console_fixes.test.mjs` test 8 断言改 toast 路径；版本断言 → v1.10.6 + changelog 链补 v1.10.5。
+  - 验证：`arduino-cli.py -c` 编译通过（170.85s）；pytest **364 + 31 subtests** 全绿；node `web_console_fixes.test.mjs` 31 + `zcode_remote_url.test.mjs` 27 全绿；真实回归为零。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.6。
+
 ## 2026-10-02 v1.10.5
 
 - fix(DC): Drifter Console 全站 UI 恢复第一轮 Apple 外观（v1.9.2 时代）——撤下 Apple 深化与座舱质感卡片

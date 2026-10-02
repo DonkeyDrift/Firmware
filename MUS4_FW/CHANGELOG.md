@@ -1,5 +1,25 @@
 # CHANGELOG.md
 
+## 2026-10-02 v1.10.8
+
+- fix(DC): 四页字体栈恢复 v1.10.5 第一版写法——用户评审明确不喜欢 v1.10.6 的 -apple-system/SF Pro 栈
+  - 背景：v1.10.6 打磨把四页 body 改为 `-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif`、等宽改 `ui-monospace,SFMono-Regular,...` 栈并在 body 加 `-webkit-font-smoothing:antialiased`；用户实机查看后明确还是喜欢第一版（v1.10.5 时代）的字体，要求改回。其余打磨成果（磨砂/热区/弹窗/对比度/圆角/间距等）用户未提异议，全部保留。
+  - `libraries/mus4_web/src/WebConsoleAssets.h` 共 11 处恢复：四页 body 回 `font-family:system-ui,sans-serif` 并删 body 的 `-webkit-font-smoothing:antialiased`；`.statusRow span`/`.rcCell span`/`.rcNum`/`.log`/`.legend b`/`.recMeta b` 六处等宽回 `Consolas,monospace`；`joystickCalLive` 内联回 `font-family:monospace`。`headerRow`/`.langButton` 的 99379ba 原有栈本就未动；`.termTabClose`/`.histRow` 的 `font-family:inherit`（按钮化必需）保留。
+  - 与 v1.10.7（PR #172 全宽修复）零冲突对齐：本分支内容 = Tony@4ccf6f1 + 恰好 11 处字体 delta（difflib 全文比对确认无其它差异）。
+  - 测试同步：版本断言 → v1.10.8（链补 `v1.10.7`/`v1.10.6`）；`rcNum` 断言回 `Consolas,monospace` 栈；drift embedded 断言随 v1.10.7 原文。
+  - 验证：pytest **364 + 31 subtests** 全绿；node `web_console_fixes.test.mjs` 31 + `zcode_remote_url.test.mjs` 27 全绿；`arduino-cli.py -c` 编译通过（33.8s）。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.8。
+
+## 2026-10-02 v1.10.7
+
+- fix(DC): Console/Drift 两页恢复全宽布局——撤下 v1.10.6 的 max-width 容器限宽，修复宽屏「比例不对、没有放到正常大小」
+  - 现象（用户报障）：v1.10.6 打磨后进入 Drifter Console，宽屏（2560px）下整个页面被压缩成屏幕中间一条 1200px 窄列（Drift 页 760px），两侧大片空白，比例明显不对。Playwright 2560px A/B 实测复现：v1.10.5 全宽铺开 vs v1.10.6 居中窄列。
+  - 根因：v1.10.6 打磨清单 P2 第 15 项给 Console 页 `body` 加了 `max-width:1200px;margin:12px auto`、Drift 页加了 `max-width:760px;margin:16px auto`（向 Judge 页居中看齐的建议项）——审查建议在大屏上适得其反，用户的「正常」就是全宽布局。
+  - 修复（`libraries/mus4_web/src/WebConsoleAssets.h`）：Console 页 body 回 `margin:12px` 全宽；Drift 页 body 回 `margin:12px` 全宽（同步去掉随限宽引入的 `padding:0 12px`）；Drift 的 `body.embedded` 规则撤掉不再需要的 `max-width:none`（Judge 760px/OTA 480px 为 v1.10.6 之前原有的居中布局，不动）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` drift embedded 断言回 `body.embedded{margin-top:0;margin-bottom:10px}`（注释更新为 v1.10.7）；版本断言 → v1.10.7 + changelog 链补 v1.10.6。
+  - 验证：`arduino-cli.py -c` 编译通过；pytest 364 + 31 subtests、node 31+27 全绿；修复后 2560px/1280px/390px 截图复核两页恢复全宽且无横向溢出。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.7。
+
 ## 2026-10-02 v1.10.6
 
 - feat(DC): Drifter Console 四页经典 Apple 风格彻底打磨——磨砂遮罩/对比度/触控目标/焦点环/动效曲线全量精修

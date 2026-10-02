@@ -274,7 +274,9 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.6"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.8"' in build_info
+    assert "v1.10.7" in changelog
+    assert "v1.10.6" in changelog
     assert "v1.10.5" in changelog
     assert "v1.10.4" in changelog
     assert "v1.10.3" in changelog
@@ -2738,8 +2740,8 @@ def test_web_console_settings_view_embeds_tune_sections():
     assert 'body.embedded #driftStatusPanel{display:none}' in drift
     # v1.8.64：embedded 下 drift 页 body 上边距清零、下边距收紧为 10px（对齐板块间距）——
     # 与 judge 页 margin-top:0 配合，把「保存漂移配置」行到 Judge 首个板块的可见间隙压到 ~22px
-    # v1.10.6：embedded 追加 max-width:none——drift 页正文限宽 760px 居中后，内嵌时须解除限宽撑满 iframe
-    assert 'body.embedded{margin-top:0;margin-bottom:10px;max-width:none}' in drift
+    # v1.10.7：drift 页正文恢复全宽（撤下 v1.10.6 的 760px 限宽居中，用户反馈宽屏比例不对），embedded 规则同步撤掉 max-width:none
+    assert 'body.embedded{margin-top:0;margin-bottom:10px}' in drift
 
 
 def test_web_console_embedded_view_dd_native_styling():
@@ -5699,8 +5701,8 @@ def test_web_console_light_theme_overrides():
     # v1.10.6：fabToggle 中间态移除，--fabBg/--fabBgHover/--fabGlow 系列死变量已清理
     assert '--fabBg' not in assets
     assert '--fabGlow' not in assets
-    # rcNum 浅色透明底并入基础规则（v1.10.6：等宽字体统一 ui-monospace 栈）
-    assert '.rcNum{flex:0 0 auto;min-width:0;max-width:none;width:4.5ch;font:700 14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;text-align:center;background:transparent' in assets
+    # rcNum 浅色透明底并入基础规则（v1.10.8：等宽字体按用户要求回退 v1.10.5 的 Consolas,monospace）
+    assert '.rcNum{flex:0 0 auto;min-width:0;max-width:none;width:4.5ch;font:700 14px Consolas,monospace;text-align:center;background:transparent' in assets
     # v1.10.6：.langTabs 分段控件死样式已整体移除（#ledBlinkTabs 元素早已不存在）
     assert '.langTabs' not in assets
     # 旧元素级浅色覆盖规则均已移除（otaLink/devModeToggle/muteButton/rcNum/navTab/langTabs 等）

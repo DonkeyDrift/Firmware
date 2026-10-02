@@ -1,5 +1,19 @@
 # CHANGELOG.md
 
+## 2026-10-02 v1.10.5
+
+- fix(DC): Drifter Console 全站 UI 恢复第一轮 Apple 外观（v1.9.2 时代）——撤下 Apple 深化与座舱质感卡片
+  - 背景：用户要求把 DC 全部页面恢复成第一轮 Apple 修改之后的样子（与 DD 侧 PR #472 同一轮恢复）。目标态 = v1.10.0 拍平结构 + v1.9.2 第一轮 Apple 观感；撤下 v1.9.3 Apple 深化（`aaf4dc6`：聚焦环/44pt 命中区/语义色双轨/排版压平/降级媒体特性）与 9-25 座舱质感化（`0c54eec`/`c6ecfe0`：状态卡渐变/青色边框/大数字恢复之外的卡片变量机制），保留 v1.10.0 唯一风格拍平（`26a27d0`）、v1.10.3 embed-height（`97df0cf`）、终端主题与「删 STA 自动弹窗」行为。
+  - `libraries/mus4_web/src/WebConsoleAssets.h`：
+    - 整删 4 个 `<style id="apple-deep">` 块（console/judge/drift/update 四页共 161 条深化规则，经规则级比对确认 0 条第一轮规则混入）：3px 聚焦环、44×44 ::after 命中区、排版压平（h1 20px/600/-.02em、13px 正文、去 uppercase）、材质毛玻璃、toast 底部居中胶囊、禁用态、fabToggle 44px+图标、移动端页头 100px 重排、prefers-reduced-motion/transparency/contrast/forced-colors 降级块全部撤下；
+    - 删除深化变量 16 个：`--ease-apple/--ok-text/--warn-text/--bad-text/--drift-text/--status-info/--sep/--cardLine/--mat/--matSolid/--elev/--appleFont/--appleMono/--stateCardGrad/--stateCardLine/--stateCardShadow`（消费方随块同删；JS `semText()` 自带第一轮 fallback 色，零改动）；
+    - 灰阶回第一轮平铺值：`--ink2/--ink3/--inkPill/--inkT`（及各页 `--inkF/--muted/--muted2`）深浅两主题统一回 `.62` 档；console `--cardShadow:none`；console 浅色 `--logInk:#248a3d`；
+    - `.stateCard` 基础规则回到 `var(--line2)/var(--cardGrad)/var(--cardShadow)` 平直卡，重新加入第一轮规则 `html:root .stateCard{border-radius:16px}`；删除 `#networkCard .netTabs button.active` 座舱青色覆写（回 var(--accentFill) 蓝）；
+    - 四页 viewport 回 `width=device-width,initial-scale=1`。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 4 处——座舱卡测试更名重写为第一轮 Apple 卡断言（stateCard 变量/青色页签/压平覆写全部翻转为 `not in`，新增第一轮规则正向断言）、版本断言 → v1.10.5、浅色 `--logInk/--cardShadow` 断言更新；`web_console_fixes.test.mjs`（31）与 `zcode_remote_url.test.mjs`（27）无需改动。
+  - 验证：`arduino-cli.py -c` 编译通过（174s）；pytest 364+31 subtests 全绿；规则级 diff 比对确认第一轮规则零丢失、深化规则零残留；深浅两主题 × 桌面/移动双视口 Playwright 截图与 v1.9.2 渲染逐张比对一致（桌面像素差 <0.5% 即原样式切换胶囊位），无破版、移动端页头无横向溢出。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.5。
+
 ## 2026-09-25 v1.10.4
 
 - feat(DC): 五张状态卡底色统一为基础卡色——语义状态只留边框/圆点/数值色

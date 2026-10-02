@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-10-02 v1.10.9
+
+- fix(DC): 遥测图 Y 轴数字「重叠」发虚修复——draw() 改每帧整幅清画布，标签不再逐帧原地叠印
+  - 现象（用户报障）：Console 页手柄遥测图（油门/转向/GyroZ）左侧 Y 轴数字栏看久了发粗发虚、呈「重叠」观感，每个刻度像叠了多个数字。
+  - 根因：`draw()` 每帧只 `ctx.clearRect(36,0,w-52,h)` 清绘图区，Y 轴标签条 x∈[0,36) 永不清除；遥测数据驱动 scheduleDraw 约 60 次/秒原地重复 fillText 同一批标签，抗锯齿边缘 alpha 逐帧累积饱和——Playwright 实测连画 3000 帧（≈50 秒）后标签条亮度 +10.6%、边缘像素最大增量 100，页面挂得越久数字越糊。
+  - 修复（`libraries/mus4_web/src/WebConsoleAssets.h`）：`draw()` 首行改 `ctx.clearRect(0,0,w,h)` 整幅清屏，标签每帧在干净画布上只画一次；网格仍由离屏 gridCanvas 按原区域贴回（网格线本就起于 x=36），主题切换/长时运行均不再留残影。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 draw() 整幅清屏断言（注释注明根因）；版本断言 → v1.10.9 + changelog 链补 v1.10.8。
+  - 验证：编译通过；pytest 364 + 31 subtests、node 31+27 全绿；Playwright 3000 帧累积 A/B 实测修复后标签条亮度零漂移（本地提取 HTML 与车上实况双测零像素变化）。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.9（注：并行分支 Tony-font-restore 的字体恢复先占用 v1.10.8，本修复顺延至 v1.10.9）。
+
 ## 2026-10-02 v1.10.8
 
 - fix(DC): 四页字体栈恢复 v1.10.5 第一版写法——用户评审明确不喜欢 v1.10.6 的 -apple-system/SF Pro 栈

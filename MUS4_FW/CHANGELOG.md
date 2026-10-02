@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-10-02 v1.10.7
+
+- fix(DC): Console/Drift 两页恢复全宽布局——撤下 v1.10.6 的 max-width 容器限宽，修复宽屏「比例不对、没有放到正常大小」
+  - 现象（用户报障）：v1.10.6 打磨后进入 Drifter Console，宽屏（2560px）下整个页面被压缩成屏幕中间一条 1200px 窄列（Drift 页 760px），两侧大片空白，比例明显不对。Playwright 2560px A/B 实测复现：v1.10.5 全宽铺开 vs v1.10.6 居中窄列。
+  - 根因：v1.10.6 打磨清单 P2 第 15 项给 Console 页 `body` 加了 `max-width:1200px;margin:12px auto`、Drift 页加了 `max-width:760px;margin:16px auto`（向 Judge 页居中看齐的建议项）——审查建议在大屏上适得其反，用户的「正常」就是全宽布局。
+  - 修复（`libraries/mus4_web/src/WebConsoleAssets.h`）：Console 页 body 回 `margin:12px` 全宽；Drift 页 body 回 `margin:12px` 全宽（同步去掉随限宽引入的 `padding:0 12px`）；Drift 的 `body.embedded` 规则撤掉不再需要的 `max-width:none`（Judge 760px/OTA 480px 为 v1.10.6 之前原有的居中布局，不动）。
+  - 测试同步：`tests/test_firmware_feature_flags.py` drift embedded 断言回 `body.embedded{margin-top:0;margin-bottom:10px}`（注释更新为 v1.10.7）；版本断言 → v1.10.7 + changelog 链补 v1.10.6。
+  - 验证：`arduino-cli.py -c` 编译通过；pytest 364 + 31 subtests、node 31+27 全绿；修复后 2560px/1280px/390px 截图复核两页恢复全宽且无横向溢出。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.7。
+
 ## 2026-10-02 v1.10.6
 
 - feat(DC): Drifter Console 四页经典 Apple 风格彻底打磨——磨砂遮罩/对比度/触控目标/焦点环/动效曲线全量精修

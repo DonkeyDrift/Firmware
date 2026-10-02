@@ -2,30 +2,58 @@
  * RC_BLE_Bridge —— 把 HOT RC CT-8B（F-08A 接收机）的 PWM 信号桥接成 BLE HID 手柄
  *
  * 用途：CT-8B 枪控本身没有蓝牙、也没有任何电脑接口，只与自家接收机通信。
- * 本固件让一块普通 ESP32 开发板读取接收机 CH1/CH2 的 PWM 脉宽，把自己伪装成
- * 标准 BLE HID Gamepad（设备名 "Gamepad MU02"）。Mac/PC 在蓝牙设置里配对后，
- * 打开 DD（DonkeyDrift）页面驾驶页，输入源选「手柄」即可操控模拟器
- * （DD 默认 z-axis 预设：转向=右摇杆 X、油门=左摇杆 Y 反向，与本固件映射一致，
- * 通常免校准；有偏差时在 DD 手柄设置面板校准一次即可，按设备记忆）。
+ * 本固件让 ESP32 读取接收机 CH1/CH2 的 PWM 脉宽，把自己伪装成标准 BLE HID
+ * Gamepad（设备名 "Gamepad MU02"）。Mac/PC 蓝牙配对后，打开 DD（DonkeyDrift）
+ * 页面驾驶页，输入源选「手柄」即可操控模拟器（DD 默认 z-axis 预设与本固件
+ * 映射一致，通常免校准；有偏差时在 DD 手柄设置面板校准一次，按设备记忆）。
  *
- * 接线（F-08A 接收机 → ESP32 开发板）：
- *   VCC ← 5V（VIN）     GND —— GND（必须共地）
- *   CH1（转向）→ GPIO36  CH2（油门）→ GPIO39
- * 接收机可临时拆用车上的，或另购 F-08A 与 CT-8B 对码（对码不影响车上原有的绑定）。
+ * ── 车上复用（推荐，零新增硬件）────────────────────────────────
+ * 直接 OTA 刷到车上 ESP32 用：接收机本来就接在 GPIO36/39、已与 CT-8B 对码。
+ * 桥模式下车端 Web Console/驾驶功能暂停（固件不在跑），舵机/电调无输出
+ * （车原地不动，天然安全）；玩完通过本固件自带的 OTA 通道把车固件刷回即
+ * 100% 复原。刷桥（车端正常固件下执行）：
+ *   curl -F "update=@build-bridge/RC_BLE_Bridge.ino.bin" \
+ *        "http://<车IP>/update?auth="
+ * 刷回车固件（桥模式下执行，两条通道任选）：
+ *   curl -F "update=@build/MUS4_FW.ino.bin" "http://<车IP>/update"
+ *   或 ArduinoOTA（端口 3232，密码 mus4-debug，hostname mus4-rc-bridge）
+ * Wi-Fi 连不上时自动开兜底 AP：SSID "MUS4-RC-Bridge"（开放），地址 192.168.4.1，
+ * 同样带 /update——永远刷得回来。
  *
- * 编译（在 MUS4_FW 目录下执行，复用本仓库 vendored 的 ESP32-BLE-Gamepad + NimBLE）：
- *   arduino-cli compile --fqbn esp32:esp32:esp32 \
+ * ── 独立开发板用法 ─────────────────────────────────────────────
+ * 接线（F-08A 接收机 → ESP32）：VCC←5V（VIN）、GND 共地、
+ * CH1（转向）→GPIO36、CH2（油门）→GPIO39。
+ *
+ * 编译（在 MUS4_FW 目录下，复用仓库 vendored 库，分区方案与车端一致）：
+ *   arduino-cli compile --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs \
  *     --libraries libraries --build-path build-bridge examples/RC_BLE_Bridge
- * 刷机：arduino-cli upload -p <串口> --fqbn esp32:esp32:esp32 \
+ * 有线刷机：arduino-cli upload -p <串口> --fqbn esp32:esp32:esp32 \
  *     --libraries libraries examples/RC_BLE_Bridge
  */
 
 #include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <Update.h>
+#include <ArduinoOTA.h>
 #include <BleGamepad.h>
 
+// ---------- WiFi 凭据 ----------
+// 把本机 libraries/mus4_core/src/WirelessSecrets.h 复制到本 sketch 目录
+// （examples/RC_BLE_Bridge/WirelessSecrets.h）即可参与编译；该文件名已被
+// .gitignore 全局忽略、不入库。没有该文件时下面占位生效：STA 不连接，直接走
+// 兜底 AP（MUS4-RC-Bridge，192.168.4.1），功能不受影响。
+#if __has_include("WirelessSecrets.h")
+#include "WirelessSecrets.h"
+#endif
+#ifndef WIFI_STA_SSID
+#define WIFI_STA_SSID ""      // 占位：无密钥文件时 STA 不连接，直接走 AP 兜底
+#define WIFI_STA_PASSWORD ""
+#endif
+
 // ---------- 引脚 ----------
-#define CH1_PIN 36  // 接收机 CH1：转向
-#define CH2_PIN 39  // 接收机 CH2：油门
+#define CH1_PIN 36  // 接收机 CH1：转向（与车上接线一致）
+#define CH2_PIN 39  // 接收机 CH2：油门（与车上接线一致）
 
 // ---------- RC 校准（与 MUS4_FW FirmwareConfig.h 中 CT-8B 的实测校准值保持一致） ----------
 #define RC_STEERING_MIN 872
@@ -44,7 +72,14 @@
 #define AXIS_MAX 32767
 #define SEND_INTERVAL_MS 20  // 发送节奏 50Hz，避免淹没 BLE 通知通道
 
+// ---------- WiFi / OTA（回刷通道） ----------
+#define WIFI_STA_TIMEOUT_MS 15000          // STA 连接超时，超时转 AP 兜底
+#define BRIDGE_AP_SSID "MUS4-RC-Bridge"    // 兜底 AP（开放，与车端 WIFI_CONSOLE_AP_PASSWORD 为空的习惯一致）
+#define OTA_HOSTNAME "mus4-rc-bridge"      // ArduinoOTA 主机名（端口 3232）
+#define OTA_PASSWORD "mus4-debug"          // ArduinoOTA 密码（与车端一致）
+
 BleGamepad bleGamepad("Gamepad MU02", "Espressif", 100);
+WebServer otaServer(80);
 
 volatile uint16_t pwm_us[2] = {0, 0};            // 最近一次有效脉宽（0 = 尚无信号）
 volatile unsigned long last_valid_us[2] = {0, 0};
@@ -117,6 +152,103 @@ void sendGamepadPacket()
     bleGamepad.setRightThumb(lx, 0);
 }
 
+// ---------- HTTP /update（回刷通道 2）：POST multipart 文件字段 "update" ----------
+static bool otaStarted = false;
+
+static void handleUpdateGet()
+{
+    otaServer.send(200, "text/html",
+                   "<form method='POST' action='/update' enctype='multipart/form-data'>"
+                   "<input type='file' name='update'><input type='submit' value='Update'></form>");
+}
+
+static void handleUpdatePost()
+{
+    // 鉴权要求与车端一致：只有确实发生过上传才重启，空 POST 直接 400
+    if (otaStarted)
+    {
+        otaServer.send(200, "text/plain", "ACK:UPDATE_OK");
+        delay(200);
+        ESP.restart();
+    }
+    else
+    {
+        otaServer.send(400, "text/plain", "NACK:NO_UPLOAD");
+    }
+}
+
+static void handleUpdateUpload()
+{
+    HTTPUpload &upload = otaServer.upload();
+    if (upload.status == UPLOAD_FILE_START)
+    {
+        otaStarted = true;
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN))
+        {
+            Update.printError(Serial);
+        }
+    }
+    else if (upload.status == UPLOAD_FILE_WRITE)
+    {
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
+        {
+            Update.printError(Serial);
+        }
+    }
+    else if (upload.status == UPLOAD_FILE_END)
+    {
+        if (!Update.end(true))
+        {
+            Update.printError(Serial);
+        }
+    }
+    else if (upload.status == UPLOAD_FILE_ABORTED)
+    {
+        Update.abort();
+        otaStarted = false;
+    }
+}
+
+static void setupWifiAndOta()
+{
+    bool staOk = false;
+    if (WIFI_STA_SSID[0] != '\0')
+    {
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASSWORD);
+        unsigned long start = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_STA_TIMEOUT_MS)
+        {
+            delay(250);
+        }
+        staOk = (WiFi.status() == WL_CONNECTED);
+    }
+
+    if (staOk)
+    {
+        Serial.printf("WiFi STA 已连接，IP=%s\n", WiFi.localIP().toString().c_str());
+    }
+    else
+    {
+        // 兜底 AP：连不上家里 Wi-Fi（或没有密钥文件）时也能通过 192.168.4.1 刷回
+        WiFi.mode(WIFI_AP);
+        WiFi.softAP(BRIDGE_AP_SSID);
+        Serial.printf("WiFi STA 失败，已开兜底 AP \"%s\"，IP=%s\n",
+                      BRIDGE_AP_SSID, WiFi.softAPIP().toString().c_str());
+    }
+
+    // 回刷通道 1：ArduinoOTA（端口 3232）
+    ArduinoOTA.setHostname(OTA_HOSTNAME);
+    ArduinoOTA.setPassword(OTA_PASSWORD);
+    ArduinoOTA.begin();
+
+    // 回刷通道 2：HTTP /update（端口 80）
+    otaServer.on("/update", HTTP_GET, handleUpdateGet);
+    otaServer.on("/update", HTTP_POST, handleUpdatePost, handleUpdateUpload);
+    otaServer.begin();
+    Serial.println("OTA 双通道就绪：ArduinoOTA(3232) + HTTP /update(80)");
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -125,13 +257,18 @@ void setup()
     attachInterrupt(digitalPinToInterrupt(CH1_PIN), isrCh1, CHANGE);
     attachInterrupt(digitalPinToInterrupt(CH2_PIN), isrCh2, CHANGE);
 
+    // 先起 BLE，保证 WiFi 连接等待期间手柄已可配对
     bleGamepad.begin();
     Serial.println("RC_BLE_Bridge ready: 广播 BLE 手柄 \"Gamepad MU02\"，等待配对…");
+
+    setupWifiAndOta();
 }
 
 void loop()
 {
     sendGamepadPacket();
+    ArduinoOTA.handle();
+    otaServer.handleClient();
 
     // 调试输出：连接后每 500ms 打印一次脉宽，方便不接电脑也能核对信号
     static unsigned long lastPrintMs = 0;

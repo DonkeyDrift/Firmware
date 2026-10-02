@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-10-02（RC_BLE_Bridge 增加 WiFi/OTA 回刷通道，车上固件无版本变更）
+
+- feat(examples): RC_BLE_Bridge 桥固件新增 WiFi STA + ArduinoOTA(3232) + HTTP /update(80) + 兜底 AP——用户无备用 ESP32 开发板，直接复用车上的 ESP32 当桥，刷桥/游玩/刷回全程无线往返，车端固件源码零改动
+  - 背景（用户需求）：上一版桥固件需有线刷到一块独立 ESP32 开发板；用户没有开发板，要求直接用车上的那块，且不影响其它功能。方案：桥固件自带 OTA 双通道回刷能力，玩完经 WiFi 把车固件刷回去即可。
+  - 实现（`RC_BLE_Bridge.ino`）：`__has_include("WirelessSecrets.h")` 与 `MUS4_FW.ino` 同款 sketch 目录模式引入本机密钥（文件名已被 .gitignore 全局忽略，不入库）；无密钥文件时占位空 SSID 跳过 STA；STA 15s 超时后开兜底开放 AP `MUS4-RC-Bridge`（192.168.4.1）；ArduinoOTA 主机名 `mus4-rc-bridge`、密码 `mus4-debug`（与车端一致）；HTTP `/update` GET 返回上传表单、POST 免鉴权刷机，成功回 `ACK:UPDATE_OK` 并自动重启。BLE 广播先于 WiFi 启动，WiFi 连接等待期间手柄已可配对。
+  - 测试同步：`tests/test_rc_ble_bridge_example.py` 增至 5 项（新增 WiFi STA/OTA 双通道/AP 兜底代码在位断言）；pytest 369 + 31 subtests 全绿。
+  - 编译：`--fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs` 通过，1265467 字节（64%），车端 1.9MB OTA 槽位内。
+  - 实车演练（车上 ESP32 全链路实测）：车 v1.10.11 → HTTP OTA 刷桥（`ACK:UPDATE_OK`）→ 无密钥桥固件兜底 AP 实测可用、BLE 广播「Gamepad MU02」扫到（MAC 94:51:DC:48:F5:32，RSSI -27）→ 经兜底 AP 二次刷入带家 WiFi 密钥的桥固件 → STA 上线 192.168.3.46（`/update` 返回 200，兜底 AP 自动关闭，BLE 广播保持）→ 经家 WiFi 刷回车固件 v1.10.11，`/api/status` 确认车功能复原（mode=0 park=1）。全程无线、车端固件零改动。
+  - 用法与接线见 `examples/RC_BLE_Bridge/README.md`（含 Mac 蓝牙配对「Gamepad MU02」与 DD 驾驶页手柄源选择步骤）；桥模式期间车 Web Console 离线、车不动属预期，刷回后即复原。
+
 ## 2026-10-02（示例固件 RC_BLE_Bridge，车上固件无版本变更）
 
 - feat(examples): 新增 `examples/RC_BLE_Bridge`——CT-8B 蓝牙手柄桥，Mac 蓝牙配对「Gamepad MU02」后即可在 DD 页面当手柄输入源（含模拟器）

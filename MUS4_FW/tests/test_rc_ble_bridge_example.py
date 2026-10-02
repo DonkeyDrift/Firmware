@@ -70,3 +70,33 @@ def test_rc_ble_bridge_failsafe_and_rate():
     # 手柄轴落点与车端 GamepadMode 约定一致：转向右摇杆 X、油门左摇杆 Y
     assert "bleGamepad.setLeftThumb(0, ly)" in source
     assert "bleGamepad.setRightThumb(lx, 0)" in source
+
+
+def test_rc_ble_bridge_ota_roundtrip_channels():
+    """桥刷到车上 ESP32 使用后，必须保证能无线刷回车固件（OTA 往返）：
+    ArduinoOTA（3232，密码 mus4-debug）+ HTTP /update（80）双通道 +
+    STA 失败自动开兜底 AP（MUS4-RC-Bridge）+ 空 POST 不重启（对齐车端门禁语义）。"""
+
+    source = bridge_source()
+
+    # 回刷通道 1：ArduinoOTA
+    assert '#define OTA_HOSTNAME "mus4-rc-bridge"' in source
+    assert '#define OTA_PASSWORD "mus4-debug"' in source
+    assert "ArduinoOTA.begin()" in source
+    assert "ArduinoOTA.handle()" in source
+
+    # 回刷通道 2：HTTP /update（空 POST 不重启，与车端 v1.7.x 门禁语义一致）
+    assert 'otaServer.on("/update", HTTP_POST' in source
+    assert "Update.begin(UPDATE_SIZE_UNKNOWN)" in source
+    assert "NACK:NO_UPLOAD" in source
+    assert "ACK:UPDATE_OK" in source
+    assert "ESP.restart()" in source
+
+    # 兜底 AP：STA 失败也能刷回
+    assert '#define BRIDGE_AP_SSID "MUS4-RC-Bridge"' in source
+    assert "WiFi.softAP(BRIDGE_AP_SSID)" in source
+    assert "WIFI_STA_TIMEOUT_MS 15000" in source
+
+    # WiFi 凭据复用本机密钥文件（gitignore 不入库），缺文件可编译
+    assert '__has_include("WirelessSecrets.h")' in source
+    assert '#define WIFI_STA_SSID ""' in source

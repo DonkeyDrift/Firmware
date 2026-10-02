@@ -10,25 +10,45 @@ CT-8B 本身**没有蓝牙、没有 USB、没有任何电脑接口**——它是
 
 ## 用法一：直接刷到车上 ESP32（推荐，零新增硬件）
 
-车上 ESP32 本来就接着 F-08A 接收机（GPIO36/39）、接收机已与 CT-8B 对码，什么都不用拆。整个往返都走 WiFi OTA，**不需要数据线**：
+车上 ESP32 本来就接着 F-08A 接收机（GPIO36/39）、接收机已与 CT-8B 对码，什么都不用拆。车固件 v1.10.12 起支持 **OTA 双启动槽位（A/B）切换**：ESP32 的两个 OTA 槽位分别装车固件和桥固件，切换 = 改启动标志 + 重启，**约 10 秒完成、不刷机**。
+
+**首次准备（一次性）**：把车固件升到 v1.10.12+，然后把桥补种进对面槽位（不重启、不打断车固件）：
 
 ```bash
-# 1. 玩模拟器前：把桥刷上车（车端正常固件下执行；编译产物路径见下文"编译"）
-curl -F "update=@build-bridge/RC_BLE_Bridge.ino.bin" "http://<车IP>/update?auth="
-
-# 2. Mac 蓝牙配对 "Gamepad MU02"，DD 驾驶页输入源选「手柄」，目标选「模拟器」
-
-# 3. 玩完：把车固件刷回来（桥模式下执行，两条通道任选其一）
-curl -F "update=@build/MUS4_FW.ino.bin" "http://<车IP>/update"        # HTTP 通道
-# 或 ArduinoOTA：espota.py -r -i <车IP> -p 3232 -P mus4-debug -f build/MUS4_FW.ino.bin
+curl -F "update=@build-bridge/RC_BLE_Bridge.ino.bin" "http://<车IP>/update?boot=0&auth="
+# 回 ACK:SEED_OK 即完成；GET /api/slot-info 应显示 other_kind=bridge
 ```
+
+**日常使用（10 秒切换）**：DD 驾驶页的手柄桥卡片一键切换，或手动调接口：
+
+```bash
+curl -X POST "http://<车IP>/api/switch-slot"     # 车 → 桥；回 ACK:SWITCHING
+curl -X POST "http://<车IP>/api/switch-slot"     # 桥 → 车（同一地址同一接口，对称）
+curl "http://<车IP>/api/slot-info"               # 查两边各装了什么（app/running/other_kind）
+```
+
+浏览器直接打开 `http://<车IP>/` 也行——桥模式的根页面（含 "Drifter Console" 字样，DD 的局域网发现能认出它）有一键切回按钮。
+
+**注意**：每次正常 OTA 升级车固件会写对面槽位（把桥覆盖掉）。升级后若想继续用桥，重新执行一次上面的补种命令即可。
 
 桥模式下的行为：
 
 - **车原地不动**：桥固件从不驱动舵机/电调引脚（GPIO23/25 无 PWM 输出）——天然安全，但建议仍架空车轮。
-- **Web Console 暂离线**：车端固件此时没在跑，属正常现象；刷回即 100% 复原。
+- **Web Console 暂离线**：车端固件此时没在跑，属正常现象；切回即 100% 复原。
 - **真车无遥控**：CT-8B 此时被模拟器占用，物理上本来也不可能同时用。
-- **刷回保障**：桥自带 ArduinoOTA（3232，密码 `mus4-debug`）+ HTTP `/update`（80）双通道；连不上家里 Wi-Fi 时 15 秒后自动开兜底 AP `MUS4-RC-Bridge`（192.168.4.1，开放），同样带 `/update`——永远刷得回来。
+- **回切保障**：桥自带 `/api/switch-slot`（10 秒切回）+ ArduinoOTA（3232，密码 `mus4-debug`）+ HTTP `/update`（80）三条通道；连不上家里 Wi-Fi 时 15 秒后自动开兜底 AP `MUS4-RC-Bridge`（192.168.4.1，开放），同样带全部接口——永远回得来。
+
+<details>
+<summary>旧式整刷往返（A/B 切换不可用时的兜底）</summary>
+
+```bash
+# 玩模拟器前：把桥整刷上车
+curl -F "update=@build-bridge/RC_BLE_Bridge.ino.bin" "http://<车IP>/update?auth="
+# 玩完：把车固件整刷刷回（桥模式下执行）
+curl -F "update=@build/MUS4_FW.ino.bin" "http://<车IP>/update"
+```
+
+</details>
 
 ## 用法二：独立 ESP32 开发板
 

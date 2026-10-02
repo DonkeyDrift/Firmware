@@ -1,5 +1,23 @@
 # CHANGELOG.md
 
+## 2026-10-02 v1.10.12
+
+- feat(ota): OTA 双启动槽位 A/B 切换——车固件与 RC_BLE_Bridge 手柄桥共存于两个 OTA 槽位，切换=改启动标志+重启（约 10 秒），不再每次整刷固件
+  - 背景（用户需求）：上一条目的桥固件 OTA 往返（每次玩模拟器要整刷两次固件、各约 1 分钟）用户嫌繁，要求「DD 页面切换手柄时自动完成」。方案二（双槽位切换）相对整刷自动化：10 秒 vs 60 秒、零 flash 擦写、无版本偏差（车槽位永不被刷旧）。
+  - 槽位身份约定：两固件各嵌入 `MUS4APP:CAR` / `MUS4APP:BRIDGE` 标记字符串（`__attribute__((used))`），对端槽位装的是什么通过整分区扫描识别（有效镜像但无标记=旧固件=unknown；无有效镜像=empty）。
+  - 车端新增（`libraries/mus4_web/src/WebConsoleServer.cpp`）：
+    - `GET /api/slot-info`：JSON 返回 `{"app":"car","running":"ota_x","other":"ota_y","other_kind":"car|bridge|unknown|empty"}`；
+    - `POST /api/switch-slot`：与 HTTP OTA 同款鉴权；对面槽位空返回 `NACK:NO_IMAGE`；切换前强制 Park Locked（`forceWifiOtaParkLocked()`），成功回 `ACK:SWITCHING` 后重启进对面槽位；
+    - `POST /update?boot=0` 补种模式：镜像写入对面槽位后立即把启动标志拨回运行槽位，回 `ACK:SEED_OK`、**不重启**——不打断当前固件即可给对面槽位装/更新桥固件；
+    - `/api/status` 末尾追加 `running_slot` 与 `other_slot_kind` 字段（身份扫描惰性缓存，OTA 写入后失效，轮询零开销）。
+  - 桥固件新增（`examples/RC_BLE_Bridge/RC_BLE_Bridge.ino`）：对称的 `GET /api/slot-info` 与 `POST /api/switch-slot`（切回车固件）；`setup()` 调 `esp_ota_mark_app_valid_cancel_rollback()`——否则桥槽位长期 PENDING_VERIFY，下次 reset 会被 bootloader 回滚到车固件；根页面 `/` 改为含 "Drifter Console" 字样的桥状态页（DD 局域网控制台发现据此在桥模式下也能认出设备），页面上有一键切回按钮与 OTA 表单。
+  - DD 侧配套（DonkeyDrift 仓库同批 PR）：DrivePage 新增手柄桥卡片，经既有 `/api/console/proxy` 直连上述接口，一键切换 + 切换中轮询。
+  - 测试同步：`test_firmware_feature_flags.py` 版本断言 → v1.10.12 + changelog 链补 v1.10.11，新增 `test_ota_dual_boot_slot_switching`（标记/路由/鉴权/Park 顺序/补种拨回/状态字段）；`test_rc_ble_bridge_example.py` 新增 `test_rc_ble_bridge_dual_boot_slot_switching`（桥侧对称断言 + 回滚取消 + 根页面发现标记）。
+  - 验证：pytest 371 + 31 subtests 全绿；车固件与桥固件编译均通过（min_spiffs），strings 实测两 bin 各含身份标记。
+  - 实车演练：OTA 升 v1.10.12 → `?boot=0` 补种桥（ACK:SEED_OK、车不重启）→ `/api/switch-slot` 双向切换实测。
+  - 运维约定：每次正常 OTA 升级车固件会覆盖对面槽位（桥被抹掉），想继续用桥需重新补种一次（README 有命令）。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.12。
+
 ## 2026-10-02（RC_BLE_Bridge 增加 WiFi/OTA 回刷通道，车上固件无版本变更）
 
 - feat(examples): RC_BLE_Bridge 桥固件新增 WiFi STA + ArduinoOTA(3232) + HTTP /update(80) + 兜底 AP——用户无备用 ESP32 开发板，直接复用车上的 ESP32 当桥，刷桥/游玩/刷回全程无线往返，车端固件源码零改动

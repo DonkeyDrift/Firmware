@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.11"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.12"' in build_info
+    assert "v1.10.11" in changelog
     assert "v1.10.10" in changelog
     assert "v1.10.9" in changelog
     assert "v1.10.8" in changelog
@@ -4523,6 +4524,64 @@ def test_ota_blocks_non_update_handlers_with_503():
     assert "otaRuntime.inProgress" in setup_body
     assert 'server.uri() != "/update"' in setup_body
     assert "503" in setup_body
+
+
+def test_ota_dual_boot_slot_switching():
+    """v1.10.12：OTA 双启动槽位 A/B 切换（车固件 ↔ RC_BLE_Bridge 手柄桥）。
+    车端提供 /api/slot-info（JSON 身份）与 /api/switch-slot（切对面槽位重启），
+    切换前强制 Park Locked；/update?boot=0 补种模式只写对面槽位不重启，
+    用于给对面槽位装桥固件。"""
+    server_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+
+    # 槽位身份标记（桥固件侧为 "MUS4APP:BRIDGE"，由 test_rc_ble_bridge_example 钉住）
+    assert '"MUS4APP:CAR"' in server_cpp
+    assert "__attribute__((used))" in server_cpp
+    # 标记必须被 /api/slot-info 实际引用——仅定义+used 不足以防链接器 GC（实测教训）
+    assert "json += MUS4_SLOT_ID_MARKER" in server_cpp
+
+    # 分区识别：esp_ota_get_partition_description 验有效镜像 + 整分区扫标记
+    assert "esp_ota_get_partition_description" in server_cpp
+    assert "esp_partition_read" in server_cpp
+    assert '"MUS4APP:"' in server_cpp
+    assert '"BRIDGE"' in server_cpp
+
+    # 路由注册
+    assert 'wifiWebServer.on("/api/slot-info", HTTP_GET, handleWifiWebSlotInfo)' in server_cpp
+    assert 'wifiWebServer.on("/api/switch-slot", HTTP_POST, handleWifiWebSwitchSlot)' in server_cpp
+
+    # 切换接口：鉴权 → 空槽位拒绝 → 强制 Park Locked → 设启动分区 → 重启
+    switch_body = re.search(
+        r"static void handleWifiWebSwitchSlot\(\)\s*\{(?P<body>.*?)\n\}",
+        server_cpp,
+        re.DOTALL,
+    ).group("body")
+    assert "isWifiWebUpdateAuthOk()" in switch_body
+    assert "NACK:AUTH_REQUIRED" in switch_body
+    assert "NACK:NO_IMAGE" in switch_body
+    assert "forceWifiOtaParkLocked()" in switch_body
+    assert "esp_ota_set_boot_partition(other)" in switch_body
+    assert "ACK:SWITCHING" in switch_body
+    assert "ESP.restart()" in switch_body
+    # Park Locked 必须先于重启
+    assert switch_body.index("forceWifiOtaParkLocked()") < switch_body.index("ESP.restart()")
+
+    # /api/status 追加槽位字段（追加在末尾，不破坏既有解析）
+    assert "running_slot=%s other_slot_kind=%s" in server_cpp
+
+    # 补种模式：?boot=0 → Update.end 后把启动标志拨回运行槽位、不重启、状态归位
+    assert 'wifiWebServer.arg("boot") == "0"' in server_cpp
+    assert "esp_ota_set_boot_partition(esp_ota_get_running_partition())" in server_cpp
+    assert "ACK:SEED_OK" in server_cpp
+    post_body = re.search(
+        r"static void handleWifiWebUpdatePost\(\)\s*\{(?P<body>.*?)\n\}",
+        server_cpp,
+        re.DOTALL,
+    ).group("body")
+    seed_idx = post_body.index("s_otaSeedNoBoot")
+    restart_idx = post_body.index("ESP.restart()")
+    assert seed_idx < restart_idx  # 补种分支在重启之前 return
 
 
 def test_ota_button_opens_in_same_tab():

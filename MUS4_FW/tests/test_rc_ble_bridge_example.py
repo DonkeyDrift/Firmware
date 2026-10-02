@@ -100,3 +100,36 @@ def test_rc_ble_bridge_ota_roundtrip_channels():
     # WiFi 凭据复用本机密钥文件（gitignore 不入库），缺文件可编译
     assert '__has_include("WirelessSecrets.h")' in source
     assert '#define WIFI_STA_SSID ""' in source
+
+
+def test_rc_ble_bridge_dual_boot_slot_switching():
+    """桥固件作为车固件的 A/B 对面槽位：必须能自报身份、切回车固件，
+    并把自己标记为 VALID（否则 bootloader 回滚机制会在下次 reset 时
+    把桥槽位退回车固件，桥模式重启后「神秘消失」）。"""
+
+    source = bridge_source()
+
+    # 槽位身份标记（车端侧为 "MUS4APP:CAR"，由 test_firmware_feature_flags 钉住）
+    assert '"MUS4APP:BRIDGE"' in source
+    assert "__attribute__((used))" in source
+    # 标记必须被 /api/slot-info 实际引用——仅定义+used 不足以防链接器 GC（实测教训）
+    assert "json += MUS4_SLOT_ID_MARKER" in source
+
+    # 分区识别与切换
+    assert "esp_ota_get_partition_description" in source
+    assert "esp_partition_read" in source
+    assert "identifyOtaPartitionKind" in source
+    assert "esp_ota_set_boot_partition(other)" in source
+
+    # 端点：身份查询 + 切回车固件（对面槽位空时拒绝）
+    assert 'otaServer.on("/api/slot-info", HTTP_GET, handleSlotInfo)' in source
+    assert 'otaServer.on("/api/switch-slot", HTTP_POST, handleSwitchSlot)' in source
+    assert "ACK:SWITCHING" in source
+    assert "NACK:NO_IMAGE" in source
+
+    # 启动即标记 VALID，取消回滚计时器
+    assert "esp_ota_mark_app_valid_cancel_rollback()" in source
+
+    # 根页面含 "Drifter Console" 字样：DD 的局域网控制台发现靠它识别桥模式设备
+    assert 'otaServer.on("/", HTTP_GET, handleRoot)' in source
+    assert "<title>Drifter Console</title>" in source

@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-10-02 v1.10.8
+
+- fix(DC): 四页字体栈恢复 v1.10.5 第一版写法——用户评审明确不喜欢 v1.10.6 的 -apple-system/SF Pro 栈
+  - 背景：v1.10.6 打磨把四页 body 改为 `-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif`、等宽改 `ui-monospace,SFMono-Regular,...` 栈并在 body 加 `-webkit-font-smoothing:antialiased`；用户实机查看后明确还是喜欢第一版（v1.10.5 时代）的字体，要求改回。其余打磨成果（磨砂/热区/弹窗/对比度/圆角/间距等）用户未提异议，全部保留。
+  - `libraries/mus4_web/src/WebConsoleAssets.h` 共 11 处恢复：四页 body 回 `font-family:system-ui,sans-serif` 并删 body 的 `-webkit-font-smoothing:antialiased`；`.statusRow span`/`.rcCell span`/`.rcNum`/`.log`/`.legend b`/`.recMeta b` 六处等宽回 `Consolas,monospace`；`joystickCalLive` 内联回 `font-family:monospace`。`headerRow`/`.langButton` 的 99379ba 原有栈本就未动；`.termTabClose`/`.histRow` 的 `font-family:inherit`（按钮化必需）保留。
+  - 与 v1.10.7（PR #172 全宽修复）零冲突对齐：本分支内容 = Tony@4ccf6f1 + 恰好 11 处字体 delta（difflib 全文比对确认无其它差异）。
+  - 测试同步：版本断言 → v1.10.8（链补 `v1.10.7`/`v1.10.6`）；`rcNum` 断言回 `Consolas,monospace` 栈；drift embedded 断言随 v1.10.7 原文。
+  - 验证：pytest **364 + 31 subtests** 全绿；node `web_console_fixes.test.mjs` 31 + `zcode_remote_url.test.mjs` 27 全绿；`arduino-cli.py -c` 编译通过（33.8s）。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.8。
+
 ## 2026-10-02 v1.10.7
 
 - fix(DC): Console/Drift 两页恢复全宽布局——撤下 v1.10.6 的 max-width 容器限宽，修复宽屏「比例不对、没有放到正常大小」

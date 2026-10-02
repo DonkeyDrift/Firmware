@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.7"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.8"' in build_info
+    assert "v1.10.7" in changelog
     assert "v1.10.6" in changelog
     assert "v1.10.5" in changelog
     assert "v1.10.4" in changelog
@@ -5700,8 +5701,8 @@ def test_web_console_light_theme_overrides():
     # v1.10.6：fabToggle 中间态移除，--fabBg/--fabBgHover/--fabGlow 系列死变量已清理
     assert '--fabBg' not in assets
     assert '--fabGlow' not in assets
-    # rcNum 浅色透明底并入基础规则（v1.10.6：等宽字体统一 ui-monospace 栈）
-    assert '.rcNum{flex:0 0 auto;min-width:0;max-width:none;width:4.5ch;font:700 14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;text-align:center;background:transparent' in assets
+    # rcNum 浅色透明底并入基础规则（v1.10.8：等宽字体按用户要求回退 v1.10.5 的 Consolas,monospace）
+    assert '.rcNum{flex:0 0 auto;min-width:0;max-width:none;width:4.5ch;font:700 14px Consolas,monospace;text-align:center;background:transparent' in assets
     # v1.10.6：.langTabs 分段控件死样式已整体移除（#ledBlinkTabs 元素早已不存在）
     assert '.langTabs' not in assets
     # 旧元素级浅色覆盖规则均已移除（otaLink/devModeToggle/muteButton/rcNum/navTab/langTabs 等）

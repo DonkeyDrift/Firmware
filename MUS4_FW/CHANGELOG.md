@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-10-02（示例固件 RC_BLE_Bridge，车上固件无版本变更）
+
+- feat(examples): 新增 `examples/RC_BLE_Bridge`——CT-8B 蓝牙手柄桥，Mac 蓝牙配对「Gamepad MU02」后即可在 DD 页面当手柄输入源（含模拟器）
+  - 背景（用户需求）：用遥控真车的 HOT RC CT-8B 枪控蓝牙连 Mac 操控 DD 模拟器。CT-8B 无蓝牙/无 USB/无任何电脑接口（纯 2.4GHz 对自家 F-08A 接收机），必须经「接收机 + ESP32」桥接。
+  - 路线取舍：车端固件本有 BLE Gamepad 模式（`ENABLE_GAMEPAD_MODE`，设备名 `Gamepad MU02`），但与 WiFi Console 互斥。实测解除互斥后 flash 超限：min_spiffs 分区上限 1966080 字节，共存需 2021163（102%）；裁剪 NimBLE（关 Central/Observer 角色、连接数 3→1，该裁剪已随路线放弃一并还原）后仍 2006211（102%），超 40131 字节——车端 flash 无共存余量，改做独立示例固件（623108 字节 / 47%），车端零改动、零风险。
+  - 实现（`examples/RC_BLE_Bridge/RC_BLE_Bridge.ino`，自包含）：ISR 测 CH1(GPIO36)/CH2(GPIO39) 脉宽（800-2200µs 窗口过滤）；按 `RC_*_MIN/MID/MAX` 校准分段线性映射到 0..32767 轴（中位精确 16384；校准值与 `FirmwareConfig.h` 一致并由测试钉住）；油门按手柄惯例反向（配套 DD 默认 z-axis 预设 invert=true）；失控保护（超时 1s 或脉宽越界回中位）；50Hz 发送节流；串口 500ms 打印脉宽便于脱机核对。
+  - DD 侧零改动：`DrivePage.tsx` 已有完整 HTML5 Gamepad API 链路（useGamepadDrive + GamepadConfigPanel），默认 z-axis 预设与本桥映射一致，通常免校准。
+  - 测试同步：新增 `tests/test_rc_ble_bridge_example.py` 4 项（文件存在 / 设备身份 / 引脚与校准值对齐车端 / 失控保护与映射约定）；pytest 368 + 31 subtests 全绿。
+  - 验证：`arduino-cli compile --fqbn esp32:esp32:esp32 --libraries libraries examples/RC_BLE_Bridge` 编译通过（623108 字节 / 47%）。
+  - 刷机说明：不涉及车上固件，**无需 OTA 刷车**；桥固件需有线刷到一块 ESP32 开发板（接收机可临时拆用车上的 F-08A，或另购一只与 CT-8B 对码），接线与用法见 `examples/RC_BLE_Bridge/README.md`。
+
 ## 2026-10-02 v1.10.11
 
 - fix(DC): 四页标题字重恢复 700——撤下 v1.9.0 引入的 `html:root h1` 600 细体+紧字距覆写，恢复 v1.9.0 前的粗标题

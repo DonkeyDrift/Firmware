@@ -2,6 +2,8 @@
 
 #include <stdarg.h>
 
+#include "SerialRole.h"
+
 uint8_t mus4LogTarget = MUS4_LOG_TARGET;
 static Mus4LogSink mus4WebLogSink = nullptr;
 
@@ -27,7 +29,9 @@ void mus4LogLine(const char* source, const String& line)
         return;
     }
 #endif
-    Serial.println("[" + String(source) + "] " + line);
+    // SERIAL 目标绑定控制台端口（serialConsole 角色）：默认 = Serial0(USB)，
+    // MUS4_SWAP_SERIAL0_SERIAL1 对调后 = Serial1(TTL 16/17)。
+    serialConsole.println("[" + String(source) + "] " + line);
 }
 
 void mus4Logf(const char* source, const char* fmt, ...)

@@ -1,5 +1,14 @@
 #pragma once
 
+// ── 串口角色对调开关 ─────────────────────────────────────────────────────────
+// 定义后把 Serial0（USB Type-C / UART0）与 Serial1（TTL RX1=16/TX1=17）的角色对调：
+//   - 主遥测端口（上行 T..S../M:P/$IMU + 下行 <t>:<s> 控制帧）改走 USB Type-C；
+//   - 日志 / ANSI TUI / 本地命令控制台改走 TTL 16/17。
+// 【当需要从 USB Type-C 口输出主遥测信息时必须切换到本模式】（例如上位机只接
+// USB 线、TTL 16/17 留给其他用途时）。当前默认即对调状态；要恢复"遥测走 TTL、
+// 控制台走 USB"的原布局，注释掉下面的 define 即可。角色映射见 SerialRole.h。
+#define MUS4_SWAP_SERIAL0_SERIAL1
+
 #define ENABLE_WIFI_CONSOLE
 #ifdef ENABLE_WIFI_CONSOLE
 #define ENABLE_WIFI_WEBSOCKET_TELEMETRY

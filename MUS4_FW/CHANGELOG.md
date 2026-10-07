@@ -1,5 +1,20 @@
 # CHANGELOG.md
 
+## 2026-10-07 v1.10.14
+
+- feat(config): 主控板通信档案 `BoardProfile.h`——两块主控板的串口角色差异收敛到单一定义点，切换走构建参数，不再改任何入库文件
+  - 背景（用户需求）：`MUS4_SWAP_SERIAL0_SERIAL1`（v1.10.13）用于切换到另一块主控板的通信配置，此前只能手工注释 `FirmwareConfig.h`——每次切换都产生 git diff、容易忘记改回而误提交、两块板无法在同一工作区共存。
+  - 新增 `libraries/mus4_core/src/BoardProfile.h`（唯一定义点）：选择优先级 `-DMUS4_BOARD_B` > 本机 gitignored `BoardProfile.local.h` > 默认板 A（当前主控板，定义对调宏 = 线上行为不变）；两块板同时指定触发 `#error`；文件头写明"必需配置默认值必须 tracked"（v1.8.77 事故教训）。
+  - `FirmwareConfig.h`：改为 `#include "BoardProfile.h"`，不再直接定义对调宏（切换点唯一）。
+  - `arduino-cli.py`：新增 `-D/--define`（兼容 `-D X` 与 `-DX` 写法）与 `--bin-tag`（生成 `MUS4_FW_<tag>.bin`，省略时按 `-D MUS4_BOARD_*` 自动推断板型后缀）。**`-D` 是追加不是覆盖**：先 `--show-properties` 读回平台解析后的 `build.extra_flags`（`-DESP32=ESP32`、`-DARDUINO_HOST_OS`、`-DARDUINO_USB_CDC_ON_BOOT` 等）再把自定义宏拼到其后——编译矩阵实测：直接覆盖会抹掉平台宏，FastLED 随即认错平台报「This platform isn't recognized by FastLED... yet」，板 B 首次编译正是这样失败的。
+  - `tools/build_profiles.sh`（新增）：编译矩阵，板 A/B 各编一次 → `build/boardA/MUS4_FW_boardA.bin`、`build/boardB/MUS4_FW_boardB.bin`（独立 build 目录，避免交叉污染）。
+  - `.gitignore`：新增 `*.local.h`——选择动作与本机微调永不入库；两块板因此共存于同一条 `main` 分支、零 git diff（不采用 branch-per-board）。
+  - 文档同步：双语 README 新增「按主控板划分的串口角色 / Serial roles per host board」小节（角色表 + 构建命令 + 工程纪律），引脚表与遥测段落按档案标注，Arduino CLI 示例补 `-D`；`docs/Guide/esp32-serial-topology.md` 新增同款小节、§1/§2 标题标注档案口径、配置键表与相关文件表补 BoardProfile 行、数据流图 `TUI tui(Serial)` 改为角色名 `TUI tui(serialConsole)`。
+  - 测试同步：版本断言 v1.10.13 → v1.10.14 + changelog 链补 v1.10.14；`test_serial_role_swap_macro_routes_telemetry` 改为断言"宏只在 BoardProfile.h、FirmwareConfig.h 仅引入"；新增 `test_board_profile_selects_communication_layout`（优先级 / 互斥守卫 / A-B 分支语义 / `*.local.h` 忽略 / `-D` 与产物后缀透传 / 矩阵脚本 / 双语 README 与拓扑文档同步 / 运行时方案留档）。
+  - **第 5 步（NVS 运行时切换：单镜像免重刷伺候两块板）已设计未实现**，方案、影响面清单与验收清单记录在 `docs/Plan/主控板档案-NVS运行时切换方案.md`，待出现"频繁互换且不愿重刷"的真实需求时启动。
+  - 验证：pytest 371 + 31 subtests 全绿；板 A / 板 B 双档案编译通过（min_spiffs）。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.14。
+
 ## 2026-10-02 v1.10.13
 
 - feat(serial): 新增 `MUS4_SWAP_SERIAL0_SERIAL1` 宏，支持 Serial0（USB Type-C）与 Serial1（TTL 16/17）角色对调——**需要从 USB Type-C 口输出主遥测信息时切换**（当前固件默认即为对调状态）

@@ -4,6 +4,25 @@
 
 MUS4 底盘采用 ESP32 作为底层控制器，与 Linux 上位机之间通过三路串口建立物理连接。本文档说明各路串口的引脚分配、电气特性、数据协议以及在 DonkeyDrift 系统中的角色分工。
 
+## 串口角色按主控板档案切换（BoardProfile.h）
+
+两块主控板与 ESP32 的接线不同，"哪个物理口当主遥测、哪个当控制台"由**编译期档案**决定，唯一定义点是 `MUS4_FW/libraries/mus4_core/src/BoardProfile.h`：
+
+| 档案 | 构建命令 | 主遥测（`T..S..` / `M:P` / `$IMU` + 下行 `{thr}:{str}`） | 控制台（日志 / TUI / 本地命令） |
+|------|----------|------------------------------------------------------|--------------------------------|
+| **板 A**：当前主控板（默认） | `python3 arduino-cli.py -c` | USB Type-C（Serial0） | TTL RX1=16 / TX1=17（Serial1） |
+| **板 B**：另一块主控板 | `python3 arduino-cli.py -c -D MUS4_BOARD_B` | TTL RX1=16 / TX1=17（Serial1） | USB Type-C（Serial0） |
+
+要点：
+
+- **切换不改任何入库文件**（零 git diff）：选择动作是构建参数 `-D`，或本机 gitignored 的 `BoardProfile.local.h`（与 `WirelessSecrets.h` 同款模式）；两块板的配置可同时存在于同一份代码、同一条 `main` 分支。
+- 硬件初始化（引脚、波特率、`UART_SEL`）**不随档案变化**，变的只是逻辑角色绑定（`serialTelemetry` / `serialConsole`，唯一实现点 `SerialRole.h`）。
+- WebLog 源标签按角色归类（`serialRoleSourceFor`）：主遥测口恒记 `serial1`（命中专用高吞吐环形缓冲），控制台恒记 `serial`，物理口对调后标签不漂移。
+- 双档案一次构建：`tools/build_profiles.sh` → `build/boardA/MUS4_FW_boardA.bin` 与 `build/boardB/MUS4_FW_boardB.bin`。
+- 运行时免重刷切换（NVS，单镜像伺候两块板）**已设计未实现**，见 [`docs/Plan/主控板档案-NVS运行时切换方案.md`](../Plan/主控板档案-NVS运行时切换方案.md)。
+
+> 下文第 1、2 节按**板 B（原布局）**描述；默认的板 A 下 Serial 与 Serial1 **逻辑角色互换**，物理引脚与波特率不变。
+
 ## 物理拓扑总图
 
 ```
@@ -35,7 +54,7 @@ MUS4 底盘采用 ESP32 作为底层控制器，与 Linux 上位机之间通过�
 
 ## 三路串口详细说明
 
-### 1. Serial (USB CDC) — 开发调试通道
+### 1. Serial (USB CDC) — 开发调试通道（板 B：控制台；板 A 默认：主遥测）
 
 | 属性 | 值 |
 |------|-----|
@@ -51,7 +70,7 @@ MUS4 底盘采用 ESP32 作为底层控制器，与 Linux 上位机之间通过�
 
 **用途：** 开发阶段通过 Arduino Serial Monitor 或 `screen /dev/ttyUSB0 115200` 观察 TUI 状态面板（RC 通道值、传感器数据、控制输出等），与 Serial1 控制通道完全解耦。
 
-### 2. Serial1 (UART1, GPIO16/17) — 车辆控制主数据通道
+### 2. Serial1 (UART1, GPIO16/17) — 车辆控制主数据通道（板 B 口径；板 A 默认：控制台）
 
 | 属性 | 值 |
 |------|-----|
@@ -146,8 +165,8 @@ UART_SEL = HIGH (digitalWrite(UART_SEL, HIGH))
     ║  Serial1.print(M:P)        ║  → 上行状态 (1Hz)
     ║  Serial1.write($IMU...)    ║  → 上行IMU (~100Hz)
     ║                            ║
-    ║  readSerialBuf(Serial)     ║  ← USB调试指令
-    ║  TUI tui(Serial)           ║  → TUI渲染
+    ║  readSerialBuf(serialConsole) ║ ← USB调试指令（板 A 下角色对调）
+    ║  TUI tui(serialConsole)    ║  → TUI渲染
     ╚════════════════════════════╝
                    │
          Serial (USB CDC)
@@ -167,6 +186,7 @@ UART_SEL = HIGH (digitalWrite(UART_SEL, HIGH))
 | `RX_2_PIN` | 19 | Serial2 接收引脚 (UART_SEL=LOW 直连上位机) |
 | `TX_2_PIN` | 18 | Serial2 发送引脚 (UART_SEL=LOW 直连上位机) |
 | `UART_SEL` | 12 | Serial2 路由切换 (LOW=直连CPU, HIGH=外部端子座) |
+| `MUS4_SWAP_SERIAL0_SERIAL1` | 由 `BoardProfile.h` 决定 | 板 A（默认）定义 → Serial0/Serial1 角色对调；`-D MUS4_BOARD_B` 不定义 |
 
 ### DonkeyDrift 侧 (`myconfig.py`)
 
@@ -185,6 +205,7 @@ UART_SEL = HIGH (digitalWrite(UART_SEL, HIGH))
 |------|------|
 | `Firmware/MUS4_FW/MUS4_FW.ino` | ESP32 固件主 sketch，串口初始化与数据收发 |
 | `Firmware/MUS4_FW/libraries/mus4_core/src/FirmwareConfig.h` | 引脚定义与波特率配置 |
+| `Firmware/MUS4_FW/libraries/mus4_core/src/BoardProfile.h` | 主控板档案：两块板串口角色差异的唯一定义点 |
 | `donkeycar/parts/actuator.py` | DonkeyDrift 侧 Arduino 串口驱动、ArdPWM、ArdImu |
 | `donkeycar/templates/myconfig.py` | 车辆配置模板，含串口配置键 |
 | `donkeycar/templates/complete.py` | 车辆组装逻辑 (`add_drivetrain`, `add_imu`) |

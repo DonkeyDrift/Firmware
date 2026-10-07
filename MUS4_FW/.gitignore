@@ -50,6 +50,9 @@ tests/__pycache__/
 __pycache__/
 WirelessSecrets.h
 
+# 本机覆盖文件（主控板档案等）：只能覆盖、不能承载必需配置，见 BoardProfile.h
+*.local.h
+
 # Local OTA target configuration
 .mus4_ota_target
 ArduFlux.json

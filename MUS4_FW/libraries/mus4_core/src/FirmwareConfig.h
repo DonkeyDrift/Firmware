@@ -1,13 +1,15 @@
 #pragma once
 
-// ── 串口角色对调开关 ─────────────────────────────────────────────────────────
-// 定义后把 Serial0（USB Type-C / UART0）与 Serial1（TTL RX1=16/TX1=17）的角色对调：
-//   - 主遥测端口（上行 T..S../M:P/$IMU + 下行 <t>:<s> 控制帧）改走 USB Type-C；
-//   - 日志 / ANSI TUI / 本地命令控制台改走 TTL 16/17。
-// 【当需要从 USB Type-C 口输出主遥测信息时必须切换到本模式】（例如上位机只接
-// USB 线、TTL 16/17 留给其他用途时）。当前默认即对调状态；要恢复"遥测走 TTL、
-// 控制台走 USB"的原布局，注释掉下面的 define 即可。角色映射见 SerialRole.h。
-#define MUS4_SWAP_SERIAL0_SERIAL1
+// ── 主控板通信档案入口 ────────────────────────────────────────────────────────
+// 串口角色对调开关 MUS4_SWAP_SERIAL0_SERIAL1 不再直接写在这里，而是由
+// BoardProfile.h 按"主控板型号"决定（两块主控板的串口接线不同）：
+//   python3 arduino-cli.py -c                 ← 板 A（当前主控板，默认）
+//   python3 arduino-cli.py -c -D MUS4_BOARD_B ← 板 B（另一块主控板）
+// 切换走构建参数（-D）或本机 gitignored 的 BoardProfile.local.h：不改本文件、
+// 不产生 git diff、两块板的配置可同时存在于同一份代码里。
+// 档案定义与选择优先级、以及"必需配置默认值必须 tracked"的纪律（v1.8.77 事故）
+// 见 BoardProfile.h；角色映射的唯一实现点见 SerialRole.h。
+#include "BoardProfile.h"
 
 #define ENABLE_WIFI_CONSOLE
 #ifdef ENABLE_WIFI_CONSOLE

@@ -37,8 +37,8 @@ Authoritative pin definitions are documented in [`docs/Hardware/pin_definitions.
 | Spare PWM_2 | 33 | Reserved output |
 | WS2812B LED | 5 | Mode and emergency stop indication |
 | UART_SEL | 12 | UART route select |
-| Serial1 RX | 16 | RS232 / Pilot input |
-| Serial1 TX | 17 | RS232 / Pilot output |
+| Serial1 RX | 16 | UART1 RX — role per host board: console (Board A, default) / Pilot telemetry (Board B) |
+| Serial1 TX | 17 | UART1 TX — role per host board: console (Board A, default) / Pilot telemetry (Board B) |
 | I2C SDA | 21 | INA219 / MPU6050 |
 | I2C SCL | 22 | INA219 / MPU6050 |
 
@@ -74,7 +74,7 @@ ACK:Seq
 NACK:Seq
 ```
 
-Serial1 telemetry (uplink to host DonkeyCar `ArdImu` / `Arduino` part, v1.7.13+):
+Telemetry uplink (to host DonkeyCar `ArdImu` / `Arduino` part, v1.7.13+). The frames below are identical for both host boards — only the physical port differs, see *Serial roles per host board* below (Board A / default: USB Type-C Serial0; Board B: Serial1 TTL 16/17):
 
 ```text
 T<t>S<s>\n                                # MANUAL only, ~60Hz, no colon
@@ -82,7 +82,21 @@ M<m>:P<p>\n                               # All modes, on state change + 1Hz hea
 $IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n        # All modes, ~100Hz, m/s² + rad/s
 ```
 
-Serial1 uplink is paused only while an OTA transfer is in progress.
+The telemetry uplink is paused only while an OTA transfer is in progress.
+
+## Serial roles per host board
+
+Two host boards wire the ESP32 differently, so which physical port carries telemetry is chosen by a **build-time profile** whose single source of truth is [`libraries/mus4_core/src/BoardProfile.h`](libraries/mus4_core/src/BoardProfile.h):
+
+| Profile | Build command | Telemetry (`T..S..` / `M:P` / `$IMU` uplink + `{thr}:{str}` downlink) | Console (logs / TUI / local commands) |
+| --- | --- | --- | --- |
+| **Board A** — current host board (default) | `python3 arduino-cli.py -c` | USB Type-C (Serial0) | TTL RX1=16 / TX1=17 (Serial1) |
+| **Board B** — the other host board | `python3 arduino-cli.py -c -D MUS4_BOARD_B` | TTL RX1=16 / TX1=17 (Serial1) | USB Type-C (Serial0) |
+
+- Switching never edits a tracked file (zero git diff): pass `-D`, or keep machine-private tweaks in a gitignored `BoardProfile.local.h` (same pattern as `WirelessSecrets.h`). Defaults stay in the tracked profile header on purpose — v1.8.77 lesson: defaults parked in a gitignored file got the feature silently compiled out of a clean clone.
+- Both profiles build from the same `main` branch. `tools/build_profiles.sh` builds both images: `build/boardA/MUS4_FW_boardA.bin` and `build/boardB/MUS4_FW_boardB.bin`.
+- Pins and baud rates do not change with the profile — only the `serialTelemetry` / `serialConsole` role binding does (`SerialRole.h`).
+- Runtime switching without reflashing (NVS, one image for both boards) is designed but **not yet implemented** — see [`docs/Plan/主控板档案-NVS运行时切换方案.md`](docs/Plan/主控板档案-NVS运行时切换方案.md).
 
 ## Quick Start
 
@@ -142,8 +156,14 @@ HTTP OTA uses the Web Console `/update` endpoint. The device must be authenticat
 ### Arduino CLI wrapper
 
 ```bash
-# Compile only
+# Compile only (Board A — current host board, default)
 python arduino-cli.py -c --sketch MUS4_FW.ino
+
+# Compile for the other host board (Board B); no tracked file is modified
+python arduino-cli.py -c --sketch MUS4_FW.ino -D MUS4_BOARD_B
+
+# Build both host-board profiles (see tools/build_profiles.sh)
+#   → build/boardA/MUS4_FW_boardA.bin  build/boardB/MUS4_FW_boardB.bin
 
 # Upload only; port is auto-detected from config.yaml
 python arduino-cli.py -u --sketch MUS4_FW.ino

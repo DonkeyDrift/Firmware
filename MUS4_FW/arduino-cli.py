@@ -881,6 +881,29 @@ class ArduinoAutomation:
             self.logger.error(f"未知错误: {e}")
             return False, str(e)
 
+    def expanded_build_extra_flags(self):
+        """读回当前 FQBN 解析后的 build.extra_flags 原值（失败返回 None）。
+
+        用于把 -D 自定义宏**追加**到平台宏之后，而不是覆盖它们（见 compile() 注释）。
+        """
+        cmd = [self.arduino_cli, "compile", "--show-properties",
+               "--fqbn", self.fqbn, self.sketch]
+        local_libraries_path = self.resolve_local_libraries_path()
+        if local_libraries_path:
+            cmd.extend(["--libraries", local_libraries_path])
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        except Exception as e:
+            self.logger.error(f"读取 build.extra_flags 异常: {e}")
+            return None
+        if out.returncode != 0:
+            self.logger.error(f"读取 build.extra_flags 失败: {(out.stderr or '').strip()[:400]}")
+            return None
+        for line in out.stdout.splitlines():
+            if line.startswith("build.extra_flags="):
+                return line.split("=", 1)[1].strip()
+        return ""
+
     def compile(self):
         self.logger.info(f"开始编译: {os.path.basename(self.sketch)} ({self.fqbn})")
         cmd = [self.arduino_cli, "compile", "--fqbn", self.fqbn]
@@ -906,11 +929,48 @@ class ArduinoAutomation:
             cmd.extend(["--libraries", local_libraries_path])
             self.logger.info(f"本地库优先路径: {local_libraries_path}")
 
+        # 主控板档案等变体宏：-D MUS4_BOARD_B（选择动作不改任何入库文件，见 BoardProfile.h）
+        # 注意：arduino-cli 的 --build-property 对同一属性是"整体覆盖"，直接传
+        # build.extra_flags=-Dxxx 会抹掉平台级宏（-DESP32=ESP32、-DARDUINO_HOST_OS、
+        # -DARDUINO_USB_CDC_ON_BOOT 等），实测会导致 FastLED 认错平台而编译失败。
+        # 因此先 --show-properties 读回平台解析后的原值，再把自定义宏追加到其后。
+        defines = []
+        for d in (getattr(self.args, 'defines', None) or []):
+            d = d[2:] if d.startswith('-D') else d   # 兼容 -D X 与 -DX 两种写法
+            defines.append(d)
+        if defines:
+            flags = " ".join("-D" + d for d in defines)
+            base = self.expanded_build_extra_flags()
+            if base is None:
+                self.logger.error("无法解析平台 build.extra_flags，终止编译（避免覆盖平台宏）")
+                sys.exit(10)
+            value = (base + " " + flags) if base else flags
+            cmd.extend(["--build-property", "build.extra_flags=" + value])
+            self.logger.info(f"追加宏定义: {flags}（保留平台原值 {len(base)} 字符）")
+
         cmd.append(self.sketch)
         success, _ = self.run_command(cmd, message="正在编译... ")
         if not success:
             self.logger.error("编译失败，终止流程")
             sys.exit(10)
+
+        # 产物命名带板型后缀：MUS4_FW.ino.bin → MUS4_FW_boardA.bin（便于 OTA/归档区分）
+        tag = getattr(self.args, 'bin_tag', None)
+        if not tag and defines:
+            for d in defines:
+                if d.startswith('MUS4_BOARD_'):
+                    tag = 'board' + d[len('MUS4_BOARD_'):]
+                    break
+        if tag and build_path:
+            sketch_name = os.path.basename(self.sketch)            # MUS4_FW.ino
+            stem = os.path.splitext(sketch_name)[0]                # MUS4_FW
+            src = os.path.join(build_path, sketch_name + ".bin")
+            dst = os.path.join(build_path, f"{stem}_{tag}.bin")
+            if os.path.exists(src):
+                shutil.copy2(src, dst)
+                self.logger.info(f"板型产物: {dst}")
+            else:
+                self.logger.warning(f"未找到编译产物，跳过重命名: {src}")
         return True
 
     def normalize_precompiled_input_file(self, input_file):
@@ -1290,6 +1350,10 @@ def main():
     parser.add_argument('--port', '-p', help='串口设备路径 (e.g., /dev/ttyACM0, COM3)')
     parser.add_argument('--baud', '-b', type=int, help='串口波特率')
     parser.add_argument('--fqbn', help='板型定义 (FQBN)')
+    parser.add_argument('-D', '--define', action='append', dest='defines', metavar='MACRO',
+                        help='编译期追加宏定义（可重复），如 -D MUS4_BOARD_B 选择另一块主控板')
+    parser.add_argument('--bin-tag', dest='bin_tag',
+                        help='产物板型后缀：生成 build/MUS4_FW_<tag>.bin（省略时按 -D 自动推断）')
     parser.add_argument('--sketch', help='Arduino Sketch 文件路径')
     parser.add_argument('--cli', help='ArduinoCLI 可执行文件路径')
     parser.add_argument('--config', default='config.yaml', help='配置文件路径')

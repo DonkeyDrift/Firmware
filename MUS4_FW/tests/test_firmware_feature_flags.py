@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.13"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.14"' in build_info
+    assert "v1.10.14" in changelog
     assert "v1.10.13" in changelog
     assert "v1.10.12" in changelog
     assert "v1.10.11" in changelog
@@ -5877,8 +5878,12 @@ def test_serial_role_swap_macro_routes_telemetry():
     log_source = (PROJECT_ROOT / "libraries" / "mus4_log" / "src" / "Mus4Log.cpp").read_text(encoding="utf-8")
     reader_source = (PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "SerialLineReader.cpp").read_text(encoding="utf-8")
 
-    # 当前设置为对调（遥测走 USB Type-C）。
-    assert "#define MUS4_SWAP_SERIAL0_SERIAL1" in config_source
+    # 对调宏由"主控板档案"决定：FirmwareConfig.h 只引入 BoardProfile.h，
+    # 切换点唯一；默认档案（板 A = 当前主控板）定义该宏 → 遥测走 USB Type-C。
+    profile_source = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "BoardProfile.h").read_text(encoding="utf-8")
+    assert '#include "BoardProfile.h"' in config_source
+    assert "#define MUS4_SWAP_SERIAL0_SERIAL1" not in config_source   # 不允许第二处定义
+    assert "#define MUS4_SWAP_SERIAL0_SERIAL1" in profile_source
     # 对调分支：遥测=Serial、控制台=Serial1；默认分支相反。
     assert "#ifdef MUS4_SWAP_SERIAL0_SERIAL1" in role_header
     assert "extern HardwareSerial& serialTelemetry;" in role_header
@@ -5898,3 +5903,72 @@ def test_serial_role_swap_macro_routes_telemetry():
     # mus4Log 的 SERIAL 目标与 WebLog 源标签均角色化。
     assert "serialConsole.println(\"[\" + String(source) + \"] \" + line);" in log_source
     assert "return serialRoleSourceFor(ser);" in reader_source
+
+
+def test_board_profile_selects_communication_layout():
+    """两块主控板的通信方式由编译期档案 BoardProfile.h 选择（板 A 默认）。
+
+    设计约束（维护两块主控板 + 一条 main 分支的关键）：
+    - 选择优先级：命令行 -D > 本地 BoardProfile.local.h（gitignored）> 默认板 A；
+    - 必需配置的默认值必须留在入库文件里——v1.8.77 事故：默认值放进 gitignored
+      文件，干净 clone 里整块代码被静默编译掉；
+    - 切换不修改任何入库文件（零 git diff），两块板因此可共存于同一条 main 分支；
+    - arduino-cli.py 负责 -D 透传与产物板型后缀，tools/build_profiles.sh 是编译矩阵；
+    - 运行时（NVS）切换已设计未实现：docs/Plan/主控板档案-NVS运行时切换方案.md。
+    """
+    profile = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "BoardProfile.h").read_text(encoding="utf-8")
+    config_source = (PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h").read_text(encoding="utf-8")
+    gitignore = (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8")
+    wrapper = (PROJECT_ROOT / "arduino-cli.py").read_text(encoding="utf-8")
+    matrix = (PROJECT_ROOT / "tools" / "build_profiles.sh").read_text(encoding="utf-8")
+    plan_doc = PROJECT_ROOT / "docs" / "Plan" / "主控板档案-NVS运行时切换方案.md"
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    readme_zh = (PROJECT_ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+    topology = (PROJECT_ROOT / "docs" / "Guide" / "esp32-serial-topology.md").read_text(encoding="utf-8")
+
+    # 1) 切换点唯一：FirmwareConfig.h 只引入档案，宏只在档案里定义一次
+    assert '#include "BoardProfile.h"' in config_source
+    assert "#define MUS4_SWAP_SERIAL0_SERIAL1" not in config_source
+    assert profile.count("#define MUS4_SWAP_SERIAL0_SERIAL1") == 1
+
+    # 2) 选择优先级：本地覆盖（只能覆盖）→ 默认板 A，且两块板互斥有守卫
+    assert '#include "BoardProfile.local.h"' in profile
+    assert "#if !defined(MUS4_BOARD_A) && !defined(MUS4_BOARD_B)" in profile
+    assert "#define MUS4_BOARD_A 1" in profile
+    assert '#error "MUS4_BOARD_A 与 MUS4_BOARD_B 只能选其一' in profile
+
+    # 3) 板型分支语义：板 A（当前主控板，默认）定义对调宏，板 B 不定义
+    branches = re.search(
+        r"#ifdef MUS4_BOARD_A\n(?P<a>.*?)#else\n(?P<b>.*?)#endif",
+        profile,
+        re.DOTALL,
+    )
+    assert branches, "档案必须用 #ifdef MUS4_BOARD_A / #else 表达两块板"
+    assert "#define MUS4_SWAP_SERIAL0_SERIAL1" in branches.group("a")
+    assert "#define MUS4_SWAP_SERIAL0_SERIAL1" not in branches.group("b")
+
+    # 4) 选择动作永不入库：本地覆盖文件被 git 忽略
+    assert "*.local.h" in gitignore
+
+    # 5) 构建工具：-D 透传 + 产物板型后缀（MUS4_FW_boardA.bin / MUS4_FW_boardB.bin）
+    assert "'-D', '--define'" in wrapper
+    assert "build.extra_flags=" in wrapper
+    # -D 必须是「追加」而非「覆盖」：先读回平台解析后的原值再拼接，
+    # 否则会抹掉 -DESP32=ESP32 等平台宏，FastLED 会因认错平台而编译失败。
+    assert "--show-properties" in wrapper
+    assert "expanded_build_extra_flags" in wrapper
+    assert "--bin-tag" in wrapper
+
+    # 6) 编译矩阵脚本覆盖两块板
+    assert "-D MUS4_BOARD_B" in matrix
+    assert "--bin-tag boardA" in matrix
+    assert "--bin-tag boardB" in matrix
+
+    # 7) 第 5 步（NVS 运行时切换）已设计未实现，必须留档
+    assert plan_doc.exists(), "运行时切换方案必须记录在 docs/Plan 下"
+    assert plan_doc.read_text(encoding="utf-8").count("- [ ]") >= 5
+
+    # 8) 文档同步：双语 README 与串口拓扑指南都要写清两块板
+    for doc_text in (readme, readme_zh, topology):
+        assert "MUS4_BOARD_B" in doc_text
+        assert "BoardProfile" in doc_text

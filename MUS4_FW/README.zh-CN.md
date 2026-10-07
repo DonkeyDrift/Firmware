@@ -37,8 +37,8 @@ MUS4（LP-MU-S4）是基于 ESP32 + Arduino framework 的遥控车辆/机器人�
 | 备用 PWM_2 | 33 | 预留输出 |
 | WS2812B LED | 5 | 模式与紧急停车指示 |
 | UART_SEL | 12 | UART 路由选择 |
-| Serial1 RX | 16 | RS232 / Pilot 输入 |
-| Serial1 TX | 17 | RS232 / Pilot 输出 |
+| Serial1 RX | 16 | UART1 RX — 角色随主控板档案变化：控制台（板 A，默认）/ Pilot 遥测（板 B） |
+| Serial1 TX | 17 | UART1 TX — 角色随主控板档案变化：控制台（板 A，默认）/ Pilot 遥测（板 B） |
 | I2C SDA | 21 | INA219 / MPU6050 |
 | I2C SCL | 22 | INA219 / MPU6050 |
 
@@ -74,7 +74,7 @@ ACK:Seq
 NACK:Seq
 ```
 
-Serial1 上行遥测（对接上位机 DonkeyCar `ArdImu` / `Arduino` part，v1.7.13 起）：
+上行遥测（对接上位机 DonkeyCar `ArdImu` / `Arduino` part，v1.7.13 起）。帧格式对两块主控板完全相同，只有物理口不同——见下文「按主控板划分的串口角色」（板 A 默认：USB Type-C Serial0；板 B：Serial1 TTL 16/17）：
 
 ```text
 T<t>S<s>\n                                # 仅 MANUAL，~60Hz，无冒号
@@ -82,7 +82,21 @@ M<m>:P<p>\n                               # 所有模式，状态变化时立即
 $IMU,seq,ts_ms,ax,ay,az,gx,gy,gz\n        # 所有模式，~100Hz，m/s² + rad/s
 ```
 
-仅在 OTA 真正传输期间暂停 Serial1 上行。
+仅在 OTA 真正传输期间暂停上行遥测。
+
+## 按主控板划分的串口角色
+
+两块主控板与 ESP32 的接线不同，"哪个物理口走主遥测"由**编译期档案**决定，唯一定义点是 [`libraries/mus4_core/src/BoardProfile.h`](libraries/mus4_core/src/BoardProfile.h)：
+
+| 档案 | 构建命令 | 主遥测（`T..S..` / `M:P` / `$IMU` 上行 + `{thr}:{str}` 下行） | 控制台（日志 / TUI / 本地命令） |
+| --- | --- | --- | --- |
+| **板 A**：当前主控板（默认） | `python3 arduino-cli.py -c` | USB Type-C（Serial0） | TTL RX1=16 / TX1=17（Serial1） |
+| **板 B**：另一块主控板 | `python3 arduino-cli.py -c -D MUS4_BOARD_B` | TTL RX1=16 / TX1=17（Serial1） | USB Type-C（Serial0） |
+
+- **切换不改任何入库文件**（零 git diff）：用 `-D`，或把本机私有微调放进 gitignored 的 `BoardProfile.local.h`（与 `WirelessSecrets.h` 同款模式）。默认值必须留在入库的档案文件里——v1.8.77 教训：默认值放进 gitignored 文件，干净 clone 里整块代码被静默编译掉。
+- 两块板同在一条 `main` 分支上构建；`tools/build_profiles.sh` 一次产出两个镜像：`build/boardA/MUS4_FW_boardA.bin` 与 `build/boardB/MUS4_FW_boardB.bin`。
+- 引脚与波特率不随档案变化，变的只是 `serialTelemetry` / `serialConsole` 角色绑定（`SerialRole.h`）。
+- 运行时免重刷切换（NVS，单镜像伺候两块板）**已设计未实现**，见 [`docs/Plan/主控板档案-NVS运行时切换方案.md`](docs/Plan/主控板档案-NVS运行时切换方案.md)。
 
 ## 快速开始
 
@@ -142,8 +156,14 @@ HTTP OTA 使用 Web Console 的 `/update` 端点。设备需要已认证并处�
 ### Arduino CLI 包装脚本
 
 ```bash
-# 仅编译
+# 仅编译（板 A：当前主控板，默认）
 python arduino-cli.py -c --sketch MUS4_FW.ino
+
+# 为另一块主控板编译（板 B）：不修改任何入库文件
+python arduino-cli.py -c --sketch MUS4_FW.ino -D MUS4_BOARD_B
+
+# 一次构建两个主控板档案（见 tools/build_profiles.sh）
+#   → build/boardA/MUS4_FW_boardA.bin  build/boardB/MUS4_FW_boardB.bin
 
 # 仅上传，默认按 config.yaml 自动检测串口
 python arduino-cli.py -u --sketch MUS4_FW.ino

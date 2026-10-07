@@ -1,5 +1,17 @@
 # CHANGELOG.md
 
+## 2026-10-07 v1.10.15
+
+- feat(tools): `arduino-cli-wsl.ps1` 支持 `-D/-Define` 与 `-BinTag`——WSL 构建路径同样能切换主控板档案
+  - 参数：`-D MUS4_BOARD_B`（别名 `-D`，可重复；兼容 `-D X` 与 `-DX` 两种写法）、`-BinTag <tag>` 显式指定产物后缀。
+  - 语义与 `arduino-cli.py` 的 `-D` 一致：**追加而非覆盖**——先 `--show-properties` 读回 `compiler.{c,cpp}.extra_flags` 原值再拼接；读回值含空格/引号时显式报错退出，绝不静默注入被截断的宏。
+  - 属性桶选型说明：WSL 侧用 `compiler.{c,cpp}.extra_flags` 而非 `build.extra_flags`——后者在 esp32 平台展开后含 `-DARDUINO_HOST_OS="linux"` 这类带引号值，塞进 `bash -lc '...'` 需要二次引号转义，易被 Windows/WSL 两侧 argv 拆分破坏；而 `compiler.*.extra_flags` 平台默认为空、值无空格无引号，可安全内联（两条路径最终都把宏送到全部 C/C++ 编译单元）。
+  - 产物：编译成功后自动拷出 `MUS4_FW_<tag>.bin`（省略 `-BinTag` 时按 `-D MUS4_BOARD_*` 推断），与 `arduino-cli.py --bin-tag` 同名规则；拷贝发生在回同步之后，Windows 侧 `build/` 直接可取。
+  - 文档：双语 README「Windows + WSL 加速构建」补 `-D MUS4_BOARD_B` 示例。
+  - 测试同步：版本断言 v1.10.14 → v1.10.15 + changelog 链补 v1.10.15；`test_board_profile_selects_communication_layout` 新增 WSL 封装断言（别名 `-D`、追加语义、`--show-properties` 读回、注入点与产物后缀推断）。
+  - 验证边界：本次开发机为 Linux（无 PowerShell），WSL 脚本仅通过括号/引号平衡检查与 pytest 静态断言验证，**实际 -D 编译需在 Windows + WSL 环境回归一次**。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.15。
+
 ## 2026-10-07 v1.10.14
 
 - feat(config): 主控板通信档案 `BoardProfile.h`——两块主控板的串口角色差异收敛到单一定义点，切换走构建参数，不再改任何入库文件

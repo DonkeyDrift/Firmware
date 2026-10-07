@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.14"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.15"' in build_info
+    assert "v1.10.15" in changelog
     assert "v1.10.14" in changelog
     assert "v1.10.13" in changelog
     assert "v1.10.12" in changelog
@@ -5953,6 +5954,15 @@ def test_board_profile_selects_communication_layout():
     # 5) 构建工具：-D 透传 + 产物板型后缀（MUS4_FW_boardA.bin / MUS4_FW_boardB.bin）
     assert "'-D', '--define'" in wrapper
     assert "build.extra_flags=" in wrapper
+    # 5b) WSL 封装同样支持切板型（v1.10.15）：别名 -D、追加语义、注入点、产物后缀
+    wsl_wrapper = ARDUINO_WSL_SCRIPT.read_text(encoding="utf-8")
+    assert '[Alias("D")]' in wsl_wrapper
+    assert "[string[]]$Define" in wsl_wrapper
+    assert "[string]$BinTag" in wsl_wrapper
+    assert "--show-properties" in wsl_wrapper
+    assert "compiler.cpp.extra_flags" in wsl_wrapper
+    assert "$definePropertyArg" in wsl_wrapper          # 注入到 WSL 编译命令
+    assert 'StartsWith("MUS4_BOARD_")' in wsl_wrapper   # 产物后缀自动推断
     # -D 必须是「追加」而非「覆盖」：先读回平台解析后的原值再拼接，
     # 否则会抹掉 -DESP32=ESP32 等平台宏，FastLED 会因认错平台而编译失败。
     assert "--show-properties" in wrapper

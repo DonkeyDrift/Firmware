@@ -138,6 +138,10 @@ Common commands:
 # Clean the WSL build directory and compile
 .\arduino-cli-wsl.ps1 -Compile -Clean -Sketch MUS4_FW.ino
 
+# Build the other host board's profile (Board B) — same append semantics as -D in arduino-cli.py
+# Output: build/MUS4_FW_boardB.bin
+.\arduino-cli-wsl.ps1 -Compile -Sketch MUS4_FW.ino -D MUS4_BOARD_B
+
 # Check WSL, rsync, arduino-cli, and related dependencies
 .\arduino-cli-wsl.ps1 -Check
 

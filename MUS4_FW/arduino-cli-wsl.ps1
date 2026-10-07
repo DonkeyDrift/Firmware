@@ -34,6 +34,10 @@
     Project root directory (default: directory containing this script)
 .PARAMETER FQBN
     Arduino board FQBN (default: read from sketch.yaml / config.yaml, fallback to esp32:esp32:esp32)
+.PARAMETER Define
+    Compile-time macro define(s) for board profiles, e.g. -Define MUS4_BOARD_B (alias: -D, repeatable)
+.PARAMETER BinTag
+    Suffix the built firmware as MUS4_FW_<tag>.bin (default: derived from -Define MUS4_BOARD_*)
 .PARAMETER NoCheck
     Skip pre-flight dependency check
 #>
@@ -115,6 +119,13 @@ param(
 
     [Parameter(HelpMessage="Arduino board FQBN (default: auto-detect from config files)")]
     [string]$FQBN,
+
+    [Parameter(HelpMessage="Compile-time macro define(s) for board profiles, e.g. -D MUS4_BOARD_B (repeatable)")]
+    [Alias("D")]
+    [string[]]$Define,
+
+    [Parameter(HelpMessage="Suffix the built firmware as MUS4_FW_<tag>.bin (default: derived from -Define MUS4_BOARD_*)")]
+    [string]$BinTag,
 
     [Parameter(HelpMessage="Skip pre-flight dependency check (default: true)")]
     [switch]$NoCheck = $true,
@@ -1254,6 +1265,17 @@ if (Test-Path $localLibrariesWinPath) {
 # WSL 端 arduino-cli 路径
 $script:ArduinoCliPath = Get-WslArduinoCliPath
 
+# 主控板档案宏（-D / -Define）：去掉可选的 -D 前缀，统一成宏名列表。
+# 选择动作不改任何入库文件，见 libraries/mus4_core/src/BoardProfile.h。
+$ResolvedDefines = @()
+foreach ($d in @($Define)) {
+    if (-not [string]::IsNullOrWhiteSpace($d)) {
+        $clean = $d.Trim()
+        if ($clean.StartsWith("-D")) { $clean = $clean.Substring(2).Trim() }
+        if (-not [string]::IsNullOrWhiteSpace($clean)) { $ResolvedDefines += $clean }
+    }
+}
+
 # --------------------------
 # 2. 前置检查
 # 优先级：-Check 强制开启 > -NoCheck 强制关闭 > 默认不检查
@@ -1316,10 +1338,46 @@ if ($Compile) {
         $syncTime = ((Get-Date) - $syncStart).TotalSeconds
     }
 
+    # 主控板档案：把 -D 宏以「追加」方式注入（与 arduino-cli.py 同语义，v1.10.15）
+    # 为什么用 compiler.{c,cpp}.extra_flags 而不是 build.extra_flags：
+    #   1) --build-property 对同一属性是整体覆盖，必须先读回原值再追加，否则抹掉平台宏
+    #      （CHANGELOG v1.10.14：直接覆盖 build.extra_flags 会让 FastLED 认错平台）；
+    #   2) build.extra_flags 在 esp32 平台展开后含 -DARDUINO_HOST_OS="linux" 这类带引号
+    #      的值，塞进 bash -lc '...' 命令行要做二次引号转义，易被 Windows/WSL 两侧 argv
+    #      拆分破坏；
+    #   3) compiler.{c,cpp}.extra_flags 平台默认为空、值无空格无引号，可安全内联。
+    # 若读回的原值含空格或引号，则显式报错退出，绝不静默注入被截断的宏。
+    $definePropertyArg = ""
+    if ($ResolvedDefines.Count -gt 0) {
+        $profileFlags = ($ResolvedDefines | ForEach-Object { "-D$_" }) -join " "
+        $propsCmd = "$script:ArduinoCliPath compile --show-properties --fqbn $FQBN$localLibrariesArg ""$WSLSketchPath"""
+        $propValues = @{ "compiler.c.extra_flags" = ""; "compiler.cpp.extra_flags" = "" }
+        foreach ($line in @(Invoke-WslCommand -Command $propsCmd -IgnoreExitCode)) {
+            $s = "$line"
+            if ($s.StartsWith("compiler.c.extra_flags=")) {
+                $propValues["compiler.c.extra_flags"] = $s.Substring(23).Trim()
+            } elseif ($s.StartsWith("compiler.cpp.extra_flags=")) {
+                $propValues["compiler.cpp.extra_flags"] = $s.Substring(25).Trim()
+            }
+        }
+        $propFragments = @()
+        foreach ($prop in @("compiler.c.extra_flags", "compiler.cpp.extra_flags")) {
+            $merged = if ([string]::IsNullOrWhiteSpace($propValues[$prop])) { $profileFlags } else { "$($propValues[$prop]) $profileFlags" }
+            $unsafe = ($merged -match '\s') -or $merged.Contains('"') -or $merged.Contains("'")
+            if ($unsafe) {
+                Write-Error "$prop 原值含空格或引号，无法安全内联 -D 宏；请改用 python3 arduino-cli.py -D：$merged"
+                exit 1
+            }
+            $propFragments += "--build-property $prop=$merged"
+        }
+        $definePropertyArg = " " + ($propFragments -join " ")
+        Write-Host "Board profile defines: $profileFlags" -ForegroundColor Cyan
+    }
+
     # 2. Compile
     $compileCmd = "wsl"
     $compileTask = if ($IoMode -eq "native") { "Compiling in WSL (Native FS)" } else { "Compiling in WSL (Mounted FS)" }
-    $compileArgs = "${distroPrefix}bash -lc '$script:ArduinoCliPath compile --fqbn $FQBN --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir""$localLibrariesArg ""$WSLSketchPath""'"
+    $compileArgs = "${distroPrefix}bash -lc '$script:ArduinoCliPath compile --fqbn $FQBN --build-path ""$WSLBuildDir"" --output-dir ""$WSLBuildDir""$localLibrariesArg$definePropertyArg ""$WSLSketchPath""'"
     $compileStart = Get-Date
     if (-not (Run-WithAnimation -Command $compileCmd -Arguments $compileArgs -TaskName $compileTask)) { exit 1 }
     $compileTime = ((Get-Date) - $compileStart).TotalSeconds
@@ -1340,6 +1398,21 @@ if ($Compile) {
         exit 1
     }
     $BinPath = $localBin.FullName
+
+    # 产物板型后缀：MUS4_FW.ino.bin → MUS4_FW_boardA.bin（与 arduino-cli.py --bin-tag 一致）
+    $resolvedBinTag = $BinTag
+    if ([string]::IsNullOrWhiteSpace($resolvedBinTag)) {
+        foreach ($d in $ResolvedDefines) {
+            if ($d.StartsWith("MUS4_BOARD_")) { $resolvedBinTag = "board" + $d.Substring(11); break }
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($resolvedBinTag)) {
+        $binName = [System.IO.Path]::GetFileName($BinPath)
+        $binStem = ($binName -replace '\.bin$', '') -replace '\.ino$', ''
+        $taggedBin = Join-Path (Split-Path -Parent $BinPath) "$($binStem)_$($resolvedBinTag).bin"
+        Copy-Item -Path $BinPath -Destination $taggedBin -Force
+        Write-Host "Board-profile artifact: $taggedBin" -ForegroundColor Cyan
+    }
 
     # Output Performance Report
     Write-Host "`n=== Performance Report ===" -ForegroundColor Yellow

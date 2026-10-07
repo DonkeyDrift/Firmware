@@ -138,6 +138,10 @@ http://192.168.4.1/
 # 清理 WSL 构建目录后重新编译
 .\arduino-cli-wsl.ps1 -Compile -Clean -Sketch MUS4_FW.ino
 
+# 编译另一块主控板的档案（板 B）——与 arduino-cli.py 的 -D 同为「追加」语义
+# 产物：build/MUS4_FW_boardB.bin
+.\arduino-cli-wsl.ps1 -Compile -Sketch MUS4_FW.ino -D MUS4_BOARD_B
+
 # 检查 WSL、rsync、arduino-cli 等依赖
 .\arduino-cli-wsl.ps1 -Check
 

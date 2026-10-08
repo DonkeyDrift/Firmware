@@ -213,6 +213,19 @@ python provisioning_system/tests/test_agent.py -v
 
 `provisioning_system/playwright_tests/` contains Playwright assets, but its current `npm test` script is a placeholder and exits with failure unless a real test script is added.
 
+### Build artifacts stay local
+
+`build/` (and `build/boardA/`, `build/boardB/`) is a **local build artifact directory**:
+it is `.gitignore`d and must never be committed. A full `arduino-cli` build leaves
+roughly 200-250 MB of object files, `.elf`, `.map`, and intermediate libraries behind.
+
+- Prefer a per-profile build dir so the A/B matrix does not cross-contaminate:
+  `tools/build_profiles.sh` writes `build/boardA/` and `build/boardB/`.
+- To reclaim disk after a build: `rm -rf build` — the next compile recreates it.
+- Only the small release binaries (`MUS4_FW_<tag>.bin`, bootloader, merged image)
+  are worth copying out of `build/` before wiping it; see `--bin-tag` in
+  [`arduino-cli.py`](arduino-cli.py).
+
 ## Data Collection and Pilot Tools
 
 ```bash

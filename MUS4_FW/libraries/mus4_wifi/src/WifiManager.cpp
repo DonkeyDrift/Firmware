@@ -25,6 +25,23 @@
 #endif
 #ifdef ENABLE_WIFI_LLMNR_DISCOVERY
 #include <WiFiUdp.h>
+
+// ── Phase 1: 非阻塞延时 ──────────────────────────────────────────────────
+// Wi-Fi AP/STA 状态转换函数（restartWifiApOnChannel / applyWifiStaCredentials /
+// stopWifiApForStaOnly 等）原本用 delay(N) 阻塞等待 Wi-Fi 栈完成模式切换。
+// 这些函数被 updateWifiSta() / updateWifiWebConsole() 在 loop() 中调用，
+// 阻塞会直接卡住 RC 滤波、控制融合、遥测发送。
+//
+// 改为 yield() 循环：让出 CPU 给 idle/WDT/其他 FreeRTOS 任务，同时保持
+// 相同的总等待时间，Wi-Fi 栈的模式切换在 yield 期间照样完成。
+// 对比：WebConsoleServer.cpp v1.7.26 的 OTA 上传已用同样的 yield() 模式。
+static void wifiYieldDelay(uint32_t ms)
+{
+    unsigned long start = millis();
+    while ((unsigned long)(millis() - start) < ms) {
+        yield();
+    }
+}
 #endif
 
 // Hardware objects defined in MUS4_FW.ino
@@ -673,10 +690,10 @@ static bool restartWifiApOnChannel(uint8_t channel)
     if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) return false;
     wifiCaptiveDnsServer.stop();
     WiFi.softAPdisconnect(false);
-    delay(100);
+    wifiYieldDelay(100);
     if (WiFi.getMode() != WIFI_AP_STA) {
         WiFi.mode(WIFI_AP_STA);
-        delay(50);
+        wifiYieldDelay(50);
     }
     return startWifiApServices("AP channel prealigned for STA", channel);
 }
@@ -721,7 +738,7 @@ void applyWifiStaCredentials()
         mus4LogLine("wifi", "STA apply: switching to AP_STA");
         // ESP-IDF 切到 AP_STA 后 STA netif 需要一小段时间初始化；不加这个延时
         // 紧接着的 STA begin 可能拿不到信道，会导致 timeout。
-        delay(50);
+        wifiYieldDelay(50);
     }
     if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
         startWifiApServices("AP restored for STA apply");
@@ -733,7 +750,7 @@ void applyWifiStaCredentials()
     // 不再显式调用 disconnectWifiStaOnly()——WiFi.begin 内部已调用
     // esp_wifi_disconnect()，重复调用可能导致竞态使 STA 连接静默失败。
     // 延时确保 Wi-Fi 栈处理完 prealignWifiApChannelForStaApply 可能的 AP 重启事件。
-    delay(100);
+    wifiYieldDelay(100);
     WiFi.setHostname(wifiMdnsHostText().c_str());
     WiFi.begin(wifiStaSsid, wifiStaPassword);
     mus4Logf("wifi", "STA connecting: ssid=\"%s\" pass_len=%d", wifiStaSsid, (int)strlen(wifiStaPassword));
@@ -821,7 +838,7 @@ bool ensureWifiApAvailable()
         mus4LogLine("wifi", "AP interface up, soft reset before reconfigure");
         wifiCaptiveDnsServer.stop();
         WiFi.softAPdisconnect(false);
-        delay(100);
+        wifiYieldDelay(100);
     }
     return startWifiApServices("AP ensured");
 }
@@ -831,12 +848,12 @@ bool restartWifiAp()
     wifiApRestartPending = false;
     wifiCaptiveDnsServer.stop();
     WiFi.softAPdisconnect(true);
-    delay(100);
+    wifiYieldDelay(100);
     // 保持 WIFI_AP_STA 不变，避免 AP-only ↔ AP_STA 反复切换重置 SoftAP、踢掉客户端。
     // STA 是否在线由 wifiStaConnected / wifiInApOnlyMode 语义管理，不依赖 mode。
     if (WiFi.getMode() != WIFI_AP_STA) {
         WiFi.mode(WIFI_AP_STA);
-        delay(50);
+        wifiYieldDelay(50);
     }
     wifiInApOnlyMode = !wifiStaConnected;
     return startWifiApServices("AP restarted");
@@ -857,11 +874,11 @@ static void stopWifiApForStaOnly()
     wifiApRestartPending = false;
     wifiCaptiveDnsServer.stop();
     WiFi.softAPdisconnect(true);
-    delay(100);
+    wifiYieldDelay(100);
     // 必须切到 WIFI_STA；仅保持 AP_STA 会导致默认 AP 残留。
     if (WiFi.getMode() != WIFI_STA) {
         WiFi.mode(WIFI_STA);
-        delay(50);
+        wifiYieldDelay(50);
     }
     // 切到 STA-only 后重新绑定 WebServer，让监听套接字只绑定 STA 接口。
     // 同时避免在 AP 仍在线的 grace 窗口内 close/begin，导致配置页面中断。
@@ -904,7 +921,7 @@ static void restoreApAfterStaLost()
     esp_wifi_disconnect();
     if (WiFi.getMode() != WIFI_AP_STA) {
         WiFi.mode(WIFI_AP_STA);
-        delay(50);
+        wifiYieldDelay(50);
     }
     wifiInApOnlyMode = true;
     ensureWifiApAvailable();
@@ -1010,7 +1027,7 @@ void setupWifiConsole()
     // 且可能引起 Wi-Fi 栈内部状态异常。
     mus4LogLine("wifi", "setup: mode OFF");
     WiFi.mode(WIFI_OFF);
-    delay(100);
+    wifiYieldDelay(100);
     // 全程保持 WIFI_AP_STA。SoftAP 负责 AP 兜底入口，STA 部分在配置存在时才
     // begin；AP 关闭（stopWifiApForStaOnly）或 STA 失败（restoreApAfterStaLost）
     // 时不再切 mode，只启停对应接口。这样彻底避免 AP↔AP_STA 反复切换导致的
@@ -1131,10 +1148,10 @@ static void showStaIpInApName()
     if (ch < 1 || ch > 14) ch = WIFI_CONSOLE_CHANNEL;
     wifiCaptiveDnsServer.stop();
     WiFi.softAPdisconnect(false);
-    delay(100);
+    wifiYieldDelay(100);
     if (WiFi.getMode() != WIFI_AP_STA) {
         WiFi.mode(WIFI_AP_STA);
-        delay(50);
+        wifiYieldDelay(50);
     }
     startWifiApServices("AP shows STA IP", ch);
     mus4Logf("wifi", "AP name shows STA IP: %s", g_staIpApSsidOverride.c_str());

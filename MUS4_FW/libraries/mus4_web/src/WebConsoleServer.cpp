@@ -1500,7 +1500,9 @@ static void handleWifiWebSwitchSlot()
     }
     wifiWebServer.send(200, "text/plain", "ACK:SWITCHING\n");
     recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
-    delay(100);
+    // v1.10.16: delay(100) -> yield() 让 WDT 喂狗；HTTP 响应已 send() 完成，
+    // ESP.restart() 前无需阻塞等待。yield() 循环保持相同的 100ms 窗口。
+    { unsigned long _t = millis(); while ((unsigned long)(millis() - _t) < 100) yield(); }
     ESP.restart();
 }
 
@@ -1690,7 +1692,9 @@ static void handleWifiWebUpdatePost()
     recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
     // 故障灯效延续到重启后：setup() 取标记重新启动乱闪，直到开机蜂鸣器播完
     markLedOtaGlitchAfterReboot();
-    delay(100);
+    // v1.10.16: delay(100) -> yield() 让 WDT 喂狗；HTTP 响应已 send() 完成，
+    // ESP.restart() 前无需阻塞等待。yield() 循环保持相同的 100ms 窗口。
+    { unsigned long _t = millis(); while ((unsigned long)(millis() - _t) < 100) yield(); }
     ESP.restart();
 }
 

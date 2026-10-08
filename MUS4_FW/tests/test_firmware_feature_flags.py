@@ -634,8 +634,9 @@ def test_apply_wifi_sta_credentials_restores_ap_before_begin():
     assert apply_body.index("startWifiApServices") < apply_body.index("WiFi.begin")
     # v1.7.21：mode 切换后需要一小段时间让 STA netif 完成重建，否则 WiFi.begin()
     # 拿不到信道导致 timeout。
-    assert "delay(50)" in apply_body
-    assert apply_body.index("WiFi.mode(WIFI_AP_STA)") < apply_body.index("delay(50)") < apply_body.index("WiFi.begin")
+    # v1.10.16：delay(50) → wifiYieldDelay(50)（非阻塞，yield 循环）。
+    assert "wifiYieldDelay(50)" in apply_body
+    assert apply_body.index("WiFi.mode(WIFI_AP_STA)") < apply_body.index("wifiYieldDelay(50)") < apply_body.index("WiFi.begin")
 
 
 def test_web_console_serial_log_display_is_limited_to_20_lines():

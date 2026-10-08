@@ -170,6 +170,13 @@ SerialBuf serial2Buf = {{0},0,0,0,false};
 void ensureWifiOtaStarted();
 #if __has_include("WirelessSecrets.h")
 #include "WirelessSecrets.h"
+
+// ── Phase 1: FirmwareApp 任务调度（可选启用） ─────────────────────────────
+// 当前 loop() 仍用传统 if (millis() - lastX >= intervalX) 模式。
+// FirmwareApp 提供统一的任务调度表，但为避免大规模重构风险，
+// 先以「影子模式」引入：记录任务执行时间但不接管调度。
+// 后续可逐步切换为 firmwareApp.update() 替代手动调度。
+#include "FirmwareApp.h"
 #endif
 #ifndef WIFI_STA_SSID
 #define WIFI_STA_SSID ""
@@ -557,6 +564,9 @@ static void handleSerial2()
 
 void setup()
 {
+
+    // Phase 1: FirmwareApp 初始化（影子模式，记录任务时间但不接管调度）
+    firmwareApp.begin();
     // Bind the shared Preferences instance into the runtime state before any
     // module uses wifiRuntime.prefs.
     wifiRuntime.prefs = &mus4Prefs;
@@ -956,4 +966,7 @@ void loop()
         lastPerfEval = now;
     }
     delay(5);
+
+    // Phase 1: FirmwareApp 更新（影子模式，记录任务时间但不接管调度）
+    firmwareApp.update();
 }

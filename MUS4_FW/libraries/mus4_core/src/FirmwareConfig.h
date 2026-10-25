@@ -106,6 +106,7 @@
 #define PARK_PWM_RELEASE_THRESHOLD 1300  // µs: below this is considered released
 
 #define RC_SIGNAL_TIMEOUT 1000000UL  // RC signal timeout (µs)
+#define PILOT_SIGNAL_TIMEOUT_MS 500UL // Pilot(Serial1/上位机) 控制流失效保护超时(ms)：FULL_AUTO 下超时即油门清零、转向回中（DD 端 60Hz 发送，余量充足）
 #define RC_PWM_MIN 800   // Minimum valid PWM (µs)
 #define RC_PWM_MAX 2200  // Maximum valid PWM (µs)
 #define ENABLE_RC_MCPWM_CAPTURE 0

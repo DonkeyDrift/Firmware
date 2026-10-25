@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-10-25 v1.10.14
+
+- fix(control): 第五轮审计（驾驶控制安全链）——FULL_AUTO 下 pilot 控制流补上失效保护（#185；DD 侧 4 项见 DonkeyDrift #508）
+  - 背景：RC 通道有 `RC_SIGNAL_TIMEOUT` 超时回中失效保护，但 pilot（上位机 Serial1）路径完全没有对等物——全自动模式下上位机崩溃/页面关闭/WS 断连时，最后一帧油门持续输出，直到人肉切 RC 模式/手刹，属安全缺陷。
+  - 盖戳（`libraries/mus4_command/src/CommandDispatcher.cpp` + `.h`）：`dispatchCommandLine` 每次成功解析 pilot T:S 帧即刷新全局 `pilot_last_frame_ms = millis()`——Serial1/Serial0/WiFi 控制台三条命令通道共用该解析路径，一处盖戳全覆盖。
+  - 失效保护（`libraries/mus4_control/src/ControlMixer.cpp`）：FULL_AUTO 分支基于 `millis() - pilot_last_frame_ms > PILOT_SIGNAL_TIMEOUT_MS`（新常量 500ms，`FirmwareConfig.h` 内与 `RC_SIGNAL_TIMEOUT` 并列定义；DD 端 60Hz 发送余量充足）判定 pilot 流超时：非 park 时油门强制 0、转向回中（0 过 drift assist，与 pilot 发 0:0 等价）；park 分支语义不变；MANUAL/SEMI_AUTO 与 RC 失效保护完全不受影响。
+  - 告警：超时触发/恢复各在状态变化沿打一次 mus4Log（source=failsafe），避免 60Hz 刷屏。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_pilot_stream_failsafe_stamps_last_frame_ms`（盖戳位于成功解析分支内 + 头文件导出）与 `test_pilot_stream_failsafe_full_auto_timeout_cuts_throttle`（500ms 常量在位、超时清油门、正常流仍直读不误杀、转向回中、边沿告警、SEMI_AUTO/MANUAL 分支不受影响）；版本断言 → v1.10.14 + changelog 链补 v1.10.13。
+  - 验证：pytest **376 + 31 subtests 全绿**；车固件 `python arduino-cli.py -c` 编译通过（211.97s，产物 1,763,712B，`strings` 实测含 v1.10.14 与 `MUS4APP:CAR` 标记）。
+  - OTA：合入后刷车（双槽流程：switch-slot 切桥 → /update 写 app1 → 切回，桥槽位 app0 不动），版本号 `BuildInfo.h` v1.10.14。
+
 ## 2026-10-25 v1.10.13
 
 - fix(ota): 2026-10-25 全项目审计的 3 项 OTA 鲁棒性修复（#181/#182/#183；DD 侧 2 项见 DonkeyDrift CHANGELOG (267)）

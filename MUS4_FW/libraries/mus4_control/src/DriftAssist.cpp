@@ -77,6 +77,19 @@ int apply_drift_assist(int driver_steering) {
         return driver_steering;
     }
 
+    // IMU 无效（断线/初始化失败）时不得盲打纠正：gyroZ 停更会让滤波值
+    // 收敛 0、yaw 误差恒非零，辅助将在无陀螺反馈下持续叠加转向（#186）。
+    // 油门策略 apply_drift_throttle 已有同款 valid 检查，转向路径补齐。
+    if (!mpu6050Data.valid) {
+        drift_assist_active = false;
+        drift_compensation = 0.0f;
+        gyro_z_filtered = 0.0f;
+        drift_yaw_error = 0.0f;
+        drift_steering_correction = 0.0f;
+        last_driver_steering_norm = driver_steering / 100.0f;
+        return driver_steering;
+    }
+
     // 1. 低通滤波 gyroZ
     gyro_z_filtered = gyro_z_filtered * (1.0f - drift_config.gyroFilterAlpha) +
                       mpu6050Data.gyroZ * drift_config.gyroFilterAlpha;

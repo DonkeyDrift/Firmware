@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-10-25 v1.10.14
+
+- fix(drift): apply_drift_assist 补 IMU 有效性检查——IMU 失效时漂移辅助不得在无陀螺反馈下盲打转向纠正（#186）
+  - 根因：`DriftAssist.cpp` 的 `apply_drift_throttle`（:133）有 `mpu6050Data.valid` 检查，转向路径 `apply_drift_assist` 漏了——IMU 断线/初始化失败后 gyroZ 停更，滤波值收敛 0、yaw 误差恒非零，辅助在完全没有反馈下持续叠加转向纠正（至 maxCorrection），车朝纠正方向持续偏航。
+  - 修复：函数开头（enabled 检查之后、滤波之前）加 `!mpu6050Data.valid` 分支——重置 drift_assist_active/drift_compensation/gyro_z_filtered/drift_yaw_error/drift_steering_correction，透传驾驶员转向。
+  - `BuildInfo.h` → v1.10.14；测试：`test_firmware_feature_flags.py` +2 用例（valid 存在且位于滤波之前、分支位于 enabled 之后滤波之前），全量 185 过；车固件编译 1,763,264 字节（203s）通过。
+  - 六轮审计区域②（ActuatorOutput/RC 捕获/RC 滤波/CommandParser）同步排查：钳位、NVS 载入校验、±100 范围校验、三级防抖确认均完备，无其它问题。
+
+# CHANGELOG.md
+
 ## 2026-10-25 v1.10.13
 
 - fix(ota): 2026-10-25 全项目审计的 3 项 OTA 鲁棒性修复（#181/#182/#183；DD 侧 2 项见 DonkeyDrift CHANGELOG (267)）

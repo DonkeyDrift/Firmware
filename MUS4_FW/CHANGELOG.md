@@ -1,5 +1,15 @@
 # CHANGELOG.md
 
+## 2026-10-25 v1.10.13
+
+- fix(ota): 2026-10-25 全项目审计的 3 项 OTA 鲁棒性修复（#181/#182/#183；DD 侧 2 项见 DonkeyDrift CHANGELOG (267)）
+  - fix #181（`libraries/mus4_web/src/WebConsoleServer.cpp` 与 `examples/RC_BLE_Bridge/RC_BLE_Bridge.ino` 两份同款代码）：槽位身份扫描 `identifyOtaPartitionKind` 的内层循环守卫 `i + MAGIC_LEN + 1 <= readLen` 只保证 MAGIC 后 1 字节在界内，随后 `memcmp(buf+i+8, "BRIDGE", 6)` 最多栈越界读 5 字节（"CAR" 分支 2 字节；标记恰落在 1040 字节缓冲区末尾时触发，实害趋近于零但属 UB）。修复：后缀比对各自判界（"CAR" 需 `i+MAGIC_LEN+3<=readLen`、"BRIDGE" 需 +6），被本块截断的标记仍由既有 16 字节跨块重叠覆盖，识别能力不变。
+  - fix #182（`examples/RC_BLE_Bridge/RC_BLE_Bridge.ino`）：HTTP /update 上传失败（begin 空间不足 / write 失败 / end 校验失败 / abort 任一）原实现只 printError，POST 仍回 `ACK:UPDATE_OK` 并重启。补上与车固件 `wifiWebUpdateErrorMsg` 同款的失败清理链：新增 `otaErrorMsg` 登记 `NACK:BEGIN_FAILED:<err>/WRITE_FAILED/END_FAILED:<err>/ABORTED`；POST 失败分支置前——回 500、`Update.abort()` 复位（防下次刷机 "already running" 卡死）、不重启；只有完整成功才 ACK + 重启；上传处理器失败后跳过后续写入/校验。
+  - fix #183（`WebConsoleServer.cpp` 补种分支）：`?boot=0` 补种模式拨回启动标志失败时原实现静默 500——此时启动标志仍指向对面槽位新镜像，下次任何原因重启都会意外进桥固件（「车突然变手柄桥」且无提示）。修复：失败先 `delay(10)` 重试一次 `esp_ota_set_boot_partition`（NVS 瞬时异常二次成功率高）；仍失败打出高显著度告警 `SEED BOOTFLAG RESTORE FAILED: ... next reboot will enter the other firmware image!` 并回 `NACK:SEED_BOOTFLAG_FAILED`。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 → v1.10.13 + changelog 链补 v1.10.12；新增 `test_ota_partition_scan_suffix_bounds_checks`（两份代码判界在位、旧守卫不得回归）与 `test_ota_seed_bootflag_restore_failure_retry_and_alarm`（seed 分支重试 + 告警在位）；`tests/test_rc_ble_bridge_example.py` 新增 `test_rc_ble_bridge_update_failure_chain_no_ack_no_restart`（失败链 NACK/Update 复位/不重启/失败分支先于 ACK）。
+  - 验证：pytest **374 + 31 subtests 全绿**；车固件 `python arduino-cli.py -c` 编译通过（207.8s，产物 1,763,248B，`strings` 实测含 v1.10.13 与 `MUS4APP:CAR` 标记）；桥固件 min_spiffs 编译通过（1,268,103B / 64%，`strings` 实测含 `MUS4APP:BRIDGE` 标记与 NACK 失败链文案）。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.13。
+
 ## 2026-10-02 v1.10.12
 
 - feat(ota): OTA 双启动槽位 A/B 切换——车固件与 RC_BLE_Bridge 手柄桥共存于两个 OTA 槽位，切换=改启动标志+重启（约 10 秒），不再每次整刷固件

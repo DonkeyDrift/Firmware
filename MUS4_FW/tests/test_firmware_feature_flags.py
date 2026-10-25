@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.12"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.13"' in build_info
+    assert "v1.10.12" in changelog
     assert "v1.10.11" in changelog
     assert "v1.10.10" in changelog
     assert "v1.10.9" in changelog
@@ -4582,6 +4583,44 @@ def test_ota_dual_boot_slot_switching():
     seed_idx = post_body.index("s_otaSeedNoBoot")
     restart_idx = post_body.index("ESP.restart()")
     assert seed_idx < restart_idx  # 补种分支在重启之前 return
+
+
+def test_ota_partition_scan_suffix_bounds_checks():
+    """v1.10.13（#181）：槽位身份扫描的后缀 memcmp 必须各自做边界判断，
+    杜绝标记落在缓冲区末尾时的栈越界读；旧的 +1 单一循环守卫不得回归。"""
+    server_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+    bridge_ino = (
+        PROJECT_ROOT / "examples" / "RC_BLE_Bridge" / "RC_BLE_Bridge.ino"
+    ).read_text(encoding="utf-8")
+
+    for source in (server_cpp, bridge_ino):
+        # "CAR"（3 字节）与 "BRIDGE"（6 字节）各自先判界再 memcmp
+        assert "i + MAGIC_LEN + 3 <= readLen" in source
+        assert "i + MAGIC_LEN + 6 <= readLen" in source
+        # 旧的单一守卫（只保证 MAGIC 后 1 字节在界内）必须移除
+        assert "i + MAGIC_LEN + 1 <= readLen" not in source
+
+
+def test_ota_seed_bootflag_restore_failure_retry_and_alarm():
+    """v1.10.13（#183）：补种模式 boot 标志拨回失败时先重试一次，仍失败则
+    高显著度告警「下次重启将进入对面槽位」——拨回失败不能静默 500 了事。"""
+    server_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+
+    seed_branch = re.search(
+        r"if \(s_otaSeedNoBoot\) \{(?P<body>.*?)\n            \} else \{",
+        server_cpp,
+        re.DOTALL,
+    ).group("body")
+    # 重试：seed 分支内 set_boot_partition 至少出现两次（首试 + 重试）
+    assert seed_branch.count("esp_ota_set_boot_partition") >= 2
+    # 失败告警必须点明后果（下次重启进对面槽位）
+    assert "SEED BOOTFLAG RESTORE FAILED" in seed_branch
+    assert "other firmware image" in seed_branch
+    assert "NACK:SEED_BOOTFLAG_FAILED" in server_cpp
 
 
 def test_ota_button_opens_in_same_tab():

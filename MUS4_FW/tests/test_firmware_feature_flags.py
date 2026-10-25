@@ -274,7 +274,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.13"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.14"' in build_info
     assert "v1.10.12" in changelog
     assert "v1.10.11" in changelog
     assert "v1.10.10" in changelog
@@ -5897,3 +5897,30 @@ def test_wifi_sta_history_retry_window_accepts_unconfigured_sta():
     assert "wifiStaHistoryCount() > 0" in window
     # 历史为空时仍由函数体内既有兜底分支拦截，不会空转扫描
     assert "if (wifiStaHistoryCount() == 0)" in retry_body
+
+
+def test_drift_assist_requires_valid_imu():
+    """v1.10.14（#186）：apply_drift_assist 必须先检查 mpu6050Data.valid——
+    IMU 失效时重置滤波状态并透传驾驶员转向，不得在无陀螺反馈下叠纠正。"""
+    src = (PROJECT_ROOT / "libraries/mus4_control/src/DriftAssist.cpp").read_text(encoding="utf-8")
+
+    assert "mpu6050Data.valid" in src, "apply_drift_assist 必须检查 IMU 有效性"
+    # valid 检查须在 gyro 滤波之前（先于 gyro_z_filtered 的使用）
+    valid_idx = src.index("mpu6050Data.valid")
+    filter_idx = src.index("gyro_z_filtered = gyro_z_filtered *")
+    assert valid_idx < filter_idx, "IMU valid 检查必须在滤波计算之前"
+    # 检查分支必须透传并复位状态
+    seg = src[valid_idx - 200:valid_idx + 400]
+    assert "return driver_steering" in seg, "IMU 无效分支必须透传驾驶员转向"
+
+
+def test_drift_assist_valid_check_before_enabled_return():
+    """v1.10.14（#186）：valid 检查位于 drift_assist_enabled 检查之后、
+    滤波之前（disabled 分支保持原样，valid 分支新增）。"""
+    src = (PROJECT_ROOT / "libraries/mus4_control/src/DriftAssist.cpp").read_text(encoding="utf-8")
+    fn_start = src.index("int apply_drift_assist")
+    fn = src[fn_start:fn_start + 2000]
+    enabled_idx = fn.index("if (!drift_assist_enabled)")
+    valid_idx = fn.index("mpu6050Data.valid")
+    filter_idx = fn.index("gyro_z_filtered = gyro_z_filtered *")
+    assert enabled_idx < valid_idx < filter_idx

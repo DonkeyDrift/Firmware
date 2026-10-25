@@ -1429,10 +1429,12 @@ static String identifyOtaPartitionKind(const esp_partition_t* part)
         uint32_t readOff = (off >= 16) ? off - 16 : 0;
         size_t readLen = chunk + ((off >= 16) ? 16 : 0);
         if (esp_partition_read(part, readOff, buf, readLen) != ESP_OK) break;
-        for (size_t i = 0; i + MAGIC_LEN + 1 <= readLen; i++) {
+        for (size_t i = 0; i + MAGIC_LEN <= readLen; i++) {
             if (memcmp(buf + i, MAGIC, MAGIC_LEN) != 0) continue;
-            if (memcmp(buf + i + MAGIC_LEN, "CAR", 3) == 0) return "car";
-            if (memcmp(buf + i + MAGIC_LEN, "BRIDGE", 6) == 0) return "bridge";
+            // 后缀比对各自做边界判断，杜绝 memcmp 栈越界读（#181）；
+            // 后缀被本块截断的标记由下一块的 16 字节重叠重新覆盖，不会漏检
+            if (i + MAGIC_LEN + 3 <= readLen && memcmp(buf + i + MAGIC_LEN, "CAR", 3) == 0) return "car";
+            if (i + MAGIC_LEN + 6 <= readLen && memcmp(buf + i + MAGIC_LEN, "BRIDGE", 6) == 0) return "bridge";
         }
     }
     return "unknown";
@@ -1633,11 +1635,18 @@ static void handleWifiWebUpdateUpload()
             if (s_otaSeedNoBoot) {
                 // Update.end() 已把启动标志指到新写入的对面槽位；补种模式
                 // 立刻拨回当前运行槽位——镜像落盘但本次不启动它、不重启。
-                if (esp_ota_set_boot_partition(esp_ota_get_running_partition()) == ESP_OK) {
+                // 拨回失败时启动标志仍指向对面槽位的新镜像，下次任何原因的
+                // 重启都会进入对面固件（#183）——先重试一次，仍失败则高显著度告警。
+                esp_err_t bootFlagErr = esp_ota_set_boot_partition(esp_ota_get_running_partition());
+                if (bootFlagErr != ESP_OK) {
+                    delay(10);  // NVS 瞬时异常：稍候重试一次
+                    bootFlagErr = esp_ota_set_boot_partition(esp_ota_get_running_partition());
+                }
+                if (bootFlagErr == ESP_OK) {
                     mus4LogLine("ota", "seed mode: image written to other slot, boot flag kept on running slot");
                 } else {
                     wifiWebUpdateErrorMsg = "NACK:SEED_BOOTFLAG_FAILED";
-                    mus4LogLine("ota", "seed mode: failed to restore boot flag");
+                    mus4LogLine("ota", "SEED BOOTFLAG RESTORE FAILED: boot flag still points to the OTHER slot - next reboot will enter the other firmware image!");
                 }
             } else {
                 mus4LogLine("ota", "http update success");

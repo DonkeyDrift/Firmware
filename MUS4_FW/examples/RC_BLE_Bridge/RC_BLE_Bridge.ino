@@ -156,6 +156,9 @@ void sendGamepadPacket()
 
 // ---------- HTTP /update（回刷通道 2）：POST multipart 文件字段 "update" ----------
 static bool otaStarted = false;
+// 上传失败原因（#182）：非空时 POST 一律 5xx NACK、不重启、复位 Update——
+// 与车固件 WebConsoleServer 的 wifiWebUpdateErrorMsg 清理链同款语义
+static String otaErrorMsg = "";
 
 // ---------- OTA 双启动槽位（与车固件互为 A/B 面） ----------
 // 槽位身份标记：车固件嵌入 "MUS4APP:CAR"，本桥嵌入 "MUS4APP:BRIDGE"，
@@ -187,11 +190,13 @@ static String identifyOtaPartitionKind(const esp_partition_t *part)
         uint32_t readOff = (off >= 16) ? off - 16 : 0;
         size_t readLen = chunk + ((off >= 16) ? 16 : 0);
         if (esp_partition_read(part, readOff, buf, readLen) != ESP_OK) break;
-        for (size_t i = 0; i + MAGIC_LEN + 1 <= readLen; i++)
+        for (size_t i = 0; i + MAGIC_LEN <= readLen; i++)
         {
             if (memcmp(buf + i, MAGIC, MAGIC_LEN) != 0) continue;
-            if (memcmp(buf + i + MAGIC_LEN, "CAR", 3) == 0) return "car";
-            if (memcmp(buf + i + MAGIC_LEN, "BRIDGE", 6) == 0) return "bridge";
+            // 后缀比对各自做边界判断，杜绝 memcmp 栈越界读（#181）；
+            // 后缀被本块截断的标记由下一块的 16 字节重叠重新覆盖，不会漏检
+            if (i + MAGIC_LEN + 3 <= readLen && memcmp(buf + i + MAGIC_LEN, "CAR", 3) == 0) return "car";
+            if (i + MAGIC_LEN + 6 <= readLen && memcmp(buf + i + MAGIC_LEN, "BRIDGE", 6) == 0) return "bridge";
         }
     }
     return "unknown";
@@ -262,6 +267,16 @@ static void handleUpdateGet()
 
 static void handleUpdatePost()
 {
+    // 失败路径：5xx + 具体错误，不重启；复位 Update 防 "already running"
+    // 卡死后续刷机（#182，对齐车固件 resetOtaAfterFailedUpload 语义）
+    if (otaErrorMsg.length() > 0)
+    {
+        if (Update.isRunning()) Update.abort();
+        otaServer.send(500, "text/plain", otaErrorMsg + "\n");
+        otaErrorMsg = "";
+        otaStarted = false;
+        return;
+    }
     // 鉴权要求与车端一致：只有确实发生过上传才重启，空 POST 直接 400
     if (otaStarted)
     {
@@ -280,23 +295,33 @@ static void handleUpdateUpload()
     HTTPUpload &upload = otaServer.upload();
     if (upload.status == UPLOAD_FILE_START)
     {
+        otaErrorMsg = "";
         otaStarted = true;
         if (!Update.begin(UPDATE_SIZE_UNKNOWN))
         {
+            otaErrorMsg = "NACK:BEGIN_FAILED:" + String(Update.errorString());
             Update.printError(Serial);
         }
     }
     else if (upload.status == UPLOAD_FILE_WRITE)
     {
+        if (otaErrorMsg.length() > 0) return;
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
         {
+            otaErrorMsg = "NACK:WRITE_FAILED";
             Update.printError(Serial);
         }
     }
     else if (upload.status == UPLOAD_FILE_END)
     {
+        if (otaErrorMsg.length() > 0)
+        {
+            Update.end();
+            return;
+        }
         if (!Update.end(true))
         {
+            otaErrorMsg = "NACK:END_FAILED:" + String(Update.errorString());
             Update.printError(Serial);
         }
     }
@@ -304,6 +329,7 @@ static void handleUpdateUpload()
     {
         Update.abort();
         otaStarted = false;
+        otaErrorMsg = "NACK:ABORTED";
     }
 }
 

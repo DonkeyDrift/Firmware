@@ -1,5 +1,16 @@
 # CHANGELOG.md
 
+## 2026-10-25 v1.10.15
+
+- fix(control): 第五轮审计（驾驶控制安全链）——FULL_AUTO 下 pilot 控制流补上失效保护（#185；DD 侧 4 项见 DonkeyDrift #508；版本让号说明：与 #186 并行开发撞号 v1.10.14，按 v1.8.55/56 先例后到者让号改 v1.10.15）
+  - 背景：RC 通道有 `RC_SIGNAL_TIMEOUT` 超时回中失效保护，但 pilot（上位机 Serial1）路径完全没有对等物——全自动模式下上位机崩溃/页面关闭/WS 断连时，最后一帧油门持续输出，直到人肉切 RC 模式/手刹，属安全缺陷。
+  - 盖戳（`libraries/mus4_command/src/CommandDispatcher.cpp` + `.h`）：`dispatchCommandLine` 每次成功解析 pilot T:S 帧即刷新全局 `pilot_last_frame_ms = millis()`——Serial1/Serial0/WiFi 控制台三条命令通道共用该解析路径，一处盖戳全覆盖。
+  - 失效保护（`libraries/mus4_control/src/ControlMixer.cpp`）：FULL_AUTO 分支基于 `millis() - pilot_last_frame_ms > PILOT_SIGNAL_TIMEOUT_MS`（新常量 500ms，`FirmwareConfig.h` 内与 `RC_SIGNAL_TIMEOUT` 并列定义；DD 端 60Hz 发送余量充足）判定 pilot 流超时：非 park 时油门强制 0、转向回中（0 过 drift assist，与 pilot 发 0:0 等价）；park 分支语义不变；MANUAL/SEMI_AUTO 与 RC 失效保护完全不受影响。
+  - 告警：超时触发/恢复各在状态变化沿打一次 mus4Log（source=failsafe），避免 60Hz 刷屏。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_pilot_stream_failsafe_stamps_last_frame_ms`（盖戳位于成功解析分支内 + 头文件导出）与 `test_pilot_stream_failsafe_full_auto_timeout_cuts_throttle`（500ms 常量在位、超时清油门、正常流仍直读不误杀、转向回中、边沿告警、SEMI_AUTO/MANUAL 分支不受影响）；版本断言 → v1.10.15 + changelog 链补 v1.10.14/v1.10.13。
+  - 验证：让号前 pytest 376 + 31 subtests 全绿、编译通过（211.97s，1,763,712B，含 v1.10.14 与 MUS4APP:CAR）；让号后（v1.10.15）重跑数据见工程日志。
+  - OTA：合入后刷车（双槽流程：switch-slot 切桥 → /update 写 app1 → 切回，桥槽位 app0 不动），版本号 `BuildInfo.h` v1.10.15。
+
 ## 2026-10-25 v1.10.14
 
 - fix(drift): apply_drift_assist 补 IMU 有效性检查——IMU 失效时漂移辅助不得在无陀螺反馈下盲打转向纠正（#186）
@@ -7,8 +18,6 @@
   - 修复：函数开头（enabled 检查之后、滤波之前）加 `!mpu6050Data.valid` 分支——重置 drift_assist_active/drift_compensation/gyro_z_filtered/drift_yaw_error/drift_steering_correction，透传驾驶员转向。
   - `BuildInfo.h` → v1.10.14；测试：`test_firmware_feature_flags.py` +2 用例（valid 存在且位于滤波之前、分支位于 enabled 之后滤波之前），全量 185 过；车固件编译 1,763,264 字节（203s）通过。
   - 六轮审计区域②（ActuatorOutput/RC 捕获/RC 滤波/CommandParser）同步排查：钳位、NVS 载入校验、±100 范围校验、三级防抖确认均完备，无其它问题。
-
-# CHANGELOG.md
 
 ## 2026-10-25 v1.10.13
 

@@ -274,7 +274,9 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.14"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.15"' in build_info
+    assert "v1.10.14" in changelog
+    assert "v1.10.13" in changelog
     assert "v1.10.12" in changelog
     assert "v1.10.11" in changelog
     assert "v1.10.10" in changelog
@@ -5897,6 +5899,67 @@ def test_wifi_sta_history_retry_window_accepts_unconfigured_sta():
     assert "wifiStaHistoryCount() > 0" in window
     # 历史为空时仍由函数体内既有兜底分支拦截，不会空转扫描
     assert "if (wifiStaHistoryCount() == 0)" in retry_body
+
+
+def test_pilot_stream_failsafe_stamps_last_frame_ms():
+    """v1.10.15（#185）：dispatchCommandLine 每次成功解析 pilot T:S 帧都要刷新
+    pilot_last_frame_ms 时间戳并对外导出——这是 FULL_AUTO 失效保护的唯一判据来源，
+    之前 pilot 路径完全没有 RC_SIGNAL_TIMEOUT 的对等物。"""
+    dispatcher_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.cpp"
+    ).read_text(encoding="utf-8")
+    dispatcher_h = (
+        PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.h"
+    ).read_text(encoding="utf-8")
+
+    ok_branch = re.search(
+        r"if \(ok\) \{(?P<body>.*?)\n    \}",
+        dispatcher_cpp,
+        re.DOTALL,
+    ).group("body")
+    # 盖戳必须与写 pilot_data 在同一成功分支内（Serial1/Serial0/WiFi 控制台共用此路径）
+    assert "pilot_data.throttle = t;" in ok_branch
+    assert "pilot_last_frame_ms = millis();" in ok_branch
+    # 全局变量对 ControlMixer 可见
+    assert "extern unsigned long pilot_last_frame_ms;" in dispatcher_h
+    assert "unsigned long pilot_last_frame_ms = 0;" in dispatcher_cpp
+
+
+def test_pilot_stream_failsafe_full_auto_timeout_cuts_throttle():
+    """v1.10.15（#185）：FULL_AUTO 下 pilot 控制流超时（上位机崩溃/页面关闭/WS
+    断连）必须油门清零、转向回中；正常流不误杀（仍直读 pilot_data）；MANUAL/
+    SEMI_AUTO 与 RC 失效保护语义不受影响；告警只在状态变化沿打一次。"""
+    mixer_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.cpp"
+    ).read_text(encoding="utf-8")
+    config_h = (
+        PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h"
+    ).read_text(encoding="utf-8")
+
+    # 500ms 超时常量与 RC_SIGNAL_TIMEOUT 并列定义
+    assert "#define PILOT_SIGNAL_TIMEOUT_MS 500UL" in config_h
+
+    mixer_fn = re.search(
+        r"void updateControlOutput\(\)\s*\{(?P<body>.*)\}",
+        mixer_cpp,
+        re.DOTALL,
+    ).group("body")
+    full_auto, _, other_modes = mixer_fn.partition("else if (car_output.mode == CAR_MODE_SEMI_AUTO)")
+
+    # 超时判据基于 pilot_last_frame_ms + PILOT_SIGNAL_TIMEOUT_MS
+    assert "millis() - pilot_last_frame_ms" in full_auto
+    assert "PILOT_SIGNAL_TIMEOUT_MS" in full_auto
+    # 超时 → 油门 0；正常流 → 仍直读 pilot_data.throttle（不误杀）
+    assert "car_output.throttle = 0;" in full_auto
+    assert "car_output.throttle = pilot_data.throttle;" in full_auto
+    # 转向超时回中（0 过 drift assist 与 pilot 发 0 等价），正常流直读
+    assert "apply_drift_assist(pilotAlive ? pilot_data.steering : 0)" in full_auto
+    # 告警只在失效/恢复状态变化沿打一次（防 60Hz 刷屏），且有恢复日志
+    assert "pilotFailsafeActive" in full_auto
+    assert 'mus4Logf("failsafe"' in full_auto
+    assert 'mus4LogLine("failsafe"' in full_auto
+    # MANUAL/SEMI_AUTO 分支不受 pilot 失效保护影响
+    assert "pilot_last_frame_ms" not in other_modes
 
 
 def test_drift_assist_requires_valid_imu():

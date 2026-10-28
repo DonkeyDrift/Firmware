@@ -75,10 +75,16 @@
 #define SEND_INTERVAL_MS 20  // 发送节奏 50Hz，避免淹没 BLE 通知通道
 
 // ---------- WiFi / OTA（回刷通道） ----------
-#define WIFI_STA_TIMEOUT_MS 15000          // STA 连接超时，超时转 AP 兜底
+#define WIFI_STA_TIMEOUT_MS 15000          // STA 开机首次连接超时，超时转 AP 兜底
+#define WIFI_STA_RETRY_INTERVAL_MS 30000   // STA 失败/掉线后的重试间隔（#189：退 AP 后必须持续重试，否则设备永久离线）
 #define BRIDGE_AP_SSID "MUS4-RC-Bridge"    // 兜底 AP（开放，与车端 WIFI_CONSOLE_AP_PASSWORD 为空的习惯一致）
 #define OTA_HOSTNAME "mus4-rc-bridge"      // ArduinoOTA 主机名（端口 3232）
 #define OTA_PASSWORD "mus4-debug"          // ArduinoOTA 密码（与车端一致）
+
+// STA 维护状态（#189）：开机失败退 AP 后 30s 周期重试，连上关 AP 回局域网
+static bool staConfigured = false;         // 有密钥且期望 STA（无密钥时纯 AP 是用户选择，不重试）
+static bool apFallbackOpen = false;        // 兜底 AP 当前是否开着
+static unsigned long lastStaAttemptMs = 0; // 上次发起 WiFi.begin 的时刻
 
 BleGamepad bleGamepad("Gamepad MU02", "Espressif", 100);
 WebServer otaServer(80);
@@ -333,18 +339,55 @@ static void handleUpdateUpload()
     }
 }
 
+// STA 周期维护（#189）：开机失败退 AP / 运行中掉线后持续重试，直到连回局域网。
+// 无密钥（staConfigured=false）时纯 AP 是用户选择，不重试；连上后关兜底 AP
+// 回归 STA 单模，对齐「STA 成功则不开 AP」的既有语义。
+static void maintainSta()
+{
+    if (!staConfigured)
+        return;
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        if (apFallbackOpen)
+        {
+            // 重试成功：关兜底 AP 回归 STA 单模（IP 可能从 192.168.4.1 变为路由器分配，上报）
+            WiFi.softAPdisconnect(true);
+            WiFi.mode(WIFI_STA);
+            apFallbackOpen = false;
+            Serial.printf("WiFi STA 重连成功，已关兜底 AP，IP=%s\n",
+                          WiFi.localIP().toString().c_str());
+        }
+        return;
+    }
+
+    if (millis() - lastStaAttemptMs < WIFI_STA_RETRY_INTERVAL_MS)
+        return;
+
+    // AP 开着时必须 AP+STA 共存模式重试，否则 WiFi.begin 会把兜底 AP 拆掉，
+    // 正经连在 AP 上刷机的主机会被踢断
+    WiFi.mode(apFallbackOpen ? WIFI_AP_STA : WIFI_STA);
+    WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASSWORD);
+    lastStaAttemptMs = millis();
+    Serial.println("WiFi STA 重试连接中…");
+}
+
 static void setupWifiAndOta()
 {
     bool staOk = false;
     if (WIFI_STA_SSID[0] != '\0')
     {
+        staConfigured = true;
         WiFi.mode(WIFI_STA);
+        // 已连接后路由器重启等掉线场景由底层自动重连；开机失败场景由 maintainSta 周期重试兜底
+        WiFi.setAutoReconnect(true);
         WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASSWORD);
         unsigned long start = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_STA_TIMEOUT_MS)
         {
             delay(250);
         }
+        lastStaAttemptMs = millis();
         staOk = (WiFi.status() == WL_CONNECTED);
     }
 
@@ -357,8 +400,10 @@ static void setupWifiAndOta()
         // 兜底 AP：连不上家里 Wi-Fi（或没有密钥文件）时也能通过 192.168.4.1 刷回
         WiFi.mode(WIFI_AP);
         WiFi.softAP(BRIDGE_AP_SSID);
-        Serial.printf("WiFi STA 失败，已开兜底 AP \"%s\"，IP=%s\n",
-                      BRIDGE_AP_SSID, WiFi.softAPIP().toString().c_str());
+        apFallbackOpen = staConfigured; // 有密钥才开重试（纯 AP 模式 AP 本就常开）
+        Serial.printf("WiFi STA 失败，已开兜底 AP \"%s\"，IP=%s（每 %lus 重试 STA）\n",
+                      BRIDGE_AP_SSID, WiFi.softAPIP().toString().c_str(),
+                      WIFI_STA_RETRY_INTERVAL_MS / 1000UL);
     }
 
     // 回刷通道 1：ArduinoOTA（端口 3232）
@@ -401,6 +446,7 @@ void loop()
     sendGamepadPacket();
     ArduinoOTA.handle();
     otaServer.handleClient();
+    maintainSta();
 
     // 调试输出：连接后每 500ms 打印一次脉宽，方便不接电脑也能核对信号
     static unsigned long lastPrintMs = 0;

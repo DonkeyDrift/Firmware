@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-10-28（RC_BLE_Bridge 增加 STA 掉线/失败重试，车上固件无版本变更）
+
+- fix(bridge): 桥固件 STA 失败/掉线后永久停留兜底 AP——补上周期重试（#189，用户实测反馈：双槽 OTA 期间桥不自动回连家庭 Wi-Fi，必须人工连桥 AP 才能继续，"不手动切换就永远连不上"）
+  - 根因：`RC_BLE_Bridge.ino` 的 STA 只在 `setup()` 里尝试一次（15s 超时），失败即 `WiFi.mode(WIFI_AP)` 开兜底 AP，`loop()` 无任何重连逻辑——路由器繁忙/DHCP 慢等瞬时失败即永久离线。
+  - 修复（`examples/RC_BLE_Bridge/RC_BLE_Bridge.ino`）：新增 `WIFI_STA_RETRY_INTERVAL_MS=30000` 与 `maintainSta()`（loop 每帧调用）：无密钥不重试（纯 AP 是用户选择）；未连接且距上次尝试 ≥30s → `WIFI_AP_STA` 共存模式下重试 `WiFi.begin`（非阻塞；AP 开着时必须共存模式，否则 begin 会拆掉兜底 AP 踢断正连着刷机的主机）；连上后 `softAPdisconnect(true)` 关兜底 AP 回归 STA 单模（对齐「STA 成功不开 AP」既有语义）并上报新 IP；`setup` 里补 `WiFi.setAutoReconnect(true)` 覆盖已连接后掉线场景，`lastStaAttemptMs` 记录重试起点。
+  - 测试：`tests/test_rc_ble_bridge_example.py` 新增 `test_rc_ble_bridge_sta_retry_after_ap_fallback`（30s 常量、loop 调用、无密钥不重试、共存模式重试、连上关 AP、setAutoReconnect 在位）；全量 **379 + 31 subtests 全绿**。
+  - 编译：min_spiffs 带密钥版通过（1,269,232B，重试日志串实测在 bin 内）；OTA 以 `?boot=0` 补种模式写入车 app0 槽位（车固件 app1 v1.10.15 不动）。
+  - 排障记录：无密钥占位版（SSID 空）编译时 GCC 把 maintainSta 函数体证明为死代码整段消除（`staConfigured` 恒 false），bin 里搜不到重试日志串属预期——验证桥固件新逻辑必须用带 `WirelessSecrets.h` 的本地构建。
+
 ## 2026-10-25 v1.10.15
 
 - fix(control): 第五轮审计（驾驶控制安全链）——FULL_AUTO 下 pilot 控制流补上失效保护（#185；DD 侧 4 项见 DonkeyDrift #508；版本让号说明：与 #186 并行开发撞号 v1.10.14，按 v1.8.55/56 先例后到者让号改 v1.10.15）

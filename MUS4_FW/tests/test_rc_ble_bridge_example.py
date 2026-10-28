@@ -168,3 +168,33 @@ def test_rc_ble_bridge_update_failure_chain_no_ack_no_restart():
         re.DOTALL,
     ).group("body")
     assert upload_body.index("NACK:WRITE_FAILED") > upload_body.index("otaErrorMsg.length() > 0) return")
+
+
+def test_rc_ble_bridge_sta_retry_after_ap_fallback():
+    """#189：桥固件 STA 开机失败退兜底 AP 后必须持续重试——之前 setup() 里只试
+    15s、失败永久停留 192.168.4.1，双槽 OTA 期间设备离线、必须人工连桥 AP 干预。"""
+    source = bridge_source()
+
+    # 30s 重试间隔常量在位
+    assert "#define WIFI_STA_RETRY_INTERVAL_MS 30000" in source
+
+    # loop() 必须调用维护函数（每帧检查，非阻塞）
+    loop_body = re.search(r"void loop\(\)\s*\{(?P<body>.*?)\n\}", source, re.DOTALL).group("body")
+    assert "maintainSta();" in loop_body
+
+    # 维护函数本体：无密钥不重试（纯 AP 是用户选择）
+    fn = re.search(r"static void maintainSta\(\)\s*\{(?P<body>.*?)\n\}", source, re.DOTALL).group("body")
+    assert "if (!staConfigured)" in fn
+    # 按间隔节流重试
+    assert "WIFI_STA_RETRY_INTERVAL_MS" in fn and "WiFi.begin" in fn
+    # AP 开着时必须 AP+STA 共存重试，否则 begin 会拆掉兜底 AP 踢断正在刷机的主机
+    assert "apFallbackOpen ? WIFI_AP_STA : WIFI_STA" in fn
+    # 连上后关兜底 AP 回归 STA 单模（对齐「STA 成功则不开 AP」既有语义）
+    assert "WiFi.softAPdisconnect(true)" in fn
+    assert 'Serial.printf("WiFi STA 重连成功' in fn
+
+    # setup：有密钥时开启底层自动重连（掉线场景）；开机失败记录重试起点
+    setup_fn = re.search(r"static void setupWifiAndOta\(\)\s*\{(?P<body>.*?)\n    // 回刷通道", source, re.DOTALL).group("body")
+    assert "WiFi.setAutoReconnect(true)" in setup_fn
+    assert "staConfigured = true;" in setup_fn
+    assert "lastStaAttemptMs = millis();" in setup_fn

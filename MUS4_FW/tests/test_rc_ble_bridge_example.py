@@ -198,3 +198,33 @@ def test_rc_ble_bridge_sta_retry_after_ap_fallback():
     assert "WiFi.setAutoReconnect(true)" in setup_fn
     assert "staConfigured = true;" in setup_fn
     assert "lastStaAttemptMs = millis();" in setup_fn
+
+
+def test_rc_ble_bridge_ap_fallback_delayed_when_sta_fails():
+    """#191：有密钥但 STA 失败时兜底 AP 不得立即广播——开机累计 2 分钟连不上
+    才开。之前开机即广播，周边设备（NetworkManager 自动连接）在路由器波动时
+    被诱连到这个强信号开放热点且不再回连，用户三次接显示器手动救援。"""
+    source = bridge_source()
+
+    # 2 分钟延迟常量在位
+    assert "#define WIFI_AP_FALLBACK_DELAY_MS 120000UL" in source
+
+    # maintainSta：未连上 + AP 未开 + 超过延迟窗口 → 开兜底 AP（AP+STA 共存，STA 重试继续）
+    fn = re.search(r"static void maintainSta\(\)\s*\{(?P<body>.*?)\n\}", source, re.DOTALL).group("body")
+    assert "if (!apFallbackOpen && millis() >= WIFI_AP_FALLBACK_DELAY_MS)" in fn
+    delay_idx = fn.index("WIFI_AP_FALLBACK_DELAY_MS)")
+    delay_seg = fn[delay_idx:delay_idx + 500]
+    assert "WiFi.mode(WIFI_AP_STA);" in delay_seg
+    assert "WiFi.softAP(BRIDGE_AP_SSID);" in delay_seg
+    assert "apFallbackOpen = true;" in delay_seg
+
+    # setup 有密钥失败分支不再立即开 AP：日志说明延迟策略，其后 400 字符内无 softAP
+    setup_fn = re.search(
+        r"static void setupWifiAndOta\(\)\s*\{(?P<body>.*?)\n    // 回刷通道", source, re.DOTALL
+    ).group("body")
+    assert "连不上才开兜底 AP" in setup_fn
+    sta_fail_body = setup_fn[setup_fn.index("WiFi STA 首试失败"):setup_fn.index("WiFi STA 首试失败") + 400]
+    assert "softAP" not in sta_fail_body
+    # 无密钥占位版保持立即开 AP（本地无密钥环境的刷机兜底通道）
+    no_secret_body = setup_fn[setup_fn.index("无 STA 密钥") - 300:setup_fn.index("无 STA 密钥") + 100]
+    assert "WiFi.softAP(BRIDGE_AP_SSID);" in no_secret_body

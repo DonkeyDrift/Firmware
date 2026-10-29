@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## 2026-10-29（RC_BLE_Bridge 兜底 AP 延迟开启，车上固件无版本变更）
+
+- fix(bridge): 兜底 AP 延迟 2 分钟开启——正常环境（STA 可连）桥 AP 从不广播，杜绝诱连周边设备（#191，#189 后续；2026-10-28 用户三次断连事故的源头加固：主机 NetworkManager 在华为路由器波动时扑向桥 AP 强信号（95）开放热点且不自动回连，用户三次接显示器手动救援）
+  - 根因：桥固件开机即广播兜底 AP（STA 连上前的窗口 + STA 短暂失败的 30s 重试周期内都在），周边记住过该热点的设备会被 NM autoconnect 诱连；连上后 NM 不主动迁移回高优先级网络——调 priority 挡不住，只有 AP 不广播才是根治。
+  - 修复（`examples/RC_BLE_Bridge/RC_BLE_Bridge.ino`）：新增 `WIFI_AP_FALLBACK_DELAY_MS=120000UL`——`setup()` 有密钥首试失败不再立即开 AP（改为日志说明延迟策略）；`maintainSta()` 开机累计未连上满 2 分钟才以 `WIFI_AP_STA` 共存模式开兜底 AP（STA 重试继续，连上仍自动关 AP）。无密钥占位版保持开机即开 AP（本地无密钥刷机兜底通道不变）。
+  - 配套（主机侧第一道防线，2026-10-28 已实施）：本机关闭 `MUS4-RC-Bridge` 连接档案的 `connection.autoconnect`（`no`），华为 profile priority 10 不变——双保险后本机任何情况下都不会再自动连 MUS4 热点。
+  - 测试：`tests/test_rc_ble_bridge_example.py` 新增 `test_rc_ble_bridge_ap_fallback_delayed_when_sta_fails`（120s 常量、maintainSta 延迟分支开 AP、setup 有密钥失败分支无 softAP、无密钥分支保持立即开）；全量 **380 + 31 subtests 全绿**。
+  - 编译：带密钥版 min_spiffs 通过（1,269,552B，延迟开 AP 日志串实测在 bin 内）；OTA 以 `?boot=0` 补种车 app0（车固件 app1 v1.10.15 不动）。
+
 ## 2026-10-28（RC_BLE_Bridge 增加 STA 掉线/失败重试，车上固件无版本变更）
 
 - fix(bridge): 桥固件 STA 失败/掉线后永久停留兜底 AP——补上周期重试（#189，用户实测反馈：双槽 OTA 期间桥不自动回连家庭 Wi-Fi，必须人工连桥 AP 才能继续，"不手动切换就永远连不上"）

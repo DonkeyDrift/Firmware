@@ -75,8 +75,9 @@
 #define SEND_INTERVAL_MS 20  // 发送节奏 50Hz，避免淹没 BLE 通知通道
 
 // ---------- WiFi / OTA（回刷通道） ----------
-#define WIFI_STA_TIMEOUT_MS 15000          // STA 开机首次连接超时，超时转 AP 兜底
+#define WIFI_STA_TIMEOUT_MS 15000          // STA 开机首次连接超时，超时交给 maintainSta 周期重试
 #define WIFI_STA_RETRY_INTERVAL_MS 30000   // STA 失败/掉线后的重试间隔（#189：退 AP 后必须持续重试，否则设备永久离线）
+#define WIFI_AP_FALLBACK_DELAY_MS 120000UL // 开机累计未连上 STA 满 2 分钟才开兜底 AP（#191：正常环境 AP 从不广播，不诱连周边设备的自动连接）
 #define BRIDGE_AP_SSID "MUS4-RC-Bridge"    // 兜底 AP（开放，与车端 WIFI_CONSOLE_AP_PASSWORD 为空的习惯一致）
 #define OTA_HOSTNAME "mus4-rc-bridge"      // ArduinoOTA 主机名（端口 3232）
 #define OTA_PASSWORD "mus4-debug"          // ArduinoOTA 密码（与车端一致）
@@ -364,6 +365,21 @@ static void maintainSta()
     if (millis() - lastStaAttemptMs < WIFI_STA_RETRY_INTERVAL_MS)
         return;
 
+    // #191：开机累计未连上满延迟窗口才开兜底 AP——正常环境 STA 数秒内连上、
+    // AP 从不广播，周边设备（NetworkManager 自动连接）不会被诱连；真兜底
+    // 场景（家里 Wi-Fi 消失）2 分钟后 AP 开启，紧急刷机通道保留。AP+STA
+    // 共存模式，STA 重试继续
+    if (!apFallbackOpen && millis() >= WIFI_AP_FALLBACK_DELAY_MS)
+    {
+        WiFi.mode(WIFI_AP_STA);
+        WiFi.softAP(BRIDGE_AP_SSID);
+        apFallbackOpen = true;
+        Serial.printf("STA %lus 未连上，开兜底 AP \"%s\"，IP=%s（继续每 %lus 重试 STA）\n",
+                      millis() / 1000UL, BRIDGE_AP_SSID,
+                      WiFi.softAPIP().toString().c_str(),
+                      WIFI_STA_RETRY_INTERVAL_MS / 1000UL);
+    }
+
     // AP 开着时必须 AP+STA 共存模式重试，否则 WiFi.begin 会把兜底 AP 拆掉，
     // 正经连在 AP 上刷机的主机会被踢断
     WiFi.mode(apFallbackOpen ? WIFI_AP_STA : WIFI_STA);
@@ -395,15 +411,22 @@ static void setupWifiAndOta()
     {
         Serial.printf("WiFi STA 已连接，IP=%s\n", WiFi.localIP().toString().c_str());
     }
-    else
+    else if (!staConfigured)
     {
-        // 兜底 AP：连不上家里 Wi-Fi（或没有密钥文件）时也能通过 192.168.4.1 刷回
+        // 无密钥占位版：保持开机即开兜底 AP（本地无密钥环境的刷机兜底通道）
         WiFi.mode(WIFI_AP);
         WiFi.softAP(BRIDGE_AP_SSID);
-        apFallbackOpen = staConfigured; // 有密钥才开重试（纯 AP 模式 AP 本就常开）
-        Serial.printf("WiFi STA 失败，已开兜底 AP \"%s\"，IP=%s（每 %lus 重试 STA）\n",
-                      BRIDGE_AP_SSID, WiFi.softAPIP().toString().c_str(),
-                      WIFI_STA_RETRY_INTERVAL_MS / 1000UL);
+        apFallbackOpen = true;
+        Serial.printf("无 STA 密钥，已开兜底 AP \"%s\"，IP=%s\n",
+                      BRIDGE_AP_SSID, WiFi.softAPIP().toString().c_str());
+    }
+    else
+    {
+        // 有密钥但首试失败（#191）：不立即开兜底 AP——maintainSta 每 %lus 重试，
+        // 累计 %lus 连不上才开，正常网络波动不会广播 AP 诱连周边设备
+        Serial.printf("WiFi STA 首试失败，每 %lus 重试，%lus 内连不上才开兜底 AP\n",
+                      WIFI_STA_RETRY_INTERVAL_MS / 1000UL,
+                      WIFI_AP_FALLBACK_DELAY_MS / 1000UL);
     }
 
     // 回刷通道 1：ArduinoOTA（端口 3232）

@@ -9,6 +9,7 @@
 #include "LedBlinkPreference.h"
 #include "Mus4Log.h"
 #include "Buzzer.h"
+#include "SafetyState.h"
 
 #ifdef ENABLE_GAMEPAD_MODE
 #include "GamepadMode.h"
@@ -102,6 +103,7 @@ void updateControlOutput()
         static bool pilotFailsafeActive = false;
         if (car_output.park == 1)
         {
+            emergencyStop();
             if (carOutputModeLast != CAR_MODE_FULL_AUTO || !toggleActive)
             {
                 setLEDToggle(CRGB::Blue, CRGB::Red);
@@ -143,8 +145,11 @@ void updateControlOutput()
     else if (car_output.mode == CAR_MODE_SEMI_AUTO)
     {
         // Controlled by both RC and Pilot
+        // 失效保护：pilot 控制流超时 → 转向回中（油门仍由 RC 控制），与 FULL_AUTO 对齐
+        bool pilotAlive = (millis() - pilot_last_frame_ms) <= PILOT_SIGNAL_TIMEOUT_MS;
         if (car_output.park == 1)
         {
+            emergencyStop();
             if (carOutputModeLast != CAR_MODE_SEMI_AUTO || !toggleActive)
             {
                 setLEDToggle(CRGB::Yellow, CRGB::Red);
@@ -161,13 +166,14 @@ void updateControlOutput()
                                                     RC_THROTTLE_MID,
                                                     RC_THROTTLE_MAX);
         }
-        car_output.steering = apply_drift_assist(pilot_data.steering);
+        car_output.steering = apply_drift_assist(pilotAlive ? pilot_data.steering : 0);
     }
     else
     {
         // Controlled by RC Controller (car_output.mode = CAR_MODE_MANUAL)
         if (car_output.park == 1)
         {
+            emergencyStop();
             static uint8_t appliedBlinkMask = 0xFF; // 0xFF is invalid, forces the first apply
             uint8_t mask = getLedBlinkMask();
             if (carOutputModeLast != CAR_MODE_MANUAL || mask != appliedBlinkMask || !toggleActive)

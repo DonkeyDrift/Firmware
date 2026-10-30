@@ -53,7 +53,9 @@ static const unsigned long CLOUD_REPORT_RETRY_MS = 60000UL;      // 首报成功
 static const int CLOUD_REPORT_HTTP_TIMEOUT_MS = 5000;            // 连接 + 总超时：5 秒
 static const uint32_t CLOUD_REPORT_TASK_STACK_SIZE = 16384;      // ESP32 Arduino 的 stack 单位为字节
 static const uint32_t CLOUD_REPORT_WORKER_POLL_MS = 100;
+static const size_t CLOUD_REPORT_HOSTNAME_CAPACITY = 33;
 
+static char reportTaskHostname[CLOUD_REPORT_HOSTNAME_CAPACITY];  // 创建成功后只读
 static bool reportTaskStarted = false;        // 仅主循环访问，保证惰性单任务
 static portMUX_TYPE reportResultMux = portMUX_INITIALIZER_UNLOCKED;
 static bool reportResultPending = false;      // 以下结果字段均为 POD，不跨任务共享 String
@@ -67,14 +69,9 @@ struct ReportAttemptResult {
 
 /// 拼装上报 JSON。这些字段（硬件 ID / IP / hostname / version）
 /// 均不含需转义的字符，直接 String 拼接即可（本工程无 ArduinoJson）。
-static String buildReportBody()
+static String buildReportBody(const String& hostname)
 {
     String deviceId = getHardwareId();
-
-    String hostname = WiFi.getHostname();
-    if (hostname.length() == 0) {
-        hostname = "mus4-esp";
-    }
 
     String body;
     body.reserve(200);
@@ -91,10 +88,10 @@ static String buildReportBody()
 }
 
 /// 在 cloud worker 上下文执行一次同步 HTTPS POST，结果只以 POD 返回。
-static ReportAttemptResult reportNow(WiFiClientSecure& client, HTTPClient& http)
+static ReportAttemptResult reportNow(WiFiClientSecure& client, HTTPClient& http, const String& hostname)
 {
     ReportAttemptResult result = {false, 0};
-    String body = buildReportBody();
+    String body = buildReportBody(hostname);
 
     if (!http.begin(client, CLOUD_REPORT_URL)) {
         http.end();
@@ -113,7 +110,7 @@ static ReportAttemptResult reportNow(WiFiClientSecure& client, HTTPClient& http)
 /// 唯一拥有网络对象和上报/重试状态的任务；主循环不参与同步网络操作。
 static void cloudReportTask(void* parameter)
 {
-    (void)parameter;
+    String hostname(static_cast<const char*>(parameter));
 
     WiFiClientSecure client;
     client.setInsecure();
@@ -145,7 +142,7 @@ static void cloudReportTask(void* parameter)
         unsigned long interval = everSucceeded ? CLOUD_REPORT_INTERVAL_MS : CLOUD_REPORT_RETRY_MS;
 
         if (!reportedOnce || ipChanged || (now - lastReportMs) >= interval) {
-            ReportAttemptResult result = reportNow(client, http);
+            ReportAttemptResult result = reportNow(client, http, hostname);
             reportedOnce = true;
             lastReportMs = now;
             // 无论成败都记下这次的 IP，避免换 IP 后退化成不停重试。
@@ -199,11 +196,17 @@ void update()
     IPAddress ip = WiFi.localIP();
     if (ip == IPAddress(0, 0, 0, 0)) return;
 
+    String hostname = WiFi.getHostname();
+    if (hostname.length() == 0) {
+        hostname = "mus4-esp";
+    }
+    hostname.toCharArray(reportTaskHostname, CLOUD_REPORT_HOSTNAME_CAPACITY);
+
     BaseType_t created = xTaskCreatePinnedToCore(
         cloudReportTask,
         "cloud-report",
         CLOUD_REPORT_TASK_STACK_SIZE,
-        nullptr,
+        reportTaskHostname,
         1,
         nullptr,
         0

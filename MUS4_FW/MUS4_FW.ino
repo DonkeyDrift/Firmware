@@ -589,9 +589,12 @@ void setup()
       loadJudgeConfigPreference();
       loadDriftConfigPreference();
       load_drift_config(wifiRuntime.driftConfig);
-      loadJoystickCalibration();
+      // 摇杆校准加载内部的油门限幅读取（loadThrottleOutputLimits）以 motor_mid_v
+      // 为校验基准，必须先加载舵机/电机输出中点配置再加载摇杆校准，否则持久化的
+      // Min T / Max T 会按编译期默认中点 7372 校验而被静默回退（#196）。
       loadServoOutputConfig();
       loadMotorOutputConfig();
+      loadJoystickCalibration();
       cleanupInvalidOtaPartition();
       // v1.7.28：启动后标记当前固件为有效，取消 bootloader 的 OTA 回滚。
       // 否则第一次 OTA 成功后新分区长期处于 PENDING_VERIFY，下次 reset

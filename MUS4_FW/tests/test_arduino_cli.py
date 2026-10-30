@@ -330,6 +330,88 @@ class TestSerialPortSelection(unittest.TestCase):
         self.assertEqual(automation.port, "COM19")
         automation.save_last_success_port.assert_called_once_with("COM19")
 
+    def test_build_upload_port_attempts_fails_when_explicit_cli_port_missing(self):
+        automation = make_automation(port="COM9")
+        automation.args.port = "COM9"
+        automation.enumerate_serial_ports = MagicMock(return_value=[
+            make_port(
+                "COM11",
+                description="USB-SERIAL CH340",
+                manufacturer="wch",
+                hwid="USB VID:PID=1A86:7523",
+                vid=0x1A86,
+                pid=0x7523,
+            ),
+            make_port("COM1", description="Standard Serial over Bluetooth"),
+        ])
+
+        attempts, error = automation.build_upload_port_attempts()
+
+        self.assertEqual(attempts, [])
+        self.assertIsNotNone(error)
+        self.assertIn("COM9", error)
+
+    def test_upload_exits_without_uploading_when_explicit_cli_port_missing(self):
+        automation = make_automation(port="COM9")
+        automation.args.port = "COM9"
+        automation.enumerate_serial_ports = MagicMock(return_value=[
+            make_port(
+                "COM11",
+                description="USB-SERIAL CH340",
+                manufacturer="wch",
+                hwid="USB VID:PID=1A86:7523",
+                vid=0x1A86,
+                pid=0x7523,
+            ),
+        ])
+        automation.save_last_success_port = MagicMock()
+        automation.run_command = MagicMock(return_value=(True, "ok"))
+
+        with self.assertRaises(SystemExit) as raised:
+            automation.upload()
+
+        self.assertEqual(raised.exception.code, 11)
+        automation.run_command.assert_not_called()
+
+    def test_build_upload_port_attempts_selects_explicit_cli_port(self):
+        automation = make_automation(port="COM9")
+        automation.args.port = "com9"
+        automation.enumerate_serial_ports = MagicMock(return_value=[
+            make_port(
+                "COM11",
+                description="USB-SERIAL CH340",
+                manufacturer="wch",
+                hwid="USB VID:PID=1A86:7523",
+                vid=0x1A86,
+                pid=0x7523,
+            ),
+            make_port("COM9", description="USB-SERIAL CH340", manufacturer="wch"),
+        ])
+
+        attempts, error = automation.build_upload_port_attempts()
+
+        self.assertIsNone(error)
+        self.assertEqual([item["port"]["device"] for item in attempts], ["COM9"])
+        self.assertIn("命中指定端口", attempts[0]["reason"])
+
+    def test_build_upload_port_attempts_keeps_config_level_fallback_when_port_missing(self):
+        automation = make_automation(port="COM9")
+        automation.enumerate_serial_ports = MagicMock(return_value=[
+            make_port(
+                "COM11",
+                description="USB-SERIAL CH340",
+                manufacturer="wch",
+                hwid="USB VID:PID=1A86:7523",
+                vid=0x1A86,
+                pid=0x7523,
+            ),
+        ])
+
+        attempts, error = automation.build_upload_port_attempts()
+
+        self.assertIsNone(error)
+        self.assertEqual([item["port"]["device"] for item in attempts], ["COM11"])
+
     def test_resolve_port_prefers_last_success_port_for_serial_mode(self):
         automation = make_automation(
             port="auto",

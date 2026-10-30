@@ -2,7 +2,7 @@
 //
 // 依赖：
 //   - WiFi（STA 已连接并取得局域网 IP）
-//   - HTTPClient + WiFiClientSecure（对 Cloudflare Pages Functions 做同步 HTTPS POST）
+//   - HTTPClient + WiFiClientSecure（由独立 FreeRTOS worker 执行同步 HTTPS POST）
 //   - AuthService::getHardwareId()（eFuse MAC 派生的 12 位小写十六进制硬件 ID）
 //   - BuildInfo.h 的 MUS4_FIRMWARE_VERSION（版本字段）
 //
@@ -51,23 +51,27 @@ namespace mus4cloud {
 static const unsigned long CLOUD_REPORT_INTERVAL_MS = 300000UL;  // 稳态心跳间隔：5 分钟
 static const unsigned long CLOUD_REPORT_RETRY_MS = 60000UL;      // 首报成功前的快速重试：1 分钟
 static const int CLOUD_REPORT_HTTP_TIMEOUT_MS = 5000;            // 连接 + 总超时：5 秒
+static const uint32_t CLOUD_REPORT_TASK_STACK_SIZE = 16384;      // ESP32 Arduino 的 stack 单位为字节
+static const uint32_t CLOUD_REPORT_WORKER_POLL_MS = 100;
+static const size_t CLOUD_REPORT_HOSTNAME_CAPACITY = 33;
 
-static bool reportedOnce = false;         // 是否已尝试过首次上报
-static bool everSucceeded = false;        // 本次开机是否成功上报过（决定是否仍走快速重试）
-static bool ipKnown = false;              // 是否已尝试上报过某个 IP
-static IPAddress lastReportedIp;          // 上次尝试上报时的局域网 IP
-static unsigned long lastReportMs = 0;    // 上次上报时刻（millis()）
+static char reportTaskHostname[CLOUD_REPORT_HOSTNAME_CAPACITY];  // 创建成功后只读
+static bool reportTaskStarted = false;        // 仅主循环访问，保证惰性单任务
+static portMUX_TYPE reportResultMux = portMUX_INITIALIZER_UNLOCKED;
+static bool reportResultPending = false;      // 以下结果字段均为 POD，不跨任务共享 String
+static bool reportResultBeginFailed = false;
+static int reportResultHttpCode = 0;
+
+struct ReportAttemptResult {
+    bool beginFailed;
+    int httpCode;
+};
 
 /// 拼装上报 JSON。这些字段（硬件 ID / IP / hostname / version）
 /// 均不含需转义的字符，直接 String 拼接即可（本工程无 ArduinoJson）。
-static String buildReportBody()
+static String buildReportBody(const String& hostname)
 {
     String deviceId = getHardwareId();
-
-    String hostname = WiFi.getHostname();
-    if (hostname.length() == 0) {
-        hostname = "mus4-esp";
-    }
 
     String body;
     body.reserve(200);
@@ -83,11 +87,31 @@ static String buildReportBody()
     return body;
 }
 
-/// 执行一次同步 HTTPS POST；成功（2xx）返回 true。
-/// 注意：会在本次调用阻塞约 1-3 秒（低频、仅首报 + 每 5 分钟一次，可接受；
-/// 后续可优化为异步/带退避）。
-static bool reportNow()
+/// 在 cloud worker 上下文执行一次同步 HTTPS POST，结果只以 POD 返回。
+static ReportAttemptResult reportNow(WiFiClientSecure& client, HTTPClient& http, const String& hostname)
 {
+    ReportAttemptResult result = {false, 0};
+    String body = buildReportBody(hostname);
+
+    if (!http.begin(client, CLOUD_REPORT_URL)) {
+        http.end();
+        result.beginFailed = true;
+        return result;
+    }
+    http.addHeader("Content-Type", "application/json");
+    // Cloudflare 会拦截默认的 ESP32 HTTPClient UA（403），伪装成浏览器 UA 才能通过。
+    http.addHeader("User-Agent", "Mozilla/5.0 (ESP32) DonkeyDrift-FindCar/1.0");
+
+    result.httpCode = http.POST(body);
+    http.end();
+    return result;
+}
+
+/// 唯一拥有网络对象和上报/重试状态的任务；主循环不参与同步网络操作。
+static void cloudReportTask(void* parameter)
+{
+    String hostname(static_cast<const char*>(parameter));
+
     WiFiClientSecure client;
     client.setInsecure();
 
@@ -95,52 +119,101 @@ static bool reportNow()
     http.setConnectTimeout(CLOUD_REPORT_HTTP_TIMEOUT_MS);
     http.setTimeout(CLOUD_REPORT_HTTP_TIMEOUT_MS);
 
-    String body = buildReportBody();
+    bool reportedOnce = false;         // 是否已尝试过首次上报
+    bool everSucceeded = false;        // 本次开机是否成功上报过（决定是否仍走快速重试）
+    bool ipKnown = false;              // 是否已尝试上报过某个 IP
+    IPAddress lastReportedIp;          // 上次尝试上报时的局域网 IP
+    unsigned long lastReportMs = 0;    // 上次上报时刻（millis()）
 
-    if (!http.begin(client, CLOUD_REPORT_URL)) {
-        mus4LogLine("cloud", "report begin failed");
-        return false;
+    for (;;) {
+        if (WiFi.status() != WL_CONNECTED) {
+            vTaskDelay(pdMS_TO_TICKS(CLOUD_REPORT_WORKER_POLL_MS));
+            continue;
+        }
+        IPAddress ip = WiFi.localIP();
+        if (ip == IPAddress(0, 0, 0, 0)) {
+            vTaskDelay(pdMS_TO_TICKS(CLOUD_REPORT_WORKER_POLL_MS));
+            continue;
+        }
+
+        unsigned long now = millis();
+        // 每次重读 localIP，避免网页上留着旧地址；快速重试只在尚未成功时启用。
+        bool ipChanged = ipKnown && ip != lastReportedIp;
+        unsigned long interval = everSucceeded ? CLOUD_REPORT_INTERVAL_MS : CLOUD_REPORT_RETRY_MS;
+
+        if (!reportedOnce || ipChanged || (now - lastReportMs) >= interval) {
+            ReportAttemptResult result = reportNow(client, http, hostname);
+            reportedOnce = true;
+            lastReportMs = now;
+            // 无论成败都记下这次的 IP，避免换 IP 后退化成不停重试。
+            lastReportedIp = ip;
+            ipKnown = true;
+            if (!result.beginFailed && result.httpCode >= 200 && result.httpCode < 300) {
+                everSucceeded = true;
+            }
+
+            portENTER_CRITICAL(&reportResultMux);
+            reportResultBeginFailed = result.beginFailed;
+            reportResultHttpCode = result.httpCode;
+            reportResultPending = true;
+            portEXIT_CRITICAL(&reportResultMux);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(CLOUD_REPORT_WORKER_POLL_MS));
     }
-    http.addHeader("Content-Type", "application/json");
-    // Cloudflare 会拦截默认的 ESP32 HTTPClient UA（403），伪装成浏览器 UA 才能通过。
-    http.addHeader("User-Agent", "Mozilla/5.0 (ESP32) DonkeyDrift-FindCar/1.0");
+}
 
-    int code = http.POST(body);
-    mus4Logf("cloud", "POST /report -> %d", code);
-    http.end();
-    return code >= 200 && code < 300;
+/// 仅在主循环消费 worker 的 POD 结果，日志与 Web sink 不进入网络任务。
+static void emitPendingReportLog()
+{
+    bool beginFailed = false;
+    int httpCode = 0;
+
+    portENTER_CRITICAL(&reportResultMux);
+    if (!reportResultPending) {
+        portEXIT_CRITICAL(&reportResultMux);
+        return;
+    }
+    beginFailed = reportResultBeginFailed;
+    httpCode = reportResultHttpCode;
+    reportResultPending = false;
+    portEXIT_CRITICAL(&reportResultMux);
+
+    if (beginFailed) {
+        mus4LogLine("cloud", "report begin failed");
+    } else {
+        mus4Logf("cloud", "POST /report -> %d", httpCode);
+    }
 }
 
 void update()
 {
-    // 未联网 / 未拿到 IP 时不上报。
+    emitPendingReportLog();
+    if (reportTaskStarted) return;
+
+    // 首次拿到 IP 后才惰性创建唯一 worker；后续节奏和 IP 检测均由 worker 负责。
     if (WiFi.status() != WL_CONNECTED) return;
     IPAddress ip = WiFi.localIP();
     if (ip == IPAddress(0, 0, 0, 0)) return;
 
-    unsigned long now = millis();
-    // 首次拿到 IP 立即上报；此后每 5 分钟一跳，DHCP 换 IP 时立即补报
-    // （每次重读 localIP，避免网页上留着旧地址）。
-    // 快速重试（1 分钟）只在"本次开机尚未成功上报过"时启用：既让车重启后尽快
-    // 出现在网页上，又避免长时间断网时把主循环频繁卡在同步 HTTPS 上报上
-    // （RC 遥控与控制循环不能被上报长时间阻塞）。
-    bool ipChanged = ipKnown && ip != lastReportedIp;
-    unsigned long interval = everSucceeded ? CLOUD_REPORT_INTERVAL_MS : CLOUD_REPORT_RETRY_MS;
+    String hostname = WiFi.getHostname();
+    if (hostname.length() == 0) {
+        hostname = "mus4-esp";
+    }
+    hostname.toCharArray(reportTaskHostname, CLOUD_REPORT_HOSTNAME_CAPACITY);
 
-    if (!reportedOnce || ipChanged || (now - lastReportMs) >= interval) {
-        if (!reportedOnce) {
-            mus4Logf("cloud", "report armed: %s", CLOUD_REPORT_URL);
-        }
-        bool ok = reportNow();
-        reportedOnce = true;
-        lastReportMs = now;
-        // 无论成败都记下这次的 IP：否则"换 IP + 上报失败"会让 ipChanged 每轮
-        // 都为真，退化成不停重试、把主循环卡死在同步 HTTPS 上。
-        lastReportedIp = ip;
-        ipKnown = true;
-        if (ok) {
-            everSucceeded = true;
-        }
+    BaseType_t created = xTaskCreatePinnedToCore(
+        cloudReportTask,
+        "cloud-report",
+        CLOUD_REPORT_TASK_STACK_SIZE,
+        reportTaskHostname,
+        1,
+        nullptr,
+        0
+    );
+    if (created == pdPASS) {
+        reportTaskStarted = true;
+        mus4Logf("cloud", "report armed: %s", CLOUD_REPORT_URL);
     }
 }
 

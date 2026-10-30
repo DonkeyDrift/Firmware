@@ -189,6 +189,9 @@ void loadJoystickCalibration()
         }
         prefs().end();
         saveJoystickCalibration();
+        // 此分支迁移保存后提前 return，不会走到函数末尾的限幅加载；
+        // 补调一次保证 legacy 迁移路径同样加载油门输出限幅（#196）。
+        loadThrottleOutputLimits();
         return;
     }
 

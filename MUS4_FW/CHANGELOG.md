@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-10-30 v1.10.16
+
+- fix(firmware): 修复批次终审六项（#193-#198）——Park 急停 FSM 恢复、SEMI_AUTO 转向失效保护、云端心跳独立 worker、校准加载顺序、drift-config 鉴权、显式 --port 防误刷
+  - fix #193（`libraries/mus4_control/src/ControlMixer.cpp`）：三个模式（FULL_AUTO/SEMI_AUTO/MANUAL）的 Park 分支各恢复 emergencyStop() 调用并补 #include "SafetyState.h"——模块抽离前的 MUS4_FW.ino 中三处调用已被注释废弃，急停自此从未生效；恢复后行驶中驻车重新执行既有 15→-100→0 急停序列并最终归零，正常行驶分支不触发。
+  - fix #194（`libraries/mus4_control/src/ControlMixer.cpp` + `libraries/mus4_core/src/FirmwareConfig.h`）：SEMI_AUTO 转向补 FULL_AUTO 同款 pilotAlive 判据——pilot 控制流超时（PILOT_SIGNAL_TIMEOUT_MS=500ms）转向回中，油门仍纯 RC 摇杆映射，MANUAL 分支不受影响；常量注释同步补 SEMI_AUTO 转向回中语义。
+  - fix #195（`libraries/mus4_cloud/src/CloudReporter.cpp`，两个提交）：心跳同步 HTTPS POST 移出主循环——独立 FreeRTOS worker（xTaskCreatePinnedToCore 核 0、栈 16384 字节、100ms 轮询）独占网络对象与上报/重试状态，update() 仅惰性创建唯一 worker 并经 portMUX 临界区消费 POD 结果打日志（日志与 Web sink 不进网络任务）；hostname 改为主循环创建 worker 前快照（char[33] 作任务参数传入），worker 不再并发调 WiFi.getHostname()。
+  - fix #196（`MUS4_FW.ino` + `libraries/mus4_control/src/JoystickCalibration.cpp`）：loadThrottleOutputLimits() 以 motor_mid_v 为校验基准，但 setup 中摇杆校准先于电机输出中点加载，持久化限幅被按编译期默认中点 7372 校验（mid=7000 时 Max T=7100 回退 9830、mid=8000 时 Min T=7500 回退 4915）——setup 改为先 loadServoOutputConfig()/loadMotorOutputConfig() 再 loadJoystickCalibration()；legacy steering 迁移分支 saveJoystickCalibration() 后提前 return 跳过函数末尾限幅加载，return 前补调 loadThrottleOutputLimits()。
+  - fix #197（`libraries/mus4_web/src/WebConsoleServer.cpp`）：POST /api/drift-config 与 /api/drift-config/reset 补上与其它 /api 接口一致的 consoleAuthenticated/devModeEnabled/isWirelessConsoleAuthDisabled() 三条件 403 门禁，先于任何持久化动作；认证后合法保存/非法 400/保存失败 500 路径与 GET /api/drift-config 开放行为不变。
+  - fix #198（`arduino-cli.py`）：build_upload_port_attempts 显式 --port 分支改为按 device 大小写不敏感匹配当前枚举端口——命中仅返回该端口，缺失返回空 attempts 并明确报错、不执行上传（不再自动匹配其他串口，杜绝刷到无关 CH340 设备）；config 级端口缺失仍保留自动匹配回退，monitor/reset 行为不变。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 test_control_mixer_park_branches_run_emergency_stop_fsm、test_pilot_stream_failsafe_semi_auto_timeout_centers_steering（full_auto 失效保护用例的 other_modes 断言按 #194 语义精确化为仅圈定 MANUAL 段）；`tests/test_cloud_reporter.py` 新增 5 项（主循环无阻塞上报、16384 字节栈 worker、worker 不打日志、网络对象/重试状态归 worker、hostname 主循环快照）；`tests/test_joystick_calibration.py` 新增 4 项回归（setup 加载顺序、mid=7000 保 Max T=7100、mid=8000 保 Min T=7500、legacy 迁移 return 前加载限幅）；`tests/test_web_console_security.py` 新增 2 项（门禁先于保存/重置持久化）；`tests/test_arduino_cli.py` 新增 4 项（显式缺失、缺失不执行上传、显式命中大小写不敏感、config 级回退）；版本断言 → BuildInfo v1.10.16 + changelog 链补 v1.10.15。
+  - 验证：全量 pytest 397 passed + 31 subtests 全绿（3.60s）、车固件 min_spiffs 编译通过（18.92s）——均为 BuildInfo 升至 v1.10.16 前的同一代码树（六项修复内容一致，仅版本宏差异）；升版后由收尾主流程复跑全量与编译。
+  - OTA：本条目落盘时尚未刷车，由收尾主流程在合并后统一执行；此处不作任何刷机结果声明。
+
 ## 2026-10-29（RC_BLE_Bridge 兜底 AP 延迟开启，车上固件无版本变更）
 
 - fix(bridge): 兜底 AP 延迟 2 分钟开启——正常环境（STA 可连）桥 AP 从不广播，杜绝诱连周边设备（#191，#189 后续；2026-10-28 用户三次断连事故的源头加固：主机 NetworkManager 在华为路由器波动时扑向桥 AP 强信号（95）开放热点且不自动回连，用户三次接显示器手动救援）

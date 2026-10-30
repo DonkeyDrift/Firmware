@@ -5,6 +5,7 @@ without flashing hardware. Keep them in sync with JoystickCalibration.cpp.
 """
 
 import pathlib
+import re
 import sys
 import unittest
 
@@ -61,6 +62,61 @@ def validate_axis(axis):
         and axis["min_pwm"] >= 800
         and axis["max_pwm"] <= 2200
     )
+
+
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
+SKETCH_INO = PROJECT_ROOT / "MUS4_FW.ino"
+JOYSTICK_CAL_CPP = PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "JoystickCalibration.cpp"
+
+MOTOR_MID_DEFAULT = 7372  # ActuatorOutput.cpp 中 motor_mid_v 的编译期默认（1500µs @ 300Hz/14bit）
+
+
+def load_throttle_output_limits(stored_min, stored_max, motor_mid_v):
+    """Python mirror of loadThrottleOutputLimits() 的持久化值校验。
+
+    stored_min / stored_max 传 None 表示 NVS 中无对应键。校验区间与 C++ 一致：
+    Min T ∈ [4915, motor_mid_v]，Max T ∈ [motor_mid_v, 9830]，越界回退默认值。
+    """
+    min_duty, max_duty = 4915, 9830
+    if stored_min is not None and 4915 <= stored_min <= motor_mid_v:
+        min_duty = stored_min
+    if stored_max is not None and motor_mid_v <= stored_max <= 9830:
+        max_duty = stored_max
+    return min_duty, max_duty
+
+
+def setup_load_order():
+    """按 MUS4_FW.ino 中调用语句出现的先后顺序提取输出配置/摇杆校准加载顺序。"""
+    source = SKETCH_INO.read_text(encoding="utf-8")
+    pattern = r"^[ \t]*(loadServoOutputConfig|loadMotorOutputConfig|loadJoystickCalibration)\(\);"
+    return [m.group(1) for m in re.finditer(pattern, source, re.MULTILINE)]
+
+
+def simulate_boot_throttle_limits(motor_mid_persisted, min_persisted, max_persisted):
+    """按 setup 实际调用顺序模拟开机后的 motor_mid_v 与油门输出限幅。
+
+    motor_mid_v 从编译期默认 7372 出发，loadMotorOutputConfig() 把它替换为
+    持久化值；loadJoystickCalibration() 末尾调用 loadThrottleOutputLimits()，
+    用当时的 motor_mid_v 校验持久化限幅——顺序错了限幅就会被静默回退（#196）。
+    """
+    motor_mid_v = MOTOR_MID_DEFAULT
+    min_duty, max_duty = 4915, 9830  # JoystickCalibrationData 成员默认值
+    for call in setup_load_order():
+        if call == "loadMotorOutputConfig":
+            motor_mid_v = motor_mid_persisted
+        elif call == "loadJoystickCalibration":
+            min_duty, max_duty = load_throttle_output_limits(
+                min_persisted, max_persisted, motor_mid_v)
+    return motor_mid_v, min_duty, max_duty
+
+
+def joystick_calibration_body():
+    """提取 JoystickCalibration.cpp 中 loadJoystickCalibration() 的函数体。"""
+    source = JOYSTICK_CAL_CPP.read_text(encoding="utf-8")
+    m = re.search(r"void loadJoystickCalibration\(\)\s*\{(.*?)^\}",
+                  source, re.DOTALL | re.MULTILINE)
+    assert m, "未找到 loadJoystickCalibration() 函数体"
+    return m.group(1)
 
 
 class TestJoystickCalibrationMapping(unittest.TestCase):
@@ -202,6 +258,52 @@ class TestThrottleOutputClamping(unittest.TestCase):
         _, duty = map_joystick_axis_constrained(
             2000, cal, False, 1000, 1500, 2000, min_duty=6143, max_duty=8601)
         self.assertEqual(duty, 8601)  # clamped by max
+
+
+class TestPersistedThrottleLimitLoading(unittest.TestCase):
+    """#196：持久化油门限幅（Min T / Max T）开机加载回归。
+
+    loadThrottleOutputLimits() 以 motor_mid_v 为校验基准。若摇杆校准先于
+    电机输出中点配置加载，持久化限幅会按编译期默认中点 7372 校验：
+    mid=7000 时 Max T=7100、mid=8000 时 Min T=7500 都会被静默回退到全范围。
+    """
+
+    def test_setup_loads_output_config_before_joystick_calibration(self):
+        """setup 必须先加载舵机/电机输出中点，再加载摇杆校准。"""
+        order = setup_load_order()
+        self.assertIn("loadJoystickCalibration", order)
+        self.assertLess(order.index("loadServoOutputConfig"),
+                        order.index("loadJoystickCalibration"))
+        self.assertLess(order.index("loadMotorOutputConfig"),
+                        order.index("loadJoystickCalibration"))
+
+    def test_motor_mid_7000_keeps_max_7100(self):
+        """mid=7000 时 Max T=7100 合法，开机后必须保持 7100 而非回退 9830。"""
+        motor_mid_v, min_duty, max_duty = simulate_boot_throttle_limits(7000, None, 7100)
+        self.assertEqual(motor_mid_v, 7000)
+        self.assertEqual((min_duty, max_duty), (4915, 7100))
+
+    def test_motor_mid_8000_keeps_min_7500(self):
+        """mid=8000 时 Min T=7500 合法，开机后必须保持 7500 而非回退 4915。"""
+        motor_mid_v, min_duty, max_duty = simulate_boot_throttle_limits(8000, 7500, None)
+        self.assertEqual(motor_mid_v, 8000)
+        self.assertEqual((min_duty, max_duty), (7500, 9830))
+
+
+class TestLegacyMigrationLoadsThrottleLimits(unittest.TestCase):
+    """#196：legacy 摇杆校准迁移分支提前 return 前必须加载油门输出限幅。"""
+
+    def test_legacy_migration_loads_limits_before_return(self):
+        """legacy 分支 saveJoystickCalibration() 后提前 return，不会走到函数
+        末尾的 loadThrottleOutputLimits()；return 前必须补调一次。"""
+        body = joystick_calibration_body()
+        legacy_start = body.find("MUS4_PREF_STEER_MIN_KEY")
+        self.assertGreater(legacy_start, -1, "未找到 legacy steering 迁移分支")
+        legacy_branch = body[legacy_start:]
+        return_pos = legacy_branch.find("return;")
+        self.assertGreater(return_pos, -1, "legacy 迁移分支缺少提前 return")
+        self.assertIn("loadThrottleOutputLimits", legacy_branch[:return_pos],
+                      "legacy 迁移分支提前 return 前未加载油门输出限幅")
 
 
 if __name__ == "__main__":

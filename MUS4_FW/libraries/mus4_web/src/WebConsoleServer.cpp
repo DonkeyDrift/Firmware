@@ -913,6 +913,10 @@ static void handleWifiWebDriftConfig()
 
 static void handleWifiWebDriftConfigSet()
 {
+    if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled()) {
+        wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
+        return;
+    }
     if (!wifiWebServer.hasArg("steeringGyroSign") ||
         !wifiWebServer.hasArg("maxYawRate") ||
         !wifiWebServer.hasArg("kp") ||
@@ -968,6 +972,10 @@ static void handleWifiWebDriftConfigSet()
 
 static void handleWifiWebDriftConfigReset()
 {
+    if (!ws.consoleAuthenticated && !ws.devModeEnabled && !isWirelessConsoleAuthDisabled()) {
+        wifiWebServer.send(403, "application/json", "{\"error\":\"auth_required\"}");
+        return;
+    }
     if (!resetDriftConfigPreference()) {
         sendWifiWebApiHeaders();
         wifiWebServer.send(500, "application/json", "{\"reset\":false}");

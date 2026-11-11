@@ -58,3 +58,15 @@ pytest tests/
 ## 相关仓库
 
 - [DonkeyDrift](https://github.com/DonkeyDrift/DonkeyDrift)：上位机 Python 自动驾驶/漂移平台（DonkeyDrifter），含统一 Web UI 与 Launcher 服务。
+
+## 开源协议（v1.1 · 分层授权）
+
+| 客体 | 许可证 | 全文 |
+| --- | --- | --- |
+| 本仓库固件、脚本、测试与文档源码 | **Apache License 2.0** | [LICENSE](LICENSE) |
+| 配套硬件设计（`Hardware` 仓库 KiCad 工程、Gerber、BOM 等） | **CERN-OHL-P-2.0 / Version 2 - Permissive** | 见 `Hardware` 仓库根目录 `LICENSE` |
+
+- 沿用《漂移驴车三方合作前提清单》v0.1 对「核心软件、固件」的既定决定，本次未变更。
+- Apache-2.0 第 6 条不授予商标权；「漂移驴车 / DonkeyDrift」标识与「官方认证套件」资格须社区委员会书面批准。
+- 第三方依赖须在发布包中逐项列出来源与许可（发布准备方案 v1.1 行动项 A04）；含非商业限制的材料不随开源包分发。
+- 版权主体与 Notice 详见 [NOTICE.md](NOTICE.md)，最终署名以社区委员会书面决议为准。

@@ -647,15 +647,15 @@ class ArduinoAutomation:
             return [], "未检测到可用串口"
 
         # 显式指定命令行端口时，尊重用户意图，不自动切换其他端口。
-        if getattr(self.args, "port", None):
-            primary, reason = self.select_best_port(ports)
-            if not primary:
-                return [], reason or "未指定上传端口或自动匹配失败"
-            attempts = [{
-                "port": primary,
-                "reason": reason,
-            }]
-            return attempts, None
+        explicit_port = (getattr(self.args, "port", None) or "").strip()
+        if explicit_port:
+            for port in ports:
+                if port["device"].lower() == explicit_port.lower():
+                    return [{
+                        "port": port,
+                        "reason": f"命中指定端口 {explicit_port}",
+                    }], None
+            return [], f"指定端口 {explicit_port} 未连接，已取消上传；如需自动匹配请省略 --port 参数"
 
         attempts = []
         seen_ports = set()

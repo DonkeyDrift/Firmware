@@ -1,5 +1,75 @@
 # CHANGELOG.md
 
+## 2026-11-12（Tony 合入 main：v1.10.16 六项修复随线合入 + 修复 main 侧固件编译断链）
+
+- 集成合并 Tony → main（两侧自 2026-10-02 分叉，Tony 领先 19 / main 领先 36）：合入 v1.10.16（#193-#198 六项修复：Park 急停 FSM、SEMI_AUTO 转向失效保护、云端心跳独立 worker、校准加载顺序、drift-config 鉴权、显式 --port 防误刷）与桥 AP 延迟开启 / STA 重试；main 侧 FirmwareApp 影子模式、NVS 运行时切板、WebConsole 前端资源提取、许可证文档保留。`BuildInfo.h` 取两侧最高已发布版本 **v1.10.16**。
+- fix(build) 修复 main 侧预存的干净树编译/链接断链（Phase 1 影子模式等提交仅过静态测试，未经 arduino 全量编译；在干净 worktree 编译 origin/main 实证同错）：
+  - `MUS4_FW.ino`：`#include "FirmwareApp.h"` 误圈在 `#if __has_include("WirelessSecrets.h")` 内（无密钥的干净树直接 `firmwareApp` 未声明）——`#endif` 上移、FirmwareApp 头无条件包含；`handleSerial2` 去 `static`（mus4_core 需跨编译单元链接）。
+  - `libraries/mus4_core/src/FirmwareApp.cpp`：补 `SerialBufferTypes.h` / `RuntimeState.h` / `SerialLineReader.h` 包含；删除与 Arduino `HardwareSerial Serial2` 冲突的 `extern Stream& Serial2;`；`readSerialBuf` 对齐真实签名（`HardwareSerial&`）；RC 滤波 / 遥测任务挂空实现并注明 Phase 2 接线（现役代码中两者已内联进 loop() 的 PWM 读取与遥测发送路径）。
+  - `libraries/mus4_wifi/src/WifiManager.cpp`：`wifiYieldDelay` 定义移出 `ENABLE_WIFI_LLMNR_DISCOVERY` 守卫——该开关默认关闭（`DISABLE_WIFI_NAME_DISCOVERY`），而全部用法在守卫外，默认配置必然编译失败。
+- 测试：冲突文件两侧并集（版本断言 → v1.10.16）；全量 pytest **399 passed + 31 subtests**；min_spiffs 编译通过（1,766,240 字节，26.6s）。
+- OTA：合并后按收尾流程执行。
+
+## 2026-10-30 v1.10.16
+
+- fix(firmware): 修复批次终审六项（#193-#198）——Park 急停 FSM 恢复、SEMI_AUTO 转向失效保护、云端心跳独立 worker、校准加载顺序、drift-config 鉴权、显式 --port 防误刷
+  - fix #193（`libraries/mus4_control/src/ControlMixer.cpp`）：三个模式（FULL_AUTO/SEMI_AUTO/MANUAL）的 Park 分支各恢复 emergencyStop() 调用并补 #include "SafetyState.h"——模块抽离前的 MUS4_FW.ino 中三处调用已被注释废弃，急停自此从未生效；恢复后行驶中驻车重新执行既有 15→-100→0 急停序列并最终归零，正常行驶分支不触发。
+  - fix #194（`libraries/mus4_control/src/ControlMixer.cpp` + `libraries/mus4_core/src/FirmwareConfig.h`）：SEMI_AUTO 转向补 FULL_AUTO 同款 pilotAlive 判据——pilot 控制流超时（PILOT_SIGNAL_TIMEOUT_MS=500ms）转向回中，油门仍纯 RC 摇杆映射，MANUAL 分支不受影响；常量注释同步补 SEMI_AUTO 转向回中语义。
+  - fix #195（`libraries/mus4_cloud/src/CloudReporter.cpp`，两个提交）：心跳同步 HTTPS POST 移出主循环——独立 FreeRTOS worker（xTaskCreatePinnedToCore 核 0、栈 16384 字节、100ms 轮询）独占网络对象与上报/重试状态，update() 仅惰性创建唯一 worker 并经 portMUX 临界区消费 POD 结果打日志（日志与 Web sink 不进网络任务）；hostname 改为主循环创建 worker 前快照（char[33] 作任务参数传入），worker 不再并发调 WiFi.getHostname()。
+  - fix #196（`MUS4_FW.ino` + `libraries/mus4_control/src/JoystickCalibration.cpp`）：loadThrottleOutputLimits() 以 motor_mid_v 为校验基准，但 setup 中摇杆校准先于电机输出中点加载，持久化限幅被按编译期默认中点 7372 校验（mid=7000 时 Max T=7100 回退 9830、mid=8000 时 Min T=7500 回退 4915）——setup 改为先 loadServoOutputConfig()/loadMotorOutputConfig() 再 loadJoystickCalibration()；legacy steering 迁移分支 saveJoystickCalibration() 后提前 return 跳过函数末尾限幅加载，return 前补调 loadThrottleOutputLimits()。
+  - fix #197（`libraries/mus4_web/src/WebConsoleServer.cpp`）：POST /api/drift-config 与 /api/drift-config/reset 补上与其它 /api 接口一致的 consoleAuthenticated/devModeEnabled/isWirelessConsoleAuthDisabled() 三条件 403 门禁，先于任何持久化动作；认证后合法保存/非法 400/保存失败 500 路径与 GET /api/drift-config 开放行为不变。
+  - fix #198（`arduino-cli.py`）：build_upload_port_attempts 显式 --port 分支改为按 device 大小写不敏感匹配当前枚举端口——命中仅返回该端口，缺失返回空 attempts 并明确报错、不执行上传（不再自动匹配其他串口，杜绝刷到无关 CH340 设备）；config 级端口缺失仍保留自动匹配回退，monitor/reset 行为不变。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 test_control_mixer_park_branches_run_emergency_stop_fsm、test_pilot_stream_failsafe_semi_auto_timeout_centers_steering（full_auto 失效保护用例的 other_modes 断言按 #194 语义精确化为仅圈定 MANUAL 段）；`tests/test_cloud_reporter.py` 新增 5 项（主循环无阻塞上报、16384 字节栈 worker、worker 不打日志、网络对象/重试状态归 worker、hostname 主循环快照）；`tests/test_joystick_calibration.py` 新增 4 项回归（setup 加载顺序、mid=7000 保 Max T=7100、mid=8000 保 Min T=7500、legacy 迁移 return 前加载限幅）；`tests/test_web_console_security.py` 新增 2 项（门禁先于保存/重置持久化）；`tests/test_arduino_cli.py` 新增 4 项（显式缺失、缺失不执行上传、显式命中大小写不敏感、config 级回退）；版本断言 → BuildInfo v1.10.16 + changelog 链补 v1.10.15。
+  - 验证：全量 pytest 397 passed + 31 subtests 全绿（3.60s）、车固件 min_spiffs 编译通过（18.92s）——均为 BuildInfo 升至 v1.10.16 前的同一代码树（六项修复内容一致，仅版本宏差异）；升版后由收尾主流程复跑全量与编译。
+  - OTA：本条目落盘时尚未刷车，由收尾主流程在合并后统一执行；此处不作任何刷机结果声明。
+
+## 2026-10-29（RC_BLE_Bridge 兜底 AP 延迟开启，车上固件无版本变更）
+
+- fix(bridge): 兜底 AP 延迟 2 分钟开启——正常环境（STA 可连）桥 AP 从不广播，杜绝诱连周边设备（#191，#189 后续；2026-10-28 用户三次断连事故的源头加固：主机 NetworkManager 在华为路由器波动时扑向桥 AP 强信号（95）开放热点且不自动回连，用户三次接显示器手动救援）
+  - 根因：桥固件开机即广播兜底 AP（STA 连上前的窗口 + STA 短暂失败的 30s 重试周期内都在），周边记住过该热点的设备会被 NM autoconnect 诱连；连上后 NM 不主动迁移回高优先级网络——调 priority 挡不住，只有 AP 不广播才是根治。
+  - 修复（`examples/RC_BLE_Bridge/RC_BLE_Bridge.ino`）：新增 `WIFI_AP_FALLBACK_DELAY_MS=120000UL`——`setup()` 有密钥首试失败不再立即开 AP（改为日志说明延迟策略）；`maintainSta()` 开机累计未连上满 2 分钟才以 `WIFI_AP_STA` 共存模式开兜底 AP（STA 重试继续，连上仍自动关 AP）。无密钥占位版保持开机即开 AP（本地无密钥刷机兜底通道不变）。
+  - 配套（主机侧第一道防线，2026-10-28 已实施）：本机关闭 `MUS4-RC-Bridge` 连接档案的 `connection.autoconnect`（`no`），华为 profile priority 10 不变——双保险后本机任何情况下都不会再自动连 MUS4 热点。
+  - 测试：`tests/test_rc_ble_bridge_example.py` 新增 `test_rc_ble_bridge_ap_fallback_delayed_when_sta_fails`（120s 常量、maintainSta 延迟分支开 AP、setup 有密钥失败分支无 softAP、无密钥分支保持立即开）；全量 **380 + 31 subtests 全绿**。
+  - 编译：带密钥版 min_spiffs 通过（1,269,552B，延迟开 AP 日志串实测在 bin 内）；OTA 以 `?boot=0` 补种车 app0（车固件 app1 v1.10.15 不动）。
+
+## 2026-10-28（RC_BLE_Bridge 增加 STA 掉线/失败重试，车上固件无版本变更）
+
+- fix(bridge): 桥固件 STA 失败/掉线后永久停留兜底 AP——补上周期重试（#189，用户实测反馈：双槽 OTA 期间桥不自动回连家庭 Wi-Fi，必须人工连桥 AP 才能继续，"不手动切换就永远连不上"）
+  - 根因：`RC_BLE_Bridge.ino` 的 STA 只在 `setup()` 里尝试一次（15s 超时），失败即 `WiFi.mode(WIFI_AP)` 开兜底 AP，`loop()` 无任何重连逻辑——路由器繁忙/DHCP 慢等瞬时失败即永久离线。
+  - 修复（`examples/RC_BLE_Bridge/RC_BLE_Bridge.ino`）：新增 `WIFI_STA_RETRY_INTERVAL_MS=30000` 与 `maintainSta()`（loop 每帧调用）：无密钥不重试（纯 AP 是用户选择）；未连接且距上次尝试 ≥30s → `WIFI_AP_STA` 共存模式下重试 `WiFi.begin`（非阻塞；AP 开着时必须共存模式，否则 begin 会拆掉兜底 AP 踢断正连着刷机的主机）；连上后 `softAPdisconnect(true)` 关兜底 AP 回归 STA 单模（对齐「STA 成功不开 AP」既有语义）并上报新 IP；`setup` 里补 `WiFi.setAutoReconnect(true)` 覆盖已连接后掉线场景，`lastStaAttemptMs` 记录重试起点。
+  - 测试：`tests/test_rc_ble_bridge_example.py` 新增 `test_rc_ble_bridge_sta_retry_after_ap_fallback`（30s 常量、loop 调用、无密钥不重试、共存模式重试、连上关 AP、setAutoReconnect 在位）；全量 **379 + 31 subtests 全绿**。
+  - 编译：min_spiffs 带密钥版通过（1,269,232B，重试日志串实测在 bin 内）；OTA 以 `?boot=0` 补种模式写入车 app0 槽位（车固件 app1 v1.10.15 不动）。
+  - 排障记录：无密钥占位版（SSID 空）编译时 GCC 把 maintainSta 函数体证明为死代码整段消除（`staConfigured` 恒 false），bin 里搜不到重试日志串属预期——验证桥固件新逻辑必须用带 `WirelessSecrets.h` 的本地构建。
+
+## 2026-10-25 v1.10.15
+
+- fix(control): 第五轮审计（驾驶控制安全链）——FULL_AUTO 下 pilot 控制流补上失效保护（#185；DD 侧 4 项见 DonkeyDrift #508；版本让号说明：与 #186 并行开发撞号 v1.10.14，按 v1.8.55/56 先例后到者让号改 v1.10.15）
+  - 背景：RC 通道有 `RC_SIGNAL_TIMEOUT` 超时回中失效保护，但 pilot（上位机 Serial1）路径完全没有对等物——全自动模式下上位机崩溃/页面关闭/WS 断连时，最后一帧油门持续输出，直到人肉切 RC 模式/手刹，属安全缺陷。
+  - 盖戳（`libraries/mus4_command/src/CommandDispatcher.cpp` + `.h`）：`dispatchCommandLine` 每次成功解析 pilot T:S 帧即刷新全局 `pilot_last_frame_ms = millis()`——Serial1/Serial0/WiFi 控制台三条命令通道共用该解析路径，一处盖戳全覆盖。
+  - 失效保护（`libraries/mus4_control/src/ControlMixer.cpp`）：FULL_AUTO 分支基于 `millis() - pilot_last_frame_ms > PILOT_SIGNAL_TIMEOUT_MS`（新常量 500ms，`FirmwareConfig.h` 内与 `RC_SIGNAL_TIMEOUT` 并列定义；DD 端 60Hz 发送余量充足）判定 pilot 流超时：非 park 时油门强制 0、转向回中（0 过 drift assist，与 pilot 发 0:0 等价）；park 分支语义不变；MANUAL/SEMI_AUTO 与 RC 失效保护完全不受影响。
+  - 告警：超时触发/恢复各在状态变化沿打一次 mus4Log（source=failsafe），避免 60Hz 刷屏。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 新增 `test_pilot_stream_failsafe_stamps_last_frame_ms`（盖戳位于成功解析分支内 + 头文件导出）与 `test_pilot_stream_failsafe_full_auto_timeout_cuts_throttle`（500ms 常量在位、超时清油门、正常流仍直读不误杀、转向回中、边沿告警、SEMI_AUTO/MANUAL 分支不受影响）；版本断言 → v1.10.15 + changelog 链补 v1.10.14/v1.10.13。
+  - 验证：让号前 pytest 376 + 31 subtests 全绿、编译通过（211.97s，1,763,712B，含 v1.10.14 与 MUS4APP:CAR）；让号后（v1.10.15）重跑数据见工程日志。
+  - OTA：合入后刷车（双槽流程：switch-slot 切桥 → /update 写 app1 → 切回，桥槽位 app0 不动），版本号 `BuildInfo.h` v1.10.15。
+
+## 2026-10-25 v1.10.14
+
+- fix(drift): apply_drift_assist 补 IMU 有效性检查——IMU 失效时漂移辅助不得在无陀螺反馈下盲打转向纠正（#186）
+  - 根因：`DriftAssist.cpp` 的 `apply_drift_throttle`（:133）有 `mpu6050Data.valid` 检查，转向路径 `apply_drift_assist` 漏了——IMU 断线/初始化失败后 gyroZ 停更，滤波值收敛 0、yaw 误差恒非零，辅助在完全没有反馈下持续叠加转向纠正（至 maxCorrection），车朝纠正方向持续偏航。
+  - 修复：函数开头（enabled 检查之后、滤波之前）加 `!mpu6050Data.valid` 分支——重置 drift_assist_active/drift_compensation/gyro_z_filtered/drift_yaw_error/drift_steering_correction，透传驾驶员转向。
+  - `BuildInfo.h` → v1.10.14；测试：`test_firmware_feature_flags.py` +2 用例（valid 存在且位于滤波之前、分支位于 enabled 之后滤波之前），全量 185 过；车固件编译 1,763,264 字节（203s）通过。
+  - 六轮审计区域②（ActuatorOutput/RC 捕获/RC 滤波/CommandParser）同步排查：钳位、NVS 载入校验、±100 范围校验、三级防抖确认均完备，无其它问题。
+
+## 2026-10-25 v1.10.13
+
+- fix(ota): 2026-10-25 全项目审计的 3 项 OTA 鲁棒性修复（#181/#182/#183；DD 侧 2 项见 DonkeyDrift CHANGELOG (267)）
+  - fix #181（`libraries/mus4_web/src/WebConsoleServer.cpp` 与 `examples/RC_BLE_Bridge/RC_BLE_Bridge.ino` 两份同款代码）：槽位身份扫描 `identifyOtaPartitionKind` 的内层循环守卫 `i + MAGIC_LEN + 1 <= readLen` 只保证 MAGIC 后 1 字节在界内，随后 `memcmp(buf+i+8, "BRIDGE", 6)` 最多栈越界读 5 字节（"CAR" 分支 2 字节；标记恰落在 1040 字节缓冲区末尾时触发，实害趋近于零但属 UB）。修复：后缀比对各自判界（"CAR" 需 `i+MAGIC_LEN+3<=readLen`、"BRIDGE" 需 +6），被本块截断的标记仍由既有 16 字节跨块重叠覆盖，识别能力不变。
+  - fix #182（`examples/RC_BLE_Bridge/RC_BLE_Bridge.ino`）：HTTP /update 上传失败（begin 空间不足 / write 失败 / end 校验失败 / abort 任一）原实现只 printError，POST 仍回 `ACK:UPDATE_OK` 并重启。补上与车固件 `wifiWebUpdateErrorMsg` 同款的失败清理链：新增 `otaErrorMsg` 登记 `NACK:BEGIN_FAILED:<err>/WRITE_FAILED/END_FAILED:<err>/ABORTED`；POST 失败分支置前——回 500、`Update.abort()` 复位（防下次刷机 "already running" 卡死）、不重启；只有完整成功才 ACK + 重启；上传处理器失败后跳过后续写入/校验。
+  - fix #183（`WebConsoleServer.cpp` 补种分支）：`?boot=0` 补种模式拨回启动标志失败时原实现静默 500——此时启动标志仍指向对面槽位新镜像，下次任何原因重启都会意外进桥固件（「车突然变手柄桥」且无提示）。修复：失败先 `delay(10)` 重试一次 `esp_ota_set_boot_partition`（NVS 瞬时异常二次成功率高）；仍失败打出高显著度告警 `SEED BOOTFLAG RESTORE FAILED: ... next reboot will enter the other firmware image!` 并回 `NACK:SEED_BOOTFLAG_FAILED`。
+  - 测试同步：`tests/test_firmware_feature_flags.py` 版本断言 → v1.10.13 + changelog 链补 v1.10.12；新增 `test_ota_partition_scan_suffix_bounds_checks`（两份代码判界在位、旧守卫不得回归）与 `test_ota_seed_bootflag_restore_failure_retry_and_alarm`（seed 分支重试 + 告警在位）；`tests/test_rc_ble_bridge_example.py` 新增 `test_rc_ble_bridge_update_failure_chain_no_ack_no_restart`（失败链 NACK/Update 复位/不重启/失败分支先于 ACK）。
+  - 验证：pytest **374 + 31 subtests 全绿**；车固件 `python arduino-cli.py -c` 编译通过（207.8s，产物 1,763,248B，`strings` 实测含 v1.10.13 与 `MUS4APP:CAR` 标记）；桥固件 min_spiffs 编译通过（1,268,103B / 64%，`strings` 实测含 `MUS4APP:BRIDGE` 标记与 NACK 失败链文案）。
+  - OTA：合入后刷车，版本号 `BuildInfo.h` v1.10.13。
+
 ## 2026-10-07 v1.10.15
 
 - feat(tools): `arduino-cli-wsl.ps1` 支持 `-D/-Define` 与 `-BinTag`——WSL 构建路径同样能切换主控板档案

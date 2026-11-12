@@ -9,6 +9,7 @@
 #include "LedBlinkPreference.h"
 #include "Mus4Log.h"
 #include "Buzzer.h"
+#include "SafetyState.h"
 
 #ifdef ENABLE_GAMEPAD_MODE
 #include "GamepadMode.h"
@@ -16,6 +17,7 @@
 
 extern ControlData rc_data;
 extern ControlData pilot_data;
+extern unsigned long pilot_last_frame_ms;
 extern ControlData car_output;
 extern uint16_t pwm_filtered[];
 extern JoystickCalibrationData joystick_cal;
@@ -95,8 +97,13 @@ void updateControlOutput()
     if (car_output.mode == CAR_MODE_FULL_AUTO)
     {
         // Controlled by Pilot
+        // 失效保护：上位机控制流超时（崩溃/页面关闭/WS 断连）→ 油门清零、
+        // 转向回中，与 RC 通道的 RC_SIGNAL_TIMEOUT 超时回中对齐
+        bool pilotAlive = (millis() - pilot_last_frame_ms) <= PILOT_SIGNAL_TIMEOUT_MS;
+        static bool pilotFailsafeActive = false;
         if (car_output.park == 1)
         {
+            emergencyStop();
             if (carOutputModeLast != CAR_MODE_FULL_AUTO || !toggleActive)
             {
                 setLEDToggle(CRGB::Blue, CRGB::Red);
@@ -107,12 +114,29 @@ void updateControlOutput()
                 setLEDToggle(CRGB::Blue, CRGB::Red);
             }
         }
+        else if (!pilotAlive)
+        {
+            setLEDColor(CRGB::Blue); // set LED to Red
+            car_output.throttle = 0;
+        }
         else
         {
             setLEDColor(CRGB::Blue); // set LED to Red
             car_output.throttle = pilot_data.throttle;
         }
-        car_output.steering = apply_drift_assist(pilot_data.steering);
+        car_output.steering = apply_drift_assist(pilotAlive ? pilot_data.steering : 0);
+
+        // 告警只在失效/恢复的状态变化沿打一次，避免 60Hz 刷屏
+        if (!pilotAlive && !pilotFailsafeActive)
+        {
+            mus4Logf("failsafe", "pilot stream timeout %lums, FULL_AUTO throttle cut", (unsigned long)(millis() - pilot_last_frame_ms));
+            pilotFailsafeActive = true;
+        }
+        else if (pilotAlive && pilotFailsafeActive)
+        {
+            mus4LogLine("failsafe", "pilot stream recovered, FULL_AUTO pilot control resumed");
+            pilotFailsafeActive = false;
+        }
 
         #ifdef ENABLE_GAMEPAD_MODE
             sendGamepadPacket();
@@ -121,8 +145,11 @@ void updateControlOutput()
     else if (car_output.mode == CAR_MODE_SEMI_AUTO)
     {
         // Controlled by both RC and Pilot
+        // 失效保护：pilot 控制流超时 → 转向回中（油门仍由 RC 控制），与 FULL_AUTO 对齐
+        bool pilotAlive = (millis() - pilot_last_frame_ms) <= PILOT_SIGNAL_TIMEOUT_MS;
         if (car_output.park == 1)
         {
+            emergencyStop();
             if (carOutputModeLast != CAR_MODE_SEMI_AUTO || !toggleActive)
             {
                 setLEDToggle(CRGB::Yellow, CRGB::Red);
@@ -139,13 +166,14 @@ void updateControlOutput()
                                                     RC_THROTTLE_MID,
                                                     RC_THROTTLE_MAX);
         }
-        car_output.steering = apply_drift_assist(pilot_data.steering);
+        car_output.steering = apply_drift_assist(pilotAlive ? pilot_data.steering : 0);
     }
     else
     {
         // Controlled by RC Controller (car_output.mode = CAR_MODE_MANUAL)
         if (car_output.park == 1)
         {
+            emergencyStop();
             static uint8_t appliedBlinkMask = 0xFF; // 0xFF is invalid, forces the first apply
             uint8_t mask = getLedBlinkMask();
             if (carOutputModeLast != CAR_MODE_MANUAL || mask != appliedBlinkMask || !toggleActive)

@@ -274,7 +274,7 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.15"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.16"' in build_info
     assert "v1.10.15" in changelog
     assert "v1.10.14" in changelog
     assert "v1.10.13" in changelog
@@ -4589,6 +4589,44 @@ def test_ota_dual_boot_slot_switching():
     assert seed_idx < restart_idx  # 补种分支在重启之前 return
 
 
+def test_ota_partition_scan_suffix_bounds_checks():
+    """v1.10.13（#181）：槽位身份扫描的后缀 memcmp 必须各自做边界判断，
+    杜绝标记落在缓冲区末尾时的栈越界读；旧的 +1 单一循环守卫不得回归。"""
+    server_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+    bridge_ino = (
+        PROJECT_ROOT / "examples" / "RC_BLE_Bridge" / "RC_BLE_Bridge.ino"
+    ).read_text(encoding="utf-8")
+
+    for source in (server_cpp, bridge_ino):
+        # "CAR"（3 字节）与 "BRIDGE"（6 字节）各自先判界再 memcmp
+        assert "i + MAGIC_LEN + 3 <= readLen" in source
+        assert "i + MAGIC_LEN + 6 <= readLen" in source
+        # 旧的单一守卫（只保证 MAGIC 后 1 字节在界内）必须移除
+        assert "i + MAGIC_LEN + 1 <= readLen" not in source
+
+
+def test_ota_seed_bootflag_restore_failure_retry_and_alarm():
+    """v1.10.13（#183）：补种模式 boot 标志拨回失败时先重试一次，仍失败则
+    高显著度告警「下次重启将进入对面槽位」——拨回失败不能静默 500 了事。"""
+    server_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_web" / "src" / "WebConsoleServer.cpp"
+    ).read_text(encoding="utf-8")
+
+    seed_branch = re.search(
+        r"if \(s_otaSeedNoBoot\) \{(?P<body>.*?)\n            \} else \{",
+        server_cpp,
+        re.DOTALL,
+    ).group("body")
+    # 重试：seed 分支内 set_boot_partition 至少出现两次（首试 + 重试）
+    assert seed_branch.count("esp_ota_set_boot_partition") >= 2
+    # 失败告警必须点明后果（下次重启进对面槽位）
+    assert "SEED BOOTFLAG RESTORE FAILED" in seed_branch
+    assert "other firmware image" in seed_branch
+    assert "NACK:SEED_BOOTFLAG_FAILED" in server_cpp
+
+
 def test_ota_button_opens_in_same_tab():
     """v1.7.29：OTA 按钮原本 target=\"_blank\"，导致主页面在后台持续轮询，
     与 OTA 上传竞争资源。应改为当前标签页打开 /update。"""
@@ -5983,3 +6021,184 @@ def test_board_profile_selects_communication_layout():
     for doc_text in (readme, readme_zh, topology):
         assert "MUS4_BOARD_B" in doc_text
         assert "BoardProfile" in doc_text
+
+
+def test_pilot_stream_failsafe_stamps_last_frame_ms():
+    """v1.10.15（#185）：dispatchCommandLine 每次成功解析 pilot T:S 帧都要刷新
+    pilot_last_frame_ms 时间戳并对外导出——这是 FULL_AUTO 失效保护的唯一判据来源，
+    之前 pilot 路径完全没有 RC_SIGNAL_TIMEOUT 的对等物。"""
+    dispatcher_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.cpp"
+    ).read_text(encoding="utf-8")
+    dispatcher_h = (
+        PROJECT_ROOT / "libraries" / "mus4_command" / "src" / "CommandDispatcher.h"
+    ).read_text(encoding="utf-8")
+
+    ok_branch = re.search(
+        r"if \(ok\) \{(?P<body>.*?)\n    \}",
+        dispatcher_cpp,
+        re.DOTALL,
+    ).group("body")
+    # 盖戳必须与写 pilot_data 在同一成功分支内（Serial1/Serial0/WiFi 控制台共用此路径）
+    assert "pilot_data.throttle = t;" in ok_branch
+    assert "pilot_last_frame_ms = millis();" in ok_branch
+    # 全局变量对 ControlMixer 可见
+    assert "extern unsigned long pilot_last_frame_ms;" in dispatcher_h
+    assert "unsigned long pilot_last_frame_ms = 0;" in dispatcher_cpp
+
+
+def test_pilot_stream_failsafe_full_auto_timeout_cuts_throttle():
+    """v1.10.15（#185）：FULL_AUTO 下 pilot 控制流超时（上位机崩溃/页面关闭/WS
+    断连）必须油门清零、转向回中；正常流不误杀（仍直读 pilot_data）；MANUAL 不受影响
+    （SEMI_AUTO 转向自 #194 起另行纳入保护）；告警只在状态变化沿打一次。"""
+    mixer_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.cpp"
+    ).read_text(encoding="utf-8")
+    config_h = (
+        PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h"
+    ).read_text(encoding="utf-8")
+
+    # 500ms 超时常量与 RC_SIGNAL_TIMEOUT 并列定义
+    assert "#define PILOT_SIGNAL_TIMEOUT_MS 500UL" in config_h
+
+    mixer_fn = re.search(
+        r"void updateControlOutput\(\)\s*\{(?P<body>.*)\}",
+        mixer_cpp,
+        re.DOTALL,
+    ).group("body")
+    full_auto, _, other_modes = mixer_fn.partition("else if (car_output.mode == CAR_MODE_SEMI_AUTO)")
+
+    # 超时判据基于 pilot_last_frame_ms + PILOT_SIGNAL_TIMEOUT_MS
+    assert "millis() - pilot_last_frame_ms" in full_auto
+    assert "PILOT_SIGNAL_TIMEOUT_MS" in full_auto
+    # 超时 → 油门 0；正常流 → 仍直读 pilot_data.throttle（不误杀）
+    assert "car_output.throttle = 0;" in full_auto
+    assert "car_output.throttle = pilot_data.throttle;" in full_auto
+    # 转向超时回中（0 过 drift assist 与 pilot 发 0 等价），正常流直读
+    assert "apply_drift_assist(pilotAlive ? pilot_data.steering : 0)" in full_auto
+    # 告警只在失效/恢复状态变化沿打一次（防 60Hz 刷屏），且有恢复日志
+    assert "pilotFailsafeActive" in full_auto
+    assert 'mus4Logf("failsafe"' in full_auto
+    assert 'mus4LogLine("failsafe"' in full_auto
+    # MANUAL 分支不受 pilot 失效保护影响；SEMI_AUTO 自 #194 起仅转向纳入该保护
+    # （见 test_pilot_stream_failsafe_semi_auto_timeout_centers_steering），
+    # 不再对整段 other_modes 粗粒度断言，改为只圈定 MANUAL 段。
+    _, _, manual_and_tail = other_modes.partition("// Controlled by RC Controller")
+    assert "pilot_last_frame_ms" not in manual_and_tail
+
+
+def test_drift_assist_requires_valid_imu():
+    """v1.10.14（#186）：apply_drift_assist 必须先检查 mpu6050Data.valid——
+    IMU 失效时重置滤波状态并透传驾驶员转向，不得在无陀螺反馈下叠纠正。"""
+    src = (PROJECT_ROOT / "libraries/mus4_control/src/DriftAssist.cpp").read_text(encoding="utf-8")
+
+    assert "mpu6050Data.valid" in src, "apply_drift_assist 必须检查 IMU 有效性"
+    # valid 检查须在 gyro 滤波之前（先于 gyro_z_filtered 的使用）
+    valid_idx = src.index("mpu6050Data.valid")
+    filter_idx = src.index("gyro_z_filtered = gyro_z_filtered *")
+    assert valid_idx < filter_idx, "IMU valid 检查必须在滤波计算之前"
+    # 检查分支必须透传并复位状态
+    seg = src[valid_idx - 200:valid_idx + 400]
+    assert "return driver_steering" in seg, "IMU 无效分支必须透传驾驶员转向"
+
+
+def test_drift_assist_valid_check_before_enabled_return():
+    """v1.10.14（#186）：valid 检查位于 drift_assist_enabled 检查之后、
+    滤波之前（disabled 分支保持原样，valid 分支新增）。"""
+    src = (PROJECT_ROOT / "libraries/mus4_control/src/DriftAssist.cpp").read_text(encoding="utf-8")
+    fn_start = src.index("int apply_drift_assist")
+    fn = src[fn_start:fn_start + 2000]
+    enabled_idx = fn.index("if (!drift_assist_enabled)")
+    valid_idx = fn.index("mpu6050Data.valid")
+    filter_idx = fn.index("gyro_z_filtered = gyro_z_filtered *")
+    assert enabled_idx < valid_idx < filter_idx
+
+
+def test_control_mixer_park_branches_run_emergency_stop_fsm():
+    """Issue #193：三个模式（FULL_AUTO/SEMI_AUTO/MANUAL）的 Park 分支都必须调用
+    既有急停 FSM（15 → -100 → 0 最终归零），正常行驶分支不得触发。
+
+    模块抽离前的 MUS4_FW.ino 里三处调用已被注释废弃，急停自此从未生效：行驶中
+    驻车不再有 500ms 制动准备 + 1500ms 反拖制动，ESC 直接停在旧油门值上。"""
+    mixer_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.cpp"
+    ).read_text(encoding="utf-8")
+    safety_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_safety" / "src" / "SafetyState.cpp"
+    ).read_text(encoding="utf-8")
+
+    # 既有急停 FSM 语义保持：throttle>0 先置 15（EST_READY），500ms 后 -100
+    # （EST_BRAKING），再 1500ms 后 EST_DONE 归零；Park 解锁时由 park_change 复位。
+    est_fn = re.search(
+        r"void emergencyStop\(\)\s*\{(?P<body>.*?)\n\}",
+        safety_cpp,
+        re.DOTALL,
+    ).group("body")
+    seq = ["car_output.throttle = 15;", "car_output.throttle = -100;", "car_output.throttle = 0;"]
+    assert all(s in est_fn for s in seq)
+    idxs = [est_fn.index(s) for s in seq]
+    assert idxs == sorted(idxs), "15 → -100 → 0 序列必须按 FSM 状态顺序出现"
+    assert "EMERGENCY_STOP_READY_DURATION" in est_fn
+    assert "EMERGENCY_STOP_BRAKE_DURATION" in est_fn
+
+    # ControlMixer 引入急停头文件，且恰好三处调用（每模式 Park 分支一次）
+    assert '#include "SafetyState.h"' in mixer_cpp
+    assert mixer_cpp.count("emergencyStop();") == 3
+
+    mixer_fn = re.search(
+        r"void updateControlOutput\(\)\s*\{(?P<body>.*)\}",
+        mixer_cpp,
+        re.DOTALL,
+    ).group("body")
+    _, _, tail = mixer_fn.partition("if (car_output.mode == CAR_MODE_FULL_AUTO)")
+    semi_idx = tail.index("else if (car_output.mode == CAR_MODE_SEMI_AUTO)")
+    full_auto = tail[:semi_idx]
+    tail2 = tail[semi_idx:]
+    manual_idx = tail2.index("// Controlled by RC Controller")
+    semi_auto = tail2[:manual_idx]
+    manual = tail2[manual_idx:]
+
+    for name, branch in (("FULL_AUTO", full_auto), ("SEMI_AUTO", semi_auto), ("MANUAL", manual)):
+        assert "if (car_output.park == 1)" in branch, f"{name} 分支缺少 Park 守卫"
+        park_after = branch.partition("if (car_output.park == 1)")[2]
+        park_seg, _, normal_drive = park_after.partition("\n        else")
+        assert "emergencyStop();" in park_seg, f"{name} Park 分支必须调用急停 FSM"
+        assert "emergencyStop();" not in normal_drive, f"{name} 正常行驶分支不得触发急停"
+
+
+def test_pilot_stream_failsafe_semi_auto_timeout_centers_steering():
+    """Issue #194：SEMI_AUTO 下 pilot 控制流超时（约 500ms）转向必须回中，
+    与 FULL_AUTO 的 PILOT_SIGNAL_TIMEOUT_MS 失效保护对齐；RC 油门不受影响
+    （仍走摇杆映射，超时不清零油门）；MANUAL 分支仍不引入 pilot 失效保护。"""
+    mixer_cpp = (
+        PROJECT_ROOT / "libraries" / "mus4_control" / "src" / "ControlMixer.cpp"
+    ).read_text(encoding="utf-8")
+    config_h = (
+        PROJECT_ROOT / "libraries" / "mus4_core" / "src" / "FirmwareConfig.h"
+    ).read_text(encoding="utf-8")
+
+    mixer_fn = re.search(
+        r"void updateControlOutput\(\)\s*\{(?P<body>.*)\}",
+        mixer_cpp,
+        re.DOTALL,
+    ).group("body")
+    _, _, tail = mixer_fn.partition("if (car_output.mode == CAR_MODE_FULL_AUTO)")
+    semi_idx = tail.index("else if (car_output.mode == CAR_MODE_SEMI_AUTO)")
+    manual_idx = tail.index("// Controlled by RC Controller")
+    semi_auto = tail[semi_idx:manual_idx]
+    manual = tail[manual_idx:]
+
+    # 超时判据与 FULL_AUTO 对齐：pilot_last_frame_ms + PILOT_SIGNAL_TIMEOUT_MS
+    assert "millis() - pilot_last_frame_ms" in semi_auto
+    assert "PILOT_SIGNAL_TIMEOUT_MS" in semi_auto
+    # 转向：超时回中（0 过 drift assist 与 pilot 发 0 等价），正常流直读
+    assert "apply_drift_assist(pilotAlive ? pilot_data.steering : 0)" in semi_auto
+    # RC 油门不变：仍由 RC 摇杆映射驱动，SEMI_AUTO 分支不做油门清零
+    assert "mapJoystickAxis(rc_data.throttle," in semi_auto
+    assert "car_output.throttle = 0;" not in semi_auto
+    # MANUAL 不受 pilot 失效保护影响
+    assert "pilot_last_frame_ms" not in manual
+
+    # 超时注释需覆盖 SEMI_AUTO 转向回中语义（旧注释只写 FULL_AUTO）
+    timeout_line = next(l for l in config_h.splitlines() if "PILOT_SIGNAL_TIMEOUT_MS" in l)
+    assert "SEMI_AUTO" in timeout_line

@@ -75,10 +75,17 @@
 #define SEND_INTERVAL_MS 20  // 发送节奏 50Hz，避免淹没 BLE 通知通道
 
 // ---------- WiFi / OTA（回刷通道） ----------
-#define WIFI_STA_TIMEOUT_MS 15000          // STA 连接超时，超时转 AP 兜底
+#define WIFI_STA_TIMEOUT_MS 15000          // STA 开机首次连接超时，超时交给 maintainSta 周期重试
+#define WIFI_STA_RETRY_INTERVAL_MS 30000   // STA 失败/掉线后的重试间隔（#189：退 AP 后必须持续重试，否则设备永久离线）
+#define WIFI_AP_FALLBACK_DELAY_MS 120000UL // 开机累计未连上 STA 满 2 分钟才开兜底 AP（#191：正常环境 AP 从不广播，不诱连周边设备的自动连接）
 #define BRIDGE_AP_SSID "MUS4-RC-Bridge"    // 兜底 AP（开放，与车端 WIFI_CONSOLE_AP_PASSWORD 为空的习惯一致）
 #define OTA_HOSTNAME "mus4-rc-bridge"      // ArduinoOTA 主机名（端口 3232）
 #define OTA_PASSWORD "mus4-debug"          // ArduinoOTA 密码（与车端一致）
+
+// STA 维护状态（#189）：开机失败退 AP 后 30s 周期重试，连上关 AP 回局域网
+static bool staConfigured = false;         // 有密钥且期望 STA（无密钥时纯 AP 是用户选择，不重试）
+static bool apFallbackOpen = false;        // 兜底 AP 当前是否开着
+static unsigned long lastStaAttemptMs = 0; // 上次发起 WiFi.begin 的时刻
 
 BleGamepad bleGamepad("Gamepad MU02", "Espressif", 100);
 WebServer otaServer(80);
@@ -156,6 +163,9 @@ void sendGamepadPacket()
 
 // ---------- HTTP /update（回刷通道 2）：POST multipart 文件字段 "update" ----------
 static bool otaStarted = false;
+// 上传失败原因（#182）：非空时 POST 一律 5xx NACK、不重启、复位 Update——
+// 与车固件 WebConsoleServer 的 wifiWebUpdateErrorMsg 清理链同款语义
+static String otaErrorMsg = "";
 
 // ---------- OTA 双启动槽位（与车固件互为 A/B 面） ----------
 // 槽位身份标记：车固件嵌入 "MUS4APP:CAR"，本桥嵌入 "MUS4APP:BRIDGE"，
@@ -187,11 +197,13 @@ static String identifyOtaPartitionKind(const esp_partition_t *part)
         uint32_t readOff = (off >= 16) ? off - 16 : 0;
         size_t readLen = chunk + ((off >= 16) ? 16 : 0);
         if (esp_partition_read(part, readOff, buf, readLen) != ESP_OK) break;
-        for (size_t i = 0; i + MAGIC_LEN + 1 <= readLen; i++)
+        for (size_t i = 0; i + MAGIC_LEN <= readLen; i++)
         {
             if (memcmp(buf + i, MAGIC, MAGIC_LEN) != 0) continue;
-            if (memcmp(buf + i + MAGIC_LEN, "CAR", 3) == 0) return "car";
-            if (memcmp(buf + i + MAGIC_LEN, "BRIDGE", 6) == 0) return "bridge";
+            // 后缀比对各自做边界判断，杜绝 memcmp 栈越界读（#181）；
+            // 后缀被本块截断的标记由下一块的 16 字节重叠重新覆盖，不会漏检
+            if (i + MAGIC_LEN + 3 <= readLen && memcmp(buf + i + MAGIC_LEN, "CAR", 3) == 0) return "car";
+            if (i + MAGIC_LEN + 6 <= readLen && memcmp(buf + i + MAGIC_LEN, "BRIDGE", 6) == 0) return "bridge";
         }
     }
     return "unknown";
@@ -262,6 +274,16 @@ static void handleUpdateGet()
 
 static void handleUpdatePost()
 {
+    // 失败路径：5xx + 具体错误，不重启；复位 Update 防 "already running"
+    // 卡死后续刷机（#182，对齐车固件 resetOtaAfterFailedUpload 语义）
+    if (otaErrorMsg.length() > 0)
+    {
+        if (Update.isRunning()) Update.abort();
+        otaServer.send(500, "text/plain", otaErrorMsg + "\n");
+        otaErrorMsg = "";
+        otaStarted = false;
+        return;
+    }
     // 鉴权要求与车端一致：只有确实发生过上传才重启，空 POST 直接 400
     if (otaStarted)
     {
@@ -280,23 +302,33 @@ static void handleUpdateUpload()
     HTTPUpload &upload = otaServer.upload();
     if (upload.status == UPLOAD_FILE_START)
     {
+        otaErrorMsg = "";
         otaStarted = true;
         if (!Update.begin(UPDATE_SIZE_UNKNOWN))
         {
+            otaErrorMsg = "NACK:BEGIN_FAILED:" + String(Update.errorString());
             Update.printError(Serial);
         }
     }
     else if (upload.status == UPLOAD_FILE_WRITE)
     {
+        if (otaErrorMsg.length() > 0) return;
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
         {
+            otaErrorMsg = "NACK:WRITE_FAILED";
             Update.printError(Serial);
         }
     }
     else if (upload.status == UPLOAD_FILE_END)
     {
+        if (otaErrorMsg.length() > 0)
+        {
+            Update.end();
+            return;
+        }
         if (!Update.end(true))
         {
+            otaErrorMsg = "NACK:END_FAILED:" + String(Update.errorString());
             Update.printError(Serial);
         }
     }
@@ -304,7 +336,56 @@ static void handleUpdateUpload()
     {
         Update.abort();
         otaStarted = false;
+        otaErrorMsg = "NACK:ABORTED";
     }
+}
+
+// STA 周期维护（#189）：开机失败退 AP / 运行中掉线后持续重试，直到连回局域网。
+// 无密钥（staConfigured=false）时纯 AP 是用户选择，不重试；连上后关兜底 AP
+// 回归 STA 单模，对齐「STA 成功则不开 AP」的既有语义。
+static void maintainSta()
+{
+    if (!staConfigured)
+        return;
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        if (apFallbackOpen)
+        {
+            // 重试成功：关兜底 AP 回归 STA 单模（IP 可能从 192.168.4.1 变为路由器分配，上报）
+            WiFi.softAPdisconnect(true);
+            WiFi.mode(WIFI_STA);
+            apFallbackOpen = false;
+            Serial.printf("WiFi STA 重连成功，已关兜底 AP，IP=%s\n",
+                          WiFi.localIP().toString().c_str());
+        }
+        return;
+    }
+
+    if (millis() - lastStaAttemptMs < WIFI_STA_RETRY_INTERVAL_MS)
+        return;
+
+    // #191：开机累计未连上满延迟窗口才开兜底 AP——正常环境 STA 数秒内连上、
+    // AP 从不广播，周边设备（NetworkManager 自动连接）不会被诱连；真兜底
+    // 场景（家里 Wi-Fi 消失）2 分钟后 AP 开启，紧急刷机通道保留。AP+STA
+    // 共存模式，STA 重试继续
+    if (!apFallbackOpen && millis() >= WIFI_AP_FALLBACK_DELAY_MS)
+    {
+        WiFi.mode(WIFI_AP_STA);
+        WiFi.softAP(BRIDGE_AP_SSID);
+        apFallbackOpen = true;
+        Serial.printf("STA %lus 未连上，开兜底 AP \"%s\"，IP=%s（继续每 %lus 重试 STA）\n",
+                      millis() / 1000UL, BRIDGE_AP_SSID,
+                      WiFi.softAPIP().toString().c_str(),
+                      WIFI_STA_RETRY_INTERVAL_MS / 1000UL);
+    }
+
+    // AP 开着时必须 AP+STA 共存模式重试，否则 WiFi.begin 会把兜底 AP 拆掉，
+    // 正经连在 AP 上刷机的主机会被踢断
+    WiFi.mode(apFallbackOpen ? WIFI_AP_STA : WIFI_STA);
+    WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASSWORD);
+    lastStaAttemptMs = millis();
+    Serial.println("WiFi STA 重试连接中…");
 }
 
 static void setupWifiAndOta()
@@ -312,13 +393,17 @@ static void setupWifiAndOta()
     bool staOk = false;
     if (WIFI_STA_SSID[0] != '\0')
     {
+        staConfigured = true;
         WiFi.mode(WIFI_STA);
+        // 已连接后路由器重启等掉线场景由底层自动重连；开机失败场景由 maintainSta 周期重试兜底
+        WiFi.setAutoReconnect(true);
         WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASSWORD);
         unsigned long start = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_STA_TIMEOUT_MS)
         {
             delay(250);
         }
+        lastStaAttemptMs = millis();
         staOk = (WiFi.status() == WL_CONNECTED);
     }
 
@@ -326,13 +411,22 @@ static void setupWifiAndOta()
     {
         Serial.printf("WiFi STA 已连接，IP=%s\n", WiFi.localIP().toString().c_str());
     }
-    else
+    else if (!staConfigured)
     {
-        // 兜底 AP：连不上家里 Wi-Fi（或没有密钥文件）时也能通过 192.168.4.1 刷回
+        // 无密钥占位版：保持开机即开兜底 AP（本地无密钥环境的刷机兜底通道）
         WiFi.mode(WIFI_AP);
         WiFi.softAP(BRIDGE_AP_SSID);
-        Serial.printf("WiFi STA 失败，已开兜底 AP \"%s\"，IP=%s\n",
+        apFallbackOpen = true;
+        Serial.printf("无 STA 密钥，已开兜底 AP \"%s\"，IP=%s\n",
                       BRIDGE_AP_SSID, WiFi.softAPIP().toString().c_str());
+    }
+    else
+    {
+        // 有密钥但首试失败（#191）：不立即开兜底 AP——maintainSta 每 %lus 重试，
+        // 累计 %lus 连不上才开，正常网络波动不会广播 AP 诱连周边设备
+        Serial.printf("WiFi STA 首试失败，每 %lus 重试，%lus 内连不上才开兜底 AP\n",
+                      WIFI_STA_RETRY_INTERVAL_MS / 1000UL,
+                      WIFI_AP_FALLBACK_DELAY_MS / 1000UL);
     }
 
     // 回刷通道 1：ArduinoOTA（端口 3232）
@@ -375,6 +469,7 @@ void loop()
     sendGamepadPacket();
     ArduinoOTA.handle();
     otaServer.handleClient();
+    maintainSta();
 
     // 调试输出：连接后每 500ms 打印一次脉宽，方便不接电脑也能核对信号
     static unsigned long lastPrintMs = 0;

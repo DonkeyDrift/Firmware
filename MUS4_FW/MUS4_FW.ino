@@ -170,6 +170,7 @@ SerialBuf serial2Buf = {{0},0,0,0,false};
 void ensureWifiOtaStarted();
 #if __has_include("WirelessSecrets.h")
 #include "WirelessSecrets.h"
+#endif
 
 // ── Phase 1: FirmwareApp 任务调度（可选启用） ─────────────────────────────
 // 当前 loop() 仍用传统 if (millis() - lastX >= intervalX) 模式。
@@ -177,7 +178,6 @@ void ensureWifiOtaStarted();
 // 先以「影子模式」引入：记录任务执行时间但不接管调度。
 // 后续可逐步切换为 firmwareApp.update() 替代手动调度。
 #include "FirmwareApp.h"
-#endif
 #ifndef WIFI_STA_SSID
 #define WIFI_STA_SSID ""
 #endif
@@ -440,7 +440,7 @@ static bool isValidIpv4Text(const char* s)
 
 // Serial2 双向联通验证：独立 ping-pong 协议处理。
 // 不走 dispatchCommandLine，避免 PING/PONG 被当作控制命令解析。
-static void handleSerial2()
+void handleSerial2()
 {
     static char line[128];
     static uint8_t idx = 0;
@@ -630,9 +630,12 @@ void setup()
       loadJudgeConfigPreference();
       loadDriftConfigPreference();
       load_drift_config(wifiRuntime.driftConfig);
-      loadJoystickCalibration();
+      // 摇杆校准加载内部的油门限幅读取（loadThrottleOutputLimits）以 motor_mid_v
+      // 为校验基准，必须先加载舵机/电机输出中点配置再加载摇杆校准，否则持久化的
+      // Min T / Max T 会按编译期默认中点 7372 校验而被静默回退（#196）。
       loadServoOutputConfig();
       loadMotorOutputConfig();
+      loadJoystickCalibration();
       cleanupInvalidOtaPartition();
       // v1.7.28：启动后标记当前固件为有效，取消 bootloader 的 OTA 回滚。
       // 否则第一次 OTA 成功后新分区长期处于 PENDING_VERIFY，下次 reset

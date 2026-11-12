@@ -25,6 +25,7 @@
 #endif
 #ifdef ENABLE_WIFI_LLMNR_DISCOVERY
 #include <WiFiUdp.h>
+#endif
 
 // ── Phase 1: 非阻塞延时 ──────────────────────────────────────────────────
 // Wi-Fi AP/STA 状态转换函数（restartWifiApOnChannel / applyWifiStaCredentials /
@@ -35,6 +36,8 @@
 // 改为 yield() 循环：让出 CPU 给 idle/WDT/其他 FreeRTOS 任务，同时保持
 // 相同的总等待时间，Wi-Fi 栈的模式切换在 yield 期间照样完成。
 // 对比：WebConsoleServer.cpp v1.7.26 的 OTA 上传已用同样的 yield() 模式。
+// 注：定义不得放进 ENABLE_WIFI_LLMNR_DISCOVERY 守卫——该开关默认关闭
+// （DISABLE_WIFI_NAME_DISCOVERY），而用法在守卫外，圈进去默认配置编不过。
 static void wifiYieldDelay(uint32_t ms)
 {
     unsigned long start = millis();
@@ -42,7 +45,6 @@ static void wifiYieldDelay(uint32_t ms)
         yield();
     }
 }
-#endif
 
 // Hardware objects defined in MUS4_FW.ino
 extern Preferences mus4Prefs;

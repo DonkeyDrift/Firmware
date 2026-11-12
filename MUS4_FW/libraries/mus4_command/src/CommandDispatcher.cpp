@@ -12,6 +12,10 @@
 extern TUI tui;
 extern ControlData pilot_data;
 extern int lastSeq;
+
+// 上位机 pilot 控制流最后有效 T:S 帧的 millis()：ControlMixer 据此做
+// FULL_AUTO 失效保护（对齐 RC 通道的 RC_SIGNAL_TIMEOUT 超时回中语义）
+unsigned long pilot_last_frame_ms = 0;
 extern int servo_mid_v;
 extern int motor_mid_v;
 
@@ -240,6 +244,7 @@ bool dispatchCommandLine(const String& line, Print& out, SerialBuf& sb, bool pil
         pilot_data.throttle = t;
         pilot_data.steering = s;
         lastSeq = seq;
+        pilot_last_frame_ms = millis();
         if (!pilotSilent) {
             if (seq >= 0) out.printf("ACK:%d\n", seq);
             else out.println("ACK");

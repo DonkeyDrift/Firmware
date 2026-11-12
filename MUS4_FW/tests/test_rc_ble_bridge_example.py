@@ -6,6 +6,7 @@
 """
 
 import pathlib
+import re
 
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -133,3 +134,97 @@ def test_rc_ble_bridge_dual_boot_slot_switching():
     # 根页面含 "Drifter Console" 字样：DD 的局域网控制台发现靠它识别桥模式设备
     assert 'otaServer.on("/", HTTP_GET, handleRoot)' in source
     assert "<title>Drifter Console</title>" in source
+
+
+def test_rc_ble_bridge_update_failure_chain_no_ack_no_restart():
+    """v1.10.13（#182）：HTTP /update 上传失败（begin/write/end/abort 任一失败）
+    必须 5xx NACK、复位 Update、不重启——对齐车固件 WebConsoleServer 的
+    wifiWebUpdateErrorMsg 清理链；只有完整成功才 ACK:UPDATE_OK + 重启。"""
+    source = bridge_source()
+
+    # 失败原因登记与各阶段 NACK 文案
+    assert 'static String otaErrorMsg = "";' in source
+    assert '"NACK:BEGIN_FAILED:"' in source
+    assert '"NACK:WRITE_FAILED"' in source
+    assert '"NACK:END_FAILED:"' in source
+    assert '"NACK:ABORTED"' in source
+
+    # POST 处理器：失败分支在最前（先于 ACK 分支），不重启并复位 Update
+    post_body = re.search(
+        r"static void handleUpdatePost\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert "otaErrorMsg.length() > 0" in post_body
+    assert "Update.isRunning()" in post_body
+    assert "Update.abort()" in post_body
+    assert "otaServer.send(500" in post_body
+    assert post_body.index("otaErrorMsg.length()") < post_body.index("ACK:UPDATE_OK")
+
+    # 上传处理器：失败后跳过后续写入/校验（return），END 前置错误仍调用 Update.end()
+    upload_body = re.search(
+        r"static void handleUpdateUpload\(\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    ).group("body")
+    assert upload_body.index("NACK:WRITE_FAILED") > upload_body.index("otaErrorMsg.length() > 0) return")
+
+
+def test_rc_ble_bridge_sta_retry_after_ap_fallback():
+    """#189：桥固件 STA 开机失败退兜底 AP 后必须持续重试——之前 setup() 里只试
+    15s、失败永久停留 192.168.4.1，双槽 OTA 期间设备离线、必须人工连桥 AP 干预。"""
+    source = bridge_source()
+
+    # 30s 重试间隔常量在位
+    assert "#define WIFI_STA_RETRY_INTERVAL_MS 30000" in source
+
+    # loop() 必须调用维护函数（每帧检查，非阻塞）
+    loop_body = re.search(r"void loop\(\)\s*\{(?P<body>.*?)\n\}", source, re.DOTALL).group("body")
+    assert "maintainSta();" in loop_body
+
+    # 维护函数本体：无密钥不重试（纯 AP 是用户选择）
+    fn = re.search(r"static void maintainSta\(\)\s*\{(?P<body>.*?)\n\}", source, re.DOTALL).group("body")
+    assert "if (!staConfigured)" in fn
+    # 按间隔节流重试
+    assert "WIFI_STA_RETRY_INTERVAL_MS" in fn and "WiFi.begin" in fn
+    # AP 开着时必须 AP+STA 共存重试，否则 begin 会拆掉兜底 AP 踢断正在刷机的主机
+    assert "apFallbackOpen ? WIFI_AP_STA : WIFI_STA" in fn
+    # 连上后关兜底 AP 回归 STA 单模（对齐「STA 成功则不开 AP」既有语义）
+    assert "WiFi.softAPdisconnect(true)" in fn
+    assert 'Serial.printf("WiFi STA 重连成功' in fn
+
+    # setup：有密钥时开启底层自动重连（掉线场景）；开机失败记录重试起点
+    setup_fn = re.search(r"static void setupWifiAndOta\(\)\s*\{(?P<body>.*?)\n    // 回刷通道", source, re.DOTALL).group("body")
+    assert "WiFi.setAutoReconnect(true)" in setup_fn
+    assert "staConfigured = true;" in setup_fn
+    assert "lastStaAttemptMs = millis();" in setup_fn
+
+
+def test_rc_ble_bridge_ap_fallback_delayed_when_sta_fails():
+    """#191：有密钥但 STA 失败时兜底 AP 不得立即广播——开机累计 2 分钟连不上
+    才开。之前开机即广播，周边设备（NetworkManager 自动连接）在路由器波动时
+    被诱连到这个强信号开放热点且不再回连，用户三次接显示器手动救援。"""
+    source = bridge_source()
+
+    # 2 分钟延迟常量在位
+    assert "#define WIFI_AP_FALLBACK_DELAY_MS 120000UL" in source
+
+    # maintainSta：未连上 + AP 未开 + 超过延迟窗口 → 开兜底 AP（AP+STA 共存，STA 重试继续）
+    fn = re.search(r"static void maintainSta\(\)\s*\{(?P<body>.*?)\n\}", source, re.DOTALL).group("body")
+    assert "if (!apFallbackOpen && millis() >= WIFI_AP_FALLBACK_DELAY_MS)" in fn
+    delay_idx = fn.index("WIFI_AP_FALLBACK_DELAY_MS)")
+    delay_seg = fn[delay_idx:delay_idx + 500]
+    assert "WiFi.mode(WIFI_AP_STA);" in delay_seg
+    assert "WiFi.softAP(BRIDGE_AP_SSID);" in delay_seg
+    assert "apFallbackOpen = true;" in delay_seg
+
+    # setup 有密钥失败分支不再立即开 AP：日志说明延迟策略，其后 400 字符内无 softAP
+    setup_fn = re.search(
+        r"static void setupWifiAndOta\(\)\s*\{(?P<body>.*?)\n    // 回刷通道", source, re.DOTALL
+    ).group("body")
+    assert "连不上才开兜底 AP" in setup_fn
+    sta_fail_body = setup_fn[setup_fn.index("WiFi STA 首试失败"):setup_fn.index("WiFi STA 首试失败") + 400]
+    assert "softAP" not in sta_fail_body
+    # 无密钥占位版保持立即开 AP（本地无密钥环境的刷机兜底通道）
+    no_secret_body = setup_fn[setup_fn.index("无 STA 密钥") - 300:setup_fn.index("无 STA 密钥") + 100]
+    assert "WiFi.softAP(BRIDGE_AP_SSID);" in no_secret_body

@@ -110,3 +110,21 @@ def test_sta_set_clears_stale_error_before_deferred_apply():
     body = _function_body(WEB_SERVER_CPP, r"static void handleWifiWebStaSet\(\)")
     assert "clearWifiStaLastError()" in body
     assert body.index("clearWifiStaLastError()") < body.index("scheduleWifiStaApply()")
+
+
+# --- POST /api/drift-config 与 /api/drift-config/reset 鉴权门禁（#197）---
+
+def test_drift_config_set_requires_authentication():
+    body = _function_body(WEB_SERVER_CPP, r"static void handleWifiWebDriftConfigSet\(\)")
+    assert "isWirelessConsoleAuthDisabled()" in body
+    assert 'wifiWebServer.send(403, "application/json", "{\\"error\\":\\"auth_required\\"}")' in body
+    # 门禁必须先于任何持久化动作（NVS 写入）
+    assert body.index("auth_required") < body.index("saveDriftConfigPreference")
+
+
+def test_drift_config_reset_requires_authentication():
+    body = _function_body(WEB_SERVER_CPP, r"static void handleWifiWebDriftConfigReset\(\)")
+    assert "isWirelessConsoleAuthDisabled()" in body
+    assert 'wifiWebServer.send(403, "application/json", "{\\"error\\":\\"auth_required\\"}")' in body
+    # 门禁必须先于任何持久化动作（NVS 重置）
+    assert body.index("auth_required") < body.index("resetDriftConfigPreference")

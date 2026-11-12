@@ -1,4 +1,6 @@
 #include "FirmwareApp.h"
+#include "SerialBufferTypes.h"
+#include "SerialLineReader.h"
 
 // ── Phase 1: FirmwareApp 任务调度实现 ──────────────────────────────────────
 
@@ -7,9 +9,9 @@
 void read_ina219();
 void read_mpu6050();
 void updateJoystickCalibration();
-void readSerialBuf(Stream& s, SerialBuf& buf);
 void handleSerial2();
 #ifdef ENABLE_WIFI_CONSOLE
+#include "RuntimeState.h"
 void updateWifiConsole();
 void updateWifiWebConsole();
 void updateWifiSta();
@@ -18,8 +20,6 @@ void updateWifiBootResetButton();
 void updateWifiOta(OtaRuntimeState& os, WifiRuntimeState& ws);
 namespace mus4cloud { void update(); }
 #endif
-void updateRcFilter();
-void emitTelemetry();
 
 // 传感器读取任务（100Hz）
 static void taskSensorRead() {
@@ -29,12 +29,14 @@ static void taskSensorRead() {
 
 // RC 滤波任务（RC_FILTER_UPDATE_INTERVAL Hz）
 static void taskRcFilter() {
-    updateRcFilter();
+    // RC 滤波已内联在 loop() 的 PWM 读取路径（pwm_filter_*），无独立函数可调；
+    // 影子模式先挂空实现，Phase 2 迁移时接线。
 }
 
 // 遥测发送任务（60Hz + 100Hz IMU + 1Hz M:P）
 static void taskTelemetry() {
-    emitTelemetry();
+    // 遥测发送已内联在 loop()（shouldEmitSerial1Telemetry 门控），无独立函数可调；
+    // 影子模式先挂空实现，Phase 2 迁移时接线。
 }
 
 // Wi-Fi 相关任务（ENABLE_WIFI_CONSOLE）
@@ -64,7 +66,6 @@ static void taskWifiOta() {}
 static void taskJoystickCal() { updateJoystickCalibration(); }
 static void taskSerialRead() {
     extern SerialBuf serial0Buf, serial1Buf;
-    extern Stream& Serial2;
     readSerialBuf(Serial, serial0Buf);
     readSerialBuf(Serial1, serial1Buf);
     handleSerial2();

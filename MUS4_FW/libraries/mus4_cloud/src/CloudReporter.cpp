@@ -111,18 +111,38 @@ static const unsigned long CLOUD_REPORT_EARLY_RETRY_MS = 15000UL;
 //     缓冲装得下、瞬态只剩 5.6KB 装不下）必须被拒绝——低于该值时握手内部
 //     分配必失败，且失败过程中的分配/并发消耗曾把池水位打到 176–212 字节。
 //   - 空闲门限 64000 = 峰值 48.8KB + ≥15KB 残余地板：算术上保证单次尝试的
-//     TLS 自身消耗不可能把 8BIT 池打到 KB 级以下；开机期无会话 free8 实测
-//     ~81KB（max_blk 接近 free8）轻松通过，早期窗口不会被关死。
+//     TLS 自身消耗不可能把 8BIT 池打到 KB 级以下。注意该门限只适用于窗口
+//     结束后的运行期——开机无会话时 free8 实测仅 47–48.5KB（见下方 BOOT
+//     门限），早期窗口若套用本值会把干净建连窗口关死。
 //   - 门限不满足零分配跳过；碎片化（free8 够、连续块不够）期等待安静期
 //     （大块消费者释放后自然去碎片）再按退避阶梯复查，不无限硬试。
 static const uint32_t CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD = 64000;
 static const uint32_t CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD = 49000;
 
-// 栈大小保持 16384 字节:同步 HTTPS 里 WiFiClientSecure 握手的调用深度需要
-// 余量(mbedTLS 握手栈占用常见 6–10KB,叠加 HTTPClient 调用深度)。v1.10.17
-// 起每次上报实测栈高水位并通过 "cloud" 日志的 stack_hwm 字段回传,若实车
-// 数据长期显示富余,再据此收敛——先测量后调整,不盲砍。
-static const uint32_t CLOUD_REPORT_TASK_STACK_SIZE = 16384;      // ESP32 Arduino 的 stack 单位为字节
+// 开机早期窗口专用门限（第四轮实车修正）：严格门限只适用于窗口结束后的
+// 碎片化期，若一刀切到早期窗口，会把唯一能成功建连的干净窗口关死——
+// 第三轮实车（.9 车）早期窗口三次尝试全部
+//   `skip low heap free8≈48548 max_blk≈47092`（开机无会话画像），
+// 第二轮 free8=47100/47300 也恰好低于当时 48000 门限而错过窗口，之后才在
+// 碎片化期硬握手打到 OOM 悬崖。v1.10.16 正是靠在开机窗口建立常驻会话
+// 才长期成功，因此早期窗口必须按实测开机画像放行：
+//   - free8 ≥ 40000：开机实测 47–48.5KB，留 ~7–8.5KB 余量即可放行；
+//   - maxAlloc8 ≥ 34000：两块 16.4KB TLS 连续缓冲（33.3KB）刚好容纳，
+//     开机实测 max_blk≈47KB 余量充足；窗口期堆尚未碎片化，握手瞬态可
+//     由其余空闲块供给，不套用窗口后的 49KB 单块要求。
+// 窗口结束后一律回到上面的严格门限（峰值 48.8KB + 15KB 地板、单块 49KB），
+// 宁可跳过等待也不让运行期碎片化握手把 8BIT 池打到 KB 级以下。
+static const uint32_t CLOUD_REPORT_MIN_FREE_HEAP8_FOR_BOOT = 40000;
+static const uint32_t CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_BOOT = 34000;
+
+// 任务栈 16384 → 8192（第四轮实车修正）：实车日志 stack_hwm=12540 字节，
+// 即 16KB 栈在含 TLS 握手的完整上报路径上峰值只用 ~3.85KB——余量长期
+// 虚占 12.5KB 的 8BIT 池。而这台车 8BIT 池开机可用只有 ~48.5KB，mbedTLS
+// 握手峰值 ~48.8KB，第四轮实车证明「干净窗口内握手也 -1、min_heap8 打到
+// 108 字节」正是差这几 KB。砍半后仍留 ~4.3KB（>2 倍实测峰值）栈余量，
+// 同时永久归还 8KB 给握手分配；stack_hwm 每次上报继续回传，若实车余量
+// 收窄可即时发现。
+static const uint32_t CLOUD_REPORT_TASK_STACK_SIZE = 8192;      // ESP32 Arduino 的 stack 单位为字节
 static const uint32_t CLOUD_REPORT_WORKER_POLL_MS = 100;
 static const size_t CLOUD_REPORT_HOSTNAME_CAPACITY = 33;
 
@@ -159,21 +179,25 @@ struct ReportAttemptResult {
 };
 
 /// 冷态（重）建连前 DRAM 池空闲地板判据（纯函数，便于测试锁定）。
-static bool reportHeapFreeFloorOk(uint32_t free8)
+/// earlyWindow=true 用开机窗口门限（实测开机画像放行），否则用运行期严格门限。
+static bool reportHeapFreeFloorOk(uint32_t free8, bool earlyWindow)
 {
-    return free8 >= CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD;
+    return free8 >= (earlyWindow ? CLOUD_REPORT_MIN_FREE_HEAP8_FOR_BOOT
+                                 : CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD);
 }
 
 /// 冷态（重）建连前 DRAM 池最大连续块判据（纯函数，便于测试锁定）。
-static bool reportHeapContiguousOk(uint32_t maxAlloc8)
+static bool reportHeapContiguousOk(uint32_t maxAlloc8, bool earlyWindow)
 {
-    return maxAlloc8 >= CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD;
+    return maxAlloc8 >= (earlyWindow ? CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_BOOT
+                                     : CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD);
 }
 
 /// 冷态（重）建连前 DRAM 池组合门限（纯函数，便于测试锁定）。
-static bool reportHeapGateOk(uint32_t free8, uint32_t maxAlloc8)
+static bool reportHeapGateOk(uint32_t free8, uint32_t maxAlloc8, bool earlyWindow)
 {
-    return reportHeapFreeFloorOk(free8) && reportHeapContiguousOk(maxAlloc8);
+    return reportHeapFreeFloorOk(free8, earlyWindow)
+        && reportHeapContiguousOk(maxAlloc8, earlyWindow);
 }
 
 /// 连续失败退避：60s → 120s → 300s 封顶（= 稳态心跳间隔）。
@@ -301,8 +325,9 @@ static void cloudReportTask(void* parameter)
             // 跳过原因分桶（free8 地板 vs 连续块不足）供日志区分。
             result.freeHeap8 = heap_caps_get_free_size(MALLOC_CAP_8BIT);
             result.maxAlloc8 = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-            if (!epochHealthy && !reportHeapGateOk(result.freeHeap8, result.maxAlloc8)) {
-                if (!reportHeapFreeFloorOk(result.freeHeap8)) {
+            const bool earlyWindow = now < CLOUD_REPORT_EARLY_WINDOW_MS;
+            if (!epochHealthy && !reportHeapGateOk(result.freeHeap8, result.maxAlloc8, earlyWindow)) {
+                if (!reportHeapFreeFloorOk(result.freeHeap8, earlyWindow)) {
                     result.skippedLowHeap = true;
                 } else {
                     result.skippedFrag = true;

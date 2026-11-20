@@ -13,15 +13,13 @@
      CLOUD_REPORT_EARLY_WINDOW_MS 时，重试节奏用更积极的
      CLOUD_REPORT_EARLY_RETRY_MS（15s 一试）抢住低碎片窗口；一旦成功立即回
      5 分钟稳态心跳；窗口结束后回落既有 60s→120s→300s 退避阶梯。
-  2. 冷态建连门限收紧为「峰值 + 地板」双条件（常量带依据注释）：
-     - free8 ≥ 64000：单次 TLS（重）建连峰值 ~48.8KB（实测 INTERNAL 口径
-       83.5→34.7KB，全部由 8BIT 池供给）+ ≥15KB 残余地板——算术上保证
-       TLS 自身消耗不可能把池打到 KB 级以下；
-     - maxAlloc8 ≥ 49000：两块 ~16.4KB 连续缓冲（in_buf/out_buf，33.3KB）
-       最坏情况同取自最大连续块，加上握手瞬态（ECDH/RSA mpi、证书链解析、
-       握手窗口内 lwIP pbuf，合计 ~15.7KB）≈ 49KB，与实测峰值总量 48.8KB
-       双向印证；第二轮失败案例 max_blk=38.9KB（33.3+5.6KB，瞬态装不下）
-       必须被该门限拒绝。
+  2. 冷态建连门限为「早期窗口 / 运行期」双档（第四轮实车修正）：
+     - 早期窗口（开机 <5 分钟）：free8 ≥ 40000 且 maxAlloc8 ≥ 34000——
+       按实测开机画像（free8≈47–48.5KB、max_blk≈47KB）放行，先建立常驻
+       会话；此前单档 64000/49000 在开机窗口就不满足，三次尝试全部
+       `skip low heap`，干净窗口被关死；
+     - 窗口结束后：free8 ≥ 64000 且 maxAlloc8 ≥ 49000（峰值 + 地板 +
+       双缓冲与瞬态的连续块需求），不达标零分配跳过。
   3. 门限不满足零分配跳过，跳过原因可观测：free8 不足沿用「skip low heap」
      日志行，free8 足够但连续块不足新打「wait low-frag window」日志行
      （等待系统安静期自然去碎片后按既有节奏复查门限，不无限硬试）。
@@ -150,10 +148,12 @@ def test_gate_split_into_free_floor_and_contiguous_predicates():
     contiguous = _function_block(source, "static bool reportHeapContiguousOk(")
     gate = _function_block(source, "static bool reportHeapGateOk(")
 
-    assert "free8 >= CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD" in free_floor
-    assert "maxAlloc8 >= CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD" in contiguous
-    assert "reportHeapFreeFloorOk(free8)" in gate
-    assert "reportHeapContiguousOk(maxAlloc8)" in gate
+    assert "earlyWindow ? CLOUD_REPORT_MIN_FREE_HEAP8_FOR_BOOT" in free_floor
+    assert "CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD" in free_floor
+    assert "earlyWindow ? CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_BOOT" in contiguous
+    assert "CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD" in contiguous
+    assert "reportHeapFreeFloorOk(free8, earlyWindow)" in gate
+    assert "reportHeapContiguousOk(maxAlloc8, earlyWindow)" in gate
 
 
 def test_cold_rebuild_skip_is_zero_alloc_with_reason_split():
@@ -199,6 +199,30 @@ def test_skip_reason_observability_in_emit_log():
     assert "bool skippedFrag;" in source
     assert "reportResultSkippedFrag = result.skippedFrag;" in source
     assert "skippedFrag = reportResultSkippedFrag;" in source
+
+
+def test_boot_gate_matches_measured_boot_heap_profile():
+    """第四轮实车修正：开机无会话画像 free8≈47–48.5KB、max_blk≈47KB，
+    早期窗口门限必须放行（否则干净建连窗口被关死、常驻会话永远建不起来），
+    连续块下限仍须容纳两块 16.4KB TLS 缓冲；窗口后严格门限不变。"""
+    source = _source()
+    free_boot = re.search(
+        r"CLOUD_REPORT_MIN_FREE_HEAP8_FOR_BOOT\s*=\s*(\d+)", source
+    )
+    block_boot = re.search(
+        r"CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_BOOT\s*=\s*(\d+)", source
+    )
+    assert free_boot is not None and block_boot is not None
+    free_v = int(free_boot.group(1))
+    block_v = int(block_boot.group(1))
+    assert free_v <= 46000, "早期门限必须低于实测开机 free8=47100/47300/48548"
+    assert free_v >= 32768, "早期门限仍需保留总量地板"
+    assert 2 * 16640 <= block_v <= 40000, "容纳双 16.4KB 缓冲且低于实测开机 max_blk≈47KB"
+
+    worker = _function_block(source, "void cloudReportTask(")
+    assert "now < CLOUD_REPORT_EARLY_WINDOW_MS" in worker
+    assert "reportHeapGateOk(result.freeHeap8, result.maxAlloc8, earlyWindow)" in worker
+    assert "reportHeapFreeFloorOk(result.freeHeap8, earlyWindow)" in worker
 
 
 def test_helpers_and_worker_still_do_not_log_directly():

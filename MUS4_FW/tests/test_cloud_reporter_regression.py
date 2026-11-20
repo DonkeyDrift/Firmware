@@ -143,10 +143,10 @@ def test_cold_rebuild_gate_constants_and_zero_alloc_skip():
     free_floor = _function_block(source, "static bool reportHeapFreeFloorOk(")
     contiguous = _function_block(source, "static bool reportHeapContiguousOk(")
     gate = _function_block(source, "static bool reportHeapGateOk(")
-    assert "free8 >= CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD" in free_floor
-    assert "maxAlloc8 >= CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD" in contiguous
-    assert "reportHeapFreeFloorOk(free8)" in gate
-    assert "reportHeapContiguousOk(maxAlloc8)" in gate
+    assert "earlyWindow ? CLOUD_REPORT_MIN_FREE_HEAP8_FOR_BOOT" in free_floor
+    assert "earlyWindow ? CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_BOOT" in contiguous
+    assert "reportHeapFreeFloorOk(free8, earlyWindow)" in gate
+    assert "reportHeapContiguousOk(maxAlloc8, earlyWindow)" in gate
     assert "heap_caps_get_free_size(MALLOC_CAP_8BIT)" in worker
     assert "heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)" in worker
 

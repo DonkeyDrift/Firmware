@@ -16,7 +16,7 @@ CloudReporter 在任务生命周期常驻 WiFiClientSecure,mbedTLS 会话(约 40
    上报仍在独立 core0 任务,主 loop 不做任何同步网络操作(完整生命周期细节
    另见 test_cloud_reporter_regression.py)。
 4. cloud-report 任务每次上报实测栈高水位与堆水位并回传主 loop 打日志,为
-   后续栈大小调优提供数据;任务栈保持 16384 字节(TLS 握手调用深度需要余量)。
+   后续栈大小调优提供数据;任务栈已按实测高水位收敛为 8192 字节(16KB 时 stack_hwm=12540,峰值约 3.85KB)。
 """
 
 import pathlib
@@ -236,8 +236,9 @@ def test_cloud_worker_measures_stack_and_heap_and_main_loop_logs_it():
 
     v1.10.16 的诊断盲区:无从判断 16KB 任务栈是否浪费、堆基线何时恶化。
     测量点必须在 worker 上下文(高水位只在本任务读才有意义),日志写入留在
-    主 loop(与既有约束一致:worker/attempt 不调用 mus4Log*)。任务栈大小
-    保持 16384 字节——TLS 握手调用深度需要余量,待实测数据再收敛。
+    主 loop(与既有约束一致:worker/attempt 不调用 mus4Log*)。任务栈已按该
+    实测收敛到 8192 字节:16KB 栈实车 stack_hwm=12540(峰值 ~3.85KB),8192
+    保留 >2 倍峰值余量,归还的 8KB 用于缓解 TLS 握手的 8BIT 池压力。
     """
     source = _source(REPORTER_PATH)
     worker = _function_block(source, "void cloudReportTask(")
@@ -253,7 +254,7 @@ def test_cloud_worker_measures_stack_and_heap_and_main_loop_logs_it():
     # 主 loop 日志带实测字段
     assert "stack_hwm" in emit
     assert "min_heap" in emit
-    # 栈大小保持 TLS 安全余量
+    # 栈大小按实测高水位收敛(8192 = 峰值 ~3.85KB 的两倍以上余量)
     stack = re.search(r"CLOUD_REPORT_TASK_STACK_SIZE\s*=\s*(\d+)", source)
     assert stack is not None
-    assert int(stack.group(1)) == 16384
+    assert int(stack.group(1)) == 8192

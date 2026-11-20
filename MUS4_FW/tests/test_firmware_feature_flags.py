@@ -1100,15 +1100,20 @@ def test_cloud_report_url_has_in_repo_default_not_only_gitignored_secret():
 def test_cloud_report_retry_policy_is_bounded_and_ip_change_cannot_spin():
     """上报重试不得把主循环拖死（同步 HTTPS 最长各 5 秒，主循环还要跑控制）。
 
-    两个约束：① 快速重试只在本次开机尚未成功上报过时启用，长时间断网退回
-    5 分钟一跳；② 换 IP 触发补报后无论成败都记住这次尝试过的 IP，否则
-    「换 IP + 上报失败」会让 ipChanged 每轮都为真，退化成死循环重试。
+    两个约束：① 快速重试只在本次开机尚未成功上报过时启用，未成功前按
+    60s→120s→300s 退避阶梯（封顶 = 5 分钟稳态间隔，低堆跳过计入同一阶梯），
+    连续失败不会无限密集开火；② 换 IP 触发补报后无论成败都记住这次尝试过
+    的 IP，否则「换 IP + 上报失败」会让 ipChanged 每轮都为真，退化成死循环
+    重试。
     """
     reporter = (
         PROJECT_ROOT / "libraries" / "mus4_cloud" / "src" / "CloudReporter.cpp"
     ).read_text(encoding="utf-8")
 
-    assert "everSucceeded ? CLOUD_REPORT_INTERVAL_MS : CLOUD_REPORT_RETRY_MS" in reporter
+    assert (
+        "everSucceeded ? CLOUD_REPORT_INTERVAL_MS : retryBackoffMs(consecutiveFailures)"
+        in reporter
+    )
     assert "lastReportedIp = ip;" in reporter
     # 必须无条件记录尝试过的 IP，不能只在成功分支里记
     assert "if (ok) {\n            lastReportedIp = ip;" not in reporter
@@ -3234,7 +3239,7 @@ def test_web_console_sta_save_defers_wifi_reconnect_until_after_http_response():
 
     assert "applyWifiStaCredentials" not in save_body
     assert "scheduleWifiStaApply()" in handler_body
-    assert handler_body.index("wifiWebServer.send(200") < handler_body.index("scheduleWifiStaApply()")
+    assert handler_body.index("wifiWebSendGuardedString(200") < handler_body.index("scheduleWifiStaApply()")
     assert "wifiStaApplyPending" in source
     assert "WIFI_STA_APPLY_DELAY_MS" in source
 
@@ -3827,7 +3832,7 @@ def test_web_console_handles_common_captive_portal_probes_locally():
     assert "location.replace" not in redirect_body
     assert "http-equiv=\\\"refresh\\\"" not in redirect_body
     assert "WIFI_WEB_CONSOLE_HTML" in redirect_body
-    assert "send_P" in redirect_body
+    assert "wifiWebSendGuarded_P" in redirect_body
 
     not_found_body = re.search(
         r"static void handleWifiWebCaptivePortalNotFound\(\)\s*\{(?P<body>.*?)\n\}",
@@ -4162,7 +4167,7 @@ def test_websocket_and_http_assets_carry_pseudo_speed_for_judge():
     assert "static void handleWifiWebJudgeConfigSet()" in server
     assert "static void handleWifiWebJudgeConfigReset()" in server
     assert 'wifiWebServer.on("/judge", HTTP_GET, handleWifiWebJudge);' in server
-    assert 'wifiWebServer.send_P(200, "text/html", WIFI_WEB_JUDGE_HTML);' in server
+    assert 'wifiWebSendGuarded_P(200, "text/html", WIFI_WEB_JUDGE_HTML, strlen_P(WIFI_WEB_JUDGE_HTML));' in server
     assert 'wifiWebServer.on("/api/judge-config", HTTP_GET, handleWifiWebJudgeConfig);' in server
     assert 'wifiWebServer.on("/api/judge-config", HTTP_POST, handleWifiWebJudgeConfigSet);' in server
     assert 'wifiWebServer.on("/api/judge-config/reset", HTTP_POST, handleWifiWebJudgeConfigReset);' in server
@@ -4503,7 +4508,7 @@ def test_http_ota_resets_state_after_failed_upload():
     assert "resetOtaAfterFailedUpload()" in post_body
     # 错误路径：先清理状态，再发送 500 响应
     assert post_body.index("resetOtaAfterFailedUpload()") < post_body.index(
-        "wifiWebServer.send(500"
+        "wifiWebSendGuardedString(500"
     )
     # Update.abort() 用于释放 Updater 内部 buffer
     assert "Update.abort()" in server_cpp

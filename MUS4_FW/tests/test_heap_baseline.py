@@ -10,8 +10,11 @@ CloudReporter 在任务生命周期常驻 WiFiClientSecure,mbedTLS 会话(约 40
    43–46KB 实测基线高于恢复线,WS 正常可用,真正的低内存仍有保护。
 2. 发送失败(binaryAll DISCARDED)按指数退避、成功复位,防止 16ms 广播节奏
    持续填满 AsyncWebSocket 每客户端队列(WS_MAX_QUEUED_MESSAGES=32)。
-3. 云端 TLS 会话按需建立、用完立即释放,不再常驻吃堆;上报节奏与失败重试
-   语义不变,上报仍在独立 core0 任务,主 loop 不做任何同步网络操作。
+3. 云端 TLS 会话改「纪元」常驻(v1.10.17 回归修复):会话对象任务级构造、
+   心跳经 keep-alive 复用,任一跳失败立即 client.stop() 整体释放,冷态重建
+   过 DRAM(8BIT) 双门限;失败退避 60s→120s→300s 封顶,成功后恢复 5 分钟。
+   上报仍在独立 core0 任务,主 loop 不做任何同步网络操作(完整生命周期细节
+   另见 test_cloud_reporter_regression.py)。
 4. cloud-report 任务每次上报实测栈高水位与堆水位并回传主 loop 打日志,为
    后续栈大小调优提供数据;任务栈保持 16384 字节(TLS 握手调用深度需要余量)。
 """
@@ -165,35 +168,50 @@ def test_ws_send_failure_backs_off_and_resets_on_success():
 # --- 3. 云端 TLS 心跳:会话按需建立、用完释放;节奏与重试语义不变 ---
 
 
-def test_cloud_tls_session_created_per_attempt_and_released():
-    """WiFiClientSecure 必须在 worker 循环内按次创建并在本次尝试内释放。
+def test_cloud_tls_session_resident_epoch_with_release_on_failure():
+    """TLS 会话锁定「纪元」常驻模型(v1.10.17 回归修复后)。
 
-    v1.10.16 在任务顶部常驻 WiFiClientSecure,mbedTLS 会话(~40–50KB 堆)
-    到死不放,是稳态堆只剩 43–46KB 的最大单项。会话对象必须位于
-    `for (;;)` 之后(每次尝试自己的作用域),并用 client.stop() 显式断链。
+    上一轮的按次建连已被实测证伪:DRAM(8BIT) 池稳态仅 ~50.7KB,而一次 TLS
+    尝试峰值 ~48.8KB,按次建连只有 ~1.9KB 余量,60s 快速重试曾把池打到 108
+    字节并两次 PANIC。模型改为:会话对象在 worker 循环前任务级构造并跨心跳
+    常驻(keep-alive 复用,稳态每跳 ~0KB 新分配),源码中恰好一处;任一跳
+    失败立即 client.stop() 整体释放进入冷态,冷态重建须过 DRAM 双门限。
     """
     source = _source(REPORTER_PATH)
     worker = _function_block(source, "void cloudReportTask(")
     loop_start = worker.index("for (;;")
 
-    # 任务开头(循环前)不得声明任何网络对象
-    assert "WiFiClientSecure" not in worker[:loop_start]
-    assert "HTTPClient" not in worker[:loop_start]
-    # 循环内恰好一处按次构造,且同次尝试内显式 stop
+    # 会话对象任务级构造(循环前),源码中恰好一处——不再按次建连
+    assert "WiFiClientSecure client;" in worker[:loop_start]
+    assert "HTTPClient http;" in worker[:loop_start]
     assert worker.count("WiFiClientSecure client;") == 1
-    assert worker.index("WiFiClientSecure client;") > loop_start
+    assert worker.count("HTTPClient http;") == 1
+    # 失败分支显式整体释放(纪元终结),stop 位于循环内而非构造处
     assert "client.stop();" in worker
+    assert worker.index("client.stop();") > loop_start
 
 
 def test_cloud_report_cadence_and_retry_semantics_unchanged():
-    """按需建连重构不得顺手改节奏:稳态 5 分钟、首报成功前 1 分钟快重试、
-    换 IP 补报后无条件记住 IP(防死循环),全部保持原样。"""
+    """纪元常驻重构不得顺手改节奏:稳态 5 分钟、首报成功前按 60s→120s→300s
+    退避阶梯重试(封顶 = 稳态间隔,低堆跳过计入同一阶梯)、成功后失败计数
+    清零、换 IP 补报后无条件记住 IP(防死循环),全部保持原样。"""
     source = _source(REPORTER_PATH)
     worker = _function_block(source, "void cloudReportTask(")
 
     assert "CLOUD_REPORT_INTERVAL_MS = 300000UL" in source
     assert "CLOUD_REPORT_RETRY_MS = 60000UL" in source
-    assert "everSucceeded ? CLOUD_REPORT_INTERVAL_MS : CLOUD_REPORT_RETRY_MS" in worker
+    # 间隔表达式:成功过 → 5 分钟稳态;否则走退避阶梯
+    assert (
+        "everSucceeded ? CLOUD_REPORT_INTERVAL_MS : retryBackoffMs(consecutiveFailures)"
+        in worker
+    )
+    ladder = _function_block(source, "static unsigned long retryBackoffMs(")
+    assert "CLOUD_REPORT_RETRY_MS" in ladder
+    assert "CLOUD_REPORT_RETRY_MS * 2" in ladder
+    assert "CLOUD_REPORT_INTERVAL_MS" in ladder
+    # 成功复位:连续失败清零,退避回阶梯基数
+    assert "consecutiveFailures = 0;" in worker
+    assert "consecutiveFailures += 1;" in worker
     assert "lastReportedIp = ip;" in worker
     assert "everSucceeded = true;" in worker
 

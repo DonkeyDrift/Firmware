@@ -30,6 +30,8 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <esp_system.h>
+#include <errno.h>
+#include <lwip/sockets.h>
 
 // Hardware/framework globals defined in MUS4_FW.ino
 extern WebServer wifiWebServer;
@@ -104,6 +106,31 @@ static uint32_t wifiWebLogMaxDtMs = 0;
 static uint32_t wifiWebDataMaxDtMs = 0;
 static uint32_t wifiWebCommandMaxDtMs = 0;
 
+// ─── 停滞客户端写防护（v1.10.17）──────────────────────────────────────────
+// 根因（core 3.3.10 源码核实）：NetworkClient::write() = select(1s) ×
+// WIFI_CLIENT_MAX_WRITE_RETRY(10) 的内部重试循环，send() 本身带 MSG_DONTWAIT
+// 从不阻塞，阻塞全部来自 select 等 socket 可写；对端停读（TCP 发送缓冲满）时
+// 单次 write 最长 ~10s（实测 web_http_dt_max=10038，期间 wifi_web 任务被串行
+// 卡死、其他 HTTP 请求全部超时）。重试次数与 select 超时均不可从 sketch 配置；
+// setTimeout()/SO_SNDTIMEO 对这条路径无效（send 不阻塞，超时无从生效）；
+// NetworkClient 也没有 availableForWrite() 实现（继承基类默认恒 0）。WebServer
+// 每个响应都带 Connection: close、一连接一请求，因此阻塞点唯一：大响应体那
+// 一次 write()。
+//
+// 机制：大响应体不再交给 NetworkClient::write，改裸 lwip send(fd, buf, n,
+// MSG_DONTWAIT) 分块直写——只写发送缓冲当前装得下的字节数，立即返回，彻底
+// 绕开 1s×10 重试；以「无进展超时」判定停滞（任何字节进展都重置 deadline，
+// 慢而活着的客户端不受影响），连续 WIFI_WEB_STALL_TIMEOUT_MS 无进展即
+// client.stop() 放弃连接。响应头（~150B）远小于 lwip 初始发送缓冲，且发送前
+// 先做一次短超时可写探测，不会进入 write() 的重试循环。头部仍由
+// setContentLength(len)+send(code, type) 生成，与原 send()/send_P() 字节等价
+// （Content-Length 正确、sendHeader 注册的自定义头全部保留），鉴权与 503
+// 中间件语义不变；OTA 上传走 _parseForm 读路径，不受本防护影响。
+static const uint32_t WIFI_WEB_STALL_TIMEOUT_MS = 300;  // 无进展放弃阈值（百毫秒级）
+static const uint32_t WIFI_WEB_HEADER_PROBE_MS = 100;   // 发响应头前的可写探测上限
+static const size_t WIFI_WEB_SEND_CHUNK = 512;          // PROGMEM 响应体的 RAM 中转块
+static uint32_t s_wifiWebStallAborts = 0;               // 停滞放弃计数（STATUS web_stall_aborts）
+
 // Web UI language preference (runtime mirror of NVS "webui"/"lang";
 // "auto"/"zh"/"en", default "auto" so first boot follows the browser language)
 static String webUiLang = "auto";
@@ -136,7 +163,7 @@ void printWirelessStatus(Print& out)
     otherSlotKindText(otherSlotBuf, sizeof(otherSlotBuf));
     LoopDiagnosticsSnapshot loopDiag;
     loopDiagnosticsSnapshot(loopDiag);
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s mdns_host=\"%s\" mdns_url=%s mdns_started=%d host_ip=%s host_ip_age_s=%lu web_log_dropped=%lu running_slot=%s other_slot_kind=%s reset_reason=%s loop_dt_max_ms=%lu\n",
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s mdns_host=\"%s\" mdns_url=%s mdns_started=%d host_ip=%s host_ip_age_s=%lu web_log_dropped=%lu running_slot=%s other_slot_kind=%s reset_reason=%s loop_dt_max_ms=%lu web_stall_aborts=%lu\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -203,7 +230,8 @@ void printWirelessStatus(Print& out)
         esp_ota_get_running_partition() ? esp_ota_get_running_partition()->label : "?",
         otherSlotBuf,
         resetReasonBuf,
-        (unsigned long)loopDiag.maxDtMs);
+        (unsigned long)loopDiag.maxDtMs,
+        (unsigned long)s_wifiWebStallAborts);
 }
 
 static void redirectWifiWebCaptivePortalToRoot()
@@ -214,29 +242,135 @@ static void redirectWifiWebCaptivePortalToRoot()
     wifiWebServer.send(302, "text/plain", "");
 }
 
+// ─── 停滞客户端写防护实现（机制见文件上方常量段注释）──────────────────────
+
+// select 短探测 socket 当前是否可写（本地发送缓冲是否还有空间）
+static bool wifiWebFdWritable(int fd, uint32_t timeoutMs)
+{
+    fd_set set;
+    struct timeval tv;
+    FD_ZERO(&set);
+    FD_SET(fd, &set);
+    tv.tv_sec = timeoutMs / 1000U;
+    tv.tv_usec = (timeoutMs % 1000U) * 1000U;
+    return select(fd + 1, nullptr, &set, nullptr, &tv) > 0;
+}
+
+// 非阻塞直写：只写发送缓冲当前装得下的字节数并立即返回推进量；
+// 缓冲满/暂不可写返回 0，连接已断返回 -1，任何情况都不阻塞
+static int wifiWebSendNonblock(int fd, const char* data, size_t len)
+{
+    int sent = send(fd, data, len, MSG_DONTWAIT);
+    if (sent > 0) return sent;
+    if (sent == 0) return 0;
+    if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+    return -1;
+}
+
+// 守卫写响应体（RAM）：连续 WIFI_WEB_STALL_TIMEOUT_MS 无字节进展即判定对端
+// 停滞，client.stop() 放弃该连接。任何进展都会重置 deadline——慢而活着的
+// 客户端不会被误伤，被放弃的只有真正停读的对端。
+static bool wifiWebWriteBodyGuarded(const char* data, size_t len)
+{
+    if (len == 0) return true;
+    NetworkClient& c = wifiWebServer.client();
+    int fd = c ? c.fd() : -1;
+    if (fd < 0) return false;
+    unsigned long deadline = millis() + WIFI_WEB_STALL_TIMEOUT_MS;
+    size_t off = 0;
+    while (off < len) {
+        int w = wifiWebSendNonblock(fd, data + off, len - off);
+        if (w > 0) {
+            off += (size_t)w;
+            deadline = millis() + WIFI_WEB_STALL_TIMEOUT_MS;
+            continue;
+        }
+        if (w < 0) break;  // 对端已断开（RST/FIN），无需继续
+        if ((long)(millis() - deadline) >= 0) {
+            s_wifiWebStallAborts++;
+            mus4Logf("web", "response stalled: abort %u/%u bytes, peer not reading", (unsigned)off, (unsigned)len);
+            c.stop();
+            return false;
+        }
+        vTaskDelay(1);  // 等对端排空发送缓冲期间让出 CPU（本函数只跑在 wifi_web 任务/loop）
+    }
+    if (off < len) c.stop();  // 对端断开：统一关闭
+    return off >= len;
+}
+
+// 守卫写响应体（PROGMEM）：分块拷到 RAM 再走守卫直写（ESP32 的 memcpy_P 即
+// memcpy，写法保持 PROGMEM 语义）
+static bool wifiWebWriteBodyGuarded_P(PGM_P data, size_t len)
+{
+    if (len == 0) return true;
+    char buf[WIFI_WEB_SEND_CHUNK];
+    size_t off = 0;
+    while (off < len) {
+        size_t n = len - off;
+        if (n > sizeof(buf)) n = sizeof(buf);
+        memcpy_P(buf, data + off, n);
+        if (!wifiWebWriteBodyGuarded(buf, n)) return false;
+        off += n;
+    }
+    return true;
+}
+
+// 守卫发送的公共头部流程：发头前先探测可写（停滞连接直接放弃，不让头部
+// write 进入 core 的 1s×10 select 重试）；头部经 setContentLength+send 生成
+// （content 为空串、Content-Length 由我们指定），与原 send()/send_P() 字节
+// 等价，此前 sendHeader 注册的自定义头（Cache-Control 等）全部保留。
+static bool wifiWebSendHeadersGuarded(int code, const char* contentType, size_t len)
+{
+    NetworkClient& c = wifiWebServer.client();
+    int fd = c ? c.fd() : -1;
+    if (fd < 0) return false;
+    if (!wifiWebFdWritable(fd, WIFI_WEB_HEADER_PROBE_MS)) {
+        s_wifiWebStallAborts++;
+        mus4Logf("web", "response stalled before headers: abort %u bytes, socket not writable", (unsigned)len);
+        c.stop();
+        return false;
+    }
+    wifiWebServer.setContentLength(len);
+    wifiWebServer.send(code, contentType);  // 只发响应头（Content-Length: len）
+    wifiWebServer.setContentLength(CONTENT_LENGTH_NOT_SET);
+    return true;
+}
+
+static void wifiWebSendGuardedString(int code, const char* contentType, const String& content)
+{
+    if (!wifiWebSendHeadersGuarded(code, contentType, (size_t)content.length())) return;
+    wifiWebWriteBodyGuarded(content.c_str(), (size_t)content.length());
+}
+
+static void wifiWebSendGuarded_P(int code, const char* contentType, PGM_P content, size_t len)
+{
+    if (!wifiWebSendHeadersGuarded(code, contentType, len)) return;
+    wifiWebWriteBodyGuarded_P(content, len);
+}
+
 static void handleWifiWebRoot()
 {
     wifiWebServer.sendHeader("Cache-Control", "no-store");
-    wifiWebServer.send_P(200, "text/html", WIFI_WEB_CONSOLE_HTML);
+    wifiWebSendGuarded_P(200, "text/html", WIFI_WEB_CONSOLE_HTML, strlen_P(WIFI_WEB_CONSOLE_HTML));
 }
 
 static void handleWifiWebJudge()
 {
     wifiWebServer.sendHeader("Cache-Control", "no-store");
-    wifiWebServer.send_P(200, "text/html", WIFI_WEB_JUDGE_HTML);
+    wifiWebSendGuarded_P(200, "text/html", WIFI_WEB_JUDGE_HTML, strlen_P(WIFI_WEB_JUDGE_HTML));
 }
 
 static void handleWifiWebDrift()
 {
     wifiWebServer.sendHeader("Cache-Control", "no-store");
-    wifiWebServer.send_P(200, "text/html", WIFI_WEB_DRIFT_HTML);
+    wifiWebSendGuarded_P(200, "text/html", WIFI_WEB_DRIFT_HTML, strlen_P(WIFI_WEB_DRIFT_HTML));
 }
 
 static void handleWifiWebFavicon()
 {
     // 浏览器标签页图标为嵌入的静态资源，内容不变，可长缓存
     wifiWebServer.sendHeader("Cache-Control", "max-age=86400");
-    wifiWebServer.send_P(200, "image/png", (PGM_P)WEB_CONSOLE_FAVICON_PNG, WEB_CONSOLE_FAVICON_PNG_LEN);
+    wifiWebSendGuarded_P(200, "image/png", (PGM_P)WEB_CONSOLE_FAVICON_PNG, WEB_CONSOLE_FAVICON_PNG_LEN);
 }
 
 static void handleWifiWebCaptivePortal()
@@ -248,7 +382,7 @@ static void handleWifiWebCaptivePortalRedirectPage()
 {
     // 直接返回根页面，不做跳转，避免触发 Windows 强制门户弹窗。
     wifiWebServer.sendHeader("Cache-Control", "no-store");
-    wifiWebServer.send_P(200, "text/html", WIFI_WEB_CONSOLE_HTML);
+    wifiWebSendGuarded_P(200, "text/html", WIFI_WEB_CONSOLE_HTML, strlen_P(WIFI_WEB_CONSOLE_HTML));
 }
 
 static void handleWifiWebWindowsConnectTest()
@@ -293,7 +427,7 @@ static void handleWifiWebStatus()
     StringPrint out(response);
     printWirelessStatus(out);
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "text/plain", response);
+    wifiWebSendGuardedString(200, "text/plain", response);
     recordWifiWebHandlerDt(startedMs, wifiWebStatusMaxDtMs);
 }
 
@@ -351,14 +485,14 @@ static void handleWifiWebCommand()
         appendWebLogLines("web", response);
     }
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "text/plain", response);
+    wifiWebSendGuardedString(200, "text/plain", response);
     recordWifiWebHandlerDt(startedMs, wifiWebCommandMaxDtMs);
 }
 
 static void handleWifiWebDevMode()
 {
     String response = String("{\"enabled\":") + (ws.devModeEnabled ? "true" : "false") + "}";
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 static void handleWifiWebDevModeSet()
@@ -384,7 +518,7 @@ static void handleWifiWebDevModeSet()
         return;
     }
     String response = String("{\"enabled\":") + (ws.devModeEnabled ? "true" : "false") + ",\"saved\":true}";
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 static void handleWifiWebJoystickCal()
@@ -393,7 +527,7 @@ static void handleWifiWebJoystickCal()
     StringPrint out(response);
     processWirelessConsoleLine("JOYSTICK_STATUS", out, WIRELESS_ORIGIN_WEB);
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "text/plain", response);
+    wifiWebSendGuardedString(200, "text/plain", response);
 }
 
 static void handleWifiWebJoystickCalSet()
@@ -416,7 +550,7 @@ static void handleWifiWebJoystickCalSet()
     StringPrint out(response);
     processWirelessConsoleLine(cmd, out, WIRELESS_ORIGIN_WEB);
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "text/plain", response);
+    wifiWebSendGuardedString(200, "text/plain", response);
 }
 
 static String wifiApJson()
@@ -437,7 +571,7 @@ static String wifiApJson()
 
 static void handleWifiWebAp()
 {
-    wifiWebServer.send(200, "application/json", wifiApJson());
+    wifiWebSendGuardedString(200, "application/json", wifiApJson());
 }
 
 static void handleWifiWebApSet()
@@ -458,7 +592,7 @@ static void handleWifiWebApSet()
         return;
     }
     appendWebLog("web", String("wifi ap saved ssid=") + ws.apSsid);
-    wifiWebServer.send(200, "application/json", String("{\"saved\":true,\"restart_pending\":true,\"state\":") + wifiApJson() + "}");
+    wifiWebSendGuardedString(200, "application/json", String("{\"saved\":true,\"restart_pending\":true,\"state\":") + wifiApJson() + "}");
     scheduleWifiApRestart();
 }
 
@@ -516,7 +650,7 @@ static String wifiStaJson()
 
 static void handleWifiWebSta()
 {
-    wifiWebServer.send(200, "application/json", wifiStaJson());
+    wifiWebSendGuardedString(200, "application/json", wifiStaJson());
 }
 
 static void appendJudgeConfigJson(String& response, const JudgeConfig& config)
@@ -615,7 +749,7 @@ static String wifiJudgeConfigJson()
 static void handleWifiWebJudgeConfig()
 {
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", wifiJudgeConfigJson());
+    wifiWebSendGuardedString(200, "application/json", wifiJudgeConfigJson());
 }
 
 static void handleWifiWebJudgeConfigSet()
@@ -669,7 +803,7 @@ static void handleWifiWebJudgeConfigSet()
     appendJudgeConfigJson(response, ws.judgeConfig);
     response += "}";
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 static void handleWifiWebJudgeConfigReset()
@@ -686,7 +820,7 @@ static void handleWifiWebJudgeConfigReset()
     appendJudgeConfigJson(response, ws.judgeConfig);
     response += "}";
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 // ---------------------------------------------------------------------------
@@ -707,7 +841,7 @@ static void handleWifiWebMuteGet()
     response += (isSystemMuted() ? '1' : '0');
     response += "}";
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 static void handleWifiWebMuteSet()
@@ -735,7 +869,7 @@ static void handleWifiWebMuteSet()
     response += (isSystemMuted() ? '1' : '0');
     response += "}";
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 // ---------------------------------------------------------------------------
@@ -785,7 +919,7 @@ static void handleWifiWebLanguageGet()
     response += webUiLang;
     response += "\"}";
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 static void handleWifiWebLanguageSet()
@@ -813,7 +947,7 @@ static void handleWifiWebLanguageSet()
     response += webUiLang;
     response += "\"}";
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 static void appendDriftConfigJson(String& response, const DriftConfig& config)
@@ -929,7 +1063,7 @@ static String wifiDriftConfigJson()
 static void handleWifiWebDriftConfig()
 {
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", wifiDriftConfigJson());
+    wifiWebSendGuardedString(200, "application/json", wifiDriftConfigJson());
 }
 
 static void handleWifiWebDriftConfigSet()
@@ -988,7 +1122,7 @@ static void handleWifiWebDriftConfigSet()
     appendDriftConfigJson(response, ws.driftConfig);
     response += "}";
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 static void handleWifiWebDriftConfigReset()
@@ -1010,7 +1144,7 @@ static void handleWifiWebDriftConfigReset()
     appendDriftConfigJson(response, ws.driftConfig);
     response += "}";
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 static void handleWifiWebStaPassword()
@@ -1038,7 +1172,7 @@ static void handleWifiWebStaPassword()
         historyResponse += ",\"password\":";
         appendJsonString(historyResponse, historyPassword.c_str());
         historyResponse += '}';
-        wifiWebServer.send(200, "application/json", historyResponse);
+        wifiWebSendGuardedString(200, "application/json", historyResponse);
         return;
     }
     String response;
@@ -1051,7 +1185,7 @@ static void handleWifiWebStaPassword()
     if (ws.staPasswordSet) appendJsonString(response, ws.staPassword);
     else appendJsonString(response, "");
     response += '}';
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 static void startWifiStaScan()
@@ -1138,7 +1272,7 @@ static void handleWifiWebStaScan()
         response += '}';
     }
     response += "]}";
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 static void handleWifiWebStaSet()
@@ -1189,7 +1323,7 @@ static void handleWifiWebStaSet()
     // 错误状态，避免 apply 窗口内 /api/wifi-sta 读到陈旧失败。
     clearWifiStaLastError();
     appendWebLog("web", String("wifi sta saved ssid=") + ws.staSsid + " password=<redacted>");
-    wifiWebServer.send(200, "application/json", String("{\"saved\":true,\"applied\":true,\"state\":") + wifiStaJson() + "}");
+    wifiWebSendGuardedString(200, "application/json", String("{\"saved\":true,\"applied\":true,\"state\":") + wifiStaJson() + "}");
     scheduleWifiStaApply();
 }
 
@@ -1233,7 +1367,7 @@ static void handleWifiWebStaHistory()
         response += '}';
     }
     response += "]}";
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 static void handleWifiWebStaHistoryDelete()
@@ -1257,7 +1391,7 @@ static void handleWifiWebStaHistoryDelete()
     response += "{\"deleted\":true,\"count\":";
     response += wifiStaHistoryCount();
     response += "}";
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
 }
 
 // 上位机配网状态查询（通过 Serial2 发送 WIFI|ssid|password 给 Linux 上位机后，
@@ -1280,7 +1414,7 @@ static void handleWifiWebHostWifiStatus()
     json += ",\"host_ip_age_s\":";
     json += String(hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL);
     json += "}";
-    wifiWebServer.send(200, "application/json", json);
+    wifiWebSendGuardedString(200, "application/json", json);
 }
 
 static void handleWifiWebLog()
@@ -1292,7 +1426,7 @@ static void handleWifiWebLog()
     response.reserve(512);
     writeWebLogsJson(response, since);
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
     recordWifiWebHandlerDt(startedMs, wifiWebLogMaxDtMs);
 }
 
@@ -1432,7 +1566,7 @@ static void handleWifiWebData()
     }
     response += '}';
     sendWifiWebApiHeaders();
-    wifiWebServer.send(200, "application/json", response);
+    wifiWebSendGuardedString(200, "application/json", response);
     recordWifiWebHandlerDt(startedMs, wifiWebDataMaxDtMs);
 }
 
@@ -1521,7 +1655,7 @@ static void handleWifiWebSlotInfo()
     json += "\",\"other_kind\":\"";
     json += otherSlotBuf;
     json += "\"}";
-    wifiWebServer.send(200, "application/json", json);
+    wifiWebSendGuardedString(200, "application/json", json);
 }
 
 // 切到对面槽位重启：车 → 手柄桥（或旧车固件）。与 HTTP OTA 同款鉴权；
@@ -1561,7 +1695,7 @@ static void handleWifiWebSwitchSlot()
 static void handleWifiWebUpdateGet()
 {
     wifiWebServer.sendHeader("Cache-Control", "no-store");
-    wifiWebServer.send_P(200, "text/html", WIFI_WEB_UPDATE_HTML);
+    wifiWebSendGuarded_P(200, "text/html", WIFI_WEB_UPDATE_HTML, strlen_P(WIFI_WEB_UPDATE_HTML));
 }
 
 static bool isWifiWebUpdateAuthOk()
@@ -1727,7 +1861,7 @@ static void handleWifiWebUpdatePost()
         // Reset 前的多次尝试）行为异常；Update 对象若仍处 running 状态，
         // 下一次 Update.begin() 会直接失败。
         resetOtaAfterFailedUpload();
-        wifiWebServer.send(500, "text/plain", wifiWebUpdateErrorMsg + "\n");
+        wifiWebSendGuardedString(500, "text/plain", wifiWebUpdateErrorMsg + "\n");
         recordWifiWebHandlerDt(startedMs, wifiWebHttpMaxDtMs);
         return;
     }
@@ -1760,6 +1894,9 @@ static void handleWifiWebUpdatePost()
 // = select(1s)×10 次重试，客户端 TCP 停滞时单次 HTTP 应答（send 头/体两次写）
 // 最长阻塞 ~20s，主 loop 跟着停摆（实测 web_http_dt_max=18997ms）。现在由本
 // 独立任务周期驱动 handleClient()，阻塞只影响 HTTP 应答延迟，不再冻结控制回路。
+// v1.10.17 起，响应体走文件上方的停滞客户端写防护（非阻塞分块直写 + 无进展
+// 放弃），停滞客户端在 WIFI_WEB_STALL_TIMEOUT_MS 量级内被关闭，本任务不再
+// 被单个客户端卡 ~10s，其他 HTTP 请求也不会随之整体超时。
 //
 // 看门狗策略：本任务不订阅 esp_task_wdt——一次 HTTP OTA 上传会在 handleClient()
 // 内合法运行数分钟，任何小于它的超时都会把正常 OTA 误判成死机复位。改用软看护：

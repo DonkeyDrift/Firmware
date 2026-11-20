@@ -43,6 +43,19 @@
 //     节奏；④ 日志补 min_heap8=/max_blk=/next=/fails= 追溯字段。上报内容、
 //     云端接口、主 loop 不阻塞的语义均不变。
 //
+// 内存护栏（第三轮收紧）：第二轮纪元模型的运行期复测暴露门限失明——5 次
+// 冷态重建尝试门限全过（free8≈81KB、max_blk≈38.9KB）仍全部 -1，且每次把
+// 8BIT 池真实低水位打到 176–212 字节（OOM 悬崖）：运行期碎片化后「总量够、
+// 连续块不够」，17KB 连续块门限只保证单块 16.4KB 缓冲放得下，装不下两块
+// 缓冲 + 握手瞬态。v1.10.16 全程成功恰因会话建立在开机早期的干净堆上。对策：
+//   ① 开机早期建连窗口：尚未成功过且开机未满 EARLY_WINDOW 时按 15s 积极重试
+//     抢住低碎片窗口（建连仍在 worker 任务内，主 loop 语义不变）；
+//   ② 冷态门限收紧为 free8≥64000 且 maxAlloc8≥49000（常量处推算注释）——
+//     第二轮失败形态（81KB/38.9KB）被零分配跳过，不再把堆打到 KB 级以下；
+//   ③ 跳过原因分桶可观测：free8 不足沿用「skip low heap」日志行，free8 足够
+//     但连续块不足打「wait low-frag window」（等待安静期自然去碎片后按
+//     60s→120s→300s 阶梯复查门限，不无限硬试）。
+//
 // 默认关闭：仅当 FirmwareConfig.h 定义 ENABLE_CLOUD_REPORT 时才编译真实逻辑。
 
 #include "CloudReporter.h"
@@ -79,20 +92,31 @@ static const unsigned long CLOUD_REPORT_INTERVAL_MS = 300000UL;  // 稳态心跳
 static const unsigned long CLOUD_REPORT_RETRY_MS = 60000UL;      // 退避基数：首次失败后 1 分钟起阶梯翻倍
 static const int CLOUD_REPORT_HTTP_TIMEOUT_MS = 5000;            // 连接 + 总超时：5 秒
 
-// 冷态（重）建连前 DRAM（MALLOC_CAP_8BIT）池门限——v1.10.17 实车回归
-// （.9 车取证 + 链接 map 内存论证）依据：
-//   - 单次 TLS（重）建连瞬时实测消耗 ~48.8KB（free_heap 83.5→34.7KB
-//     INTERNAL 口径），全部由 8BIT 池供给；稳态该池仅 ~50.7KB（INTERNAL
-//     ~85KB − IRAM-only ~34.7KB）。60s 快速重试曾把它打到剩 108 字节并两次
-//     PANIC（INTERNAL 口径 min=34712 完全掩盖了这一低水位）。
-//   - 48KB 空闲门限（47–50KB 区间取整为 48KB）：冷态重建仅在池内确有整个
-//     尝试峰值的空间时进行，配合退避间隔把 1–2s 的低水位窗口限制在安静期；
-//     常态稳态 ~50.7KB 可通过，重载期（DC 页面 + 遥测并发）自动让路。
-//   - 17KB 最大连续块门限：mbedTLS 的 ssl_setup 需要一块 ~16.4KB 连续
-//     in_buf（out_buf 同级），最大块放不下它时 connect() 必失败（HTTPClient
-//     报 -1），与其白白分配再回滚，不如在门限处直接跳过。
-static const uint32_t CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD = 48000;
-static const uint32_t CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD = 17000;
+// 开机早期建连窗口（第三轮）：堆碎片化由 Web 控制台/遥测客户端接入与运行
+// 期分配逐渐累积，开机后前几分钟是低碎片窗口——v1.10.16 全程成功正因会话
+// 建立在该窗口内。窗口内（尚未成功过时）用 15s 积极重试抢住窗口，一旦成功
+// 立即回 5 分钟稳态心跳；窗口结束后回落 60s→120s→300s 退避阶梯。15s 取值：
+// 显著低于 60s 退避基数（抢窗口），又不会密到单次 5s 超时叠加把 worker 占满。
+static const unsigned long CLOUD_REPORT_EARLY_WINDOW_MS = 300000UL;
+static const unsigned long CLOUD_REPORT_EARLY_RETRY_MS = 15000UL;
+
+// 冷态（重）建连前 DRAM（MALLOC_CAP_8BIT）池门限——第三轮按实测需求收紧，
+// 推算依据（第二轮实车取证 + 链接 map 内存论证）：
+//   - 单次 TLS（重）建连峰值 ~48.8KB（free_heap 83.5→34.7KB INTERNAL 口径
+//     实测），全部由 8BIT 池供给；其中两块 ~16.4KB 连续缓冲（mbedTLS
+//     in_buf/out_buf，本 core 无 setBufferSizes 缩减 API）最坏情况同取自
+//     最大连续块（33.3KB），加上握手瞬态（ECDH/RSA mpi、证书链解析、握手
+//     窗口内 lwIP pbuf，合计 ~15.7KB）≈ 49KB，与实测峰值总量双向印证。
+//   - 连续块门限 49000：第二轮 5 次 -1 悬崖案例 max_blk=38.9KB（33.3KB 双
+//     缓冲装得下、瞬态只剩 5.6KB 装不下）必须被拒绝——低于该值时握手内部
+//     分配必失败，且失败过程中的分配/并发消耗曾把池水位打到 176–212 字节。
+//   - 空闲门限 64000 = 峰值 48.8KB + ≥15KB 残余地板：算术上保证单次尝试的
+//     TLS 自身消耗不可能把 8BIT 池打到 KB 级以下；开机期无会话 free8 实测
+//     ~81KB（max_blk 接近 free8）轻松通过，早期窗口不会被关死。
+//   - 门限不满足零分配跳过；碎片化（free8 够、连续块不够）期等待安静期
+//     （大块消费者释放后自然去碎片）再按退避阶梯复查，不无限硬试。
+static const uint32_t CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD = 64000;
+static const uint32_t CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD = 49000;
 
 // 栈大小保持 16384 字节:同步 HTTPS 里 WiFiClientSecure 握手的调用深度需要
 // 余量(mbedTLS 握手栈占用常见 6–10KB,叠加 HTTPClient 调用深度)。v1.10.17
@@ -108,6 +132,7 @@ static portMUX_TYPE reportResultMux = portMUX_INITIALIZER_UNLOCKED;
 static bool reportResultPending = false;      // 以下结果字段均为 POD，不跨任务共享 String
 static bool reportResultBeginFailed = false;
 static bool reportResultSkippedLowHeap = false;
+static bool reportResultSkippedFrag = false;
 static int reportResultHttpCode = 0;
 static uint32_t reportResultFreeHeapAfter = 0;
 static uint32_t reportResultMinFreeHeap = 0;
@@ -120,7 +145,8 @@ static unsigned int reportResultConsecutiveFailures = 0;
 
 struct ReportAttemptResult {
     bool beginFailed;
-    bool skippedLowHeap;     // 冷态重建门限不达标，本次零分配跳过
+    bool skippedLowHeap;     // 冷态重建 free8 地板不达标，本次零分配跳过
+    bool skippedFrag;        // 冷态重建 free8 足够但 maxAlloc8 连续块不足，零分配跳过（等待安静期去碎片）
     int httpCode;
     uint32_t freeHeapAfter;   // 本次上报结束后的 free_heap 实测（INTERNAL 口径）
     uint32_t minFreeHeap;     // 开机以来最低 free_heap 实测（INTERNAL 口径，沿用旧字段）
@@ -132,15 +158,26 @@ struct ReportAttemptResult {
     unsigned int consecutiveFailures;  // 连续失败次数（含低堆跳过），成功清零
 };
 
-/// 冷态（重）建连前 DRAM 池门限判据（纯函数，便于测试锁定）。
+/// 冷态（重）建连前 DRAM 池空闲地板判据（纯函数，便于测试锁定）。
+static bool reportHeapFreeFloorOk(uint32_t free8)
+{
+    return free8 >= CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD;
+}
+
+/// 冷态（重）建连前 DRAM 池最大连续块判据（纯函数，便于测试锁定）。
+static bool reportHeapContiguousOk(uint32_t maxAlloc8)
+{
+    return maxAlloc8 >= CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD;
+}
+
+/// 冷态（重）建连前 DRAM 池组合门限（纯函数，便于测试锁定）。
 static bool reportHeapGateOk(uint32_t free8, uint32_t maxAlloc8)
 {
-    return free8 >= CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD
-        && maxAlloc8 >= CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD;
+    return reportHeapFreeFloorOk(free8) && reportHeapContiguousOk(maxAlloc8);
 }
 
 /// 连续失败退避：60s → 120s → 300s 封顶（= 稳态心跳间隔）。
-/// 低堆跳过与网络失败共用同一阶梯——低堆期间不会每 60s 刷一条跳过日志，
+/// 低堆/碎片跳过与网络失败共用同一阶梯——跳过期间不会每 60s 刷一条日志，
 /// 成功一次后由调用侧回落到 5 分钟节奏。
 static unsigned long retryBackoffMs(unsigned int consecutiveFailures)
 {
@@ -151,6 +188,23 @@ static unsigned long retryBackoffMs(unsigned int consecutiveFailures)
         return CLOUD_REPORT_RETRY_MS * 2;
     }
     return CLOUD_REPORT_INTERVAL_MS;
+}
+
+/// 下次尝试间隔（纯函数，便于测试锁定）：
+///   成功过 → 5 分钟稳态心跳（会话已建立，窗口节奏立即退出）；
+///   未成功且仍在开机早期窗口（millis() < EARLY_WINDOW）→ 15s 积极重试，
+///     抢住堆碎片化前的低碎片建连窗口；
+///   窗口结束后 → 60s→120s→300s 退避阶梯（等待安静期去碎片后复查门限）。
+static unsigned long retryIntervalMs(
+    unsigned long nowMs, bool everSucceeded, unsigned int consecutiveFailures)
+{
+    if (everSucceeded) {
+        return CLOUD_REPORT_INTERVAL_MS;
+    }
+    if (nowMs < CLOUD_REPORT_EARLY_WINDOW_MS) {
+        return CLOUD_REPORT_EARLY_RETRY_MS;
+    }
+    return retryBackoffMs(consecutiveFailures);
 }
 
 /// 拼装上报 JSON。这些字段（硬件 ID / IP / hostname / version）
@@ -234,20 +288,27 @@ static void cloudReportTask(void* parameter)
         }
 
         unsigned long now = millis();
-        // 每次重读 localIP，避免网页上留着旧地址；快速重试走退避阶梯
-        // （60s→120s→300s 封顶），首次成功后回到 5 分钟稳态节奏。
+        // 每次重读 localIP，避免网页上留着旧地址；重试节奏统一由
+        // retryIntervalMs 推导：早期窗口 15s 积极重试 → 成功后 5 分钟稳态 →
+        // 窗口结束后 60s→120s→300s 退避阶梯（等待安静期去碎片后复查门限）。
         bool ipChanged = ipKnown && ip != lastReportedIp;
-        unsigned long interval = everSucceeded ? CLOUD_REPORT_INTERVAL_MS : retryBackoffMs(consecutiveFailures);
+        unsigned long interval = retryIntervalMs(now, everSucceeded, consecutiveFailures);
 
         if (!reportedOnce || ipChanged || (now - lastReportMs) >= interval) {
             ReportAttemptResult result = {};
             // 8BIT 池实测先于任何网络动作：冷态（纪元已释放/尚未建立）时
-            // 门限不达标 → 本次零分配跳过，不给 DRAM 池加 48KB 冲击。
+            // 门限不达标 → 本次零分配跳过，不给 DRAM 池加 48KB 冲击；
+            // 跳过原因分桶（free8 地板 vs 连续块不足）供日志区分。
             result.freeHeap8 = heap_caps_get_free_size(MALLOC_CAP_8BIT);
             result.maxAlloc8 = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
             if (!epochHealthy && !reportHeapGateOk(result.freeHeap8, result.maxAlloc8)) {
-                result.skippedLowHeap = true;
-            } else {
+                if (!reportHeapFreeFloorOk(result.freeHeap8)) {
+                    result.skippedLowHeap = true;
+                } else {
+                    result.skippedFrag = true;
+                }
+            }
+            if (!result.skippedLowHeap && !result.skippedFrag) {
                 ReportAttemptResult attempt = reportNow(client, http, hostname);
                 result.beginFailed = attempt.beginFailed;
                 result.httpCode = attempt.httpCode;
@@ -269,7 +330,7 @@ static void cloudReportTask(void* parameter)
             // 无论成败都记下这次的 IP，避免换 IP 后退化成不停重试。
             lastReportedIp = ip;
             ipKnown = true;
-            if (!result.skippedLowHeap && !result.beginFailed
+            if (!result.skippedLowHeap && !result.skippedFrag && !result.beginFailed
                 && result.httpCode >= 200 && result.httpCode < 300) {
                 everSucceeded = true;
                 consecutiveFailures = 0;
@@ -277,11 +338,12 @@ static void cloudReportTask(void* parameter)
                 consecutiveFailures += 1;
             }
             result.consecutiveFailures = consecutiveFailures;
-            result.nextIntervalMs = everSucceeded ? CLOUD_REPORT_INTERVAL_MS : retryBackoffMs(consecutiveFailures);
+            result.nextIntervalMs = retryIntervalMs(now, everSucceeded, consecutiveFailures);
 
             portENTER_CRITICAL(&reportResultMux);
             reportResultBeginFailed = result.beginFailed;
             reportResultSkippedLowHeap = result.skippedLowHeap;
+            reportResultSkippedFrag = result.skippedFrag;
             reportResultHttpCode = result.httpCode;
             reportResultFreeHeapAfter = result.freeHeapAfter;
             reportResultMinFreeHeap = result.minFreeHeap;
@@ -304,6 +366,7 @@ static void emitPendingReportLog()
 {
     bool beginFailed = false;
     bool skippedLowHeap = false;
+    bool skippedFrag = false;
     int httpCode = 0;
     uint32_t freeHeapAfter = 0;
     uint32_t minFreeHeap = 0;
@@ -321,6 +384,7 @@ static void emitPendingReportLog()
     }
     beginFailed = reportResultBeginFailed;
     skippedLowHeap = reportResultSkippedLowHeap;
+    skippedFrag = reportResultSkippedFrag;
     httpCode = reportResultHttpCode;
     freeHeapAfter = reportResultFreeHeapAfter;
     minFreeHeap = reportResultMinFreeHeap;
@@ -341,6 +405,13 @@ static void emitPendingReportLog()
     if (skippedLowHeap) {
         mus4Logf("cloud",
                  "POST /report skip low heap free8=%u max_blk=%u next=%lus fails=%u",
+                 (unsigned)freeHeap8, (unsigned)maxAlloc8,
+                 nextSec, consecutiveFailures);
+    } else if (skippedFrag) {
+        // free8 地板够、连续块不足：运行期碎片化形态，等待安静期自然去碎片
+        // 后按退避阶梯复查门限（零分配跳过，不硬试握手）。
+        mus4Logf("cloud",
+                 "POST /report wait low-frag window free8=%u max_blk=%u next=%lus fails=%u",
                  (unsigned)freeHeap8, (unsigned)maxAlloc8,
                  nextSec, consecutiveFailures);
     } else if (beginFailed) {

@@ -192,19 +192,17 @@ def test_cloud_tls_session_resident_epoch_with_release_on_failure():
 
 
 def test_cloud_report_cadence_and_retry_semantics_unchanged():
-    """纪元常驻重构不得顺手改节奏:稳态 5 分钟、首报成功前按 60s→120s→300s
-    退避阶梯重试(封顶 = 稳态间隔,低堆跳过计入同一阶梯)、成功后失败计数
-    清零、换 IP 补报后无条件记住 IP(防死循环),全部保持原样。"""
+    """纪元常驻 + 早期窗口不得破坏既有节奏约束:稳态 5 分钟、早期窗口结束后
+    按 60s→120s→300s 退避阶梯重试(封顶 = 稳态间隔,低堆跳过计入同一阶梯)、
+    成功后失败计数清零、换 IP 补报后无条件记住 IP(防死循环)。开机早期窗口
+    的积极重试语义由 test_cloud_early_session.py 锁定。"""
     source = _source(REPORTER_PATH)
     worker = _function_block(source, "void cloudReportTask(")
 
     assert "CLOUD_REPORT_INTERVAL_MS = 300000UL" in source
     assert "CLOUD_REPORT_RETRY_MS = 60000UL" in source
-    # 间隔表达式:成功过 → 5 分钟稳态;否则走退避阶梯
-    assert (
-        "everSucceeded ? CLOUD_REPORT_INTERVAL_MS : retryBackoffMs(consecutiveFailures)"
-        in worker
-    )
+    # 间隔统一由纯函数推导:成功过 → 5 分钟稳态;早期窗口 → 积极重试;否则退避阶梯
+    assert "retryIntervalMs(now, everSucceeded, consecutiveFailures)" in worker
     ladder = _function_block(source, "static unsigned long retryBackoffMs(")
     assert "CLOUD_REPORT_RETRY_MS" in ladder
     assert "CLOUD_REPORT_RETRY_MS * 2" in ladder

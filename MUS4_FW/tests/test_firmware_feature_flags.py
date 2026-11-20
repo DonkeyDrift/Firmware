@@ -1100,7 +1100,8 @@ def test_cloud_report_url_has_in_repo_default_not_only_gitignored_secret():
 def test_cloud_report_retry_policy_is_bounded_and_ip_change_cannot_spin():
     """上报重试不得把主循环拖死（同步 HTTPS 最长各 5 秒，主循环还要跑控制）。
 
-    两个约束：① 快速重试只在本次开机尚未成功上报过时启用，未成功前按
+    两个约束：① 重试节奏统一由 `retryIntervalMs` 推导——成功过 → 5 分钟稳态；
+    未成功且仍在开机早期窗口 → 积极重试抢低碎片窗口；窗口结束后按
     60s→120s→300s 退避阶梯（封顶 = 5 分钟稳态间隔，低堆跳过计入同一阶梯），
     连续失败不会无限密集开火；② 换 IP 触发补报后无论成败都记住这次尝试过
     的 IP，否则「换 IP + 上报失败」会让 ipChanged 每轮都为真，退化成死循环
@@ -1110,10 +1111,7 @@ def test_cloud_report_retry_policy_is_bounded_and_ip_change_cannot_spin():
         PROJECT_ROOT / "libraries" / "mus4_cloud" / "src" / "CloudReporter.cpp"
     ).read_text(encoding="utf-8")
 
-    assert (
-        "everSucceeded ? CLOUD_REPORT_INTERVAL_MS : retryBackoffMs(consecutiveFailures)"
-        in reporter
-    )
+    assert "retryIntervalMs(now, everSucceeded, consecutiveFailures)" in reporter
     assert "lastReportedIp = ip;" in reporter
     # 必须无条件记录尝试过的 IP，不能只在成功分支里记
     assert "if (ok) {\n            lastReportedIp = ip;" not in reporter

@@ -114,7 +114,9 @@ def test_tls_epoch_lifecycle_resident_with_explicit_teardown():
 
 def test_cold_rebuild_gate_constants_and_zero_alloc_skip():
     """门限常量必须在本库内并带依据注释；冷态（epochHealthy=false）时门限检查
-    先于任何网络动作，不达标零分配跳过。"""
+    先于任何网络动作，不达标零分配跳过（第三轮收紧：free8≥64KB = 峰值 48.8KB
+    + ≥15KB 残余地板；maxAlloc8≥49KB = 两块 16.4KB 连续缓冲最坏同块 + ~15.7KB
+    握手瞬态，与实测峰值总量双向印证；第二轮失败形态 81KB/38.9KB 被拒绝）。"""
     source = _source()
     worker = _function_block(source, "void cloudReportTask(")
 
@@ -127,28 +129,38 @@ def test_cold_rebuild_gate_constants_and_zero_alloc_skip():
     assert free_threshold is not None, "缺少 DRAM 池空闲门限常量"
     assert block_threshold is not None, "缺少 DRAM 池最大连续块门限常量"
     # 依据：单次 TLS（重）建连瞬时实测消耗 ~48.8KB，全部由 8BIT 池供给；
-    # 稳态该池仅 ~50.7KB（INTERNAL ~85KB − IRAM-only ~34.7KB）——门限取 48KB：
-    # 冷态重建仅在池内有 ~48KB 空闲时进行；17KB 最大连续块保证 mbedTLS
-    # ~16.4KB 连续 in_buf（out_buf 同级）至少能容纳一块。
-    assert int(free_threshold.group(1)) >= 47000
-    assert int(free_threshold.group(1)) <= 50000
-    assert int(block_threshold.group(1)) >= 17000
-    assert int(block_threshold.group(1)) <= 20000
+    # free8 门限 = 峰值 + ≥15KB 残余地板（单次尝试不可能把池打到 KB 级以下），
+    # 且不得高过开机期无会话 free8 实测 ~81KB 减余量；maxAlloc8 门限 = 33.3KB
+    # 双连续缓冲 + 握手瞬态 ≈ 峰值总量，必须高于实测失败案例的 38.9KB。
+    assert int(free_threshold.group(1)) >= 60000
+    assert int(free_threshold.group(1)) <= 70000
+    assert int(block_threshold.group(1)) > 38900
+    assert int(block_threshold.group(1)) >= 2 * 16640 + 8000
+    assert int(block_threshold.group(1)) <= 54000
 
-    # 门限判据是纯函数，worker 用 8BIT 口径读取后判断
+    # 门限判据是纯函数（free 地板 / 连续块两个谓词 + 组合判据），worker 用
+    # 8BIT 口径读取后判断
+    free_floor = _function_block(source, "static bool reportHeapFreeFloorOk(")
+    contiguous = _function_block(source, "static bool reportHeapContiguousOk(")
     gate = _function_block(source, "static bool reportHeapGateOk(")
-    assert "free8 >= CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD" in gate
-    assert "maxAlloc8 >= CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD" in gate
+    assert "free8 >= CLOUD_REPORT_MIN_FREE_HEAP8_FOR_REBUILD" in free_floor
+    assert "maxAlloc8 >= CLOUD_REPORT_MIN_MAX_ALLOC8_FOR_REBUILD" in contiguous
+    assert "reportHeapFreeFloorOk(free8)" in gate
+    assert "reportHeapContiguousOk(maxAlloc8)" in gate
     assert "heap_caps_get_free_size(MALLOC_CAP_8BIT)" in worker
     assert "heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)" in worker
 
-    # 冷态门限判断先于发起尝试；低堆走独立分支：零网络动作，POD 回传
+    # 冷态门限判断先于发起尝试；低堆/碎片走独立分支：零网络动作，POD 回传
     gate_check = worker.index("reportHeapGateOk(")
     attempt_call = worker.index("reportNow(client, http, hostname)")
     assert gate_check < attempt_call
     assert "result.skippedLowHeap = true;" in worker
+    assert "result.skippedFrag = true;" in worker
     assert (
         worker.index("result.skippedLowHeap = true;") < attempt_call
+    )
+    assert (
+        worker.index("result.skippedFrag = true;") < attempt_call
     )
 
 
@@ -173,6 +185,9 @@ def test_failure_backoff_ladder_and_success_reset():
     source = _source()
     worker = _function_block(source, "void cloudReportTask(")
     ladder = _function_block(source, "static unsigned long retryBackoffMs(")
+    interval = _function_block(
+        source, "static unsigned long retryIntervalMs("
+    )
 
     # 阶梯：0 次 → 60s；1 次 → 120s；≥2 次 → 300s 封顶
     assert "CLOUD_REPORT_RETRY_MS" in ladder
@@ -181,16 +196,19 @@ def test_failure_backoff_ladder_and_success_reset():
     assert ladder.index("CLOUD_REPORT_RETRY_MS * 2") < ladder.index(
         "CLOUD_REPORT_INTERVAL_MS"
     )
+    # 间隔选择（第三轮）：成功过 → 5 分钟；未成功且在开机早期窗口 → 15s
+    # 积极重试；否则 → 退避阶梯（详见 tests/test_cloud_early_session.py）
+    assert "nowMs < CLOUD_REPORT_EARLY_WINDOW_MS" in interval
+    assert "return CLOUD_REPORT_EARLY_RETRY_MS;" in interval
+    assert "return retryBackoffMs(consecutiveFailures);" in interval
+    assert (
+        "retryIntervalMs(now, everSucceeded, consecutiveFailures)" in worker
+    )
 
-    # worker 状态机：非 2xx 一律计失败（含低堆跳过），2xx 清零
+    # worker 状态机：非 2xx 一律计失败（含低堆/碎片跳过），2xx 清零
     assert "consecutiveFailures += 1;" in worker
     assert "consecutiveFailures = 0;" in worker
-    # 间隔表达式：成功过 → 5 分钟；否则走退避阶梯
-    assert (
-        "everSucceeded ? CLOUD_REPORT_INTERVAL_MS : retryBackoffMs(consecutiveFailures)"
-        in worker
-    )
-    # 低堆跳过也计入退避（不能在低堆期每 60s 刷一条跳过日志）
+    # 低堆/碎片跳过也计入退避（不能在低堆期每分钟刷一条跳过日志）
     skip_assign = worker.index("result.skippedLowHeap = true;")
     fail_inc = worker.index("consecutiveFailures += 1;")
     ok_reset = worker.index("consecutiveFailures = 0;")

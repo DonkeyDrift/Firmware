@@ -274,7 +274,8 @@ def test_firmware_version_is_current_and_changelog_is_ordered():
     build_info = BUILD_INFO.read_text(encoding="utf-8")
     changelog = CHANGELOG.read_text(encoding="utf-8")
 
-    assert '#define MUS4_FIRMWARE_VERSION "v1.10.16"' in build_info
+    assert '#define MUS4_FIRMWARE_VERSION "v1.10.17"' in build_info
+    assert "v1.10.16" in changelog
     assert "v1.10.15" in changelog
     assert "v1.10.14" in changelog
     assert "v1.10.13" in changelog
@@ -600,9 +601,11 @@ def test_host_ip_report_channel():
     assert "hostReportedIpMs = millis();" in sketch
 
     # 状态输出：host_ip / host_ip_age_s 字段与运行时存储
-    assert 'String hostReportedIp = "";' in server
+    # v1.10.17：hostReportedIp 改 char[20]，STATUS printf 直接作 %s 参数
+    assert 'char hostReportedIp[20] = "";' in server
     assert "host_ip=%s host_ip_age_s=%lu" in server
-    assert "hostReportedIp.c_str()" in server
+    assert "hostReportedIp.c_str()" not in server
+    assert "\n        hostReportedIp,\n" in server
 
     # Web Console：Network 卡片 HOST 分页
     host_tab = '<button id="networkHostTab" type="button" onclick="setNetworkTab(' + chr(39) + 'host' + chr(39) + ')">HOST</button>'
@@ -2953,7 +2956,7 @@ def test_web_console_host_wifi_status_bar_shows_host_report_state():
 
     # 后端：/api/host-wifi-status 新增 host_ip / host_ip_age_s（age 算法与 /api/status 一致）
     assert 'json += ",\\"host_ip\\":";' in server
-    assert "appendJsonString(json, hostReportedIp.c_str());" in server
+    assert "appendJsonString(json, hostReportedIp);" in server
     assert 'json += ",\\"host_ip_age_s\\":";' in server
     assert "json += String(hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL);" in server
     assert "json.reserve(224);" in server

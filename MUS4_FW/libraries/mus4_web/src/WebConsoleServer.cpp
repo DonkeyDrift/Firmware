@@ -5,6 +5,7 @@
 #include "JsonUtil.h"
 #include "Mus4Log.h"
 #include "BuildInfo.h"
+#include "LoopDiagnostics.h"
 #include "MutePreference.h"
 #include "LedStatus.h"
 #include "SharedTypes.h"
@@ -28,6 +29,7 @@
 #include <Preferences.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
+#include <esp_system.h>
 
 // Hardware/framework globals defined in MUS4_FW.ino
 extern WebServer wifiWebServer;
@@ -54,6 +56,9 @@ extern uint32_t wifiWebDataSeq;
 extern uint16_t wifiWebDataHead;
 extern uint16_t wifiWebDataCount;
 extern unsigned long lastWifiWebDataSampleMs;
+// 环形缓冲 head/count 的发布/读取临界区（定义在 MUS4_FW.ino，v1.10.17 起
+// /api/data 的读者在 Web 任务里，与主 loop 写者需互斥快照）。
+extern portMUX_TYPE wifiWebDataMux;
 
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 #include "WebTelemetry.h"
@@ -103,22 +108,35 @@ static uint32_t wifiWebCommandMaxDtMs = 0;
 // "auto"/"zh"/"en", default "auto" so first boot follows the browser language)
 static String webUiLang = "auto";
 
-// 上位机配网状态（通过 Serial2 接收来自 Linux 上位机的响应）
-String hostWifiStatus = "IDLE";
-String hostWifiSsid = "";
-String hostWifiIp = "";
-String hostWifiError = "";
+// 上位机配网状态（通过 Serial2 接收来自 Linux 上位机的响应）。
+// v1.10.17：主 loop（handleSerial2）写、Web 任务读，原 String 改 char 数组——
+// 跨任务共享可变 static String 会并发 realloc 撕堆（v1.7.16/17 前科）。
+char hostWifiStatus[32] = "IDLE";
+char hostWifiSsid[40] = "";
+char hostWifiIp[20] = "";
+char hostWifiError[80] = "";
 
 // 上位机周期上报的自身局域网 IP（Serial2 HOSTIP|<ipv4> 帧，仅运行时保存）
-String hostReportedIp = "";
+char hostReportedIp[20] = "";
 unsigned long hostReportedIpMs = 0;
 
 // OTA 槽位身份缓存助手，定义在本文件 OTA 段（见「OTA 双启动槽位」注释块）
 static const char* otherSlotKind();
+static void otherSlotKindText(char* buf, size_t len);
 
 void printWirelessStatus(Print& out)
 {
-    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s mdns_host=\"%s\" mdns_url=%s mdns_started=%d host_ip=%s host_ip_age_s=%lu web_log_dropped=%lu running_slot=%s other_slot_kind=%s\n",
+    // v1.10.17：min_free_heap 由编译期常量冒充实测改为 esp_get_minimum_free_heap_size()
+    // 真实低水位；新增 reset_reason 可读文本与 loop_dt_max_ms 帧（间隔）峰值。
+    // 本函数同时服务 STATUS 命令（主 loop 任务）与 /api/status（Web 任务），
+    // 帧统计经 loopDiagnosticsSnapshot() 临界区读取。
+    char resetReasonBuf[16];
+    espResetReasonText(resetReasonBuf, sizeof(resetReasonBuf));
+    char otherSlotBuf[16];
+    otherSlotKindText(otherSlotBuf, sizeof(otherSlotBuf));
+    LoopDiagnosticsSnapshot loopDiag;
+    loopDiagnosticsSnapshot(loopDiag);
+    out.printf("STATUS mode=%d park=%d throttle=%d steering=%d wifi_frames=%lu wifi_errors=%lu ota_window=%d ota_progress=%u ota_ttl_ms=%lu dev_mode=%d park_guard=%d version=%s build=\"%s %s\" web_port=%u free_heap=%lu min_free_heap=%lu ws_port=%u ws_client=%d ws_dropped=%lu ws_queue_full_skip=%lu ws_heap_skip=%lu ws_frames=%lu ws_max_backlog=%lu ws_connects=%lu ws_disconnects=%lu web_update_dt_max=%lu web_sample_dt_max=%lu web_http_dt_max=%lu web_ws_dt_max=%lu http_status_count=%lu http_log_count=%lu http_data_count=%lu http_cmd_count=%lu http_status_dt_max=%lu http_log_dt_max=%lu http_data_dt_max=%lu http_cmd_dt_max=%lu ap_ssid=\"%s\" ap_ip=%s ap_clients=%u sta_configured=%d sta_connected=%d sta_ssid=\"%s\" sta_ip=%s mdns_host=\"%s\" mdns_url=%s mdns_started=%d host_ip=%s host_ip_age_s=%lu web_log_dropped=%lu running_slot=%s other_slot_kind=%s reset_reason=%s loop_dt_max_ms=%lu\n",
         car_output.mode,
         car_output.park ? 1 : 0,
         car_output.throttle,
@@ -135,7 +153,7 @@ void printWirelessStatus(Print& out)
         MUS4_BUILD_TIME,
         WIFI_WEB_CONSOLE_PORT,
         (unsigned long)ESP.getFreeHeap(),
-        (unsigned long)WIFI_WEB_TELEMETRY_MIN_FREE_HEAP,
+        (unsigned long)esp_get_minimum_free_heap_size(),
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
         WIFI_WEB_SOCKET_PORT,
         wifiWebSocket.count(),
@@ -179,11 +197,13 @@ void printWirelessStatus(Print& out)
         wifiMdnsHostText().c_str(),
         wifiMdnsUrlText().c_str(),
         wifiRuntime.mdnsStarted ? 1 : 0,
-        hostReportedIp.c_str(),
+        hostReportedIp,
         hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL,
         (unsigned long)webLogBufferDropped(),
         esp_ota_get_running_partition() ? esp_ota_get_running_partition()->label : "?",
-        otherSlotKind());
+        otherSlotBuf,
+        resetReasonBuf,
+        (unsigned long)loopDiag.maxDtMs);
 }
 
 static void redirectWifiWebCaptivePortalToRoot()
@@ -314,11 +334,12 @@ static void handleWifiWebCommand()
             int firstPipe = line.indexOf('|');
             int secondPipe = line.indexOf('|', firstPipe + 1);
             if (firstPipe > 0 && secondPipe > firstPipe) {
-                hostWifiSsid = line.substring(firstPipe + 1, secondPipe);
+                String ssid = line.substring(firstPipe + 1, secondPipe);
+                strlcpy(hostWifiSsid, ssid.c_str(), sizeof(hostWifiSsid));
             }
-            hostWifiStatus = "connecting";
-            hostWifiIp = "";
-            hostWifiError = "";
+            strlcpy(hostWifiStatus, "connecting", sizeof(hostWifiStatus));
+            strlcpy(hostWifiIp, "", sizeof(hostWifiIp));
+            strlcpy(hostWifiError, "", sizeof(hostWifiError));
             appendWebLog("serial2", String("HOST-WIFI: provisioning started ssid=") + hostWifiSsid);
         }
         String ack = String("ACK:SERIAL2_SENT");
@@ -1247,15 +1268,15 @@ static void handleWifiWebHostWifiStatus()
     String json;
     json.reserve(224);
     json += "{\"status\":";
-    appendJsonString(json, hostWifiStatus.c_str());
+    appendJsonString(json, hostWifiStatus);
     json += ",\"ssid\":";
-    appendJsonString(json, hostWifiSsid.c_str());
+    appendJsonString(json, hostWifiSsid);
     json += ",\"ip\":";
-    appendJsonString(json, hostWifiIp.c_str());
+    appendJsonString(json, hostWifiIp);
     json += ",\"error\":";
-    appendJsonString(json, hostWifiError.c_str());
+    appendJsonString(json, hostWifiError);
     json += ",\"host_ip\":";
-    appendJsonString(json, hostReportedIp.c_str());
+    appendJsonString(json, hostReportedIp);
     json += ",\"host_ip_age_s\":";
     json += String(hostReportedIpMs ? (millis() - hostReportedIpMs) / 1000UL : 0UL);
     json += "}";
@@ -1380,12 +1401,22 @@ static void handleWifiWebData()
     unsigned long startedMs = millis();
     wifiWebDataRequests++;
     uint32_t since = wifiWebServer.hasArg("since") ? (uint32_t)wifiWebServer.arg("since").toInt() : 0;
+    // v1.10.17：写者（sampleWifiWebData，主 loop）与读者（本函数，Web 任务）跨任务，
+    // head/count 必须整体原子地取快照。写入槽位（head 指向）不在快照遍历范围内，
+    // 且读到的点内容先于指针发布写完；环深 256 × 16ms ≈ 4.1s 远大于单次应答构建
+    // 耗时，快照期内不会被回卷覆盖。
+    uint16_t headSnap = 0;
+    uint16_t countSnap = 0;
+    portENTER_CRITICAL(&wifiWebDataMux);
+    headSnap = wifiWebDataHead;
+    countSnap = wifiWebDataCount;
+    portEXIT_CRITICAL(&wifiWebDataMux);
     String response;
     response.reserve(768);
     response += "{\"points\":[";
     bool first = true;
-    for (uint16_t i = 0; i < wifiWebDataCount; i++) {
-        uint16_t index = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - wifiWebDataCount + i) % WIFI_WEB_DATA_CAPACITY;
+    for (uint16_t i = 0; i < countSnap; i++) {
+        uint16_t index = (headSnap + WIFI_WEB_DATA_CAPACITY - countSnap + i) % WIFI_WEB_DATA_CAPACITY;
         WebDataPoint& point = wifiWebData[index];
         if (point.seq <= since) continue;
         if (!first) response += ',';
@@ -1393,8 +1424,8 @@ static void handleWifiWebData()
         appendWifiWebPlotPointJson(response, point);
     }
     response += "],\"latest\":";
-    if (wifiWebDataCount > 0) {
-        uint16_t latestIndex = (wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - 1) % WIFI_WEB_DATA_CAPACITY;
+    if (countSnap > 0) {
+        uint16_t latestIndex = (headSnap + WIFI_WEB_DATA_CAPACITY - 1) % WIFI_WEB_DATA_CAPACITY;
         appendWifiWebStateJson(response, wifiWebData[latestIndex]);
     } else {
         response += "null";
@@ -1450,15 +1481,26 @@ static String identifyOtaPartitionKind(const esp_partition_t* part)
 
 // 对端槽位种类的惰性缓存：/api/status 轮询高频，不能每次都整分区扫描；
 // 首次请求时扫描一次，OTA 写入对端槽位后失效重来。
+// v1.10.17：printWirelessStatus 现在可能同时从主 loop（STATUS 命令）与 Web
+// 任务（/api/status）并发执行——缓存 String 的重建必须互斥，且返回值改为
+// 锁内拷贝到调用方缓冲，杜绝把共享 String 的 .c_str() 指针泄漏出锁的悬垂风险。
 static String s_otherSlotKind;
 static bool s_otherSlotKindCached = false;
-static const char* otherSlotKind()
+static SemaphoreHandle_t s_otherSlotKindMutex = nullptr;
+
+static void otherSlotKindText(char* buf, size_t len)
 {
-    if (!s_otherSlotKindCached) {
-        s_otherSlotKind = identifyOtaPartitionKind(otherOtaAppPartition());
-        s_otherSlotKindCached = true;
+    if (!buf || len == 0) return;
+    buf[0] = '\0';
+    if (!s_otherSlotKindMutex) s_otherSlotKindMutex = xSemaphoreCreateMutex();
+    if (s_otherSlotKindMutex && xSemaphoreTake(s_otherSlotKindMutex, pdMS_TO_TICKS(3000)) == pdTRUE) {
+        if (!s_otherSlotKindCached) {
+            s_otherSlotKind = identifyOtaPartitionKind(otherOtaAppPartition());
+            s_otherSlotKindCached = true;
+        }
+        strlcpy(buf, s_otherSlotKind.c_str(), len);
+        xSemaphoreGive(s_otherSlotKindMutex);
     }
-    return s_otherSlotKind.c_str();
 }
 
 static void handleWifiWebSlotInfo()
@@ -1466,6 +1508,8 @@ static void handleWifiWebSlotInfo()
     sendWifiWebApiHeaders();
     const esp_partition_t* running = esp_ota_get_running_partition();
     const esp_partition_t* other = otherOtaAppPartition();
+    char otherSlotBuf[16];
+    otherSlotKindText(otherSlotBuf, sizeof(otherSlotBuf));
     // id 字段引用身份标记字符串：既让响应对端自描述，也确保链接器保留该标记
     //（对端固件靠整分区扫描它识别本槽位；无人引用的 static const 会被 GC 掉）
     String json = "{\"app\":\"car\",\"id\":\"";
@@ -1475,7 +1519,7 @@ static void handleWifiWebSlotInfo()
     json += "\",\"other\":\"";
     json += other ? other->label : "";
     json += "\",\"other_kind\":\"";
-    json += otherSlotKind();
+    json += otherSlotBuf;
     json += "\"}";
     wifiWebServer.send(200, "application/json", json);
 }
@@ -1711,6 +1755,42 @@ static void handleWifiWebUpdatePost()
     ESP.restart();
 }
 
+// ─── wifi_web 任务（v1.10.17 loop-hang fix）─────────────────────────────
+// 历史：handleClient() 跑在主 loopTask 内，core 3.3.10 的 NetworkClient::write()
+// = select(1s)×10 次重试，客户端 TCP 停滞时单次 HTTP 应答（send 头/体两次写）
+// 最长阻塞 ~20s，主 loop 跟着停摆（实测 web_http_dt_max=18997ms）。现在由本
+// 独立任务周期驱动 handleClient()，阻塞只影响 HTTP 应答延迟，不再冻结控制回路。
+//
+// 看门狗策略：本任务不订阅 esp_task_wdt——一次 HTTP OTA 上传会在 handleClient()
+// 内合法运行数分钟，任何小于它的超时都会把正常 OTA 误判成死机复位。改用软看护：
+// 单次 handleClient 超过 WIFI_WEB_TASK_STALL_WARN_MS 且非 OTA 上传时打告警日志，
+// 叠加 STATUS 已有的 web_http_dt_max 指标；控制安全由 loopTask 的 TWDT 兜底
+// （LoopDiagnostics）。OTA 期间的 503 中间件、遥测抑制、parkGuard 强制语义不变。
+static TaskHandle_t s_wifiWebTaskHandle = nullptr;
+// true = 任务创建成功；false = 回退主 loop 直驱（低堆下 8KB 栈分配可能失败）
+static volatile bool s_wifiWebTaskRunning = false;
+static uint32_t s_wifiWebTaskStallWarns = 0;
+
+static void wifiWebConsoleTask(void* arg)
+{
+    (void)arg;
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(WIFI_WEB_TASK_POLL_INTERVAL_MS));
+        // 驱动门槛与原 updateWebConsoleServer 一致：AP console 或 STA 任一就绪才驱动；
+        // consoleStarted/staConnected 由主 loop 维护，bool 读跨任务安全。
+        if (!wifiRuntime.consoleStarted && !wifiRuntime.staConnected) continue;
+        unsigned long stageStart = millis();
+        wifiWebServer.handleClient();
+        unsigned long stageDt = millis() - stageStart;
+        if (stageDt > wifiWebHttpMaxDtMs) wifiWebHttpMaxDtMs = stageDt;
+        // 软看护：OTA 上传期间豁免（合法长跑），其余场景说明有客户端 TCP 停滞
+        if (stageDt > WIFI_WEB_TASK_STALL_WARN_MS && !otaRuntime.inProgress) {
+            s_wifiWebTaskStallWarns++;
+            mus4Logf("web", "http task busy %lums (client TCP stall?)", stageDt);
+        }
+    }
+}
+
 void setupWebConsoleServer()
 {
     // v1.7.28：OTA 上传期间，浏览器轮询 /api/status、/api/log、/api/data 等会
@@ -1775,6 +1855,19 @@ void setupWebConsoleServer()
     // Load the persisted Web UI language preference once at server init (default: auto)
     loadWebUiLanguagePreference();
     wifiWebServer.begin();
+#if WIFI_WEB_TASK_ENABLED
+    // v1.10.17：在 server.begin() 之后创建驱动任务，保证路由注册与监听先就绪。
+    // 语言偏好在 setup（主 loop）阶段加载、此后仅 Web 任务读写，跨任务边界安全。
+    if (xTaskCreatePinnedToCore(wifiWebConsoleTask, WIFI_WEB_TASK_NAME, WIFI_WEB_TASK_STACK_SIZE,
+                                nullptr, WIFI_WEB_TASK_PRIORITY, &s_wifiWebTaskHandle,
+                                WIFI_WEB_TASK_CORE) == pdPASS) {
+        s_wifiWebTaskRunning = true;
+    } else {
+        // 低堆回退：保持 v1.10.16 行为（主 loop 直驱，见 updateWebConsoleServer），
+        // Web 仍可用但阻塞风险回归；STATUS 的 web_http_dt_max 会随之变大。
+        mus4LogLine("web", "wifi_web task create failed, fallback to loop");
+    }
+#endif
 }
 
 void updateWebConsoleServer()
@@ -1791,9 +1884,8 @@ void updateWebConsoleServer()
         if (dt > wifiWebUpdateMaxDtMs) wifiWebUpdateMaxDtMs = dt;
     }
     lastWifiWebUpdateMs = now;
-    // OTA 上传期间主循环会被同步 WebServer 的 /update handler 长时间占用，
-    // 继续采样遥测数据没有意义，还会增加堆分配和主循环开销；跳过采样，
-    // 把 CPU 时间片尽量留给 handleClient 处理 TCP ACK 与 Flash 写入间隙。
+    // OTA 上传期间（v1.10.17 起在 wifi_web 任务内进行）继续采样遥测数据没有
+    // 意义，还会增加主循环开销；跳过采样，遥测抑制语义与 v1.10.16 保持一致。
     unsigned long stageStart = millis();
     uint32_t stageDt = 0;
     if (!otaRuntime.inProgress) {
@@ -1803,13 +1895,25 @@ void updateWebConsoleServer()
         if (stageDt > wifiWebSampleMaxDtMs) wifiWebSampleMaxDtMs = stageDt;
     }
     // 配网响应（STATUS|/OK|/FAIL|）由 MUS4_FW.ino 的 handleSerial2() 统一解析并
-    // 更新 hostWifiStatus/hostWifiIp/hostWifiError。此处不再直接读 Serial2，
-    // 避免与 handleSerial2() 的逐字节状态机形成双消费者竞争，也避免
-    // readStringUntil 在半行数据上阻塞拖慢 Web 主循环。
+    // 更新 hostWifiStatus/hostWifiIp/hostWifiError（v1.10.17 起为 char 数组）。
+    // 此处不再直接读 Serial2，避免与 handleSerial2() 的逐字节状态机形成双消费
+    // 者竞争，也避免 readStringUntil 在半行数据上阻塞拖慢 Web 主循环。
+    //
+    // v1.10.17：handleClient() 已移至 wifi_web 任务；仅当任务创建失败时在主
+    // loop 直驱兜底（保留 v1.10.16 行为，阻塞风险回归但 Web 可用）。
+#if WIFI_WEB_TASK_ENABLED
+    if (!s_wifiWebTaskRunning) {
+        unsigned long httpStart = millis();
+        wifiWebServer.handleClient();
+        uint32_t httpDt = (uint32_t)(millis() - httpStart);
+        if (httpDt > wifiWebHttpMaxDtMs) wifiWebHttpMaxDtMs = httpDt;
+    }
+#else
     stageStart = millis();
     wifiWebServer.handleClient();
     stageDt = (uint32_t)(millis() - stageStart);
     if (stageDt > wifiWebHttpMaxDtMs) wifiWebHttpMaxDtMs = stageDt;
+#endif
 }
 
 #endif

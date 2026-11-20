@@ -5,6 +5,10 @@
 // 之后每 5 分钟心跳上报一次自己的局域网 IP，供网页「找 Donkey Car」查询；
 // 上报失败时每 1 分钟快速重试，DHCP 换 IP 时立即补报。
 //
+// v1.10.17 内存语义：TLS 会话按需建立、用完立即释放（不再常驻 ~40–50KB 堆）；
+// 上报仍在独立 core0 worker 任务（16KB 栈，TLS 握手需余量），每次上报实测
+// 堆水位与任务栈高水位经 "cloud" 日志回传（heap=/min_heap=/stack_hwm=）。
+//
 // 默认关闭：需在 FirmwareConfig.h 打开 ENABLE_CLOUD_REPORT。上报地址默认取
 // FirmwareConfig.h 的 CLOUD_REPORT_URL_DEFAULT（公开端点），可在本机
 // WirelessSecrets.h 里用 CLOUD_REPORT_URL 覆盖。

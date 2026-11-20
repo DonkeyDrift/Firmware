@@ -18,6 +18,13 @@
 // 节奏：首次拿到 IP 立即上报；此后每 5 分钟心跳一次；开机尚未成功上报过时按
 // 1 分钟快速重试（失败不写 KV，不额外消耗云端写入额度）；IP 变化时立即补报。
 //
+// 内存（v1.10.17 起）：TLS 会话按需建立、用完立即释放——每次上报在 worker 循环
+// 内临时构造 WiFiClientSecure/HTTPClient，client.stop() + 作用域析构把 mbedTLS
+// 会话（~40–50KB 堆）归还系统。v1.10.16 在任务里常驻会话对象，导致 .68 稳态
+// free_heap 只剩 43–46KB。每次上报实测 free_heap / 历史最低堆 / worker 栈高水位
+// 并以 POD 回传主 loop 打日志（heap=/min_heap=/stack_hwm=），为栈大小调优与堆
+// 基线追溯提供数据。
+//
 // 默认关闭：仅当 FirmwareConfig.h 定义 ENABLE_CLOUD_REPORT 时才编译真实逻辑。
 
 #include "CloudReporter.h"
@@ -51,6 +58,10 @@ namespace mus4cloud {
 static const unsigned long CLOUD_REPORT_INTERVAL_MS = 300000UL;  // 稳态心跳间隔：5 分钟
 static const unsigned long CLOUD_REPORT_RETRY_MS = 60000UL;      // 首报成功前的快速重试：1 分钟
 static const int CLOUD_REPORT_HTTP_TIMEOUT_MS = 5000;            // 连接 + 总超时：5 秒
+// 栈大小保持 16384 字节:同步 HTTPS 里 WiFiClientSecure 握手的调用深度需要
+// 余量(mbedTLS 握手栈占用常见 6–10KB,叠加 HTTPClient 调用深度)。v1.10.17
+// 起每次上报实测栈高水位并通过 "cloud" 日志的 stack_hwm 字段回传,若实车
+// 数据长期显示富余,再据此收敛——先测量后调整,不盲砍。
 static const uint32_t CLOUD_REPORT_TASK_STACK_SIZE = 16384;      // ESP32 Arduino 的 stack 单位为字节
 static const uint32_t CLOUD_REPORT_WORKER_POLL_MS = 100;
 static const size_t CLOUD_REPORT_HOSTNAME_CAPACITY = 33;
@@ -61,10 +72,16 @@ static portMUX_TYPE reportResultMux = portMUX_INITIALIZER_UNLOCKED;
 static bool reportResultPending = false;      // 以下结果字段均为 POD，不跨任务共享 String
 static bool reportResultBeginFailed = false;
 static int reportResultHttpCode = 0;
+static uint32_t reportResultFreeHeapAfter = 0;
+static uint32_t reportResultMinFreeHeap = 0;
+static uint32_t reportResultStackHwmBytes = 0;
 
 struct ReportAttemptResult {
     bool beginFailed;
     int httpCode;
+    uint32_t freeHeapAfter;   // 本次上报结束后的 free_heap 实测
+    uint32_t minFreeHeap;     // 开机以来最低 free_heap 实测（esp_get_minimum_free_heap_size）
+    uint32_t stackHwmBytes;   // worker 任务栈高水位（历史最少剩余字节）
 };
 
 /// 拼装上报 JSON。这些字段（硬件 ID / IP / hostname / version）
@@ -112,13 +129,6 @@ static void cloudReportTask(void* parameter)
 {
     String hostname(static_cast<const char*>(parameter));
 
-    WiFiClientSecure client;
-    client.setInsecure();
-
-    HTTPClient http;
-    http.setConnectTimeout(CLOUD_REPORT_HTTP_TIMEOUT_MS);
-    http.setTimeout(CLOUD_REPORT_HTTP_TIMEOUT_MS);
-
     bool reportedOnce = false;         // 是否已尝试过首次上报
     bool everSucceeded = false;        // 本次开机是否成功上报过（决定是否仍走快速重试）
     bool ipKnown = false;              // 是否已尝试上报过某个 IP
@@ -142,7 +152,27 @@ static void cloudReportTask(void* parameter)
         unsigned long interval = everSucceeded ? CLOUD_REPORT_INTERVAL_MS : CLOUD_REPORT_RETRY_MS;
 
         if (!reportedOnce || ipChanged || (now - lastReportMs) >= interval) {
-            ReportAttemptResult result = reportNow(client, http, hostname);
+            ReportAttemptResult result = {false, 0, 0, 0, 0};
+            {
+                // v1.10.17:TLS 会话按需建立、用完立即释放。v1.10.16 在任务里
+                // 常驻 WiFiClientSecure,mbedTLS 会话(~40–50KB 堆)到死不放,
+                // 是 .68 稳态 free_heap 只剩 43–46KB 的最大单项;改为每次上报
+                // 临时建连,离开作用域即析构归还堆,5 分钟心跳的握手代价可接受
+                // (setInsecure 免证书解析,握手 ~1–2s)。堆侧收益:稳态 free_heap
+                // 预期回到 ~90KB,握手峰值有充足余量。
+                WiFiClientSecure client;
+                client.setInsecure();
+                HTTPClient http;
+                http.setConnectTimeout(CLOUD_REPORT_HTTP_TIMEOUT_MS);
+                http.setTimeout(CLOUD_REPORT_HTTP_TIMEOUT_MS);
+                result = reportNow(client, http, hostname);
+                client.stop();  // 显式断链并释放 SSL 上下文(作用域析构兜底)
+            }
+            // 栈/堆实测(v1.10.16 的诊断盲区):高水位只在本任务上下文读才有
+            // 意义;结果仅以 POD 回传,主 loop 消费时才写日志(见 emitPendingReportLog)。
+            result.freeHeapAfter = ESP.getFreeHeap();
+            result.minFreeHeap = ESP.getMinFreeHeap();
+            result.stackHwmBytes = (uint32_t)(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t));
             reportedOnce = true;
             lastReportMs = now;
             // 无论成败都记下这次的 IP，避免换 IP 后退化成不停重试。
@@ -155,6 +185,9 @@ static void cloudReportTask(void* parameter)
             portENTER_CRITICAL(&reportResultMux);
             reportResultBeginFailed = result.beginFailed;
             reportResultHttpCode = result.httpCode;
+            reportResultFreeHeapAfter = result.freeHeapAfter;
+            reportResultMinFreeHeap = result.minFreeHeap;
+            reportResultStackHwmBytes = result.stackHwmBytes;
             reportResultPending = true;
             portEXIT_CRITICAL(&reportResultMux);
         }
@@ -168,6 +201,9 @@ static void emitPendingReportLog()
 {
     bool beginFailed = false;
     int httpCode = 0;
+    uint32_t freeHeapAfter = 0;
+    uint32_t minFreeHeap = 0;
+    uint32_t stackHwmBytes = 0;
 
     portENTER_CRITICAL(&reportResultMux);
     if (!reportResultPending) {
@@ -176,13 +212,19 @@ static void emitPendingReportLog()
     }
     beginFailed = reportResultBeginFailed;
     httpCode = reportResultHttpCode;
+    freeHeapAfter = reportResultFreeHeapAfter;
+    minFreeHeap = reportResultMinFreeHeap;
+    stackHwmBytes = reportResultStackHwmBytes;
     reportResultPending = false;
     portEXIT_CRITICAL(&reportResultMux);
 
     if (beginFailed) {
         mus4LogLine("cloud", "report begin failed");
     } else {
-        mus4Logf("cloud", "POST /report -> %d", httpCode);
+        // heap/min_heap/stack_hwm 为本次上报实测(v1.10.16 的诊断盲区):用于
+        // 核算堆基线、判断 16KB 任务栈余量是否可收敛、追溯低堆恶化时刻。
+        mus4Logf("cloud", "POST /report -> %d heap=%u min_heap=%u stack_hwm=%u", httpCode,
+                 (unsigned)freeHeapAfter, (unsigned)minFreeHeap, (unsigned)stackHwmBytes);
     }
 }
 

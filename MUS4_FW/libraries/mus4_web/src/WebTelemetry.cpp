@@ -56,6 +56,36 @@ static volatile uint32_t pendingWsDisconnectClientId = 0;
 static unsigned long lastWifiWebSocketPushMs = 0;
 static uint8_t wifiWebSocketBinaryPayload[384];
 
+// v1.10.17:WS 推送堆门限自适应(机制与常量依据见 WifiConsoleTypes.h)。
+// 旧规则 `free_heap < 60000 即禁推` 在 .68 的 43–46KB 稳态基线下把 WS 曲线
+// 与日志 socket 推送永久饿死;新门限只在地板块/maxAlloc 块双双击穿时进入
+// 压力态(真低内存保护),恢复线以上才退出(滞回,防阈值附近抖动)。
+static bool webTelemetryHeapPressureActive = false;
+
+static bool webTelemetryHeapOk()
+{
+    uint32_t freeHeap = ESP.getFreeHeap();
+    uint32_t maxAllocHeap = ESP.getMaxAllocHeap();
+    if (freeHeap < WIFI_WEB_TELEMETRY_PUSH_FLOOR_HEAP ||
+        maxAllocHeap < WIFI_WEB_TELEMETRY_PUSH_MIN_MAX_ALLOC_HEAP) {
+        webTelemetryHeapPressureActive = true;
+        return false;
+    }
+    if (webTelemetryHeapPressureActive) {
+        if (freeHeap < WIFI_WEB_TELEMETRY_RECOVERY_HEAP) {
+            return false;
+        }
+        webTelemetryHeapPressureActive = false;
+    }
+    return true;
+}
+
+// 发送失败退避:某客户端队列满导致 binaryAll DISCARDED 时按指数退避暂停
+// 广播,防止 16ms 节奏持续填满 AsyncWebSocket 每客户端队列(32 条上限),
+// 把堆耗在注定被丢弃的拷贝上;成功发出一帧即复位到起始间隔。
+static unsigned long wifiWebSocketSendBackoffUntilMs = 0;
+static unsigned long wifiWebSocketSendBackoffMs = WIFI_WEB_SOCKET_SEND_BACKOFF_START_MS;
+
 static uint16_t wifiWebDataIndexForSeq(uint32_t seq)
 {
     for (uint16_t i = 0; i < wifiWebDataCount; i++) {
@@ -80,7 +110,7 @@ static void sendWebLogToSocket(uint32_t seq, unsigned long t, const char* source
 {
     if (!wifiWebSocketClientConnected) return;
     if (otaRuntime.inProgress) return;
-    if (ESP.getFreeHeap() < WIFI_WEB_TELEMETRY_MIN_FREE_HEAP) return;
+    if (!webTelemetryHeapOk()) return;
 
     // 栈上局部 String：v1.7.17 起不再使用共享 static String。
     // 多客户端下通过 textAll 广播，payload 在内部被多个 client 共享，避免重复拼装。
@@ -151,11 +181,13 @@ static void pushWifiWebSocketData()
 {
     if (!wifiWebSocketClientConnected) return;
     if (otaRuntime.inProgress) return;
-    if (ESP.getFreeHeap() < WIFI_WEB_TELEMETRY_MIN_FREE_HEAP) {
+    if (!webTelemetryHeapOk()) {
         wifiWebSocketHeapSkips++;
         return;
     }
     unsigned long now = millis();
+    // 毫秒回绕安全比较:退避窗口内不再广播,给队列排空留时间。
+    if ((long)(now - wifiWebSocketSendBackoffUntilMs) < 0) return;
     if (now - lastWifiWebSocketPushMs < WIFI_WEB_SOCKET_PUSH_INTERVAL_MS) return;
     if (wifiWebDataCount == 0 || wifiWebDataSeq <= wifiWebSocketBroadcastLastSeq) return;
     uint32_t firstSeq = wifiWebSocketBroadcastLastSeq + 1;
@@ -243,8 +275,14 @@ static void pushWifiWebSocketData()
             wifiWebSocketBroadcastLastSeq = lastSentSeq;
             wifiWebSocketFramesSent++;
             lastWifiWebSocketPushMs = now;
+            wifiWebSocketSendBackoffMs = WIFI_WEB_SOCKET_SEND_BACKOFF_START_MS;
         } else {
             wifiWebSocketQueueFullSkips++;
+            wifiWebSocketSendBackoffUntilMs = now + wifiWebSocketSendBackoffMs;
+            wifiWebSocketSendBackoffMs *= 2;
+            if (wifiWebSocketSendBackoffMs > WIFI_WEB_SOCKET_SEND_BACKOFF_MAX_MS) {
+                wifiWebSocketSendBackoffMs = WIFI_WEB_SOCKET_SEND_BACKOFF_MAX_MS;
+            }
         }
     }
 }

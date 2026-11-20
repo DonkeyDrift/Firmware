@@ -1,5 +1,18 @@
 # CHANGELOG.md
 
+## 2026-11-20 v1.10.17
+
+- fix(web): 修复实车「手柄无反应 + DC 页面卡死」整车假死——HTTP 处理移出主循环，补 loopTask 看门狗与内存诊断，云端 TLS 会话释放 + WS 自适应堆门限
+  - 背景：实车（.68）长时间运行后 Web Console 页面卡死（DC 页面不动）、车端对 RC 手柄无反应，需断电重启。复盘两个耦合根因：①WebConsoleServer 的 handleClient() 由主 loop 直驱，单次 HTTP 处理（尤其 OTA 上传）会把控制 loop 阻塞数秒到数分钟——loop 卡死时 RC/控制/遥测全部冻结；②云端 worker 常驻 TLS 会话（~40–50KB）把 .68 稳态 free_heap 压到 43–46KB，低于固定 60KB 的 WS 推送门限，曲线/日志推送被永久饿死（ws_heap_skip 以 ~100/s 增长）——页面假死且不可观测。
+  - fix A1（`libraries/mus4_web/src/WebConsoleServer.h/.cpp` + `mus4_core/src/FirmwareConfig.h`）：handleClient() 移至独立 FreeRTOS 任务 `wifi_web`（核 0 与 Wi-Fi/LWIP 同核、优先级 1、栈 8192 字节、2ms 空闲轮询；控制 loopTask 固定核 1 物理隔离，常量 `WIFI_WEB_TASK_*`）——Web 处理不再进入主 loop 时间线；任务创建失败（低堆下 8KB 栈分配失败）自动回退 v1.10.16 主 loop 直驱（可经 STATUS 的 web_http_dt_max 识别）。网络任务不订阅 TWDT（HTTP OTA 上传在 handleClient 内合法运行数分钟，任何小超时都会误复位），改软看护：单次 handleClient >2s 且非 OTA 打告警日志（`WIFI_WEB_TASK_STALL_WARN_MS`）。
+  - fix A2（新增 `libraries/mus4_core/src/LoopDiagnostics.h/.cpp` + `FirmwareConfig.h`）：Arduino core 写死 loopTaskWDTEnabled=false，主 loop 卡死只会静默停摆不复位——补 loopTask 订阅 esp_task_wdt（`LOOP_TASK_WDT_TIMEOUT_S=5`，`loopDiagnosticsBegin()` 在 setup 末尾订阅、避免 STA 首连 15s 阻塞被误判）+ loop 帧间隔统计（`loopDiagnosticsFeed()` 每帧喂狗）。STATUS 与 /api/status 新增 `reset_reason=`（esp_reset_reason 可读文本，如 TASK_WDT/PANIC/BROWNOUT——复盘时区分「复位过」还是「卡死后被拉起」）与 `loop_dt_max_ms=`（本次开机 loop 帧间隔峰值）；`min_free_heap` 由编译期常量冒充改为 `esp_get_minimum_free_heap_size()` 真实历史低水位。
+  - fix A3（`MUS4_FW.ino` + `WebConsoleServer.cpp`）：跨任务共享的 hostWifiStatus/Ssid/Ip/Error/hostReportedIp 五个 String 改 char 数组（Web 任务并发读写下去堆碎片与撕裂读）；sampleWifiWebData 的 seq/head/count 改临界区发布（新增 `wifiWebDataMux`）；otherSlotKind() 缓存加互斥锁；handleSerial2 改 strlcpy 写定长缓冲。
+  - fix B1（`libraries/mus4_cloud/src/CloudReporter.cpp/.h`）：TLS 会话不再常驻——每次上报作用域内建 WiFiClientSecure、发完立即 stop() 释放，mbedTLS 会话 ~40–50KB 堆归还系统（.68 稳态 free_heap 回升）；每次上报回传 `heap=/min_heap=/stack_hwm=` 实测（uxTaskGetStackHighWaterMark 在任务上下文内读）。16KB 任务栈、心跳节奏与重试语义不变。
+  - fix B2（`libraries/mus4_web/src/WebTelemetry.cpp` + `mus4_core/src/WifiConsoleTypes.h`）：WS 曲线推送与日志推送两处固定 60KB 门限改为共享 `webTelemetryHeapOk()` 三层自适应——①真低内存地板（free_heap<32768 或 getMaxAllocHeap<8192，防碎片误判）才禁推；②滞回（压力态须恢复到 38912 以上才重推）；③发送失败指数退避（500ms→8s，成功一帧即复位）。旧 `WIFI_WEB_TELEMETRY_MIN_FREE_HEAP=60000` 常量仅为兼容保留。
+  - 测试同步：新增 `tests/test_loop_hang_fix.py` 9 项（任务常量集中化、主 loop 不再直驱 handleClient、网络任务软看护、min_free_heap 真实化、reset_reason/loop_dt_max 字段、共享 String→POD 缓冲、临界区快照、OTA 流程不变）与 `tests/test_heap_baseline.py` 8 项（60KB 引用清除、自适应门限+滞回、基线可用性、发送退避、TLS 会话作用域化、节奏不变、独立任务、上报实测字段）；`tests/test_firmware_feature_flags.py` 3 处 String→char 断言同步（hostReportedIp 声明/printf 直传 %s/appendJsonString）+ 版本断言 → BuildInfo v1.10.17 + changelog 链补 v1.10.16。
+  - 验证：全量 pytest 414 passed + 31 subtests 全绿；车固件 min_spiffs 带密钥版在 Linux 主机（esp32 core 3.3.10-cn）编译通过（冷构建 2m53s + 修一处 otherSlotKindText 前置声明缺失后增量 47s），bin 1,766,320 字节，v1.10.17 版本串实测在 bin 内，产物于 Linux `/home/dkc/projects/Firmware-fix-loop-hang/MUS4_FW/build/MUS4_FW.ino.bin`。
+  - OTA：本条目落盘时尚未刷车、未实车验证，由收尾主流程 OTA 至 192.168.3.68 后实车验证；此处不作任何刷机/实车结果声明。
+
 ## 2026-10-30 v1.10.16
 
 - fix(firmware): 修复批次终审六项（#193-#198）——Park 急停 FSM 恢复、SEMI_AUTO 转向失效保护、云端心跳独立 worker、校准加载顺序、drift-config 鉴权、显式 --port 防误刷

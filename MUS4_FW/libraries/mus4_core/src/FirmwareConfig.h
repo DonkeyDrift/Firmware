@@ -174,7 +174,7 @@
 #define WIFI_WEB_TASK_ENABLED 1
 #define WIFI_WEB_TASK_NAME "wifi_web"        // FreeRTOS 任务名（ps/top 排查用）
 #define WIFI_WEB_TASK_STACK_SIZE 8192        // 任务栈（bytes）：handler 链曾在 8KB loopTask 栈内运行，取同级
-#define WIFI_WEB_TASK_PRIORITY 1             // 与 loopTask 同优先级；分属双核，互不抢占
+#define WIFI_WEB_TASK_PRIORITY 2             // 高于同核 cloud-report(1)，避免 TLS 握手饿死 Web 响应
 #define WIFI_WEB_TASK_CORE 0                 // 绑核 0（PRO_CPU，Wi-Fi/LWIP 所在核）；控制回路 loopTask 固定核 1，物理隔离
 #define WIFI_WEB_TASK_POLL_INTERVAL_MS 2     // 任务空闲轮询节奏（ms），HTTP 响应延迟仍远小于原阻塞量级
 #define WIFI_WEB_TASK_STALL_WARN_MS 2000     // 单次 handleClient 超过该时长（且非 OTA 上传）打告警日志

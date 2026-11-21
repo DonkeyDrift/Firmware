@@ -20,8 +20,10 @@
   - 验证（第三轮）：全量 pytest 440 passed + 31 subtests 全绿；同一 Linux 目录增量编译通过（31.25s），bin 1,767,264 字节（MD5 7920e23c20c25fc0c2262b6c38404c63），`wait low-frag window` 新日志串实测在 bin 内。
   - fix D2（第四轮·早期门限按实车画像修正 + 云端栈按高水位收敛，`libraries/mus4_cloud/src/CloudReporter.cpp`）：第三轮刷车后早期窗口三次尝试全部 `skip low heap free8≈48548 max_blk≈47092`，严格门限在开机干净窗口就不满足，反而关死唯一能成功建连的窗口；门限改双档——早期窗口 free8≥40000/maxAlloc8≥34000（覆盖实测开机画像并容纳双 16.4KB TLS 缓冲），窗口结束后仍用严格 64000/49000 防碎片化期硬握手。第四轮首次刷入后早期窗口已能真实发起握手，但仍 `POST /report -> -1` 且每次 min_heap8 打到 108 字节，证明除碎片化外还有总量缺口；实车 `stack_hwm=12540` 显示 16KB 云端任务栈峰值只用 ~3.85KB，故收敛为 8192 字节（保留 >2 倍峰值余量），永久归还 8KB 给 TLS 握手分配，高水位继续逐次回传。
   - 测试同步（第四轮）：`tests/test_cloud_early_session.py` 增加早期门限必须匹配实测开机画像与 worker 传入 earlyWindow 的断言，门限谓词改锁双档形式；`tests/test_cloud_reporter.py` 栈断言改为 8192 且 ≥2×(16384−12540)；`tests/test_cloud_reporter_regression.py`、`tests/test_heap_baseline.py` 同步双档门限与栈收敛语义。
-  - 验证（第四轮）：全量 pytest 441 passed + 31 subtests 全绿；Linux 增量编译通过（15.36s），bin MD5 ccffa5c9b64d97865b2a2d0ab356751c。该 bin 已 OTA 刷入实车并返回 ACK:UPDATE_OK，但刷后 Mac 切换到 172.20.10.x 热点网络、离开 192.168.3.x 网段，云端设备列表当时为空，**本轮最终上报结果与长时观察尚未完成**，不得据此宣称云端已恢复。
-  - OTA：本条目各轮刷车与实车结果以工程日志为准；第一至第三轮的核心修复已在实车验证（主 loop 不再冻结、停滞写约 350ms、30 分钟零 PANIC），第四轮刷后验证因客户端网络切换暂未完成。
+  - 验证（第四轮）：全量 pytest 441 passed + 31 subtests 全绿；Linux 增量编译通过（15.36s），bin MD5 ccffa5c9b64d97865b2a2d0ab356751c。后续实车已出现连续 `POST /report -> 200`，云端 `/devices` 可见 `esp32 / tony-esp / 192.168.3.9 / v1.10.17 / online=true`，确认上报恢复。
+  - fix D3（第五轮·实车回归修正，`WebConsoleServer.cpp/.h` + `MUS4_FW.ino` + `FirmwareConfig.h`）：300ms 无进展放弃在同核 TLS 握手期间误杀正常 `/api/log` 等请求；将 wifi_web 任务优先级提升为 2（高于 cloud-report 的 1），停滞放弃调整至 1000ms。另定位到剩余 ~9s 尖峰来自**响应头**仍经 core `send()` 阻塞写：新增 `Mus4WebServer` 子类暴露 core 自有 `_prepareHeader`，保持状态行/Content-Length/自定义头逐字等价，但头部也走非阻塞守卫写，头与体均不再进入 1s×10 重试。
+  - 测试同步（第五轮）：`test_stalled_client.py` 新增同核 TLS 短暂无进展不得误杀的行为镜像，头部断言改锁 `_prepareHeader + 非阻塞写` 且禁止 core `send()`；`test_loop_hang_fix.py` 锁定 wifi_web 优先级 2。全量 pytest **442 passed + 31 subtests**；Linux 编译通过，bin MD5 `0a977925b14eb824192301d840648b1b`。
+  - OTA：核心修复已在实车验证（主 loop 不冻结、云端恢复 200）。第五轮 bin 部署时遇到上传中 PANIC、后续 `BEGIN_FAILED` 与另一槽位 `SET_BOOT_FAILED`，当前车仍在 app0 运行旧构建；**第五轮尚未完成刷后验证，需先断电重启恢复 OTA，再刷写验证**，不得宣称已上车。
 
 ## 2026-10-30 v1.10.16
 

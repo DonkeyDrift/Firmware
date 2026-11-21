@@ -42,7 +42,7 @@ def test_web_task_constants_are_centralized_in_firmware_config():
 
     assert re.search(r"^#define\s+WIFI_WEB_TASK_ENABLED\s+1\b", config, re.MULTILINE)
     assert re.search(r"^#define\s+WIFI_WEB_TASK_STACK_SIZE\s+8192\b", config, re.MULTILINE)
-    assert re.search(r"^#define\s+WIFI_WEB_TASK_PRIORITY\s+1\b", config, re.MULTILINE)
+    assert re.search(r"^#define\s+WIFI_WEB_TASK_PRIORITY\s+2\b", config, re.MULTILINE)
     assert re.search(r"^#define\s+WIFI_WEB_TASK_CORE\s+0\b", config, re.MULTILINE)
     assert re.search(r"^#define\s+WIFI_WEB_TASK_POLL_INTERVAL_MS\s+2\b", config, re.MULTILINE)
     assert re.search(r"^#define\s+WIFI_WEB_TASK_STALL_WARN_MS\s+2000\b", config, re.MULTILINE)

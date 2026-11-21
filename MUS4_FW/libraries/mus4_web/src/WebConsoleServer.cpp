@@ -34,7 +34,7 @@
 #include <lwip/sockets.h>
 
 // Hardware/framework globals defined in MUS4_FW.ino
-extern WebServer wifiWebServer;
+// wifiWebServer 的 Mus4WebServer 类型与实例定义见 WebConsoleServer.h / 主 sketch。
 
 // Runtime state aggregates defined in MUS4_FW.ino
 extern WifiRuntimeState wifiRuntime;
@@ -126,7 +126,7 @@ static uint32_t wifiWebCommandMaxDtMs = 0;
 // setContentLength(len)+send(code, type) 生成，与原 send()/send_P() 字节等价
 // （Content-Length 正确、sendHeader 注册的自定义头全部保留），鉴权与 503
 // 中间件语义不变；OTA 上传走 _parseForm 读路径，不受本防护影响。
-static const uint32_t WIFI_WEB_STALL_TIMEOUT_MS = 300;  // 无进展放弃阈值（百毫秒级）
+static const uint32_t WIFI_WEB_STALL_TIMEOUT_MS = 1000;  // 无进展放弃阈值（1s，配合任务优先级避免误杀）
 static const uint32_t WIFI_WEB_HEADER_PROBE_MS = 100;   // 发响应头前的可写探测上限
 static const size_t WIFI_WEB_SEND_CHUNK = 512;          // PROGMEM 响应体的 RAM 中转块
 static uint32_t s_wifiWebStallAborts = 0;               // 停滞放弃计数（STATUS web_stall_aborts）
@@ -315,10 +315,10 @@ static bool wifiWebWriteBodyGuarded_P(PGM_P data, size_t len)
     return true;
 }
 
-// 守卫发送的公共头部流程：发头前先探测可写（停滞连接直接放弃，不让头部
-// write 进入 core 的 1s×10 select 重试）；头部经 setContentLength+send 生成
-// （content 为空串、Content-Length 由我们指定），与原 send()/send_P() 字节
-// 等价，此前 sendHeader 注册的自定义头（Cache-Control 等）全部保留。
+// 守卫发送的公共头部流程：发头前先探测可写（停滞连接直接放弃）。响应头由
+// WebServer 既有 _prepareHeader 原样生成（Content-Length、Cache-Control 等
+// 自定义头全部保留），但同样走非阻塞守卫写出——core 的 send() 在发送缓冲
+// 几乎占满时会让小小响应头也陷入 1s×10 重试（实车残留 ~9s 尖峰）。
 static bool wifiWebSendHeadersGuarded(int code, const char* contentType, size_t len)
 {
     NetworkClient& c = wifiWebServer.client();
@@ -330,10 +330,11 @@ static bool wifiWebSendHeadersGuarded(int code, const char* contentType, size_t 
         c.stop();
         return false;
     }
+    String header;
     wifiWebServer.setContentLength(len);
-    wifiWebServer.send(code, contentType);  // 只发响应头（Content-Length: len）
+    wifiWebServer.prepareResponseHeader(header, code, contentType, len);
     wifiWebServer.setContentLength(CONTENT_LENGTH_NOT_SET);
-    return true;
+    return wifiWebWriteBodyGuarded(header.c_str(), header.length());
 }
 
 static void wifiWebSendGuardedString(int code, const char* contentType, const String& content)

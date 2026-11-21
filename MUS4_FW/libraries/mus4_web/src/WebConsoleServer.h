@@ -1,9 +1,23 @@
 #pragma once
 #include <Arduino.h>
+#include <WebServer.h>
 
 #include "FirmwareConfig.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
+
+// 仅暴露 WebServer 既有的 protected 头部生成器：响应头仍由 core 原样拼装，
+// 但写出改走本项目的非阻塞守卫，避免 core send() 的 1s×10 写重试。
+class Mus4WebServer : public WebServer {
+public:
+    using WebServer::WebServer;
+    void prepareResponseHeader(String& header, int code, const char* contentType, size_t len)
+    {
+        _prepareHeader(header, code, contentType, len);
+    }
+};
+
+extern Mus4WebServer wifiWebServer;
 
 // 上位机配网状态（Serial2 STATUS|/OK|/FAIL|/HOSTIP| 帧）。
 // 主 loop（handleSerial2）写、Web 任务读——固定 char 数组而非 String：

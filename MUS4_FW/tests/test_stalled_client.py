@@ -57,7 +57,7 @@ def test_guard_constants_within_target():
     timeout_ms = uint_const(source, "WIFI_WEB_STALL_TIMEOUT_MS")
     probe_ms = uint_const(source, "WIFI_WEB_HEADER_PROBE_MS")
     chunk = uint_const(source, "WIFI_WEB_SEND_CHUNK")
-    assert 100 <= timeout_ms <= 500, f"WIFI_WEB_STALL_TIMEOUT_MS={timeout_ms} 不在百毫秒级目标内"
+    assert 500 <= timeout_ms <= 2000, f"WIFI_WEB_STALL_TIMEOUT_MS={timeout_ms} 不在 1s 级目标内"
     assert 10 <= probe_ms <= 250
     assert 256 <= chunk <= 1024
 
@@ -91,14 +91,17 @@ def test_progmem_body_writer_chunks():
 
 
 def test_guarded_send_emits_headers_via_webserver():
-    """守卫发送的头部必须仍由 WebServer 生成（setContentLength+send 只发头），
-    发头前先做短超时可写探测；探不到即放弃。两个入口（String/PROGMEM）共用。"""
+    """头部仍由 WebServer 的 _prepareHeader 生成（状态行/自定义头/长度与原版
+    一致），但写出必须走非阻塞守卫——core 的 send() 会在头部陷入 1s×10
+    重试，正是实车残留 ~9s 阻塞的来源。发头前先做短超时可写探测。"""
     source = SERVER.read_text(encoding="utf-8")
     headers = body_of(source, r"static bool wifiWebSendHeadersGuarded\(int code, const char\* contentType, size_t len\)\s*\{(.*?)\n\}")
 
     assert "wifiWebFdWritable(fd, WIFI_WEB_HEADER_PROBE_MS)" in headers, "发头前必须做可写探测"
     assert "setContentLength(len)" in headers
-    assert ".send(code, contentType)" in headers, "头部经 WebServer::send 生成（Content-Length 正确）"
+    assert "prepareResponseHeader(header, code, contentType, len)" in headers
+    assert "wifiWebWriteBodyGuarded(header.c_str(), header.length())" in headers
+    assert ".send(code, contentType)" not in headers, "响应头不得再走 core 阻塞写"
     assert "setContentLength(CONTENT_LENGTH_NOT_SET)" in headers, "发完头必须复位，避免污染下一响应"
     assert "s_wifiWebStallAborts++" in headers, "探测失败即视为停滞放弃并计数"
 
@@ -270,6 +273,18 @@ def test_mirror_normal_client_completes_without_abort():
     assert not aborted
     assert sent_new == len(body)
     assert t_new < timeout_ms
+
+
+def test_mirror_cloud_tls_cpu_starvation_does_not_false_abort():
+    """实车回归：云端 TLS 与 wifi_web 同核时，正常客户端可能超过 300ms
+    得不到发送机会；这种短暂无进展不是对端停读，不得切断连接。"""
+    source = SERVER.read_text(encoding="utf-8")
+    timeout_ms = uint_const(source, "WIFI_WEB_STALL_TIMEOUT_MS")
+    assert timeout_ms > 750
+    peer = PeerLink(drain_bps_ms=64, stall_ms=750)
+    t_new, sent_new, aborted = guarded_body_write(peer, b"x" * 8192, timeout_ms)
+    assert not aborted, "同核 TLS 造成的短暂无进展不得被误判为停滞客户端"
+    assert sent_new == 8192
 
 
 def test_mirror_slow_but_alive_client_not_killed():

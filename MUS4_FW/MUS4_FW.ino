@@ -162,7 +162,7 @@ void ensureWifiOtaStarted();
 #endif
 WiFiServer wifiConsoleServer(WIFI_CONSOLE_PORT);
 WiFiClient wifiConsoleClient;
-WebServer wifiWebServer(WIFI_WEB_CONSOLE_PORT);
+Mus4WebServer wifiWebServer(WIFI_WEB_CONSOLE_PORT);
 DNSServer wifiCaptiveDnsServer;
 SerialBuf wifiConsoleBuf = {{0},0,0,0,false};
 WifiScanEntry wifiScanCache[16];

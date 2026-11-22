@@ -91,12 +91,12 @@ def test_tls_epoch_lifecycle_resident_with_explicit_teardown():
     assert worker.index("client.setInsecure();") < loop_start
     assert worker.index("http.setConnectTimeout(") < loop_start
 
-    # 失败跳显式整体释放（纪元终结）；成功跳保持会话（不 stop）
+    # 每一跳（无论成败）都整体释放，杜绝复用陈旧 keep-alive 会话
     assert "client.stop();" in worker
     stop_idx = worker.index("client.stop();")
-    assert stop_idx > loop_start  # stop 在循环内的失败分支,不在构造处
-    # 会话健康标志:成功置位、失败清零并释放
-    assert "epochHealthy = true;" in worker
+    assert stop_idx > loop_start  # stop 在循环内，不在构造处
+    # 会话健康标志每跳均清零，下一次在门限保护下新建会话
+    assert "epochHealthy = true;" not in worker
     assert "epochHealthy = false;" in worker
     assert worker.index("epochHealthy = false;") < stop_idx
 

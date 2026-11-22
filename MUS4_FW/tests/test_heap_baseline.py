@@ -10,13 +10,10 @@ CloudReporter 在任务生命周期常驻 WiFiClientSecure,mbedTLS 会话(约 40
    43–46KB 实测基线高于恢复线,WS 正常可用,真正的低内存仍有保护。
 2. 发送失败(binaryAll DISCARDED)按指数退避、成功复位,防止 16ms 广播节奏
    持续填满 AsyncWebSocket 每客户端队列(WS_MAX_QUEUED_MESSAGES=32)。
-3. 云端 TLS 会话改「纪元」常驻(v1.10.17 回归修复):会话对象任务级构造、
-   心跳经 keep-alive 复用,任一跳失败立即 client.stop() 整体释放,冷态重建
-   过 DRAM(8BIT) 双门限;失败退避 60s→120s→300s 封顶,成功后恢复 5 分钟。
-   上报仍在独立 core0 任务,主 loop 不做任何同步网络操作(完整生命周期细节
-   另见 test_cloud_reporter_regression.py)。
-4. cloud-report 任务每次上报实测栈高水位与堆水位并回传主 loop 打日志,为
-   后续栈大小调优提供数据;任务栈已按实测高水位收敛为 8192 字节(16KB 时 stack_hwm=12540,峰值约 3.85KB)。
+3. 云端 TLS 对象任务级构造，但每一跳结束（无论成败）都 client.stop()
+   释放，下一跳在 DRAM 双门限保护下新建会话；实车已证明复用旧
+   keep-alive 会话会在下一跳 -11，不能为省堆而复用陈旧连接。
+4. cloud-report 任务栈按实测高水位收敛为 8192 字节，并逐次回传堆/栈实测。
 """
 
 import pathlib

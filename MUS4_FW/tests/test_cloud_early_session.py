@@ -72,21 +72,23 @@ def test_early_window_constants_exist_with_aggressive_retry():
 
 
 def test_retry_interval_picks_early_cadence_then_ladder():
-    """间隔选择为纯函数 retryIntervalMs：成功过 → 5 分钟；未成功且仍在开机
-    早期窗口 → 积极重试间隔；否则 → 既有退避阶梯。判断顺序必须正确：
-    先 everSucceeded（成功立即脱离窗口节奏），再窗口，再阶梯。"""
+    """间隔选择为纯函数 retryIntervalMs：成功且无失败 → 5 分钟；成功后首次
+    稳态失败 → 15s 换会话重试；未成功且仍在开机早期窗口 → 积极重试；
+    其余连续失败 → 退避阶梯。"""
     source = _source()
     worker = _function_block(source, "void cloudReportTask(")
     interval = _function_block(
         source, "static unsigned long retryIntervalMs("
     )
 
-    assert "if (everSucceeded)" in interval
+    assert "if (everSucceeded && consecutiveFailures == 0)" in interval
     assert "return CLOUD_REPORT_INTERVAL_MS;" in interval
+    assert "return CLOUD_REPORT_STALE_RETRY_MS;" in interval
     assert "return CLOUD_REPORT_EARLY_RETRY_MS;" in interval
     assert "return retryBackoffMs(consecutiveFailures);" in interval
     assert (
-        interval.index("if (everSucceeded)")
+        interval.index("if (everSucceeded && consecutiveFailures == 0)")
+        < interval.index("if (everSucceeded && consecutiveFailures == 1)")
         < interval.index("nowMs < CLOUD_REPORT_EARLY_WINDOW_MS")
         < interval.index("return CLOUD_REPORT_EARLY_RETRY_MS;")
         < interval.index("return retryBackoffMs(consecutiveFailures);")
@@ -96,10 +98,59 @@ def test_retry_interval_picks_early_cadence_then_ladder():
     assert worker.count("retryIntervalMs(now, everSucceeded, consecutiveFailures)") == 2
 
 
+def test_stale_keepalive_failure_retries_fresh_session_quickly():
+    """第六轮残留修复：实车首个心跳 200、第二个心跳在 5 分钟后出现 -11
+    （HTTP 读超时，旧 keep-alive 连接已失效）。失败后不得再等 5 分钟：
+    第一次稳态失败用 15s 快速重试（失败分支已 client.stop()，下次为新
+    会话）；连续失败仍回落退避阶梯，避免密集 TLS 握手。"""
+    source = _source()
+    interval = _function_block(source, "static unsigned long retryIntervalMs(")
+    stale = re.search(r"CLOUD_REPORT_STALE_RETRY_MS\s*=\s*(\d+)UL", source)
+    assert stale is not None and int(stale.group(1)) == 15000
+    assert "everSucceeded && consecutiveFailures == 0" in interval
+    assert "everSucceeded && consecutiveFailures == 1" in interval
+    assert "return CLOUD_REPORT_STALE_RETRY_MS;" in interval
+    assert (
+        interval.index("everSucceeded && consecutiveFailures == 0")
+        < interval.index("everSucceeded && consecutiveFailures == 1")
+        < interval.index("return retryBackoffMs(consecutiveFailures);")
+    )
+
+    # 读超时与连接超时分口径：云端偶发慢响应不应被 5s 读超时过早切断
+    assert "CLOUD_REPORT_HTTP_READ_TIMEOUT_MS = 10000" in source
+    worker = _function_block(source, "void cloudReportTask(")
+    assert "http.setConnectTimeout(CLOUD_REPORT_HTTP_TIMEOUT_MS)" in worker
+    assert "http.setTimeout(CLOUD_REPORT_HTTP_READ_TIMEOUT_MS)" in worker
+
+
+def test_reconnect_after_success_uses_boot_gate():
+    """第六轮补充：首次 200 后第二个心跳 -11，15s 快速重试却被严格
+    冷启动门限跳过（free8≈54KB、max_blk≈34.8KB）。已经成功过的会话
+    失败即整体释放，重连应按早期门限放行；严格门限只保护从未成功过的
+    后期冷启动。"""
+    source = _source()
+    worker = _function_block(source, "void cloudReportTask(")
+    assert "earlyWindow || everSucceeded" in worker
+    assert "reportHeapGateOk(result.freeHeap8, result.maxAlloc8, gateEarlyWindow)" in worker
+    assert "reportHeapFreeFloorOk(result.freeHeap8, gateEarlyWindow)" in worker
+
+
+def test_every_heartbeat_releases_tls_session_after_response():
+    """第六轮最终修正：实车证明旧 keep-alive 会话在下一跳稳定 -11，
+    而释放后新建连接的快速重试返回 200。无论成功失败，每跳结束都必须
+    client.stop() 并置 epochHealthy=false，下一跳在门限保护下新建会话。"""
+    source = _source()
+    worker = _function_block(source, "void cloudReportTask(")
+    assert "epochHealthy = true;" not in worker
+    attempt = worker.index("reportNow(client, http, hostname)")
+    stop = worker.index("client.stop();", attempt)
+    assert stop > attempt
+    assert "epochHealthy = false;" in worker[attempt:stop]
+
+
 def test_first_attempt_still_immediate_and_epoch_model_untouched():
-    """首次尝试仍在拿到 IP 后立即发起（!reportedOnce 触发），纪元常驻模型
-    不因早期窗口改变：会话对象任务级构造、失败整体释放、成功置
-    epochHealthy 复用 keep-alive。"""
+    """首次尝试仍在拿到 IP 后立即发起（!reportedOnce 触发）。TLS 对象仍
+    任务级构造，但每跳结束即释放、下一跳重新建连，不复用旧 keep-alive。"""
     source = _source()
     worker = _function_block(source, "void cloudReportTask(")
     loop_start = worker.index("for (;;")
@@ -107,7 +158,7 @@ def test_first_attempt_still_immediate_and_epoch_model_untouched():
     assert "!reportedOnce ||" in worker
     assert "WiFiClientSecure client;" in worker[:loop_start]
     assert "HTTPClient http;" in worker[:loop_start]
-    assert "epochHealthy = true;" in worker
+    assert "epochHealthy = true;" not in worker
     assert "client.stop();" in worker
     assert worker.index("client.stop();") > loop_start
 
@@ -221,8 +272,8 @@ def test_boot_gate_matches_measured_boot_heap_profile():
 
     worker = _function_block(source, "void cloudReportTask(")
     assert "now < CLOUD_REPORT_EARLY_WINDOW_MS" in worker
-    assert "reportHeapGateOk(result.freeHeap8, result.maxAlloc8, earlyWindow)" in worker
-    assert "reportHeapFreeFloorOk(result.freeHeap8, earlyWindow)" in worker
+    assert "reportHeapGateOk(result.freeHeap8, result.maxAlloc8, gateEarlyWindow)" in worker
+    assert "reportHeapFreeFloorOk(result.freeHeap8, gateEarlyWindow)" in worker
 
 
 def test_helpers_and_worker_still_do_not_log_directly():

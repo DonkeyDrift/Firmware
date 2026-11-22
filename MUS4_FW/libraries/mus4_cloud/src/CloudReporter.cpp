@@ -19,29 +19,11 @@
 // 退避阶梯重试（60s→120s→300s 封顶，低堆跳过计入同一阶梯；失败不写 KV，
 // 不额外消耗云端写入额度）；IP 变化时立即补报（同样受低堆门限保护）。
 //
-// 内存（v1.10.17 回归修复后）：TLS 会话按「纪元」常驻——会话对象任务级构造，
-// 心跳经 HTTP keep-alive 复用；任一跳失败立即整体释放（client.stop()），冷态
-// 重建走 DRAM 门限 + 退避（详见下方「内存护栏」段与常量处依据注释）。
-// v1.10.16 的常驻对象无释放策略、v1.10.17 初版的按次建连均已被实测否定。
-// 每次上报实测 free_heap / 历史最低堆 / worker 栈高水位并以 POD 回传主 loop
-// 打日志（heap=/min_heap=/stack_hwm=），为栈大小调优与堆基线追溯提供数据。
-//
-// 内存护栏（v1.10.17 实车回归修复）：上一轮的「按次建连」被实测证伪——
-// map 计算本构建 IRAM-only 池稳态 ~34.7KB，INTERNAL 口径稳态 ~85KB 对应
-// DRAM（MALLOC_CAP_8BIT，malloc 实际服务的池）仅 ~50.7KB，而一次 TLS 尝试
-// 峰值 ~48.8KB：按次建连只有 ~1.9KB 余量，握手内分配屡屡失败（HTTPClient
-// 统一报 -1），60s 快速重试曾把该池打到剩 108 字节并两次 PANIC。本 core
-// （3.3.10）NetworkClientSecure 无 setBufferSizes / mbedtls 未开
-// MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH，缓冲 16KB+16KB 不可缩减，按次建连在该
-// core/库组合下结构性不可行。改回常驻会话的「纪元」模型：
-//   ① 会话对象任务级常驻，心跳经 HTTP keep-alive 复用（稳态每跳 ~0KB 新分配，
-//     重握手仅 ~16KB 瞬时）；任一跳失败立即 client.stop() 整体释放进入冷态；
-//   ② 冷态重建走 DRAM 门限（free8/maxAlloc8 双条件），不达标零分配跳过——
-//     常驻态仅剩 ~17.7KB，重握手所需 33KB 分配必然失败，算术上杜绝了
-//     stale-context 重复 ssl_setup 的 32KB 泄漏路径；
-//   ③ 连续失败（含低堆跳过）按 60s→120s→300s 退避封顶，成功一次回 5 分钟
-//     节奏；④ 日志补 min_heap8=/max_blk=/next=/fails= 追溯字段。上报内容、
-//     云端接口、主 loop 不阻塞的语义均不变。
+// 内存与连接（v1.10.17 最终实车语义）：TLS 对象任务级构造，但每一跳无论
+// 成败都在响应后 client.stop() 整体释放；不复用旧 keep-alive 会话。实车证据：
+// 首个心跳 200 后，旧会话在下一个 5 分钟心跳稳定 read timeout(-11)，而释放后
+// 新建会话的快速重试返回 200。冷态建连受 DRAM(8BIT) 双门限与退避保护，
+// 防止每次握手的 ~48.8KB 峰值把池打到 OOM；每次上报回传堆/连续块/栈高水位。
 //
 // 内存护栏（第三轮收紧）：第二轮纪元模型的运行期复测暴露门限失明——5 次
 // 冷态重建尝试门限全过（free8≈81KB、max_blk≈38.9KB）仍全部 -1，且每次把
@@ -90,7 +72,9 @@ namespace mus4cloud {
 
 static const unsigned long CLOUD_REPORT_INTERVAL_MS = 300000UL;  // 稳态心跳间隔：5 分钟（也是退避封顶）
 static const unsigned long CLOUD_REPORT_RETRY_MS = 60000UL;      // 退避基数：首次失败后 1 分钟起阶梯翻倍
-static const int CLOUD_REPORT_HTTP_TIMEOUT_MS = 5000;            // 连接 + 总超时：5 秒
+static const int CLOUD_REPORT_HTTP_TIMEOUT_MS = 5000;            // TCP/TLS 连接超时：5 秒
+static const int CLOUD_REPORT_HTTP_READ_TIMEOUT_MS = 10000;      // 响应读取超时：10 秒（慢响应不提前切断）
+static const unsigned long CLOUD_REPORT_STALE_RETRY_MS = 15000UL; // 稳态旧连接读失败后，15s 换会话快速重试
 
 // 开机早期建连窗口（第三轮）：堆碎片化由 Web 控制台/遥测客户端接入与运行
 // 期分配逐渐累积，开机后前几分钟是低碎片窗口——v1.10.16 全程成功正因会话
@@ -215,15 +199,20 @@ static unsigned long retryBackoffMs(unsigned int consecutiveFailures)
 }
 
 /// 下次尝试间隔（纯函数，便于测试锁定）：
-///   成功过 → 5 分钟稳态心跳（会话已建立，窗口节奏立即退出）；
+///   成功且无失败 → 5 分钟稳态心跳（会话已建立，窗口节奏立即退出）；
+///   成功过但首次稳态失败（如旧 keep-alive 连接读超时 -11）→ 15s 后重试，
+///     失败分支已 client.stop()，下一次用新会话而不是死等 5 分钟；
 ///   未成功且仍在开机早期窗口（millis() < EARLY_WINDOW）→ 15s 积极重试，
 ///     抢住堆碎片化前的低碎片建连窗口；
-///   窗口结束后 → 60s→120s→300s 退避阶梯（等待安静期去碎片后复查门限）。
+///   其余连续失败 → 60s→120s→300s 退避阶梯（等待安静期去碎片后复查门限）。
 static unsigned long retryIntervalMs(
     unsigned long nowMs, bool everSucceeded, unsigned int consecutiveFailures)
 {
-    if (everSucceeded) {
+    if (everSucceeded && consecutiveFailures == 0) {
         return CLOUD_REPORT_INTERVAL_MS;
+    }
+    if (everSucceeded && consecutiveFailures == 1) {
+        return CLOUD_REPORT_STALE_RETRY_MS;
     }
     if (nowMs < CLOUD_REPORT_EARLY_WINDOW_MS) {
         return CLOUD_REPORT_EARLY_RETRY_MS;
@@ -282,23 +271,17 @@ static void cloudReportTask(void* parameter)
     IPAddress lastReportedIp;          // 上次尝试上报时的局域网 IP
     unsigned long lastReportMs = 0;    // 上次上报时刻（millis()）
     unsigned int consecutiveFailures = 0;  // 连续失败次数（含低堆跳过），成功清零
-    bool epochHealthy = false;         // 常驻会话纪元：上一跳是否成功（会话可 keep-alive 复用）
+    bool epochHealthy = false;         // 每跳结束均清零并释放；保留标志用于统一冷态门限路径
 
-    // v1.10.17 回归修复后的「纪元」常驻模型（替换上一轮被实测证伪的按次建连，
-    // 内存论证见文件头）：会话对象任务级构造并跨心跳常驻——稳态心跳经 HTTP
-    // keep-alive 复用，每跳 ~0KB 新分配（重握手也仅 ~16KB 瞬时，无需重新
-    // malloc 两块 16.4KB TLS 缓冲）。释放/重建策略显式化：任一跳失败立即
-    // client.stop() 整体释放进入冷态；冷态重建须过 reportHeapGateOk 门限
-    // （DRAM 池 free8/maxAlloc8 双条件），不达标零分配跳过。防泄漏论证：
-    // 常驻态（会话健康）下 8BIT 池仅剩 ~17.7KB，若 TCP 中途死亡导致
-    // connect() 在未 stop 的 ssl_ctx 上重复 ssl_setup，33KB 的新缓冲分配
-    // 必然失败——分配失败即无指针覆盖，旧缓冲不丢；该跳报错后下面的
-    // client.stop() 把整个上下文干净释放。泄漏路径在算术上不可达。
+    // TLS 对象只在 worker 上下文构造，避免跨任务共享；但连接不跨心跳复用。
+    // 每跳由 reportHeapGateOk 先判断 8BIT 池总量/连续块，达标才 reportNow，
+    // 响应后无论成败都 client.stop() 归还 TLS 缓冲。这样既不把旧 keep-alive
+    // 带到下一跳（实测会 -11），也不会在内存不足时反复发起 48.8KB 握手。
     WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
     http.setConnectTimeout(CLOUD_REPORT_HTTP_TIMEOUT_MS);
-    http.setTimeout(CLOUD_REPORT_HTTP_TIMEOUT_MS);
+    http.setTimeout(CLOUD_REPORT_HTTP_READ_TIMEOUT_MS);
 
     for (;;) {
         if (WiFi.status() != WL_CONNECTED) {
@@ -326,8 +309,12 @@ static void cloudReportTask(void* parameter)
             result.freeHeap8 = heap_caps_get_free_size(MALLOC_CAP_8BIT);
             result.maxAlloc8 = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
             const bool earlyWindow = now < CLOUD_REPORT_EARLY_WINDOW_MS;
-            if (!epochHealthy && !reportHeapGateOk(result.freeHeap8, result.maxAlloc8, earlyWindow)) {
-                if (!reportHeapFreeFloorOk(result.freeHeap8, earlyWindow)) {
+            // 已成功过的会话在失败后已整体释放，重连按早期门限放行（实测
+            // free8≈54KB/max_blk≈34.8KB 被严格门限误跳过）；严格门限只保护
+            // 从未成功过的后期冷启动，避免运行期碎片化反复硬握手。
+            const bool gateEarlyWindow = earlyWindow || everSucceeded;
+            if (!epochHealthy && !reportHeapGateOk(result.freeHeap8, result.maxAlloc8, gateEarlyWindow)) {
+                if (!reportHeapFreeFloorOk(result.freeHeap8, gateEarlyWindow)) {
                     result.skippedLowHeap = true;
                 } else {
                     result.skippedFrag = true;
@@ -337,12 +324,12 @@ static void cloudReportTask(void* parameter)
                 ReportAttemptResult attempt = reportNow(client, http, hostname);
                 result.beginFailed = attempt.beginFailed;
                 result.httpCode = attempt.httpCode;
-                if (!attempt.beginFailed && attempt.httpCode >= 200 && attempt.httpCode < 300) {
-                    epochHealthy = true;   // keep-alive 会话保住，下一跳零大分配
-                } else {
-                    epochHealthy = false;  // 纪元终结
-                    client.stop();         // 整体释放 TLS 上下文，进入冷态
-                }
+                // 每一跳结束都释放会话：实车证明复用旧 keep-alive 连接到
+                // 下一个 5 分钟心跳会稳定 read timeout(-11)，而释放后新建
+                // 会话的快速重试能返回 200。宁可让冷态门限控制新建节奏，
+                // 也不复用陈旧连接。
+                epochHealthy = false;
+                client.stop();
             }
             // 栈/堆实测(v1.10.16 的诊断盲区):高水位只在本任务上下文读才有
             // 意义;结果仅以 POD 回传,主 loop 消费时才写日志(见 emitPendingReportLog)。

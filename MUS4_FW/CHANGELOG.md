@@ -24,8 +24,10 @@
   - fix D3（第五轮·实车回归修正，`WebConsoleServer.cpp/.h` + `MUS4_FW.ino` + `FirmwareConfig.h`）：300ms 无进展放弃在同核 TLS 握手期间误杀正常 `/api/log` 等请求；将 wifi_web 任务优先级提升为 2（高于 cloud-report 的 1），停滞放弃调整至 1000ms。另定位到剩余 ~9s 尖峰来自**响应头**仍经 core `send()` 阻塞写：新增 `Mus4WebServer` 子类暴露 core 自有 `_prepareHeader`，保持状态行/Content-Length/自定义头逐字等价，但头部也走非阻塞守卫写，头与体均不再进入 1s×10 重试。
   - 测试同步（第五轮）：`test_stalled_client.py` 新增同核 TLS 短暂无进展不得误杀的行为镜像，头部断言改锁 `_prepareHeader + 非阻塞写` 且禁止 core `send()`；`test_loop_hang_fix.py` 锁定 wifi_web 优先级 2。全量 pytest **442 passed + 31 subtests**；Linux 编译通过，bin MD5 `0a977925b14eb824192301d840648b1b`。
   - fix D4（第六轮·云端持续在线，`libraries/mus4_cloud/src/CloudReporter.cpp/.h`）：第五轮实车跨心跳观察发现首个 200 后，复用旧 keep-alive 会话的下一跳稳定 `-11`，释放后新建会话的快速重试则返回 200。最终改为每一跳无论成败都 `client.stop()` 释放、下一跳重新建连；新增 10s 响应读取超时（连接仍 5s）、成功后首次稳态失败 15s 快速重试，重连门限按「早期/曾成功」与「从未成功的后期冷启动」双档区分，连续失败仍退避，防止密集握手打穿堆。
-  - 测试同步（第六轮）：`test_cloud_early_session.py` 新增稳态失败快速重试、成功后重连门限、每跳释放会话 3 项；`test_cloud_reporter_regression.py`/`test_heap_baseline.py` 同步为不复用旧连接的语义。全量 pytest **445 passed + 31 subtests**；该轮代码尚待重新编译刷车后的跨心跳实车验证。稳态停滞客户端测试 37/37 成功、零超时、最大 127ms，`web_http_dt_max` 峰值为停滞放弃约 1.1–1.8s，主 loop 不再冻结；DC 首页/状态/日志/漂移 API 均 200，WebSocket 8 秒收约 61KB 遥测；早期开机云端重试窗口仍有 HTTP 排队，窗口结束后恢复。既有采样日志覆盖约 23 分钟且复位原因保持 POWERON，后续长时间运行未再复位。
-  - OTA/残留：当前 app0/app1 均为修复版，远程 HTTP OTA 曾受前序中间态影响出现 PANIC/BEGIN_FAILED，经 USB 恢复后完成双槽更新。云端上报在开机早期可出现 200，但后续心跳仍有偶发 `-11` 与低堆跳过，设备可能暂时从云端列表下线——**该云端长期在线问题不属于本次已修复范围，未宣称解决**；主 loop 卡死与 DC 页面卡死修复已验证。
+  - 测试同步（第六轮）：`test_cloud_early_session.py` 新增稳态失败快速重试、成功后重连门限、每跳释放会话 3 项；`test_cloud_reporter_regression.py`/`test_heap_baseline.py` 同步为不复用旧连接的语义。全量 pytest **445 passed + 31 subtests**；Linux 编译通过，bin MD5 `08667b6e882f271c2e194b80db6005ef`。
+  - 验证（第六轮实车）：该 bin 已 USB 刷入 app0；连续 **6 个心跳全部 `POST /report -> 200`**（约 15s、311s、614s、911s、1210s、1510s），云端 `last_seen` 随小车心跳刷新并保持在线。观察期 free_heap 约 90–93KB、真实 min_free_heap 约 6.7KB、无新增 PANIC/复位，证明「每跳新建并释放」消除了旧会话 -11 与堆持续下滑。
+  - 验证（第五轮实车）：稳态停滞客户端测试 37/37 成功、零超时、最大 127ms，`web_http_dt_max` 峰值为停滞放弃约 1.1–1.8s，主 loop 不再冻结；DC 首页/状态/日志/漂移 API 均 200，WebSocket 8 秒收约 61KB 遥测；早期开机云端重试窗口仍有 HTTP 排队，窗口结束后恢复。既有采样日志覆盖约 23 分钟且复位原因保持 POWERON，后续长时间运行未再复位。
+  - OTA/槽位：app0 为第六轮最终修复版；尝试用 HTTP OTA 同步 app1 时又出现一次 PANIC，已停止重试，app1 保留上一轮修复构建作为回退（不含最新云端持续在线修复）。当前车已在 app0 正常启动并再次上报 200；不再宣称双槽均为最新版本。
 
 ## 2026-10-30 v1.10.16
 

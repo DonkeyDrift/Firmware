@@ -23,7 +23,8 @@
   - 验证（第四轮）：全量 pytest 441 passed + 31 subtests 全绿；Linux 增量编译通过（15.36s），bin MD5 ccffa5c9b64d97865b2a2d0ab356751c。后续实车已出现连续 `POST /report -> 200`，云端 `/devices` 可见 `esp32 / tony-esp / 192.168.3.9 / v1.10.17 / online=true`，确认上报恢复。
   - fix D3（第五轮·实车回归修正，`WebConsoleServer.cpp/.h` + `MUS4_FW.ino` + `FirmwareConfig.h`）：300ms 无进展放弃在同核 TLS 握手期间误杀正常 `/api/log` 等请求；将 wifi_web 任务优先级提升为 2（高于 cloud-report 的 1），停滞放弃调整至 1000ms。另定位到剩余 ~9s 尖峰来自**响应头**仍经 core `send()` 阻塞写：新增 `Mus4WebServer` 子类暴露 core 自有 `_prepareHeader`，保持状态行/Content-Length/自定义头逐字等价，但头部也走非阻塞守卫写，头与体均不再进入 1s×10 重试。
   - 测试同步（第五轮）：`test_stalled_client.py` 新增同核 TLS 短暂无进展不得误杀的行为镜像，头部断言改锁 `_prepareHeader + 非阻塞写` 且禁止 core `send()`；`test_loop_hang_fix.py` 锁定 wifi_web 优先级 2。全量 pytest **442 passed + 31 subtests**；Linux 编译通过，bin MD5 `0a977925b14eb824192301d840648b1b`。
-  - OTA：核心修复已在实车验证（主 loop 不冻结、云端恢复 200）。第五轮 bin 部署时遇到上传中 PANIC、后续 `BEGIN_FAILED` 与另一槽位 `SET_BOOT_FAILED`，当前车仍在 app0 运行旧构建；**第五轮尚未完成刷后验证，需先断电重启恢复 OTA，再刷写验证**，不得宣称已上车。
+  - 验证（最终实车）：第五轮 bin 经 USB UART0（`/dev/ttyACM1`）成功刷入，随后 HTTP OTA 恢复另一槽位，两个槽位均为同一修复构建。稳态停滞客户端测试 37/37 成功、零超时、最大 127ms，`web_http_dt_max` 峰值为停滞放弃约 1.1–1.8s，主 loop 不再冻结；DC 首页/状态/日志/漂移 API 均 200，WebSocket 8 秒收约 61KB 遥测；早期开机云端重试窗口仍有 HTTP 排队，窗口结束后恢复。既有采样日志覆盖约 23 分钟且复位原因保持 POWERON，后续长时间运行未再复位。
+  - OTA/残留：当前 app0/app1 均为修复版，远程 HTTP OTA 曾受前序中间态影响出现 PANIC/BEGIN_FAILED，经 USB 恢复后完成双槽更新。云端上报在开机早期可出现 200，但后续心跳仍有偶发 `-11` 与低堆跳过，设备可能暂时从云端列表下线——**该云端长期在线问题不属于本次已修复范围，未宣称解决**；主 loop 卡死与 DC 页面卡死修复已验证。
 
 ## 2026-10-30 v1.10.16
 

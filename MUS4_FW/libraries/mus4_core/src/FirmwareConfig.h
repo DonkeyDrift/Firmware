@@ -153,3 +153,32 @@
 #ifndef WAVE_HEIGHT
 #define WAVE_HEIGHT 6                 // Waveform height (reduced for performance)
 #endif
+
+// ── v1.10.17 loop-hang fix：主 loop 解阻塞 + 看门狗 + 诊断 ─────────────────
+// 病灶：同步 WebServer 的 handleClient() 在主 loopTask 内驱动，core 3.3.10 的
+// NetworkClient::write() = select(1s)×10 次重试，客户端 TCP 停滞时单次 HTTP 应答
+// 最长阻塞 ~20s，主 loop 的 RC 滤波/控制输出/Serial1 遥测全部冻结
+//（实测 web_http_dt_max=18997ms）。且 Arduino core 的 app_main() 写死
+// loopTaskWDTEnabled=false，loop 卡死不会自动复位。
+// 修复三件套：
+//   1) handleClient 移至独立 FreeRTOS 任务（WIFI_WEB_TASK_* 常量）；
+//   2) loopTask 订阅 esp_task_wdt（LOOP_TASK_WDT_* 常量），真死机 ~5s 内 panic 复位；
+//   3) 网络任务不订阅 TWDT——一次 HTTP OTA 上传会在 handleClient 内合法运行
+//      数分钟，任何小于它的超时都会把正常 OTA 误判成死机；改用软看护
+//     （WIFI_WEB_TASK_STALL_WARN_MS 告警日志 + STATUS 的 web_http_dt_max 指标），
+//      控制安全由 loopTask TWDT 兜底。
+// 网络任务创建失败（低堆下 8KB 栈分配可能失败）时回退主 loop 直驱，保留
+// v1.10.16 行为：Web 仍可用但阻塞风险回归，可经 STATUS 的 web_http_dt_max 识别。
+
+// 1=handleClient 由独立 FreeRTOS 任务驱动（默认）；0=回退主 loop 直驱（排查用）
+#define WIFI_WEB_TASK_ENABLED 1
+#define WIFI_WEB_TASK_NAME "wifi_web"        // FreeRTOS 任务名（ps/top 排查用）
+#define WIFI_WEB_TASK_STACK_SIZE 8192        // 任务栈（bytes）：handler 链曾在 8KB loopTask 栈内运行，取同级
+#define WIFI_WEB_TASK_PRIORITY 2             // 高于同核 cloud-report(1)，避免 TLS 握手饿死 Web 响应
+#define WIFI_WEB_TASK_CORE 0                 // 绑核 0（PRO_CPU，Wi-Fi/LWIP 所在核）；控制回路 loopTask 固定核 1，物理隔离
+#define WIFI_WEB_TASK_POLL_INTERVAL_MS 2     // 任务空闲轮询节奏（ms），HTTP 响应延迟仍远小于原阻塞量级
+#define WIFI_WEB_TASK_STALL_WARN_MS 2000     // 单次 handleClient 超过该时长（且非 OTA 上传）打告警日志
+
+// 1=loopTask 订阅 esp_task_wdt（默认）；0=仅保留帧耗时诊断不订阅
+#define LOOP_TASK_WDT_ENABLED 1
+#define LOOP_TASK_WDT_TIMEOUT_S 5            // 看门狗超时（秒）：正常帧 ~5-15ms，5s 可容忍偶发长帧又能及时拉起真死机

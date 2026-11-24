@@ -49,7 +49,9 @@ def test_update_never_executes_blocking_report_on_main_loop():
     assert "xTaskCreatePinnedToCore" in update
 
 
-def test_lazy_worker_uses_16384_byte_stack():
+def test_lazy_worker_uses_measured_8192_byte_stack():
+    """栈大小按实车高水位收敛：16KB 栈实测峰值只用 ~3.85KB（stack_hwm=12540），
+    8192 字节保留 >2 倍峰值余量，同时归还 8KB 给 TLS 握手分配。"""
     source = _source()
     update = _function_block(source, "void update()")
     create = _call_block(update, "xTaskCreatePinnedToCore")
@@ -61,8 +63,8 @@ def test_lazy_worker_uses_16384_byte_stack():
     assert "void cloudReportTask(" in source
     assert arguments[2].strip() == "CLOUD_REPORT_TASK_STACK_SIZE"
     assert stack is not None
-    assert int(stack.group(1)) == 16384
-    assert int(stack.group(1)) >= 12288
+    assert int(stack.group(1)) == 8192
+    assert int(stack.group(1)) >= 2 * (16384 - 12540)
 
 
 def test_worker_and_blocking_attempt_do_not_call_logging_code():

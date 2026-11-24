@@ -15,6 +15,10 @@ static const char* WIFI_AP_SSID_SUFFIX = "-ESP";
 static const uint8_t WIFI_AP_SSID_PREFIX_MAX_LEN = 6;
 static const uint16_t WIFI_CONSOLE_PORT = 2323;
 static const uint16_t WIFI_WEB_CONSOLE_PORT = 80;
+// v1.10.17:不再作为 WS 推送门限——.68 车实测稳态 free_heap 仅 43–46KB,
+// 固定 60KB 一刀切会把 WS 曲线与日志 socket 推送永久饿死(ws_heap_skip 以
+// ~100/s 增长)。仅为兼容保留本常量(STATUS 打印引用),实际推送门限见
+// 下方 PUSH_FLOOR/RECOVERY 常量与 WebTelemetry 的 webTelemetryHeapOk()。
 static const uint32_t WIFI_WEB_TELEMETRY_MIN_FREE_HEAP = 60000;
 #ifdef ENABLE_WIFI_WEBSOCKET_TELEMETRY
 static const uint16_t WIFI_WEB_SOCKET_PORT = 81;
@@ -23,6 +27,21 @@ static const uint8_t WIFI_WEB_SOCKET_MAX_POINTS_PER_FRAME = 8;
 static const uint8_t WIFI_WEB_SOCKET_MAX_REPLAY_POINTS = 32;
 static const uint16_t WIFI_WEB_SOCKET_KEEPALIVE_SECONDS = 60;
 static const uint8_t WIFI_WEB_SOCKET_MAX_CLIENTS = 2;
+// v1.10.17:WS 推送堆门限自适应(webTelemetryHeapOk() 三层策略):
+//   ① 真低内存保护:absolute 地板——free_heap 跌破 PUSH_FLOOR_HEAP(32KB)
+//      或最大可分配块跌破 PUSH_MIN_MAX_ALLOC_HEAP(8KB,防碎片误判)才禁推;
+//   ② 滞回防抖:进入压力态后须恢复到 RECOVERY_HEAP(38KB)以上才重新推送,
+//      避免在阈值附近反复横跳;
+//   ③ 发送失败退避:binaryAll 返回 DISCARDED 按 SEND_BACKOFF_* 指数退避,
+//      成功一帧即复位,防止慢客户端把堆耗在注定丢弃的队列拷贝上
+//      (AsyncWebSocket 每客户端队列上限 WS_MAX_QUEUED_MESSAGES=32)。
+// 43–46KB 实测基线高于恢复线:WS 正常可用;云端 TLS 握手瞬时 ~45KB 峰值时
+// free_heap 自然跌破地板,WS 暂停数秒为其让路,而非互相挤爆。
+static const uint32_t WIFI_WEB_TELEMETRY_PUSH_FLOOR_HEAP = 32768;
+static const uint32_t WIFI_WEB_TELEMETRY_RECOVERY_HEAP = 38912;
+static const uint32_t WIFI_WEB_TELEMETRY_PUSH_MIN_MAX_ALLOC_HEAP = 8192;
+static const unsigned long WIFI_WEB_SOCKET_SEND_BACKOFF_START_MS = 500;
+static const unsigned long WIFI_WEB_SOCKET_SEND_BACKOFF_MAX_MS = 8000;
 #endif
 static const uint8_t WIFI_CONSOLE_CHANNEL = 6;
 static const uint8_t WIFI_CONSOLE_MAX_CLIENTS = 1;

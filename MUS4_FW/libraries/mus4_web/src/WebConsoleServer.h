@@ -1,16 +1,45 @@
 #pragma once
 #include <Arduino.h>
+#include <WebServer.h>
 
 #include "FirmwareConfig.h"
 
 #ifdef ENABLE_WIFI_CONSOLE
 
+// 仅暴露 WebServer 既有的 protected 头部生成器：响应头仍由 core 原样拼装，
+// 但写出改走本项目的非阻塞守卫，避免 core send() 的 1s×10 写重试。
+class Mus4WebServer : public WebServer {
+public:
+    using WebServer::WebServer;
+    void prepareResponseHeader(String& header, int code, const char* contentType, size_t len)
+    {
+        _prepareHeader(header, code, contentType, len);
+    }
+};
+
+extern Mus4WebServer wifiWebServer;
+
+// 上位机配网状态（Serial2 STATUS|/OK|/FAIL|/HOSTIP| 帧）。
+// 主 loop（handleSerial2）写、Web 任务读——固定 char 数组而非 String：
+// 跨任务共享可变 static String 会并发 realloc 撕堆（v1.7.16/17 前科），
+// POD 缓冲按字段原子可见。缓冲定义在 WebConsoleServer.cpp。
+extern char hostWifiStatus[32];
+extern char hostWifiSsid[40];
+extern char hostWifiIp[20];
+extern char hostWifiError[80];
+extern char hostReportedIp[20];
+extern unsigned long hostReportedIpMs;
+
 // Register all HTTP routes for the Web Console and start the WebServer.
+// v1.10.17 起：本函数末尾同时创建 wifi_web 任务驱动 handleClient()（创建失败
+// 时回退主 loop 直驱，见 FirmwareConfig.h WIFI_WEB_TASK_* 注释）。
 void setupWebConsoleServer();
 
 // Process one update tick for the Web Console: sample telemetry data,
-// handle pending HTTP clients, and record handler timing statistics.
+// record handler timing statistics.
 // Does NOT handle WebSocket (see WebTelemetry), AP restart, or DNS server.
+// v1.10.17 起：HTTP 的 handleClient() 不再在这里驱动（移至 wifi_web 任务），
+// 本函数只保留主 loop 侧的遥测采样与节奏统计。
 void updateWebConsoleServer();
 
 #endif

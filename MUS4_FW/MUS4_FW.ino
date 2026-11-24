@@ -30,6 +30,7 @@
 */
 
 #include "FirmwareConfig.h"
+#include "LoopDiagnostics.h"
 
 #include <Wire.h>
 #include <FastLED.h>
@@ -186,7 +187,7 @@ void ensureWifiOtaStarted();
 #endif
 WiFiServer wifiConsoleServer(WIFI_CONSOLE_PORT);
 WiFiClient wifiConsoleClient;
-WebServer wifiWebServer(WIFI_WEB_CONSOLE_PORT);
+Mus4WebServer wifiWebServer(WIFI_WEB_CONSOLE_PORT);
 DNSServer wifiCaptiveDnsServer;
 SerialBuf wifiConsoleBuf = {{0},0,0,0,false};
 WifiScanEntry wifiScanCache[16];
@@ -243,6 +244,10 @@ unsigned long lastWifiWebDataSampleMs = 0;
 uint32_t wifiWebDataSeq = 0;
 uint16_t wifiWebDataHead = 0;
 uint16_t wifiWebDataCount = 0;
+// 环形缓冲 head/count 的跨任务发布/读取临界区（v1.10.17）：写者=主 loop 的
+// sampleWifiWebData()，读者=Web 任务的 /api/data handler（WebConsoleServer.cpp
+// extern 本符号）。槽位内容在指针发布前写完，读者用快照遍历，见彼处注释。
+portMUX_TYPE wifiWebDataMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Preferences remains a standalone global object; the runtime state keeps a
 // pointer to it so that modules can access it without an extra extern.
@@ -297,7 +302,11 @@ void sampleWifiWebData()
     if (now - lastWifiWebDataSampleMs < WIFI_WEB_DATA_INTERVAL_MS) return;
     lastWifiWebDataSampleMs = now;
     WebDataPoint& point = wifiWebData[wifiWebDataHead];
+    // seq 与 head/count 的发布必须在临界区内整体原子（读者为 Web 任务，
+    // 见 WebConsoleServer.cpp handleWifiWebData 的快照说明）
+    portENTER_CRITICAL(&wifiWebDataMux);
     point.seq = ++wifiWebDataSeq;
+    portEXIT_CRITICAL(&wifiWebDataMux);
     point.t = now;
     point.dtMs = wifiWebDataCount == 0 ? WIFI_WEB_DATA_INTERVAL_MS : (uint16_t)(now - wifiWebData[(wifiWebDataHead + WIFI_WEB_DATA_CAPACITY - 1) % WIFI_WEB_DATA_CAPACITY].t);
     point.throttle = car_output.throttle;
@@ -331,8 +340,10 @@ void sampleWifiWebData()
     point.pseudoSpeed = computePseudoSpeed();
     point.actuatorSteeringDuty = actuator_steering_duty;
     point.actuatorThrottleDuty = actuator_throttle_duty;
+    portENTER_CRITICAL(&wifiWebDataMux);
     wifiWebDataHead = (wifiWebDataHead + 1) % WIFI_WEB_DATA_CAPACITY;
     if (wifiWebDataCount < WIFI_WEB_DATA_CAPACITY) wifiWebDataCount++;
+    portEXIT_CRITICAL(&wifiWebDataMux);
 }
 
 static void setupWifiOtaCallbacks()
@@ -468,37 +479,31 @@ void handleSerial2()
 #endif
             if (strncmp(line, "STATUS|", 7) == 0)
             {
-                // 上位机配网响应：STATUS|CONNECTING
-                extern String hostWifiStatus;
-                hostWifiStatus = String(line + 7);
+                // 上位机配网响应：STATUS|CONNECTING（hostWifiStatus 为 char 数组，主 loop 写/Web 任务读）
+                strlcpy(hostWifiStatus, line + 7, sizeof(hostWifiStatus));
                 appendWebLog("serial2", String("HOST-WIFI: ") + line);
             }
             else if (strncmp(line, "OK|", 3) == 0)
             {
                 // 上位机配网响应：OK|<ip>
-                extern String hostWifiStatus;
-                extern String hostWifiIp;
-                hostWifiStatus = "connected";
-                hostWifiIp = String(line + 3);
+                strlcpy(hostWifiStatus, "connected", sizeof(hostWifiStatus));
+                strlcpy(hostWifiIp, line + 3, sizeof(hostWifiIp));
                 appendWebLog("serial2", String("HOST-WIFI: connected ip=") + hostWifiIp);
             }
             else if (strncmp(line, "FAIL|", 5) == 0)
             {
                 // 上位机配网响应：FAIL|<reason>
-                extern String hostWifiStatus;
-                extern String hostWifiError;
-                hostWifiStatus = "failed";
-                hostWifiError = String(line + 5);
+                strlcpy(hostWifiStatus, "failed", sizeof(hostWifiStatus));
+                strlcpy(hostWifiError, line + 5, sizeof(hostWifiError));
                 appendWebLog("serial2", String("HOST-WIFI: failed reason=") + hostWifiError);
             }
             else if (strncmp(line, "HOSTIP|", 7) == 0)
             {
                 // 上位机周期上报自身局域网 IP：HOSTIP|<ipv4>
-                extern String hostReportedIp;
                 extern unsigned long hostReportedIpMs;
                 if (isValidIpv4Text(line + 7))
                 {
-                    hostReportedIp = String(line + 7);
+                    strlcpy(hostReportedIp, line + 7, sizeof(hostReportedIp));
                     hostReportedIpMs = millis();
                     appendWebLog("serial2", String("HOST-IP: ") + hostReportedIp);
                 }
@@ -683,6 +688,10 @@ void setup()
 
     delay(1000);
     uiInitialized = false;
+    // v1.10.17：loopTask 看门狗与帧耗时统计。必须在 setup 末尾订阅——Wi-Fi/STA
+    // 首连（setupWifiConsole → updateWifiSta 首轮 apply）可能合法阻塞 >5s，
+    // 提前订阅会把正常开机误判成死机复位。
+    loopDiagnosticsBegin();
 }
 
 void loop()
@@ -972,4 +981,7 @@ void loop()
 
     // Phase 1: FirmwareApp 更新（影子模式，记录任务时间但不接管调度）
     firmwareApp.update();
+
+    // v1.10.17：每帧末尾喂 loopTask 看门狗 + 记录帧间隔（loop_dt_max_ms 诊断源）。
+    loopDiagnosticsFeed();
 }
